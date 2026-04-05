@@ -1,0 +1,15 @@
+{
+  "name": "juggle",
+  "owner": {
+    "name": "Mike Chen"
+  },
+  "plugins": [
+    {
+      "name": "juggle",
+      "source": "./",
+      "description": "Multi-topic conversation orchestrator. Discuss one topic while background agents research or build for others.",
+      "category": "productivity",
+      "version": "1.0.0"
+    }
+  ]
+}
