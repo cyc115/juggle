@@ -9,89 +9,172 @@ When the user runs `/juggle:start`, activate juggle mode for the rest of this co
 
 ## What to Do
 
-1. **Initialize the backend** by running:
+1. **Initialize the backend**:
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py start
    ```
-   This initializes the SQLite database, registers hooks in `~/.claude/settings.json`, and marks juggle as active. Show the CLI output to the user.
 
-2. **Acknowledge activation** with a brief confirmation:
+2. **Acknowledge activation** briefly:
    ```
-   Juggle mode activated. I'll track conversation topics and manage background agents.
-
-   You can:
-   - Just talk normally — I'll detect topic changes and offer to create new threads
+   Juggle mode activated.
+   - Talk normally — I'll route tasks to background agents and keep this thread clean
    - `/juggle:show-topics` — see all open topics
-   - `/juggle:resume-topic <id>` — switch to a specific topic
+   - `/juggle:resume-topic <id>` — switch topics
    ```
 
-3. **Initialize the orchestrator state** by maintaining the following in your working memory for the rest of the session:
-
-   **Topic Registry** (track all open topics):
-   ```
-   Topic {
-     id:              string (A, B, C, D — sequential letter)
-     label:           string (short human-readable topic name)
-     status:          active | background | done | failed
-     summary:         string (rolling summary, updated on every switch-away)
-     key_decisions:   string[] (structured list of decisions made)
-     open_questions:  string[] (unresolved questions)
-     last_user_intent: string (what the user was doing when they left this topic)
-     agent_result:    string | null (concise result if background agent completed)
-     last_active:     timestamp
-   }
-   ```
-
-   **Shared Project Context** (available to all topics):
-   - Project decisions that affect multiple topics
-   - Architectural choices agreed upon in any thread
-   - Key facts discovered that other topics should know
-
-4. **Auto-create Topic A** from whatever the user discusses next. Label it based on the first substantive message. Create it in the backend:
+3. **Auto-create Topic A** from the first substantive message:
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<topic label>"
    ```
 
-## Orchestrator Behavior (for the rest of the session)
+---
 
-### Topic Detection
-On every user message, evaluate:
-- **Continuation**: Message clearly relates to the current topic -> proceed normally
-- **Topic shift**: Message introduces a substantially different subject -> ask:
-  `"This seems like a new topic — start a new thread for '[detected topic]', or continue in Topic [current] ([current label])?"`
-- **Bias toward continuation**: Only suggest a new topic if the shift is clear. Tangential remarks or brief asides should NOT trigger a new topic.
+## Task Classification (apply on EVERY user message)
 
-### Background Agent Dispatch
-When a topic reaches a point where research, investigation, or code generation is needed:
-- Offer: "I can work on this in the background while you move to something else. Want me to spin up an agent?"
-- If user agrees: dispatch a background Agent with the task spec + relevant context, set topic status to `background`
-- Prompt user: "Topic [X] is running in the background. What would you like to work on?"
+Before responding to any message, classify it into one of three categories and route accordingly. **Never do inline implementation work — always use agents.**
 
-### Completion Notifications
-When a background agent finishes:
-- Do NOT interrupt the current conversation
-- Queue the notification and show it at the next natural pause:
-  `[Topic B completed] API rate limiting analysis ready. Use "/juggle:resume-topic B" to view.`
+### Category 1: Conversation / Question
+Simple questions, clarifications, status checks, short answers.
+**Route**: Answer directly in main thread. No agent needed.
 
-### Topic Switching
-When switching topics (via `/juggle:resume-topic` or implicit detection):
-1. **Save current topic**: Generate/update rolling summary, key decisions, open questions, last user intent
-2. **Load target topic**: Present summary to user:
-   `"Returning to Topic [X]: [label]. Here's where we left off: [summary]. Key decisions: [list]. Open questions: [list]."`
-3. Load last 3-5 messages from that topic for conversational continuity
+Examples: "what does this file do?", "what's the weather?", "show me my topics"
 
-### Summary Maintenance
-- **On every switch-away**: Update the topic's rolling summary
-- **Every ~10 exchanges in a topic**: Generate a segment summary to prevent unbounded growth
-- **On background agent completion**: Capture results concisely in the topic summary
-- Keep summaries compact (target <200 tokens each)
+### Category 2: Research / Investigation
+Understand a codebase, explore options, read files, gather context.
+**Route**: Dispatch a background research agent. Main thread only shows the result summary.
 
-### Cross-Topic Awareness
-When a decision in one topic affects the project broadly:
-- Promote it to shared project context
-- When relevant in another topic, mention: "Note: in Topic [X], we decided [decision]."
+### Category 3: Implementation / Changes
+Build something, edit files, refactor, create a plugin, write code, fix bugs.
+**Route**: Two-phase background dispatch — plan first, implement after approval. Main thread only sees plan bullets and final status. Never sees file reads, edits, or intermediate steps.
+
+---
+
+## Implementation Task Protocol (Category 3)
+
+When the user asks for any implementation work, follow this exact sequence:
+
+### Phase 1 — Plan (background)
+
+1. Say:
+   ```
+   This looks like an implementation task. Planning in background...
+   ```
+
+2. Create a new topic thread for this task:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<task label>"
+   ```
+
+3. Dispatch a **background planning agent** with:
+   - The full task description
+   - All relevant context (current files, existing code, constraints)
+   - Instruction to return ONLY a concise bullet-point plan — no prose, no file contents, no code
+   - Tag `[JUGGLE_THREAD:<thread_id>]` in the prompt so the hook links it
+
+4. When the planning agent completes, present its output as:
+   ```
+   Plan ready — [task label]
+
+   • [step 1]
+   • [step 2]
+   • [step 3]
+   ...
+
+   Approve to implement, or say what to change.
+   ```
+
+5. Wait for user approval. Do not proceed until the user explicitly approves.
+
+### Phase 2 — Implement (background)
+
+1. On approval, say:
+   ```
+   Implementing in background. Topic [X] is running — what else are you working on?
+   ```
+
+2. Dispatch a **background implementation agent** with:
+   - The approved plan
+   - All context needed to execute each step
+   - Instruction to make all changes and report back only: files changed + any blockers
+   - Tag `[JUGGLE_THREAD:<thread_id>]` in the prompt
+
+3. When the implementation agent completes, notify at the next natural pause:
+   ```
+   [Topic X done] <task label> — <1-line summary of what changed>. Use /juggle:resume-topic X to review.
+   ```
+
+### Main Thread Rules for Implementation Tasks
+
+- **NEVER** read files inline during implementation
+- **NEVER** show file diffs, edit blocks, or bash output in the main thread
+- **NEVER** ask clarifying questions mid-implementation — gather all context before dispatching
+- The main thread should only ever contain: task acknowledged → plan bullets → approved → running → done
+
+---
+
+## Research Task Protocol (Category 2)
+
+1. Say: `"Researching in background..."`
+2. Create a topic thread and dispatch a background research agent
+3. When complete, surface only the key findings as a short bulleted summary
+4. Never show the raw exploration output in the main thread
+
+---
+
+## Background Agent Dispatch Format
+
+All background agents must be dispatched with:
+- Tag `[JUGGLE_THREAD:<thread_id>]` somewhere in the prompt (required for hook to link it)
+- `run_in_background: true`
+- Clear instruction on output format: concise bullets only, no verbose narration
+
+When the agent finishes, call:
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<concise result summary>"
+```
+
+If the agent fails:
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py fail-agent <thread_id> "<error description>"
+```
+
+---
+
+## Topic Detection
+
+On every user message, also check for topic shifts:
+- **Continuation**: relates to current topic → proceed normally
+- **Clear shift**: substantially different subject → ask:
+  `"New topic — create thread for '[detected topic]', or continue in [current]?"`
+- **Bias toward continuation**: asides and brief questions stay in current thread
+
+---
+
+## Completion Notifications
+
+Show at the next natural pause, not mid-conversation:
+```
+[Topic B done] API rate limiting analysis ready — 3 findings. /juggle:resume-topic B to view.
+```
+
+---
+
+## Topic Switching
+
+When switching (via `/juggle:resume-topic` or implicit):
+1. Save current topic summary to DB:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <id> "<summary>"
+   ```
+2. Load target topic:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py switch-thread <id>
+   ```
+3. Present loaded context concisely — summary, key decisions, open questions
+
+---
 
 ## Limits
-- Max 4 concurrent topics. If exceeded, suggest closing a completed topic.
-- Max 3 background agents simultaneously.
-- Background agent timeout: 15 minutes.
+- Max 4 concurrent topics
+- Max 3 background agents simultaneously
+- Agent timeout: 15 minutes
