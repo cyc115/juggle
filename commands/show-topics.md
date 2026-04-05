@@ -17,15 +17,4 @@ When the user runs `/juggle:show-topics`, display the current state of all open 
 2. **If the output says "No topics."** or the command errors with juggle not active, respond:
    `"Juggle mode isn't active. Run /juggle:start to activate it."`
 
-3. **Display the output** from the CLI, formatted like:
-   ```
-   Topics:
-     [A] Auth module design        <- you are here
-     [B] API rate limiting         -> agent running...
-     [C] Quick Q: env var config   done (results ready)
-   ```
-
-4. **After the table**, show a brief reminder:
-   ```
-   Use "/juggle:resume-topic <id>" to switch topics, or just keep talking.
-   ```
+3. Run the CLI command. Print its output VERBATIM — do not reformat, reorder, or summarize it.

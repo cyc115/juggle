@@ -338,3 +338,48 @@ class JuggleDB:
                 """
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def get_last_exchange(self, thread_id: str) -> dict:
+        """Return the last user message and last assistant message for a thread.
+
+        Returns a dict with keys:
+            last_user, last_user_at, last_assistant, last_assistant_at
+        Values are None when no message of that role exists.
+        """
+        with self._connect() as conn:
+            user_row = conn.execute(
+                """
+                SELECT content, created_at FROM messages
+                WHERE thread_id = ? AND role = 'user'
+                ORDER BY id DESC LIMIT 1
+                """,
+                (thread_id,),
+            ).fetchone()
+            assistant_row = conn.execute(
+                """
+                SELECT content, created_at FROM messages
+                WHERE thread_id = ? AND role = 'assistant'
+                ORDER BY id DESC LIMIT 1
+                """,
+                (thread_id,),
+            ).fetchone()
+
+        result = {
+            "last_user": user_row["content"] if user_row else None,
+            "last_user_at": user_row["created_at"] if user_row else None,
+            "last_assistant": assistant_row["content"] if assistant_row else None,
+            "last_assistant_at": assistant_row["created_at"] if assistant_row else None,
+        }
+
+        # Fallback: if no assistant message is stored yet, use agent_result from the thread.
+        if not result["last_assistant"]:
+            thread = self.get_thread(thread_id)
+            if thread and thread.get("agent_result"):
+                result["last_assistant"] = thread["agent_result"]
+                result["last_assistant_at"] = thread.get("last_active")
+
+        return result
+
+    def update_thread_summary(self, thread_id: str, summary: str):
+        """Write a summary string to threads.summary."""
+        self.update_thread(thread_id, summary=summary)

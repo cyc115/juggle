@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 _DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude" / "juggle"))
@@ -21,7 +22,7 @@ def get_db():
     return JuggleDB(str(DB_PATH))
 
 
-def cmd_start(args):
+def cmd_start(_):
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     db = get_db()
@@ -40,7 +41,7 @@ def cmd_start(args):
         print("Juggle started.")
 
 
-def cmd_stop(args):
+def cmd_stop(_):
     db = get_db()
     db.set_active(False)
 
@@ -175,7 +176,53 @@ def cmd_close_thread(args):
     print(f"Thread {args.thread_id} ({thread['topic']}) closed.")
 
 
-def cmd_show_topics(args):
+def _humanize_dt(iso_str: str) -> str:
+    """Return a human-friendly relative time string for an ISO-8601 UTC timestamp."""
+    if not iso_str:
+        return "unknown"
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        diff = (now - dt).total_seconds()
+        if diff < 60:
+            return "just now"
+        if diff < 3600:
+            mins = int(diff // 60)
+            return f"{mins} min ago"
+        if diff < 86400:
+            hrs = int(diff // 3600)
+            return f"{hrs} hr ago"
+        if diff < 172800:
+            return "yesterday"
+        days = int(diff // 86400)
+        if days < 7:
+            return f"{days} days ago"
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return iso_str
+
+
+def _last_sentences(text: str, max_chars: int = 200) -> str:
+    """Return the last 1-2 sentences of text, capped at max_chars."""
+    if not text:
+        return ""
+    text = text.strip()
+    # Split on sentence-ending punctuation followed by whitespace
+    import re
+    parts = re.split(r"(?<=[.?!])\s+", text)
+    parts = [p for p in parts if p]
+    if not parts:
+        return text[:max_chars]
+    # Take last 2 non-empty parts
+    snippet = " ".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+    if len(snippet) > max_chars:
+        snippet = snippet[-max_chars:].lstrip()
+    return snippet
+
+
+def cmd_show_topics(_):
     db = get_db()
     threads = db.get_all_threads()
     if not threads:
@@ -183,20 +230,62 @@ def cmd_show_topics(args):
         return
 
     current = db.get_current_thread()
-    print("Topics:")
-    for t in threads:
-        marker = "<- you are here" if t["thread_id"] == current else ""
-        agent_info = ""
-        if t["status"] == "background" and t.get("agent_task_id"):
-            agent_info = "-> agent running..."
-        elif t["status"] == "done":
-            agent_info = "done (results ready)"
-        elif t["status"] == "failed":
-            agent_info = "failed"
 
-        suffix = agent_info or marker
-        suffix_str = f"  {suffix}" if suffix else ""
-        print(f"  [{t['thread_id']}] {t['topic']} — {t['status']}{suffix_str}")
+    # Sort by last_active descending
+    threads.sort(key=lambda t: t.get("last_active") or "", reverse=True)
+
+    print("Topics")
+    last_idx = len(threads) - 1
+    for idx, t in enumerate(threads):
+        is_last = idx == last_idx
+        branch = "└──" if is_last else "├──"
+        vert = "    " if is_last else "│   "
+
+        tid = t["thread_id"]
+        topic = t["topic"]
+        status = t["status"]
+        last_active = _humanize_dt(t.get("last_active") or "")
+
+        # Build status suffix
+        if tid == current:
+            status_suffix = "<- YOU ARE HERE"
+        elif status == "background":
+            status_suffix = "-> agent running..."
+        elif status == "done":
+            status_suffix = "done"
+        elif status == "failed":
+            status_suffix = "failed"
+        else:
+            status_suffix = ""
+
+        # Header line: pad topic to align timestamp
+        header_core = f"[{tid}] {topic}"
+        padded = f"{header_core:<40}"
+        header = f"{branch} {padded} ({last_active})"
+        if status_suffix:
+            header = f"{header}  {status_suffix}"
+        print(header)
+
+        # Sub-lines
+        exchange = db.get_last_exchange(tid)
+
+        summary = t.get("summary") or ""
+        summary_text = summary.strip() if summary.strip() else "no summary yet"
+        print(f"{vert}├── Summary: {summary_text}")
+
+        last_q = _last_sentences(exchange.get("last_user") or "")
+        last_a = _last_sentences(exchange.get("last_assistant") or "")
+        last_q_text = f'"{last_q}"' if last_q else "(none)"
+        last_a_text = f'"{last_a}"' if last_a else "(none)"
+        print(f"{vert}├── Last Q: {last_q_text}")
+        print(f"{vert}└── Last A: {last_a_text}")
+
+        # Blank separator between threads (but not after the last one)
+        if not is_last:
+            print(f"│")
+
+    print()
+    print('Use "/juggle:resume-topic <id>" to switch topics, or just keep talking.')
 
 
 def cmd_add_shared(args):
@@ -225,6 +314,28 @@ def cmd_complete_agent(args):
 
     db.update_thread(args.thread_id, agent_result=args.result_summary, status="done")
 
+    # Store the agent result as an assistant message so it's visible in get_last_exchange.
+    if args.result_summary:
+        db.add_message(args.thread_id, role="assistant", content=args.result_summary)
+
+    # Auto-generate summary if the thread has none yet
+    if not (thread.get("summary") or "").strip():
+        exchange = db.get_last_exchange(args.thread_id)
+        raw_last_user = exchange.get("last_user") or ""
+        # Skip auto-summary if the last user message looks like junk (task notifications,
+        # slash commands, or internal plumbing rather than real conversation).
+        is_junk = (
+            raw_last_user.startswith("<task-notification")
+            or "task-id" in raw_last_user
+            or raw_last_user.strip().startswith("/")
+        )
+        if not is_junk:
+            last_q = _last_sentences(raw_last_user, max_chars=80)
+            last_a = _last_sentences(exchange.get("last_assistant") or "", max_chars=80)
+            if last_q or last_a:
+                auto_summary = f"{last_q} -> {last_a}" if (last_q and last_a) else (last_q or last_a)
+                db.update_thread_summary(args.thread_id, auto_summary)
+
     notification = (
         f"[Topic {args.thread_id} completed] {thread['topic']} — results ready. "
         f"Use: python juggle_cli.py switch-thread {args.thread_id}"
@@ -247,7 +358,7 @@ def cmd_fail_agent(args):
     print(f"Thread {args.thread_id} agent failed.")
 
 
-def cmd_check_agents(args):
+def cmd_check_agents(_):
     db = get_db()
     threads = db.get_all_threads()
     background = [
@@ -258,14 +369,14 @@ def cmd_check_agents(args):
     print(json.dumps(background))
 
 
-def cmd_get_context(args):
+def cmd_get_context(_):
     sys.path.insert(0, str(SRC_DIR))
     from juggle_context import build_context_string
     result = build_context_string(db_path=str(DB_PATH))
     print(result)
 
 
-def cmd_init_db(args):
+def cmd_init_db(_):
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
     db = get_db()
     db.init_db()

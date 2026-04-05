@@ -144,8 +144,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py fail-agent <thread_id> "<error d
 
 On every user message, also check for topic shifts:
 - **Continuation**: relates to current topic → proceed normally
-- **Clear shift**: substantially different subject → ask:
-  `"New topic — create thread for '[detected topic]', or continue in [current]?"`
+- **Clear shift**: substantially different subject → call create-thread CLI and announce:
+  `"New topic detected — creating thread for '[detected topic]'."`
 - **Bias toward continuation**: asides and brief questions stay in current thread
 
 ---
