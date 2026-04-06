@@ -184,7 +184,8 @@ def cmd_update_summary(args):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
     db.update_thread(thread_uuid, summary=args.summary)
-    label = db.get_thread(thread_uuid).get("label") or args.thread_id
+    updated = db.get_thread(thread_uuid)
+    label = (updated.get("label") if updated else None) or args.thread_id
     print(f"Summary updated for Thread {label}.")
 
 
@@ -545,7 +546,8 @@ def cmd_set_summarized_count(args):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
     db.set_summarized_count(thread_uuid, args.count)
-    label = db.get_thread(thread_uuid).get("label") or args.thread_id
+    updated = db.get_thread(thread_uuid)
+    label = (updated.get("label") if updated else None) or args.thread_id
     print(f"Summarized count set to {args.count} for Thread {label}.")
 
 
