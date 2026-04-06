@@ -38,15 +38,18 @@ def test_set_active_sets_started_at_once(db):
 
 
 def test_create_thread_returns_a(db):
+    """create_thread returns a UUID (not a letter)."""
+    import re
     tid = db.create_thread("My topic", session_id="s1")
-    assert tid == "A"
+    assert re.match(r"^[0-9a-f-]{36}$", tid), f"Expected UUID, got: {tid}"
 
 
 def test_create_thread_sequential(db):
+    """Sequential threads get sequential labels A, B."""
     a = db.create_thread("Topic A", session_id="s1")
     b = db.create_thread("Topic B", session_id="s1")
-    assert a == "A"
-    assert b == "B"
+    assert db.get_thread(a)["label"] == "A"
+    assert db.get_thread(b)["label"] == "B"
 
 
 def test_create_thread_max_10(db):
@@ -57,38 +60,38 @@ def test_create_thread_max_10(db):
 
 
 def test_get_thread(db):
-    db.create_thread("My topic", session_id="s1")
-    t = db.get_thread("A")
+    tid = db.create_thread("My topic", session_id="s1")
+    t = db.get_thread(tid)
     assert t is not None
     assert t["topic"] == "My topic"
     assert t["status"] == "active"
 
 
 def test_get_thread_missing(db):
-    assert db.get_thread("Z") is None
+    assert db.get_thread("not-a-real-uuid") is None
 
 
 def test_get_all_threads(db):
-    db.create_thread("A topic", session_id="s1")
-    db.create_thread("B topic", session_id="s1")
+    ta = db.create_thread("A topic", session_id="s1")
+    tb = db.create_thread("B topic", session_id="s1")
     threads = db.get_all_threads()
     assert len(threads) == 2
-    assert threads[0]["thread_id"] == "A"
-    assert threads[1]["thread_id"] == "B"
+    assert threads[0]["id"] == ta
+    assert threads[1]["id"] == tb
 
 
 def test_update_thread(db):
-    db.create_thread("My topic", session_id="s1")
-    db.update_thread("A", summary="Updated summary", status="background")
-    t = db.get_thread("A")
+    tid = db.create_thread("My topic", session_id="s1")
+    db.update_thread(tid, summary="Updated summary", status="background")
+    t = db.get_thread(tid)
     assert t["summary"] == "Updated summary"
     assert t["status"] == "background"
 
 
 def test_update_thread_list_serialized(db):
-    db.create_thread("My topic", session_id="s1")
-    db.update_thread("A", key_decisions=["decision 1", "decision 2"])
-    t = db.get_thread("A")
+    tid = db.create_thread("My topic", session_id="s1")
+    db.update_thread(tid, key_decisions=["decision 1", "decision 2"])
+    t = db.get_thread(tid)
     # Should be stored as JSON string
     parsed = json.loads(t["key_decisions"])
     assert parsed == ["decision 1", "decision 2"]
@@ -102,21 +105,21 @@ def test_set_get_current_thread(db):
 
 
 def test_add_and_get_messages(db):
-    db.create_thread("My topic", session_id="s1")
-    db.add_message("A", "user", "Hello world")
-    db.add_message("A", "assistant", "Hi there")
-    msgs = db.get_messages("A", token_budget=1500)
+    tid = db.create_thread("My topic", session_id="s1")
+    db.add_message(tid, "user", "Hello world")
+    db.add_message(tid, "assistant", "Hi there")
+    msgs = db.get_messages(tid, token_budget=1500)
     assert len(msgs) == 2
     assert msgs[0]["role"] == "user"
     assert msgs[1]["role"] == "assistant"
 
 
 def test_get_messages_token_budget(db):
-    db.create_thread("My topic", session_id="s1")
+    tid = db.create_thread("My topic", session_id="s1")
     # Add many messages; budget should limit what's returned
     for _ in range(20):
-        db.add_message("A", "user", "x" * 400)  # ~100 tokens each
-    msgs = db.get_messages("A", token_budget=500)
+        db.add_message(tid, "user", "x" * 400)  # ~100 tokens each
+    msgs = db.get_messages(tid, token_budget=500)
     # 500 token budget / ~100 tokens per msg = ~5 msgs
     assert len(msgs) <= 6
     assert len(msgs) > 0
@@ -125,10 +128,10 @@ def test_get_messages_token_budget(db):
 
 
 def test_get_message_count(db):
-    db.create_thread("My topic", session_id="s1")
-    assert db.get_message_count("A") == 0
-    db.add_message("A", "user", "hello")
-    assert db.get_message_count("A") == 1
+    tid = db.create_thread("My topic", session_id="s1")
+    assert db.get_message_count(tid) == 0
+    db.add_message(tid, "user", "hello")
+    assert db.get_message_count(tid) == 1
 
 
 def test_add_shared(db):
@@ -164,10 +167,10 @@ def test_mark_notifications_empty_list(db):
 
 
 def test_get_background_agents(db):
-    db.create_thread("My topic", session_id="s1")
+    tid = db.create_thread("My topic", session_id="s1")
     assert db.get_background_agents() == []
 
-    db.update_thread("A", status="background", agent_task_id="task_123")
+    db.update_thread(tid, status="background", agent_task_id="task_123")
     agents = db.get_background_agents()
     assert len(agents) == 1
     assert agents[0]["agent_task_id"] == "task_123"
@@ -205,7 +208,7 @@ def test_get_stale_threads(db):
         db.add_message(tid, "user", f"real question {i}")
     stale = db.get_stale_threads(threshold=3)
     assert len(stale) == 1
-    assert stale[0]["thread_id"] == tid
+    assert stale[0]["id"] == tid
     assert stale[0]["delta"] == 3
 
 
@@ -221,13 +224,13 @@ def test_get_stale_threads_not_stale_after_set(db):
 
 def test_get_recent_exchanges_basic(db):
     """get_recent_exchanges returns last n Q/A pairs, most recent first."""
-    db.create_thread("Topic A", session_id="s1")
-    db.add_message("A", "user", "first question")
-    db.add_message("A", "assistant", "first answer")
-    db.add_message("A", "user", "second question")
-    db.add_message("A", "assistant", "second answer")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "first question")
+    db.add_message(tid, "assistant", "first answer")
+    db.add_message(tid, "user", "second question")
+    db.add_message(tid, "assistant", "second answer")
 
-    exchanges = db.get_recent_exchanges("A", n=2)
+    exchanges = db.get_recent_exchanges(tid, n=2)
     assert len(exchanges) == 2
     # most recent first
     assert exchanges[0]["user"] == "second question"
@@ -238,13 +241,13 @@ def test_get_recent_exchanges_basic(db):
 
 def test_get_recent_exchanges_skips_junk(db):
     """get_recent_exchanges skips junk user messages."""
-    db.create_thread("A", session_id="s1")
-    db.add_message("A", "user", "real question")
-    db.add_message("A", "assistant", "real answer")
-    db.add_message("A", "user", "/juggle:show-topics")          # junk
-    db.add_message("A", "user", "<task-notification>task-id</task-notification>")  # junk
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "real question")
+    db.add_message(tid, "assistant", "real answer")
+    db.add_message(tid, "user", "/juggle:show-topics")          # junk
+    db.add_message(tid, "user", "<task-notification>task-id</task-notification>")  # junk
 
-    exchanges = db.get_recent_exchanges("A", n=2)
+    exchanges = db.get_recent_exchanges(tid, n=2)
     assert len(exchanges) == 1
     assert exchanges[0]["user"] == "real question"
     assert exchanges[0]["assistant"] == "real answer"
@@ -252,10 +255,10 @@ def test_get_recent_exchanges_skips_junk(db):
 
 def test_get_recent_exchanges_no_assistant_yet(db):
     """get_recent_exchanges returns None assistant when none exists yet."""
-    db.create_thread("A", session_id="s1")
-    db.add_message("A", "user", "my question")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "my question")
 
-    exchanges = db.get_recent_exchanges("A", n=2)
+    exchanges = db.get_recent_exchanges(tid, n=2)
     assert len(exchanges) == 1
     assert exchanges[0]["user"] == "my question"
     assert exchanges[0]["assistant"] is None
@@ -263,19 +266,19 @@ def test_get_recent_exchanges_no_assistant_yet(db):
 
 def test_get_recent_exchanges_empty(db):
     """get_recent_exchanges returns empty list when no messages."""
-    db.create_thread("A", session_id="s1")
-    exchanges = db.get_recent_exchanges("A", n=2)
+    tid = db.create_thread("Topic A", session_id="s1")
+    exchanges = db.get_recent_exchanges(tid, n=2)
     assert exchanges == []
 
 
 def test_get_recent_exchanges_n_limits_results(db):
     """get_recent_exchanges respects n parameter."""
-    db.create_thread("A", session_id="s1")
+    tid = db.create_thread("Topic A", session_id="s1")
     for i in range(5):
-        db.add_message("A", "user", f"question {i}")
-        db.add_message("A", "assistant", f"answer {i}")
+        db.add_message(tid, "user", f"question {i}")
+        db.add_message(tid, "assistant", f"answer {i}")
 
-    exchanges = db.get_recent_exchanges("A", n=2)
+    exchanges = db.get_recent_exchanges(tid, n=2)
     assert len(exchanges) == 2
     # most recent first
     assert exchanges[0]["user"] == "question 4"
@@ -284,104 +287,104 @@ def test_get_recent_exchanges_n_limits_results(db):
 
 def test_get_thread_state_current(db):
     """get_thread_state returns 👉 for the current thread."""
-    db.create_thread("A", session_id="s1")
-    thread = db.get_thread("A")
-    state = db.get_thread_state(thread, current_thread_id="A")
+    tid = db.create_thread("Topic A", session_id="s1")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id=tid)
     assert state == "👉"
 
 
 def test_get_thread_state_background(db):
     """get_thread_state returns 🏃 for background threads."""
-    db.create_thread("A", session_id="s1")
-    db.update_thread("A", status="background", agent_task_id="task_123")
-    thread = db.get_thread("A")
-    state = db.get_thread_state(thread, current_thread_id="B")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.update_thread(tid, status="background", agent_task_id="task_123")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
     assert state == "🏃\u200d♂️"
 
 
 def test_get_thread_state_done(db):
     """get_thread_state returns ✅ for done threads."""
-    db.create_thread("A", session_id="s1")
-    db.update_thread("A", status="done")
-    thread = db.get_thread("A")
-    state = db.get_thread_state(thread, current_thread_id="B")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.update_thread(tid, status="done")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
     assert state == "✅"
 
 
 def test_get_thread_state_failed(db):
     """get_thread_state returns ❌ for failed threads."""
-    db.create_thread("A", session_id="s1")
-    db.update_thread("A", status="failed")
-    thread = db.get_thread("A")
-    state = db.get_thread_state(thread, current_thread_id="B")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.update_thread(tid, status="failed")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
     assert state == "❌"
 
 
 def test_get_thread_state_archived(db):
     """get_thread_state returns 🗄️ for threads inactive > 48 hours."""
     from datetime import datetime, timezone, timedelta
-    db.create_thread("A", session_id="s1")
+    tid = db.create_thread("Topic A", session_id="s1")
     old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
-    db.update_thread("A", last_active=old_time)
-    thread = db.get_thread("A")
-    state = db.get_thread_state(thread, current_thread_id="B")
+    db.update_thread(tid, last_active=old_time)
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
     assert state == "🗄️"
 
 
 def test_get_thread_state_waiting(db):
     """get_thread_state returns ⏸️ when last assistant message ends with ?."""
-    db.create_thread("A", session_id="s1")
-    db.add_message("A", "user", "some question")
-    db.add_message("A", "assistant", "Do you want the Secure flag set on the cookie?")
-    thread = db.get_thread("A")
-    state = db.get_thread_state(thread, current_thread_id="B")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "some question")
+    db.add_message(tid, "assistant", "Do you want the Secure flag set on the cookie?")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
     assert state == "⏸️"
 
 
 def test_get_thread_state_idle(db):
     """get_thread_state returns 💤 when last assistant message has no ? and inactive > 30 min."""
     from datetime import datetime, timezone, timedelta
-    db.create_thread("A", session_id="s1")
-    db.add_message("A", "user", "some question")
-    db.add_message("A", "assistant", "Here is the answer.")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "some question")
+    db.add_message(tid, "assistant", "Here is the answer.")
     old_time = (datetime.now(timezone.utc) - timedelta(minutes=31)).isoformat()
-    db.update_thread("A", last_active=old_time)
-    thread = db.get_thread("A")
-    state = db.get_thread_state(thread, current_thread_id="B")
+    db.update_thread(tid, last_active=old_time)
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
     assert state == "💤"
 
 
 def test_get_thread_state_no_badge_recent_active(db):
     """get_thread_state returns empty string for recently active threads with no question."""
-    db.create_thread("A", session_id="s1")
-    db.add_message("A", "user", "some question")
-    db.add_message("A", "assistant", "Here is the answer.")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "some question")
+    db.add_message(tid, "assistant", "Here is the answer.")
     # last_active is just now (set by add_message), so not idle
-    thread = db.get_thread("A")
-    state = db.get_thread_state(thread, current_thread_id="B")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
     assert state == ""
 
 
 def test_get_thread_state_priority_current_over_background(db):
     """current state wins over background."""
-    db.create_thread("A", session_id="s1")
-    db.update_thread("A", status="background", agent_task_id="task_1")
-    thread = db.get_thread("A")
-    state = db.get_thread_state(thread, current_thread_id="A")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.update_thread(tid, status="background", agent_task_id="task_1")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id=tid)
     assert state == "👉"
 
 
 def test_get_last_exchange_skips_junk_user_messages(db):
     """get_last_exchange should skip junk user messages and fall back to the previous real one."""
-    db.create_thread("Topic A", session_id="s1")
-    db.add_message("A", "user", "real question about auth")
-    db.add_message("A", "assistant", "Here is the answer")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "real question about auth")
+    db.add_message(tid, "assistant", "Here is the answer")
     # Add junk user messages after the real exchange
-    db.add_message("A", "user", '"><tool_uses>2</tool_uses><duration_ms>5292</duration_ms></usage></task-notification>')
-    db.add_message("A", "user", "<task-notification>some task-id content</task-notification>")
-    db.add_message("A", "user", "/juggle:show-topics")
+    db.add_message(tid, "user", '"><tool_uses>2</tool_uses><duration_ms>5292</duration_ms></usage></task-notification>')
+    db.add_message(tid, "user", "<task-notification>some task-id content</task-notification>")
+    db.add_message(tid, "user", "/juggle:show-topics")
 
-    result = db.get_last_exchange("A")
+    result = db.get_last_exchange(tid)
     assert result["last_user"] == "real question about auth"
     assert result["last_assistant"] == "Here is the answer"
 
@@ -392,9 +395,9 @@ def test_get_last_exchange_skips_junk_user_messages(db):
 
 def test_archive_thread_sets_status_and_show_in_list(db):
     """archive_thread sets status='archived' and show_in_list=0."""
-    db.create_thread("Topic A", session_id="s1")
-    db.archive_thread("A")
-    t = db.get_thread("A")
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.archive_thread(tid)
+    t = db.get_thread(tid)
     assert t is not None
     assert t["status"] == "archived"
     assert t["show_in_list"] == 0
@@ -402,15 +405,15 @@ def test_archive_thread_sets_status_and_show_in_list(db):
 
 def test_archive_thread_does_not_delete(db):
     """archive_thread does not delete the thread row."""
-    db.create_thread("Topic A", session_id="s1")
-    db.archive_thread("A")
-    assert db.get_thread("A") is not None
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.archive_thread(tid)
+    assert db.get_thread(tid) is not None
 
 
 def test_show_in_list_defaults_to_1(db):
     """New threads have show_in_list=1 by default."""
-    db.create_thread("Topic A", session_id="s1")
-    t = db.get_thread("A")
+    tid = db.create_thread("Topic A", session_id="s1")
+    t = db.get_thread(tid)
     assert t is not None
     assert t["show_in_list"] == 1
 
@@ -421,87 +424,87 @@ def test_show_in_list_defaults_to_1(db):
 
 def test_get_archive_candidates_empty(db):
     """No candidates when only one active thread exists."""
-    db.create_thread("Topic A", session_id="s1")
-    db.set_current_thread("A")
+    tid_a = db.create_thread("Topic A", session_id="s1")
+    db.set_current_thread(tid_a)
     candidates = db.get_archive_candidates()
     assert candidates == []
 
 
 def test_get_archive_candidates_done(db):
     """A done thread (non-current) is a candidate."""
-    db.create_thread("Topic A", session_id="s1")
-    db.create_thread("Topic B", session_id="s1")
-    db.set_current_thread("A")
-    db.update_thread("B", status="done")
+    tid_a = db.create_thread("Topic A", session_id="s1")
+    tid_b = db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread(tid_a)
+    db.update_thread(tid_b, status="done")
     candidates = db.get_archive_candidates()
     assert len(candidates) == 1
-    assert candidates[0]["thread_id"] == "B"
+    assert candidates[0]["id"] == tid_b
 
 
 def test_get_archive_candidates_failed(db):
     """A failed thread (non-current) is a candidate."""
-    db.create_thread("Topic A", session_id="s1")
-    db.create_thread("Topic B", session_id="s1")
-    db.set_current_thread("A")
-    db.update_thread("B", status="failed")
+    tid_a = db.create_thread("Topic A", session_id="s1")
+    tid_b = db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread(tid_a)
+    db.update_thread(tid_b, status="failed")
     candidates = db.get_archive_candidates()
     assert len(candidates) == 1
-    assert candidates[0]["thread_id"] == "B"
+    assert candidates[0]["id"] == tid_b
 
 
 def test_get_archive_candidates_old_inactive(db):
     """A thread inactive > 48 hours (not background/waiting) is a candidate."""
     from datetime import datetime, timezone, timedelta
-    db.create_thread("Topic A", session_id="s1")
-    db.create_thread("Topic B", session_id="s1")
-    db.set_current_thread("A")
+    tid_a = db.create_thread("Topic A", session_id="s1")
+    tid_b = db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread(tid_a)
     old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
-    db.update_thread("B", last_active=old_time, status="active")
+    db.update_thread(tid_b, last_active=old_time, status="active")
     candidates = db.get_archive_candidates()
-    assert any(c["thread_id"] == "B" for c in candidates)
+    assert any(c["id"] == tid_b for c in candidates)
 
 
 def test_get_archive_candidates_idle_24h(db):
     """A thread with status='idle' and last_active > 24 hours is a candidate."""
     from datetime import datetime, timezone, timedelta
-    db.create_thread("Topic A", session_id="s1")
-    db.create_thread("Topic B", session_id="s1")
-    db.set_current_thread("A")
+    tid_a = db.create_thread("Topic A", session_id="s1")
+    tid_b = db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread(tid_a)
     old_time = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-    db.update_thread("B", status="idle", last_active=old_time)
+    db.update_thread(tid_b, status="idle", last_active=old_time)
     candidates = db.get_archive_candidates()
-    assert any(c["thread_id"] == "B" for c in candidates)
+    assert any(c["id"] == tid_b for c in candidates)
 
 
 def test_get_archive_candidates_excludes_current(db):
     """Current thread is never a candidate even if it would otherwise qualify."""
-    db.create_thread("Topic A", session_id="s1")
-    db.set_current_thread("A")
-    db.update_thread("A", status="done")
+    tid_a = db.create_thread("Topic A", session_id="s1")
+    db.set_current_thread(tid_a)
+    db.update_thread(tid_a, status="done")
     candidates = db.get_archive_candidates()
-    assert all(c["thread_id"] != "A" for c in candidates)
+    assert all(c["id"] != tid_a for c in candidates)
 
 
 def test_get_archive_candidates_excludes_already_archived(db):
     """Already-archived threads are excluded from candidates."""
-    db.create_thread("Topic A", session_id="s1")
-    db.create_thread("Topic B", session_id="s1")
-    db.set_current_thread("A")
-    db.archive_thread("B")
+    tid_a = db.create_thread("Topic A", session_id="s1")
+    tid_b = db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread(tid_a)
+    db.archive_thread(tid_b)
     candidates = db.get_archive_candidates()
-    assert all(c["thread_id"] != "B" for c in candidates)
+    assert all(c["id"] != tid_b for c in candidates)
 
 
 def test_get_archive_candidates_background_not_candidate_for_48h_rule(db):
     """Background threads inactive > 48h are NOT candidates (excluded by status filter)."""
     from datetime import datetime, timezone, timedelta
-    db.create_thread("Topic A", session_id="s1")
-    db.create_thread("Topic B", session_id="s1")
-    db.set_current_thread("A")
+    tid_a = db.create_thread("Topic A", session_id="s1")
+    tid_b = db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread(tid_a)
     old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
-    db.update_thread("B", status="background", last_active=old_time, agent_task_id="task_1")
+    db.update_thread(tid_b, status="background", last_active=old_time, agent_task_id="task_1")
     candidates = db.get_archive_candidates()
-    assert all(c["thread_id"] != "B" for c in candidates)
+    assert all(c["id"] != tid_b for c in candidates)
 
 
 # ------------------------------------------------------------------
@@ -602,3 +605,61 @@ def test_migration_preserves_existing_threads(tmp_path):
     assert thread["id"] == "A"
     assert thread["label"] == "A"
     assert thread["topic"] == "Legacy Topic"
+
+
+# ------------------------------------------------------------------
+# UUID + label Task 2 tests
+# ------------------------------------------------------------------
+
+def test_get_thread_by_uuid(db):
+    """get_thread() accepts UUID and returns dict with 'id' and 'label'."""
+    tid = db.create_thread("My topic", session_id="s1")
+    thread = db.get_thread(tid)
+    assert thread is not None
+    assert thread["id"] == tid
+    assert thread["label"] == "A"
+    assert thread["topic"] == "My topic"
+
+
+def test_get_thread_by_label(db):
+    """get_thread_by_label('A') returns the thread with label 'A'."""
+    tid = db.create_thread("My topic", session_id="s1")
+    thread = db.get_thread_by_label("A")
+    assert thread is not None
+    assert thread["id"] == tid
+    assert thread["label"] == "A"
+
+
+def test_get_thread_by_label_missing(db):
+    """get_thread_by_label returns None for unknown label."""
+    assert db.get_thread_by_label("Z") is None
+
+
+def test_get_all_threads_includes_id_and_label(db):
+    """get_all_threads() returns dicts with both 'id' and 'label'."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    threads = db.get_all_threads()
+    assert len(threads) == 1
+    assert threads[0]["id"] == tid
+    assert threads[0]["label"] == "A"
+
+
+def test_archive_thread_clears_label(db):
+    """archive_thread sets label=NULL in addition to status='archived'."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.archive_thread(tid)
+    thread = db.get_thread(tid)
+    assert thread["status"] == "archived"
+    assert thread["label"] is None
+    assert thread["show_in_list"] == 0
+
+
+def test_label_recycled_after_archive(db):
+    """Archiving thread A allows label 'A' to be reassigned."""
+    tid_a = db.create_thread("First", session_id="s1")
+    assert db.get_thread(tid_a)["label"] == "A"
+
+    db.archive_thread(tid_a)
+
+    tid_b = db.create_thread("Second", session_id="s1")
+    assert db.get_thread(tid_b)["label"] == "A"  # 'A' recycled

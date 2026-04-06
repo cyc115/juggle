@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS threads (
 CREATE_MESSAGES = """
 CREATE TABLE IF NOT EXISTS messages (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  thread_id       TEXT NOT NULL REFERENCES threads(thread_id),
+  thread_id       TEXT NOT NULL REFERENCES threads(id),
   role            TEXT NOT NULL,
   content         TEXT NOT NULL,
   token_estimate  INTEGER DEFAULT 0,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS shared_context (
 CREATE_NOTIFICATIONS = """
 CREATE TABLE IF NOT EXISTS notifications (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  thread_id       TEXT NOT NULL REFERENCES threads(thread_id),
+  thread_id       TEXT NOT NULL REFERENCES threads(id),
   message         TEXT NOT NULL,
   delivered       INTEGER DEFAULT 0,
   created_at      TEXT NOT NULL
@@ -241,6 +241,7 @@ class JuggleDB:
             return new_id
 
     def get_thread(self, thread_id: str) -> dict | None:
+        """Look up a thread by its UUID `id`. Returns None if not found."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM threads WHERE id = ?", (thread_id,)
@@ -249,10 +250,20 @@ class JuggleDB:
                 return None
             return dict(row)
 
+    def get_thread_by_label(self, label: str) -> dict | None:
+        """Look up a thread by its display label (e.g. 'A'). Returns None if not found."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM threads WHERE label = ?", (label.upper(),)
+            ).fetchone()
+            if row is None:
+                return None
+            return dict(row)
+
     def get_all_threads(self) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM threads ORDER BY thread_id"
+                "SELECT * FROM threads ORDER BY created_at"
             ).fetchall()
             return [dict(row) for row in rows]
 
@@ -268,7 +279,7 @@ class JuggleDB:
         values = list(kwargs.values()) + [thread_id]
         with self._connect() as conn:
             conn.execute(
-                f"UPDATE threads SET {set_clause} WHERE thread_id = ?",
+                f"UPDATE threads SET {set_clause} WHERE id = ?",
                 values,
             )
             conn.commit()
@@ -321,7 +332,7 @@ class JuggleDB:
             )
             # Also update last_active on the thread
             conn.execute(
-                "UPDATE threads SET last_active = ? WHERE thread_id = ?",
+                "UPDATE threads SET last_active = ? WHERE id = ?",
                 (now, thread_id),
             )
             conn.commit()
@@ -426,7 +437,7 @@ class JuggleDB:
                 SELECT * FROM threads
                 WHERE status = 'background'
                   AND agent_task_id IS NOT NULL
-                ORDER BY thread_id
+                ORDER BY created_at
                 """
             ).fetchall()
             return [dict(row) for row in rows]
@@ -525,7 +536,7 @@ class JuggleDB:
         Returns one of: "👉", "🏃\u200d♂️", "⏸️", "💤", "✅", "❌", "🗄️", or "".
         Priority (highest wins): current > background > done > failed > archived > waiting > idle
         """
-        tid = thread["thread_id"]
+        tid = thread["id"]
         status = thread.get("status") or "active"
         last_active = thread.get("last_active") or ""
 
@@ -605,7 +616,7 @@ class JuggleDB:
         threads = self.get_all_threads()
         stale = []
         for t in threads:
-            tid = t["thread_id"]
+            tid = t["id"]
             msg_count = self.get_message_count(tid, exclude_junk=True)
             summarized = t.get("summarized_msg_count") or 0
             delta = msg_count - summarized
@@ -618,10 +629,10 @@ class JuggleDB:
     # ------------------------------------------------------------------
 
     def archive_thread(self, thread_id: str):
-        """Set status='archived' and show_in_list=0 for the given thread."""
+        """Set status='archived', label=NULL, show_in_list=0 for the given thread."""
         with self._connect() as conn:
             conn.execute(
-                "UPDATE threads SET status = 'archived', show_in_list = 0 WHERE thread_id = ?",
+                "UPDATE threads SET status = 'archived', label = NULL, show_in_list = 0 WHERE id = ?",
                 (thread_id,),
             )
             conn.commit()
@@ -642,7 +653,7 @@ class JuggleDB:
         now = datetime.now(timezone.utc)
         candidates = []
         for t in threads:
-            tid = t["thread_id"]
+            tid = t["id"]
             status = t.get("status") or "active"
 
             # Exclude current thread
