@@ -78,23 +78,30 @@ def handle_user_prompt_submit(data: dict) -> None:
     sys.exit(0)
 
 
-def handle_stop(_: dict) -> None:
-    """Mark pending notifications as delivered."""
+def handle_stop(data: dict) -> None:
+    """Capture last assistant message and mark notifications delivered."""
     if not is_active():
         sys.exit(0)
 
     try:
         db = get_db()
+
+        # Capture orchestrator response — available via last_assistant_message field
+        # (added to Stop hook payload in recent Claude Code release)
+        last_msg = data.get("last_assistant_message", "").strip()
+        if last_msg and len(last_msg) > 10:
+            thread_id = db.get_current_thread()
+            if thread_id is not None:
+                db.add_message(thread_id, "assistant", last_msg)
+                logging.info(
+                    "Stop: captured assistant message for thread %s (%d chars)",
+                    thread_id,
+                    len(last_msg),
+                )
+
         pending = db.get_pending_notifications()
         ids = [n["id"] for n in pending]
         db.mark_notifications_delivered(ids)
-
-        # TODO (Part C): Record the last assistant turn from this session.
-        # Claude Code's Stop hook does not currently provide transcript or response
-        # content in the `data` payload, so there is no assistant message to capture
-        # here.  When/if the Stop hook exposes a `last_assistant_message` or
-        # equivalent field, retrieve the current thread and call:
-        #   db.add_message(thread_id, role="assistant", content=<last_assistant_message>)
     except Exception as exc:
         logging.error("Stop handler error: %s", exc, exc_info=True)
 
