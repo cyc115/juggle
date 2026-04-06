@@ -16,6 +16,7 @@ def active_db(tmp_path):
     db.set_active(True)
     tid = db.create_thread("Topic A", session_id="s1")
     db.set_current_thread(tid)
+    db._test_tid = tid
     return db
 
 
@@ -32,7 +33,7 @@ def test_stop_handler_captures_assistant_message(active_db, monkeypatch):
     with pytest.raises(SystemExit):
         juggle_hooks.handle_stop(data)
 
-    messages = active_db.get_messages("A", token_budget=9999)
+    messages = active_db.get_messages(active_db._test_tid, token_budget=9999)
     assistant_msgs = [m for m in messages if m["role"] == "assistant"]
     assert len(assistant_msgs) == 1
     assert assistant_msgs[0]["content"] == "Here is my analysis of the auth flow."
@@ -49,7 +50,7 @@ def test_stop_handler_ignores_short_messages(active_db, monkeypatch):
     with pytest.raises(SystemExit):
         juggle_hooks.handle_stop(data)
 
-    messages = active_db.get_messages("A", token_budget=9999)
+    messages = active_db.get_messages(active_db._test_tid, token_budget=9999)
     assert not any(m["role"] == "assistant" for m in messages)
 
 
@@ -62,7 +63,7 @@ def test_stop_handler_missing_field_is_noop(active_db, monkeypatch):
     with pytest.raises(SystemExit):
         juggle_hooks.handle_stop({})  # no last_assistant_message key
 
-    messages = active_db.get_messages("A", token_budget=9999)
+    messages = active_db.get_messages(active_db._test_tid, token_budget=9999)
     assert not any(m["role"] == "assistant" for m in messages)
 
 

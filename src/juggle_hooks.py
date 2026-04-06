@@ -129,7 +129,11 @@ def handle_session_start(data: dict) -> None:
         if reason not in ("new",):
             db = get_db()
             current_thread = db.get_current_thread()
-            thread_label = str(current_thread) if current_thread is not None else "unknown"
+            if current_thread:
+                thread = db.get_thread(current_thread)
+                thread_label = thread["label"] if (thread and thread.get("label")) else (current_thread[:8] if current_thread else "unknown")
+            else:
+                thread_label = "unknown"
             topic_count = len(db.get_all_threads())
             additional_context = (
                 f"JUGGLE RESTORED: {thread_label} active. "
@@ -225,7 +229,8 @@ def handle_post_tool_use(data: dict) -> None:
                 f"'JUGGLE ACTIVE' block — context leaked to sub-agent. "
                 f"Strip JUGGLE blocks before dispatching agents."
             )
-            db.add_notification(thread_id or "A", warning)
+            current = db.get_current_thread()
+            db.add_notification(thread_id or current or "", warning)
             logging.warning("JUGGLE ACTIVE leaked into sub-agent prompt for thread %s", thread_id)
     except Exception as exc:
         logging.error("PostToolUse handler error: %s", exc, exc_info=True)

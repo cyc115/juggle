@@ -15,36 +15,37 @@ def active_db(tmp_path):
     db.set_active(True)
     tid = db.create_thread("Topic A", session_id="s1")
     db.set_current_thread(tid)
+    db._test_tid = tid  # expose for tests that need the UUID
     return db
 
 
 def test_no_stale_flag_when_fresh(active_db):
     # 2 messages — below threshold of 3
-    active_db.add_message("A", "user", "real question one")
-    active_db.add_message("A", "user", "real question two")
+    active_db.add_message(active_db._test_tid, "user", "real question one")
+    active_db.add_message(active_db._test_tid, "user", "real question two")
     ctx = ContextBuilder(active_db).build()
     assert "SUMMARY STALE" not in ctx
 
 
 def test_stale_flag_emitted_at_threshold(active_db):
     for i in range(3):
-        active_db.add_message("A", "user", f"real question {i}")
+        active_db.add_message(active_db._test_tid, "user", f"real question {i}")
     ctx = ContextBuilder(active_db).build()
     assert "[SUMMARY STALE: 3 new messages" in ctx
 
 
 def test_stale_flag_not_emitted_after_count_updated(active_db):
     for i in range(3):
-        active_db.add_message("A", "user", f"real question {i}")
-    active_db.set_summarized_count("A", 3)
+        active_db.add_message(active_db._test_tid, "user", f"real question {i}")
+    active_db.set_summarized_count(active_db._test_tid, 3)
     ctx = ContextBuilder(active_db).build()
     assert "SUMMARY STALE" not in ctx
 
 
 def test_junk_messages_not_counted(active_db):
-    active_db.add_message("A", "user", "real question one")
-    active_db.add_message("A", "user", "/juggle:show-topics")
-    active_db.add_message("A", "user", "<task-notification>...</task-notification>")
+    active_db.add_message(active_db._test_tid, "user", "real question one")
+    active_db.add_message(active_db._test_tid, "user", "/juggle:show-topics")
+    active_db.add_message(active_db._test_tid, "user", "<task-notification>...</task-notification>")
     # Only 1 substantive message — below threshold
     ctx = ContextBuilder(active_db).build()
     assert "SUMMARY STALE" not in ctx
@@ -56,15 +57,15 @@ def test_junk_messages_not_counted(active_db):
 
 def test_no_recent_conversation_block(active_db):
     """The old 'Recent conversation' block must not appear in output."""
-    active_db.add_message("A", "user", "hello")
-    active_db.add_message("A", "assistant", "hi there")
+    active_db.add_message(active_db._test_tid, "user", "hello")
+    active_db.add_message(active_db._test_tid, "assistant", "hi there")
     ctx = ContextBuilder(active_db).build()
     assert "Recent conversation" not in ctx
 
 
 def test_summary_appears_under_topic(active_db):
     """Thread summary is shown inline under the topic label in the Topics list."""
-    active_db.update_thread("A", summary="We discussed the auth flow.")
+    active_db.update_thread(active_db._test_tid, summary="We discussed the auth flow.")
     ctx = ContextBuilder(active_db).build()
     assert "Summary: We discussed the auth flow." in ctx
 
@@ -89,16 +90,16 @@ def test_current_thread_marked_with_you_are_here(active_db):
 
 def test_done_thread_suffix(active_db):
     """Done threads are labelled with '✓ done'."""
-    active_db.create_thread("Topic B", session_id="s1")
-    active_db.update_thread("B", status="done")
+    tid_b = active_db.create_thread("Topic B", session_id="s1")
+    active_db.update_thread(tid_b, status="done")
     ctx = ContextBuilder(active_db).build()
     assert "✓ done" in ctx
 
 
 def test_archived_thread_suffix(active_db):
     """Archived threads are labelled with '🗄️ archived'."""
-    active_db.create_thread("Topic B", session_id="s1")
-    active_db.update_thread("B", status="archived")
+    tid_b = active_db.create_thread("Topic B", session_id="s1")
+    active_db.update_thread(tid_b, status="archived")
     ctx = ContextBuilder(active_db).build()
     assert "🗄️ archived" in ctx
 
@@ -106,7 +107,7 @@ def test_archived_thread_suffix(active_db):
 def test_no_key_decisions_block(active_db):
     """Key decisions are no longer injected as a top-level block."""
     import json
-    active_db.update_thread("A", key_decisions=json.dumps(["Use Postgres", "Auth via JWT"]))
+    active_db.update_thread(active_db._test_tid, key_decisions=json.dumps(["Use Postgres", "Auth via JWT"]))
     ctx = ContextBuilder(active_db).build()
     assert "Key decisions:" not in ctx
 
@@ -114,16 +115,16 @@ def test_no_key_decisions_block(active_db):
 def test_no_open_questions_block(active_db):
     """Open questions are no longer injected as a top-level block."""
     import json
-    active_db.update_thread("A", open_questions=json.dumps(["Should we cache?", "Rate limit?"]))
+    active_db.update_thread(active_db._test_tid, open_questions=json.dumps(["Should we cache?", "Rate limit?"]))
     ctx = ContextBuilder(active_db).build()
     assert "Open questions:" not in ctx
 
 
 def test_summary_for_multiple_threads(active_db):
     """Summaries for all threads (including non-current) appear in the Topics list."""
-    active_db.create_thread("Topic B", session_id="s1")
-    active_db.update_thread("A", summary="Summary for A")
-    active_db.update_thread("B", summary="Summary for B")
+    tid_b = active_db.create_thread("Topic B", session_id="s1")
+    active_db.update_thread(active_db._test_tid, summary="Summary for A")
+    active_db.update_thread(tid_b, summary="Summary for B")
     ctx = ContextBuilder(active_db).build()
     assert "Summary: Summary for A" in ctx
     assert "Summary: Summary for B" in ctx
@@ -131,7 +132,7 @@ def test_summary_for_multiple_threads(active_db):
 
 def test_background_thread_suffix(active_db):
     """Background threads show 'agent working...' suffix."""
-    active_db.create_thread("Topic B", session_id="s1")
-    active_db.update_thread("B", status="background")
+    tid_b = active_db.create_thread("Topic B", session_id="s1")
+    active_db.update_thread(tid_b, status="background")
     ctx = ContextBuilder(active_db).build()
     assert "agent working..." in ctx

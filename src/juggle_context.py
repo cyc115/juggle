@@ -29,8 +29,9 @@ class ContextBuilder:
         if current_thread:
             thread = self.db.get_thread(current_thread)
             if thread:
+                display_label = thread.get("label") or current_thread[:8]
                 parts.append(
-                    f"Current topic: [{current_thread}] {thread['topic']}"
+                    f"Current topic: [{display_label}] {thread['topic']}"
                 )
 
         # ------------------------------------------------------------------
@@ -40,7 +41,8 @@ class ContextBuilder:
             parts.append("")
             parts.append("Topics:")
             for t in all_threads:
-                tid = t["thread_id"]
+                tid = t["id"]
+                label = t.get("label") or tid[:8]
                 topic = t["topic"]
                 status = t["status"]
 
@@ -57,7 +59,7 @@ class ContextBuilder:
                 else:
                     suffix = ""
 
-                parts.append(f"  [{tid}] {topic}{suffix}")
+                parts.append(f"  [{label}] {topic}{suffix}")
 
                 summary = t.get("summary", "").strip()
                 if summary:
