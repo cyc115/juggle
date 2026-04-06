@@ -217,3 +217,18 @@ def test_get_stale_threads_not_stale_after_set(db):
     db.set_summarized_count(tid, 3)
     stale = db.get_stale_threads(threshold=3)
     assert len(stale) == 0
+
+
+def test_get_last_exchange_skips_junk_user_messages(db):
+    """get_last_exchange should skip junk user messages and fall back to the previous real one."""
+    db.create_thread("Topic A", session_id="s1")
+    db.add_message("A", "user", "real question about auth")
+    db.add_message("A", "assistant", "Here is the answer")
+    # Add junk user messages after the real exchange
+    db.add_message("A", "user", '"><tool_uses>2</tool_uses><duration_ms>5292</duration_ms></usage></task-notification>')
+    db.add_message("A", "user", "<task-notification>some task-id content</task-notification>")
+    db.add_message("A", "user", "/juggle:show-topics")
+
+    result = db.get_last_exchange("A")
+    assert result["last_user"] == "real question about auth"
+    assert result["last_assistant"] == "Here is the answer"

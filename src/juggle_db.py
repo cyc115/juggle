@@ -260,6 +260,17 @@ class JuggleDB:
             )
             conn.commit()
 
+    @staticmethod
+    def _is_junk_message(content: str) -> bool:
+        """Return True if content is a junk/system message to be excluded from display."""
+        return (
+            content.startswith("<task-notification")
+            or "</task-notification>" in content
+            or "task-id" in content
+            or "<tool_uses>" in content
+            or content.strip().startswith("/")
+        )
+
     def get_message_count(self, thread_id: str, exclude_junk: bool = True) -> int:
         """Count user messages for a thread, optionally excluding junk."""
         with self._connect() as conn:
@@ -271,12 +282,7 @@ class JuggleDB:
             return len(rows)
         count = 0
         for row in rows:
-            content = row["content"]
-            if (
-                not content.startswith("<task-notification")
-                and "task-id" not in content
-                and not content.strip().startswith("/")
-            ):
+            if not self._is_junk_message(row["content"]):
                 count += 1
         return count
 
@@ -365,16 +371,17 @@ class JuggleDB:
         Returns a dict with keys:
             last_user, last_user_at, last_assistant, last_assistant_at
         Values are None when no message of that role exists.
+        Junk user messages (task-notifications, slash commands, etc.) are skipped.
         """
         with self._connect() as conn:
-            user_row = conn.execute(
+            user_rows = conn.execute(
                 """
                 SELECT content, created_at FROM messages
                 WHERE thread_id = ? AND role = 'user'
-                ORDER BY id DESC LIMIT 1
+                ORDER BY id DESC
                 """,
                 (thread_id,),
-            ).fetchone()
+            ).fetchall()
             assistant_row = conn.execute(
                 """
                 SELECT content, created_at FROM messages
@@ -383,6 +390,12 @@ class JuggleDB:
                 """,
                 (thread_id,),
             ).fetchone()
+
+        user_row = None
+        for row in user_rows:
+            if not self._is_junk_message(row["content"]):
+                user_row = row
+                break
 
         result = {
             "last_user": user_row["content"] if user_row else None,
