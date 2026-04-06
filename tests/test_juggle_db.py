@@ -502,3 +502,103 @@ def test_get_archive_candidates_background_not_candidate_for_48h_rule(db):
     db.update_thread("B", status="background", last_active=old_time, agent_task_id="task_1")
     candidates = db.get_archive_candidates()
     assert all(c["thread_id"] != "B" for c in candidates)
+
+
+# ------------------------------------------------------------------
+# UUID + label schema tests
+# ------------------------------------------------------------------
+
+def test_create_thread_returns_uuid(db):
+    """create_thread() returns a UUID string, not a letter."""
+    import re
+    tid = db.create_thread("My topic", session_id="s1")
+    assert re.match(r"^[0-9a-f-]{36}$", tid), f"Expected UUID, got: {tid}"
+
+
+def test_create_thread_first_label_is_a(db):
+    """First thread created gets label 'A'."""
+    tid = db.create_thread("My topic", session_id="s1")
+    thread = db.get_thread(tid)
+    assert thread is not None
+    assert thread["label"] == "A"
+
+
+def test_create_thread_second_label_is_b(db):
+    """Second thread gets label 'B'."""
+    db.create_thread("First", session_id="s1")
+    tid2 = db.create_thread("Second", session_id="s1")
+    thread = db.get_thread(tid2)
+    assert thread["label"] == "B"
+
+
+def test_schema_has_id_and_label(db):
+    """threads table has 'id' and 'label' columns, not 'thread_id'."""
+    with db._connect() as conn:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+    assert "id" in cols
+    assert "label" in cols
+    assert "thread_id" not in cols
+
+
+def test_migration_preserves_existing_threads(tmp_path):
+    """Existing DBs with thread_id column are migrated: id=letter, label=letter."""
+    import sqlite3
+    old_db_path = tmp_path / "old.db"
+    # Create a legacy-style DB
+    with sqlite3.connect(str(old_db_path)) as conn:
+        conn.execute("""CREATE TABLE threads (
+            thread_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL DEFAULT '',
+            topic TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            summary TEXT DEFAULT '',
+            key_decisions TEXT DEFAULT '[]',
+            open_questions TEXT DEFAULT '[]',
+            last_user_intent TEXT DEFAULT '',
+            agent_task_id TEXT,
+            agent_result TEXT,
+            show_in_list INTEGER NOT NULL DEFAULT 1,
+            summarized_msg_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT '2024-01-01T00:00:00',
+            last_active TEXT NOT NULL DEFAULT '2024-01-01T00:00:00'
+        )""")
+        conn.execute("""CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            thread_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            token_estimate INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT '2024-01-01T00:00:00'
+        )""")
+        conn.execute("""CREATE TABLE shared_context (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            context_type TEXT NOT NULL,
+            content TEXT NOT NULL,
+            source_thread TEXT,
+            created_at TEXT NOT NULL DEFAULT '2024-01-01T00:00:00'
+        )""")
+        conn.execute("""CREATE TABLE notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            thread_id TEXT NOT NULL,
+            message TEXT NOT NULL,
+            delivered INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT '2024-01-01T00:00:00'
+        )""")
+        conn.execute("""CREATE TABLE session (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )""")
+        conn.execute(
+            "INSERT INTO threads (thread_id, session_id, topic, created_at, last_active) VALUES ('A', '', 'Legacy Topic', '2024-01-01', '2024-01-01')"
+        )
+        conn.commit()
+
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(old_db_path))
+    db.init_db()  # triggers migration
+
+    thread = db.get_thread("A")
+    assert thread is not None
+    assert thread["id"] == "A"
+    assert thread["label"] == "A"
+    assert thread["topic"] == "Legacy Topic"

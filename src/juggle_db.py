@@ -3,29 +3,30 @@
 
 import json
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 
 DB_PATH = Path.home() / ".claude" / "juggle" / "juggle.db"
 
-THREAD_IDS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
-
 CREATE_THREADS = """
 CREATE TABLE IF NOT EXISTS threads (
-  thread_id       TEXT PRIMARY KEY,
-  session_id      TEXT NOT NULL,
+  id              TEXT PRIMARY KEY,
+  label           TEXT,
+  session_id      TEXT NOT NULL DEFAULT '',
   topic           TEXT NOT NULL,
   status          TEXT NOT NULL DEFAULT 'active',
   summary         TEXT DEFAULT '',
   key_decisions   TEXT DEFAULT '[]',
   open_questions  TEXT DEFAULT '[]',
   last_user_intent TEXT DEFAULT '',
-  agent_task_id         TEXT,
-  agent_result          TEXT,
-  summarized_msg_count  INTEGER DEFAULT 0,
-  created_at            TEXT NOT NULL,
-  last_active           TEXT NOT NULL
+  agent_task_id   TEXT,
+  agent_result    TEXT,
+  show_in_list    INTEGER NOT NULL DEFAULT 1,
+  summarized_msg_count INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL,
+  last_active     TEXT NOT NULL
 );
 """
 
@@ -68,6 +69,17 @@ CREATE TABLE IF NOT EXISTS session (
 """
 
 
+def _assign_label(conn: sqlite3.Connection) -> str:
+    """Return first letter A–Z not currently held by any non-archived thread."""
+    used = {row["label"] for row in conn.execute(
+        "SELECT label FROM threads WHERE label IS NOT NULL"
+    ).fetchall()}
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        if letter not in used:
+            return letter
+    raise ValueError("All 26 labels in use. Archive a thread first.")
+
+
 class JuggleDB:
     def __init__(self, db_path=None):
         if db_path is None:
@@ -82,7 +94,7 @@ class JuggleDB:
         return conn
 
     def init_db(self):
-        """Create tables if not exist, enable WAL mode."""
+        """Create tables if not exist, run schema migrations, enable WAL mode."""
         with self._connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute(CREATE_THREADS)
@@ -90,21 +102,68 @@ class JuggleDB:
             conn.execute(CREATE_SHARED_CONTEXT)
             conn.execute(CREATE_NOTIFICATIONS)
             conn.execute(CREATE_SESSION)
-            # Migration: add summarized_msg_count for existing DBs
-            try:
-                conn.execute(
-                    "ALTER TABLE threads ADD COLUMN summarized_msg_count INTEGER DEFAULT 0"
-                )
-            except Exception:
-                pass  # column already exists
-            # Migration: add show_in_list for existing DBs
-            try:
-                conn.execute(
-                    "ALTER TABLE threads ADD COLUMN show_in_list INTEGER NOT NULL DEFAULT 1"
-                )
-            except Exception:
-                pass  # column already exists
+            self._migrate(conn)
             conn.commit()
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Apply incremental schema migrations."""
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+
+        # Migration 1: thread_id → id + label
+        if "thread_id" in cols and "id" not in cols:
+            conn.execute("ALTER TABLE threads RENAME TO threads_old")
+            conn.execute("""
+                CREATE TABLE threads (
+                  id              TEXT PRIMARY KEY,
+                  label           TEXT,
+                  session_id      TEXT NOT NULL DEFAULT '',
+                  topic           TEXT NOT NULL,
+                  status          TEXT NOT NULL DEFAULT 'active',
+                  summary         TEXT DEFAULT '',
+                  key_decisions   TEXT DEFAULT '[]',
+                  open_questions  TEXT DEFAULT '[]',
+                  last_user_intent TEXT DEFAULT '',
+                  agent_task_id   TEXT,
+                  agent_result    TEXT,
+                  show_in_list    INTEGER NOT NULL DEFAULT 1,
+                  summarized_msg_count INTEGER NOT NULL DEFAULT 0,
+                  created_at      TEXT NOT NULL,
+                  last_active     TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                INSERT INTO threads (id, label, session_id, topic, status, summary,
+                  key_decisions, open_questions, last_user_intent, agent_task_id, agent_result,
+                  show_in_list, summarized_msg_count, created_at, last_active)
+                SELECT thread_id, thread_id, session_id, topic, status, summary,
+                  key_decisions, open_questions, last_user_intent, agent_task_id, agent_result,
+                  COALESCE(show_in_list, 1), COALESCE(summarized_msg_count, 0),
+                  created_at, last_active
+                FROM threads_old
+            """)
+            conn.execute("DROP TABLE threads_old")
+            return  # remaining migrations don't apply to legacy schema
+
+        # Migration 2 (new DBs): add summarized_msg_count if missing
+        if "summarized_msg_count" not in cols:
+            try:
+                conn.execute("ALTER TABLE threads ADD COLUMN summarized_msg_count INTEGER DEFAULT 0")
+            except Exception:
+                pass
+
+        # Migration 3 (new DBs): add show_in_list if missing
+        if "show_in_list" not in cols:
+            try:
+                conn.execute("ALTER TABLE threads ADD COLUMN show_in_list INTEGER NOT NULL DEFAULT 1")
+            except Exception:
+                pass
+
+        # Migration 4 (new DBs): add label if missing
+        if "label" not in cols and "id" in cols:
+            try:
+                conn.execute("ALTER TABLE threads ADD COLUMN label TEXT")
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Session helpers
@@ -151,39 +210,40 @@ class JuggleDB:
     # ------------------------------------------------------------------
 
     def create_thread(self, topic: str, session_id: str) -> str:
-        """Auto-assign next letter A–J. Raises ValueError if 10 non-archived threads exist."""
+        """Create a new thread. Returns the UUID of the new thread.
+
+        Assigns next available A–Z label. Raises ValueError if 10 non-archived
+        threads already exist or all 26 labels are in use.
+        """
         with self._connect() as conn:
-            rows = conn.execute("SELECT thread_id, status FROM threads").fetchall()
-            existing = {row["thread_id"] for row in rows}
-            active = {row["thread_id"] for row in rows if row["status"] != "archived"}
-            if len(active) >= 10:
+            rows = conn.execute("SELECT id, status FROM threads").fetchall()
+            active_count = sum(1 for row in rows if row["status"] != "archived")
+            if active_count >= 10:
                 raise ValueError(
                     "Maximum of 10 threads already exist. "
                     "Archive or complete a thread before creating a new one."
                 )
-            for letter in THREAD_IDS:
-                if letter not in existing:
-                    now = datetime.now(timezone.utc).isoformat()
-                    conn.execute(
-                        """
-                        INSERT INTO threads
-                          (thread_id, session_id, topic, status,
-                           summary, key_decisions, open_questions,
-                           last_user_intent, agent_task_id, agent_result,
-                           created_at, last_active)
-                        VALUES (?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, ?, ?)
-                        """,
-                        (letter, session_id, topic, now, now),
-                    )
-                    conn.commit()
-                    return letter
-        # Should never reach here given the guard above
-        raise ValueError("No available thread slot found.")
+            new_id = str(uuid.uuid4())
+            label = _assign_label(conn)
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """
+                INSERT INTO threads
+                  (id, label, session_id, topic, status,
+                   summary, key_decisions, open_questions,
+                   last_user_intent, agent_task_id, agent_result,
+                   show_in_list, summarized_msg_count, created_at, last_active)
+                VALUES (?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?)
+                """,
+                (new_id, label, session_id, topic, now, now),
+            )
+            conn.commit()
+            return new_id
 
     def get_thread(self, thread_id: str) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM threads WHERE thread_id = ?", (thread_id,)
+                "SELECT * FROM threads WHERE id = ?", (thread_id,)
             ).fetchone()
             if row is None:
                 return None
