@@ -156,6 +156,24 @@ def handle_post_tool_use(data: dict) -> None:
 
     try:
         tool_name = data.get("tool_name", "")
+
+        # Violation detection: warn if orchestrator used file tools directly
+        FORBIDDEN_TOOLS = {"Read", "Edit", "Write", "Glob", "Grep", "NotebookEdit"}
+        if tool_name in FORBIDDEN_TOOLS and is_active():
+            warning = (
+                f"⚠️ ORCHESTRATOR VIOLATION: You used [{tool_name}] directly in the main thread. "
+                "All file reads, edits, and searches MUST go through background agents. "
+                "Dispatch an Agent with run_in_background=true instead."
+            )
+            output = {
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": warning,
+                }
+            }
+            print(json.dumps(output))
+            sys.exit(0)
+
         if tool_name != "Agent":
             sys.exit(0)
 
