@@ -49,11 +49,11 @@ def test_create_thread_sequential(db):
     assert b == "B"
 
 
-def test_create_thread_max_4(db):
-    for _, label in enumerate(["A", "B", "C", "D"]):
-        db.create_thread(f"Topic {label}", session_id="s1")
-    with pytest.raises(ValueError, match="Maximum of 4"):
-        db.create_thread("Topic E", session_id="s1")
+def test_create_thread_max_10(db):
+    for i in range(10):
+        db.create_thread(f"Topic {i}", session_id="s1")
+    with pytest.raises(ValueError, match="Maximum of 10"):
+        db.create_thread("Topic overflow", session_id="s1")
 
 
 def test_get_thread(db):

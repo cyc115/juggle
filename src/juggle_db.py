@@ -9,7 +9,7 @@ from pathlib import Path
 
 DB_PATH = Path.home() / ".claude" / "juggle" / "juggle.db"
 
-THREAD_IDS = ["A", "B", "C", "D"]
+THREAD_IDS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
 
 CREATE_THREADS = """
 CREATE TABLE IF NOT EXISTS threads (
@@ -151,16 +151,15 @@ class JuggleDB:
     # ------------------------------------------------------------------
 
     def create_thread(self, topic: str, session_id: str) -> str:
-        """Auto-assign next letter A/B/C/D. Raises ValueError if 4 threads exist."""
+        """Auto-assign next letter A–J. Raises ValueError if 10 non-archived threads exist."""
         with self._connect() as conn:
-            existing = {
-                row["thread_id"]
-                for row in conn.execute("SELECT thread_id FROM threads").fetchall()
-            }
-            if len(existing) >= 4:
+            rows = conn.execute("SELECT thread_id, status FROM threads").fetchall()
+            existing = {row["thread_id"] for row in rows}
+            active = {row["thread_id"] for row in rows if row["status"] != "archived"}
+            if len(active) >= 10:
                 raise ValueError(
-                    "Maximum of 4 threads already exist. "
-                    "Close or complete a thread before creating a new one."
+                    "Maximum of 10 threads already exist. "
+                    "Archive or complete a thread before creating a new one."
                 )
             for letter in THREAD_IDS:
                 if letter not in existing:
