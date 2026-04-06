@@ -22,6 +22,20 @@ def get_db():
     return JuggleDB(str(DB_PATH))
 
 
+def _resolve_thread(db, label_or_id: str) -> str:
+    """Accept label (e.g. 'A') or UUID. Return UUID.
+
+    Raises SystemExit(1) if the label is not found.
+    """
+    if len(label_or_id) == 1 and label_or_id.isalpha():
+        thread = db.get_thread_by_label(label_or_id.upper())
+        if not thread:
+            print(f"Error: No active thread with label '{label_or_id.upper()}'.")
+            sys.exit(1)
+        return thread["id"]
+    return label_or_id  # already a UUID
+
+
 def cmd_start(_):
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -31,13 +45,15 @@ def cmd_start(_):
 
     threads = db.get_all_threads()
     if not threads:
-        thread_id = db.create_thread("General", session_id="")
-        db.set_current_thread(thread_id)
-        print(f"Juggle started. Topic {thread_id} created. Use 'create-thread <topic>' to create more topics.")
+        thread_uuid = db.create_thread("General", session_id="")
+        db.set_current_thread(thread_uuid)
+        thread = db.get_thread(thread_uuid)
+        label = thread["label"] if thread else thread_uuid
+        print(f"Juggle started. Topic {label} created. Use 'create-thread <topic>' to create more topics.")
     else:
         current = db.get_current_thread()
         if not current and threads:
-            db.set_current_thread(threads[0]["thread_id"])
+            db.set_current_thread(threads[0]["id"])
         print("Juggle started.")
 
 
@@ -49,7 +65,8 @@ def cmd_stop(_):
     if threads:
         print("Topics:")
         for t in threads:
-            print(f"  [{t['thread_id']}] {t['topic']} — {t['status']}")
+            label = t.get("label") or t["id"][:8]
+            print(f"  [{label}] {t['topic']} — {t['status']}")
     else:
         print("No topics.")
 
@@ -58,21 +75,25 @@ def cmd_stop(_):
 
 def cmd_create_thread(args):
     db = get_db()
-    thread_id = db.create_thread(args.topic, session_id="")
-    db.set_current_thread(thread_id)
-    print(f"Created Topic {thread_id}: {args.topic}. Now in Topic {thread_id}.")
+    thread_uuid = db.create_thread(args.topic, session_id="")
+    db.set_current_thread(thread_uuid)
+    thread = db.get_thread(thread_uuid)
+    label = thread["label"] if thread else thread_uuid
+    print(f"Created Topic {label}: {args.topic}. Now in Topic {label}.")
 
 
 def cmd_switch_thread(args):
     db = get_db()
-    thread = db.get_thread(args.thread_id)
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
 
-    db.set_current_thread(args.thread_id)
+    db.set_current_thread(thread_uuid)
+    label = thread.get("label") or thread_uuid[:8]
 
-    print(f"=== Topic {thread['thread_id']}: {thread['topic']} ===")
+    print(f"=== Topic {label}: {thread['topic']} ===")
     print(f"Status: {thread['status']}")
 
     if thread.get("summary"):
@@ -100,7 +121,7 @@ def cmd_switch_thread(args):
         for q in open_questions:
             print(f"  ? {q}")
 
-    messages = db.get_messages(args.thread_id, token_budget=2000)
+    messages = db.get_messages(thread_uuid, token_budget=2000)
     if messages:
         print("\nRecent messages:")
         for m in messages[-5:]:
@@ -113,7 +134,8 @@ def cmd_switch_thread(args):
 
 def cmd_update_meta(args):
     db = get_db()
-    thread = db.get_thread(args.thread_id)
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
@@ -126,7 +148,7 @@ def cmd_update_meta(args):
             except (json.JSONDecodeError, ValueError):
                 key_decisions = []
         key_decisions.append(args.add_decision)
-        db.update_thread(args.thread_id, key_decisions=key_decisions)
+        db.update_thread(thread_uuid, key_decisions=key_decisions)
 
     if args.add_question:
         open_questions = thread.get("open_questions") or "[]"
@@ -136,7 +158,7 @@ def cmd_update_meta(args):
             except (json.JSONDecodeError, ValueError):
                 open_questions = []
         open_questions.append(args.add_question)
-        db.update_thread(args.thread_id, open_questions=open_questions)
+        db.update_thread(thread_uuid, open_questions=open_questions)
 
     if args.resolve_question:
         open_questions = thread.get("open_questions") or "[]"
@@ -146,34 +168,36 @@ def cmd_update_meta(args):
             except (json.JSONDecodeError, ValueError):
                 open_questions = []
         open_questions = [q for q in open_questions if q != args.resolve_question]
-        db.update_thread(args.thread_id, open_questions=open_questions)
+        db.update_thread(thread_uuid, open_questions=open_questions)
 
     if args.intent:
-        db.update_thread(args.thread_id, last_user_intent=args.intent)
+        db.update_thread(thread_uuid, last_user_intent=args.intent)
 
-    print(f"Updated metadata for Thread {args.thread_id}.")
+    label = thread.get("label") or args.thread_id
+    print(f"Updated metadata for Thread {label}.")
 
 
 def cmd_update_summary(args):
     db = get_db()
-    thread = db.get_thread(args.thread_id)
-    if not thread:
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    if not db.get_thread(thread_uuid):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
-
-    db.update_thread(args.thread_id, summary=args.summary)
-    print(f"Summary updated for Thread {args.thread_id}.")
+    db.update_thread(thread_uuid, summary=args.summary)
+    label = db.get_thread(thread_uuid).get("label") or args.thread_id
+    print(f"Summary updated for Thread {label}.")
 
 
 def cmd_close_thread(args):
     db = get_db()
-    thread = db.get_thread(args.thread_id)
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
-
-    db.update_thread(args.thread_id, status="closed")
-    print(f"Thread {args.thread_id} ({thread['topic']}) closed.")
+    label = thread.get("label") or args.thread_id
+    db.update_thread(thread_uuid, status="closed")
+    print(f"Thread {label} ({thread['topic']}) closed.")
 
 
 def _humanize_dt(iso_str: str) -> str:
@@ -228,7 +252,7 @@ def _sort_key_for_topic(thread: dict, current_id: str, db) -> tuple:
     Order: Waiting (⏸️) → Agent running (🏃) → Active/current → Idle/done → Archived
     Lower tuple value = shown first.
     """
-    tid = thread["thread_id"]
+    tid = thread["id"]
     emoji = db.get_thread_state(thread, current_id)
 
     if emoji == "⏸️":
@@ -291,7 +315,8 @@ def cmd_show_topics(_):
         branch = "└──" if is_last else "├──"
         vert = "    " if is_last else "│   "
 
-        tid = t["thread_id"]
+        tid = t["id"]
+        label = t.get("label") or tid[:8]
         topic = t["topic"]
         status = t["status"]
         last_active = _humanize_dt(t.get("last_active") or "")
@@ -301,7 +326,7 @@ def cmd_show_topics(_):
         state_suffix = _state_suffix_text.get(emoji, "")
 
         # Header line
-        header = f"{branch} {emoji} **[{tid}] {topic}**  ({last_active})"
+        header = f"{branch} {emoji} **[{label}] {topic}**  ({last_active})"
         if state_suffix:
             header = f"{header}  {state_suffix}"
         print(header)
@@ -384,17 +409,20 @@ def cmd_get_archive_candidates(_):
         print("No archive candidates.")
         return
     for t in candidates:
-        tid = t["thread_id"]
+        label = t.get("label") or t["id"][:8]
         topic = t["topic"]
         status = t["status"]
         last_active = t.get("last_active") or ""
-        print(f"[{tid}] {topic}  {status}  ({last_active})")
+        print(f"[{label}] {topic}  {status}  ({last_active})")
 
 
 def cmd_archive_thread(args):
     db = get_db()
-    db.archive_thread(args.thread_id)
-    print(f"Thread {args.thread_id} archived.")
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
+    label = thread.get("label") or args.thread_id if thread else args.thread_id
+    db.archive_thread(thread_uuid)
+    print(f"Thread {label} archived.")
 
 
 def cmd_get_shared_context(args):
@@ -427,31 +455,34 @@ def cmd_add_shared(args):
 
 def cmd_set_agent(args):
     db = get_db()
-    thread = db.get_thread(args.thread_id)
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
-
-    db.update_thread(args.thread_id, agent_task_id=args.task_id, status="background")
-    print(f"Thread {args.thread_id} agent task set: {args.task_id}")
+    db.update_thread(thread_uuid, agent_task_id=args.task_id, status="background")
+    label = thread.get("label") or args.thread_id
+    print(f"Thread {label} agent task set: {args.task_id}")
 
 
 def cmd_complete_agent(args):
     db = get_db()
-    thread = db.get_thread(args.thread_id)
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
+    label = thread.get("label") or args.thread_id
 
-    db.update_thread(args.thread_id, agent_result=args.result_summary, status="done")
+    db.update_thread(thread_uuid, agent_result=args.result_summary, status="done")
 
     # Store the agent result as an assistant message so it's visible in get_last_exchange.
     if args.result_summary:
-        db.add_message(args.thread_id, role="assistant", content=args.result_summary)
+        db.add_message(thread_uuid, role="assistant", content=args.result_summary)
 
     # Auto-generate summary if the thread has none yet
     if not (thread.get("summary") or "").strip():
-        exchange = db.get_last_exchange(args.thread_id)
+        exchange = db.get_last_exchange(thread_uuid)
         raw_last_user = exchange.get("last_user") or ""
         # Skip auto-summary if the last user message looks like junk (task notifications,
         # slash commands, or internal plumbing rather than real conversation).
@@ -465,35 +496,35 @@ def cmd_complete_agent(args):
             last_a = _last_sentences(exchange.get("last_assistant") or "", max_chars=80)
             if last_q or last_a:
                 auto_summary = f"{last_q} -> {last_a}" if (last_q and last_a) else (last_q or last_a)
-                db.update_thread_summary(args.thread_id, auto_summary)
+                db.update_thread_summary(thread_uuid, auto_summary)
 
     notification = (
-        f"[Topic {args.thread_id} completed] {thread['topic']} — results ready. "
-        f"Use: python juggle_cli.py switch-thread {args.thread_id}"
+        f"[Topic {label} completed] {thread['topic']} — results ready. "
+        f"Use: python juggle_cli.py switch-thread {label}"
     )
-    db.add_notification(args.thread_id, notification)
-    print(f"Thread {args.thread_id} agent completed.")
+    db.add_notification(thread_uuid, notification)
+    print(f"Thread {label} agent completed.")
 
 
 def cmd_fail_agent(args):
     db = get_db()
-    thread = db.get_thread(args.thread_id)
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
-
-    db.update_thread(args.thread_id, status="failed", agent_result=args.error)
-
-    notification = f"[Topic {args.thread_id} failed] {thread['topic']} — {args.error}"
-    db.add_notification(args.thread_id, notification)
-    print(f"Thread {args.thread_id} agent failed.")
+    label = thread.get("label") or args.thread_id
+    db.update_thread(thread_uuid, status="failed", agent_result=args.error)
+    notification = f"[Topic {label} failed] {thread['topic']} — {args.error}"
+    db.add_notification(thread_uuid, notification)
+    print(f"Thread {label} agent failed.")
 
 
 def cmd_check_agents(_):
     db = get_db()
     threads = db.get_all_threads()
     background = [
-        {"thread_id": t["thread_id"], "task_id": t.get("agent_task_id", ""), "topic": t["topic"]}
+        {"thread_id": t.get("label") or t["id"][:8], "task_id": t.get("agent_task_id", ""), "topic": t["topic"]}
         for t in threads
         if t["status"] == "background"
     ]
@@ -509,11 +540,13 @@ def cmd_get_context(_):
 
 def cmd_set_summarized_count(args):
     db = get_db()
-    if not db.get_thread(args.thread_id):
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    if not db.get_thread(thread_uuid):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
-    db.set_summarized_count(args.thread_id, args.count)
-    print(f"Summarized count set to {args.count} for Thread {args.thread_id}.")
+    db.set_summarized_count(thread_uuid, args.count)
+    label = db.get_thread(thread_uuid).get("label") or args.thread_id
+    print(f"Summarized count set to {args.count} for Thread {label}.")
 
 
 def cmd_get_stale_threads(args):
@@ -523,12 +556,14 @@ def cmd_get_stale_threads(args):
         print("No stale threads.")
         return
     for t in stale:
-        print(f"{t['thread_id']} {t['topic']} (delta={t['delta']})")
+        label = t.get("label") or t["id"][:8]
+        print(f"{label} {t['topic']} (delta={t['delta']})")
 
 
 def cmd_get_messages(args):
     db = get_db()
-    messages = db.get_messages(args.thread_id, token_budget=9999)
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    messages = db.get_messages(thread_uuid, token_budget=9999)
     if args.limit:
         messages = messages[-args.limit:]
     if not messages:
