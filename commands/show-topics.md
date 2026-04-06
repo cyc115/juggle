@@ -29,12 +29,28 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py show-topics
 
 Print the output **verbatim** — do not reformat or summarize it.
 
-## Step 3: Reminder
+## Output format
 
-After the output:
-```
-Use "/juggle:resume-topic <id>" to switch topics, or just keep talking.
-```
+Each thread is shown with:
+- **Header**: `{branch} {emoji} **[{id}] {topic}**  ({last_active})  {state_suffix}`
+- **Summary**: 1–2 sentences from the thread's summary field
+- **Key decisions**: each prefixed `✅` (skipped if none)
+- **Open questions**: each prefixed `❓` (skipped if none)
+- **Last 2 exchanges**: labeled `Last:` and `Prior:`, showing Q and A
+- For **waiting** threads (`⏸️`): the full pending question is shown (no truncation)
+- For **background** threads (`🏃`): an agent status line prefixed `⏳`
+
+### State emoji legend
+
+| Emoji | State | Condition |
+|-------|-------|-----------|
+| 👉 | Current | This is the active thread |
+| 🏃‍♂️ | Agent running | `status == "background"` |
+| ⏸️ | Waiting for you | Last assistant message ends with `?` |
+| 💤 | Idle | Last assistant message has no `?` AND inactive > 30 min |
+| ✅ | Done | `status == "done"` |
+| ❌ | Failed | `status == "failed"` |
+| 🗄️ | Archived | Inactive > 48 hours |
 
 ## Error handling
 

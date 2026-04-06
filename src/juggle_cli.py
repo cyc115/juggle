@@ -234,6 +234,18 @@ def cmd_show_topics(_):
     # Sort by last_active descending
     threads.sort(key=lambda t: t.get("last_active") or "", reverse=True)
 
+    # State suffix text map
+    _state_suffix_text = {
+        "👉": "← YOU ARE HERE",
+        "🏃\u200d♂️": "agent running",
+        "⏸️": "waiting for you",
+        "💤": "idle",
+        "✅": "done",
+        "❌": "failed",
+        "🗄️": "archived",
+        "": "",
+    }
+
     print("Topics")
     last_idx = len(threads) - 1
     for idx, t in enumerate(threads):
@@ -246,43 +258,82 @@ def cmd_show_topics(_):
         status = t["status"]
         last_active = _humanize_dt(t.get("last_active") or "")
 
-        # Build status suffix
-        if tid == current:
-            status_suffix = "<- YOU ARE HERE"
-        elif status == "background":
-            status_suffix = "-> agent running..."
-        elif status == "done":
-            status_suffix = "done"
-        elif status == "failed":
-            status_suffix = "failed"
-        else:
-            status_suffix = ""
+        # State emoji and suffix
+        emoji = db.get_thread_state(t, current or "")
+        state_suffix = _state_suffix_text.get(emoji, "")
 
-        # Header line: pad topic to align timestamp
-        header_core = f"[{tid}] {topic}"
-        padded = f"{header_core:<40}"
-        header = f"{branch} {padded} ({last_active})"
-        if status_suffix:
-            header = f"{header}  {status_suffix}"
+        # Header line
+        header = f"{branch} {emoji} **[{tid}] {topic}**  ({last_active})"
+        if state_suffix:
+            header = f"{header}  {state_suffix}"
         print(header)
 
-        # Sub-lines
-        exchange = db.get_last_exchange(tid)
-
-        summary = t.get("summary") or ""
-        summary_text = summary.strip() if summary.strip() else "no summary yet"
+        # Summary (always shown)
+        summary = (t.get("summary") or "").strip()
+        summary_text = summary if summary else "no summary yet"
         print(f"{vert}├── Summary: {summary_text}")
 
-        last_q = _last_sentences(exchange.get("last_user") or "")
-        last_a = _last_sentences(exchange.get("last_assistant") or "")
-        last_q_text = f'"{last_q}"' if last_q else "(none)"
-        last_a_text = f'"{last_a}"' if last_a else "(none)"
-        print(f"{vert}├── Last Q: {last_q_text}")
-        print(f"{vert}└── Last A: {last_a_text}")
+        # Key decisions
+        key_decisions_raw = t.get("key_decisions") or "[]"
+        if isinstance(key_decisions_raw, str):
+            try:
+                key_decisions = json.loads(key_decisions_raw)
+            except (json.JSONDecodeError, ValueError):
+                key_decisions = []
+        else:
+            key_decisions = key_decisions_raw
+        for decision in key_decisions:
+            print(f"{vert}├── ✅ {decision}")
+
+        # Open questions
+        open_questions_raw = t.get("open_questions") or "[]"
+        if isinstance(open_questions_raw, str):
+            try:
+                open_questions = json.loads(open_questions_raw)
+            except (json.JSONDecodeError, ValueError):
+                open_questions = []
+        else:
+            open_questions = open_questions_raw
+        for question in open_questions:
+            print(f"{vert}├── ❓ {question}")
+
+        # For waiting threads: show full pending question (the last assistant message)
+        if emoji == "⏸️":
+            with __import__('sqlite3').connect(str(db.db_path)) as conn:
+                conn.row_factory = __import__('sqlite3').Row
+                row = conn.execute(
+                    """
+                    SELECT content FROM messages
+                    WHERE thread_id = ? AND role = 'assistant'
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (tid,),
+                ).fetchone()
+            if row:
+                print(f"{vert}├── ❓ {row['content']}")
+
+        # For background threads: show agent_status line
+        if status == "background":
+            agent_status = t.get("last_user_intent") or t.get("agent_task_id") or "running..."
+            print(f"{vert}├── ⏳ {agent_status}")
+
+        # Last 2 exchanges
+        exchanges = db.get_recent_exchanges(tid, n=2)
+        exchange_labels = ["Last:", "Prior:"]
+        for ex_idx, exchange in enumerate(exchanges):
+            label = exchange_labels[ex_idx] if ex_idx < len(exchange_labels) else "     "
+            user_text = _last_sentences(exchange.get("user") or "")
+            asst_text = _last_sentences(exchange.get("assistant") or "")
+            user_display = f'"{user_text}"' if user_text else "(none)"
+            asst_display = f'"{asst_text}"' if asst_text else "(none)"
+            is_last_exchange = ex_idx == len(exchanges) - 1 and True
+            connector = "└──" if is_last_exchange else "├──"
+            print(f"{vert}{connector} {label} Q: {user_display}")
+            print(f"{vert}         A: {asst_display}")
 
         # Blank separator between threads (but not after the last one)
         if not is_last:
-            print(f"│")
+            print("│")
 
     print()
     print('Use "/juggle:resume-topic <id>" to switch topics, or just keep talking.')

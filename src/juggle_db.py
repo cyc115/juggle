@@ -413,6 +413,119 @@ class JuggleDB:
 
         return result
 
+    def get_recent_exchanges(self, thread_id: str, n: int = 2) -> list[dict]:
+        """Return the last n Q/A pairs for a thread, most recent first.
+
+        Each item: {"user": str, "assistant": str | None}
+        Junk user messages are skipped.
+        """
+        with self._connect() as conn:
+            all_rows = conn.execute(
+                """
+                SELECT id, role, content FROM messages
+                WHERE thread_id = ?
+                ORDER BY id ASC
+                """,
+                (thread_id,),
+            ).fetchall()
+
+        # Collect non-junk user message ids in order (ascending)
+        user_msgs = [
+            row for row in all_rows
+            if row["role"] == "user" and not self._is_junk_message(row["content"])
+        ]
+
+        # Take last n user messages (most recent first after reversing)
+        recent_user_msgs = list(reversed(user_msgs[-n:])) if user_msgs else []
+
+        result = []
+        all_ids = [row["id"] for row in all_rows]
+        all_by_id = {row["id"]: row for row in all_rows}
+
+        for user_row in recent_user_msgs:
+            # Find the next assistant message after this user message by id
+            assistant_content: str | None = None
+            for row_id in all_ids:
+                if row_id > user_row["id"] and all_by_id[row_id]["role"] == "assistant":
+                    assistant_content = all_by_id[row_id]["content"]
+                    break
+            result.append({"user": user_row["content"], "assistant": assistant_content})
+
+        return result
+
+    def get_thread_state(self, thread: dict, current_thread_id: str) -> str:
+        """Return emoji state string for a thread dict.
+
+        Returns one of: "👉", "🏃\u200d♂️", "⏸️", "💤", "✅", "❌", "🗄️", or "".
+        Priority (highest wins): current > background > done > failed > archived > waiting > idle
+        """
+        tid = thread["thread_id"]
+        status = thread.get("status") or "active"
+        last_active = thread.get("last_active") or ""
+
+        # Current
+        if tid == current_thread_id:
+            return "👉"
+
+        # Background (agent running)
+        if status == "background":
+            return "🏃\u200d♂️"
+
+        # Done
+        if status == "done":
+            return "✅"
+
+        # Failed
+        if status == "failed":
+            return "❌"
+
+        # Archived: last_active > 48 hours ago
+        now = datetime.now(timezone.utc)
+        archived = False
+        if last_active:
+            try:
+                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                age_seconds = (now - dt).total_seconds()
+                if age_seconds > 48 * 3600:
+                    archived = True
+            except (ValueError, TypeError):
+                pass
+
+        if archived:
+            return "🗄️"
+
+        # For waiting / idle detection we need the last assistant message
+        with self._connect() as conn:
+            assistant_row = conn.execute(
+                """
+                SELECT role, content, created_at FROM messages
+                WHERE thread_id = ? AND role = 'assistant'
+                ORDER BY id DESC LIMIT 1
+                """,
+                (tid,),
+            ).fetchone()
+
+        # Waiting: last message role == assistant AND content ends with "?"
+        if assistant_row:
+            if assistant_row["content"].rstrip().endswith("?"):
+                return "⏸️"
+
+        # Idle: last assistant message exists (no "?") AND last_active > 30 min ago
+        if assistant_row and last_active:
+            try:
+                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                age_seconds = (now - dt).total_seconds()
+                if age_seconds > 30 * 60:
+                    return "💤"
+            except (ValueError, TypeError):
+                pass
+
+        return ""
+
     def update_thread_summary(self, thread_id: str, summary: str):
         """Write a summary string to threads.summary."""
         self.update_thread(thread_id, summary=summary)

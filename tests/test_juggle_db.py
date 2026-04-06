@@ -219,6 +219,158 @@ def test_get_stale_threads_not_stale_after_set(db):
     assert len(stale) == 0
 
 
+def test_get_recent_exchanges_basic(db):
+    """get_recent_exchanges returns last n Q/A pairs, most recent first."""
+    db.create_thread("Topic A", session_id="s1")
+    db.add_message("A", "user", "first question")
+    db.add_message("A", "assistant", "first answer")
+    db.add_message("A", "user", "second question")
+    db.add_message("A", "assistant", "second answer")
+
+    exchanges = db.get_recent_exchanges("A", n=2)
+    assert len(exchanges) == 2
+    # most recent first
+    assert exchanges[0]["user"] == "second question"
+    assert exchanges[0]["assistant"] == "second answer"
+    assert exchanges[1]["user"] == "first question"
+    assert exchanges[1]["assistant"] == "first answer"
+
+
+def test_get_recent_exchanges_skips_junk(db):
+    """get_recent_exchanges skips junk user messages."""
+    db.create_thread("A", session_id="s1")
+    db.add_message("A", "user", "real question")
+    db.add_message("A", "assistant", "real answer")
+    db.add_message("A", "user", "/juggle:show-topics")          # junk
+    db.add_message("A", "user", "<task-notification>task-id</task-notification>")  # junk
+
+    exchanges = db.get_recent_exchanges("A", n=2)
+    assert len(exchanges) == 1
+    assert exchanges[0]["user"] == "real question"
+    assert exchanges[0]["assistant"] == "real answer"
+
+
+def test_get_recent_exchanges_no_assistant_yet(db):
+    """get_recent_exchanges returns None assistant when none exists yet."""
+    db.create_thread("A", session_id="s1")
+    db.add_message("A", "user", "my question")
+
+    exchanges = db.get_recent_exchanges("A", n=2)
+    assert len(exchanges) == 1
+    assert exchanges[0]["user"] == "my question"
+    assert exchanges[0]["assistant"] is None
+
+
+def test_get_recent_exchanges_empty(db):
+    """get_recent_exchanges returns empty list when no messages."""
+    db.create_thread("A", session_id="s1")
+    exchanges = db.get_recent_exchanges("A", n=2)
+    assert exchanges == []
+
+
+def test_get_recent_exchanges_n_limits_results(db):
+    """get_recent_exchanges respects n parameter."""
+    db.create_thread("A", session_id="s1")
+    for i in range(5):
+        db.add_message("A", "user", f"question {i}")
+        db.add_message("A", "assistant", f"answer {i}")
+
+    exchanges = db.get_recent_exchanges("A", n=2)
+    assert len(exchanges) == 2
+    # most recent first
+    assert exchanges[0]["user"] == "question 4"
+    assert exchanges[1]["user"] == "question 3"
+
+
+def test_get_thread_state_current(db):
+    """get_thread_state returns 👉 for the current thread."""
+    db.create_thread("A", session_id="s1")
+    thread = db.get_thread("A")
+    state = db.get_thread_state(thread, current_thread_id="A")
+    assert state == "👉"
+
+
+def test_get_thread_state_background(db):
+    """get_thread_state returns 🏃 for background threads."""
+    db.create_thread("A", session_id="s1")
+    db.update_thread("A", status="background", agent_task_id="task_123")
+    thread = db.get_thread("A")
+    state = db.get_thread_state(thread, current_thread_id="B")
+    assert state == "🏃\u200d♂️"
+
+
+def test_get_thread_state_done(db):
+    """get_thread_state returns ✅ for done threads."""
+    db.create_thread("A", session_id="s1")
+    db.update_thread("A", status="done")
+    thread = db.get_thread("A")
+    state = db.get_thread_state(thread, current_thread_id="B")
+    assert state == "✅"
+
+
+def test_get_thread_state_failed(db):
+    """get_thread_state returns ❌ for failed threads."""
+    db.create_thread("A", session_id="s1")
+    db.update_thread("A", status="failed")
+    thread = db.get_thread("A")
+    state = db.get_thread_state(thread, current_thread_id="B")
+    assert state == "❌"
+
+
+def test_get_thread_state_archived(db):
+    """get_thread_state returns 🗄️ for threads inactive > 48 hours."""
+    from datetime import datetime, timezone, timedelta
+    db.create_thread("A", session_id="s1")
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
+    db.update_thread("A", last_active=old_time)
+    thread = db.get_thread("A")
+    state = db.get_thread_state(thread, current_thread_id="B")
+    assert state == "🗄️"
+
+
+def test_get_thread_state_waiting(db):
+    """get_thread_state returns ⏸️ when last assistant message ends with ?."""
+    db.create_thread("A", session_id="s1")
+    db.add_message("A", "user", "some question")
+    db.add_message("A", "assistant", "Do you want the Secure flag set on the cookie?")
+    thread = db.get_thread("A")
+    state = db.get_thread_state(thread, current_thread_id="B")
+    assert state == "⏸️"
+
+
+def test_get_thread_state_idle(db):
+    """get_thread_state returns 💤 when last assistant message has no ? and inactive > 30 min."""
+    from datetime import datetime, timezone, timedelta
+    db.create_thread("A", session_id="s1")
+    db.add_message("A", "user", "some question")
+    db.add_message("A", "assistant", "Here is the answer.")
+    old_time = (datetime.now(timezone.utc) - timedelta(minutes=31)).isoformat()
+    db.update_thread("A", last_active=old_time)
+    thread = db.get_thread("A")
+    state = db.get_thread_state(thread, current_thread_id="B")
+    assert state == "💤"
+
+
+def test_get_thread_state_no_badge_recent_active(db):
+    """get_thread_state returns empty string for recently active threads with no question."""
+    db.create_thread("A", session_id="s1")
+    db.add_message("A", "user", "some question")
+    db.add_message("A", "assistant", "Here is the answer.")
+    # last_active is just now (set by add_message), so not idle
+    thread = db.get_thread("A")
+    state = db.get_thread_state(thread, current_thread_id="B")
+    assert state == ""
+
+
+def test_get_thread_state_priority_current_over_background(db):
+    """current state wins over background."""
+    db.create_thread("A", session_id="s1")
+    db.update_thread("A", status="background", agent_task_id="task_1")
+    thread = db.get_thread("A")
+    state = db.get_thread_state(thread, current_thread_id="A")
+    assert state == "👉"
+
+
 def test_get_last_exchange_skips_junk_user_messages(db):
     """get_last_exchange should skip junk user messages and fall back to the previous real one."""
     db.create_thread("Topic A", session_id="s1")
