@@ -13,7 +13,7 @@ class ContextBuilder:
     def __init__(self, db: JuggleDB):
         self.db = db
 
-    def build(self, _session_id: str = "") -> str:
+    def build(self) -> str:
         if not self.db.is_active():
             return ""
 
@@ -188,24 +188,8 @@ def build_context_string(db_path=None) -> str:
     db = JuggleDB(db_path=db_path)
     db.init_db()
 
-    # Determine session_id from the session table (stored at set_active time)
-    session_id = ""
-    try:
-        import sqlite3
-        path = db.db_path
-        conn = sqlite3.connect(str(path))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT value FROM session WHERE key = 'started_at'"
-        ).fetchone()
-        if row:
-            session_id = row["value"]
-        conn.close()
-    except Exception:
-        pass
-
     builder = ContextBuilder(db)
-    return builder.build(session_id)
+    return builder.build()
 
 
 if __name__ == "__main__":
