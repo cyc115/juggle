@@ -191,8 +191,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py fail-agent <thread_id> "<error d
 
 On every user message, also check for topic shifts:
 - **Continuation**: relates to current topic → proceed normally
-- **Clear shift**: substantially different subject → call create-thread CLI and announce:
-  `"New topic detected — creating thread for '[detected topic]'."`
+- **Clear shift**: substantially different subject → **immediately** call create-thread CLI and announce: `"New topic — created thread [X] for '[detected topic]'."` Do NOT ask for confirmation. Creating a thread is low-risk and reversible. Just do it.
+- **Switching back**: if user references a previous thread explicitly, switch to it without asking
 - **Bias toward continuation**: asides and brief questions stay in current thread
 
 ---
