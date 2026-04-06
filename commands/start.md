@@ -189,9 +189,10 @@ When switching (via `/juggle:resume-topic` or implicit):
 ---
 
 ## Limits
-- Max 4 concurrent topics
-- Max 3 background agents simultaneously
+- Max 10 concurrent topics
+- Max 5 background agents simultaneously
 - Agent timeout: 15 minutes
+- L2 agents may spawn unlimited subagents internally. Juggle does not track or limit L3 agents.
 
 ---
 

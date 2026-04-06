@@ -97,6 +97,13 @@ class JuggleDB:
                 )
             except Exception:
                 pass  # column already exists
+            # Migration: add show_in_list for existing DBs
+            try:
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN show_in_list INTEGER NOT NULL DEFAULT 1"
+                )
+            except Exception:
+                pass  # column already exists
             conn.commit()
 
     # ------------------------------------------------------------------
@@ -546,3 +553,73 @@ class JuggleDB:
             if delta >= threshold:
                 stale.append({**t, "delta": delta, "msg_count": msg_count})
         return stale
+
+    # ------------------------------------------------------------------
+    # Archive operations
+    # ------------------------------------------------------------------
+
+    def archive_thread(self, thread_id: str):
+        """Set status='archived' and show_in_list=0 for the given thread."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE threads SET status = 'archived', show_in_list = 0 WHERE thread_id = ?",
+                (thread_id,),
+            )
+            conn.commit()
+
+    def get_archive_candidates(self) -> list[dict]:
+        """Return threads that are candidates for archiving.
+
+        A thread qualifies if ANY of:
+          - status == 'done'
+          - status == 'failed'
+          - last_active > 48 hours ago AND status NOT IN ('background', 'waiting')
+          - status == 'idle' AND last_active > 24 hours ago
+
+        Excludes the current thread and already-archived threads.
+        """
+        current_thread = self.get_current_thread()
+        threads = self.get_all_threads()
+        now = datetime.now(timezone.utc)
+        candidates = []
+        for t in threads:
+            tid = t["thread_id"]
+            status = t.get("status") or "active"
+
+            # Exclude current thread
+            if tid == current_thread:
+                continue
+
+            # Exclude already-archived threads
+            if status == "archived":
+                continue
+
+            # Check candidate criteria
+            is_candidate = False
+
+            if status == "done":
+                is_candidate = True
+            elif status == "failed":
+                is_candidate = True
+            else:
+                last_active = t.get("last_active") or ""
+                if last_active:
+                    try:
+                        dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        age_seconds = (now - dt).total_seconds()
+
+                        # last_active > 48 hours AND status not background/waiting
+                        if age_seconds > 48 * 3600 and status not in ("background", "waiting"):
+                            is_candidate = True
+                        # status == 'idle' AND last_active > 24 hours
+                        elif status == "idle" and age_seconds > 24 * 3600:
+                            is_candidate = True
+                    except (ValueError, TypeError):
+                        pass
+
+            if is_candidate:
+                candidates.append(t)
+
+        return candidates

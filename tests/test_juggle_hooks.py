@@ -1,10 +1,11 @@
-"""Tests for juggle_hooks.py Stop handler."""
+"""Tests for juggle_hooks.py Stop handler and classification helpers."""
 import sys
 from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from juggle_db import JuggleDB
+from juggle_hooks import get_classification_candidates
 
 
 @pytest.fixture
@@ -63,3 +64,59 @@ def test_stop_handler_missing_field_is_noop(active_db, monkeypatch):
 
     messages = active_db.get_messages("A", token_budget=9999)
     assert not any(m["role"] == "assistant" for m in messages)
+
+
+# ---------------------------------------------------------------------------
+# Classification candidate filter tests
+# ---------------------------------------------------------------------------
+
+def _make_thread(tid: str, status: str) -> dict:
+    return {"thread_id": tid, "topic": f"Topic {tid}", "status": status}
+
+
+def test_classification_candidates_excludes_done():
+    threads = [
+        _make_thread("A", "active"),
+        _make_thread("B", "done"),
+        _make_thread("C", "background"),
+    ]
+    candidates = get_classification_candidates(threads)
+    ids = [t["thread_id"] for t in candidates]
+    assert "B" not in ids
+    assert "A" in ids
+    assert "C" in ids
+
+
+def test_classification_candidates_excludes_archived():
+    threads = [
+        _make_thread("A", "active"),
+        _make_thread("B", "archived"),
+    ]
+    candidates = get_classification_candidates(threads)
+    ids = [t["thread_id"] for t in candidates]
+    assert "B" not in ids
+    assert "A" in ids
+
+
+def test_classification_candidates_all_closed_returns_empty():
+    threads = [
+        _make_thread("A", "done"),
+        _make_thread("B", "archived"),
+    ]
+    candidates = get_classification_candidates(threads)
+    assert candidates == []
+
+
+def test_classification_candidates_includes_all_open_statuses():
+    threads = [
+        _make_thread("A", "active"),
+        _make_thread("B", "background"),
+        _make_thread("C", "idle"),
+        _make_thread("D", "waiting"),
+    ]
+    candidates = get_classification_candidates(threads)
+    assert len(candidates) == 4
+
+
+def test_classification_candidates_empty_input():
+    assert get_classification_candidates([]) == []

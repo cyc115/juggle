@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Juggle Context - builds additionalContext for UserPromptSubmit hook."""
 
-import json
-
 from juggle_db import JuggleDB
 
 # Hard cap: ~2000 tokens => ~8000 chars
@@ -35,7 +33,7 @@ class ContextBuilder:
                 )
 
         # ------------------------------------------------------------------
-        # Topics table
+        # Topics table — summary-only for all threads
         # ------------------------------------------------------------------
         if all_threads:
             parts.append("")
@@ -48,42 +46,21 @@ class ContextBuilder:
                 if tid == current_thread:
                     suffix = " ← you are here"
                 elif status == "background":
-                    suffix = " → agent working..."
+                    suffix = " 🏃 agent working..."
                 elif status == "done":
                     suffix = " ✓ done"
                 elif status == "failed":
                     suffix = " ✗ failed"
+                elif status == "archived":
+                    suffix = " 🗄️ archived"
                 else:
                     suffix = ""
 
                 parts.append(f"  [{tid}] {topic}{suffix}")
 
-        # ------------------------------------------------------------------
-        # Current thread details (summary, decisions, questions)
-        # ------------------------------------------------------------------
-        if current_thread:
-            thread = self.db.get_thread(current_thread)
-            if thread:
-                summary = thread.get("summary", "").strip()
+                summary = t.get("summary", "").strip()
                 if summary:
-                    parts.append("")
-                    parts.append(
-                        f"Thread {current_thread} summary: {summary}"
-                    )
-
-                key_decisions = _parse_json_list(thread.get("key_decisions", "[]"))
-                if key_decisions:
-                    parts.append("")
-                    parts.append(
-                        f"Key decisions: {json.dumps(key_decisions, ensure_ascii=False)}"
-                    )
-
-                open_questions = _parse_json_list(thread.get("open_questions", "[]"))
-                if open_questions:
-                    parts.append("")
-                    parts.append(
-                        f"Open questions: {json.dumps(open_questions, ensure_ascii=False)}"
-                    )
+                    parts.append(f"    Summary: {summary}")
 
         # ------------------------------------------------------------------
         # Stale summary flag
@@ -114,22 +91,6 @@ class ContextBuilder:
                 )
 
         # ------------------------------------------------------------------
-        # Recent conversation for current thread
-        # ------------------------------------------------------------------
-        if current_thread:
-            messages = self.db.get_messages(current_thread, token_budget=1500)
-            if messages:
-                parts.append("")
-                parts.append(f"Recent conversation (Thread {current_thread}):")
-                for msg in messages:
-                    role = msg["role"]
-                    content = msg["content"]
-                    # Truncate very long individual messages to keep output sane
-                    if len(content) > 400:
-                        content = content[:397] + "..."
-                    parts.append(f"  {role}: {content}")
-
-        # ------------------------------------------------------------------
         # Pending notifications
         # ------------------------------------------------------------------
         notifications = self.db.get_pending_notifications()
@@ -150,17 +111,6 @@ class ContextBuilder:
             result = _trim_to_limit(result, _CHAR_LIMIT)
 
         return result
-
-
-def _parse_json_list(value: str) -> list:
-    """Safely parse a JSON list string; return [] on failure."""
-    try:
-        parsed = json.loads(value)
-        if isinstance(parsed, list):
-            return parsed
-        return []
-    except (json.JSONDecodeError, TypeError):
-        return []
 
 
 def _trim_to_limit(text: str, limit: int) -> str:

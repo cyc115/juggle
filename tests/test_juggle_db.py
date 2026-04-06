@@ -384,3 +384,121 @@ def test_get_last_exchange_skips_junk_user_messages(db):
     result = db.get_last_exchange("A")
     assert result["last_user"] == "real question about auth"
     assert result["last_assistant"] == "Here is the answer"
+
+
+# ------------------------------------------------------------------
+# archive_thread tests
+# ------------------------------------------------------------------
+
+def test_archive_thread_sets_status_and_show_in_list(db):
+    """archive_thread sets status='archived' and show_in_list=0."""
+    db.create_thread("Topic A", session_id="s1")
+    db.archive_thread("A")
+    t = db.get_thread("A")
+    assert t is not None
+    assert t["status"] == "archived"
+    assert t["show_in_list"] == 0
+
+
+def test_archive_thread_does_not_delete(db):
+    """archive_thread does not delete the thread row."""
+    db.create_thread("Topic A", session_id="s1")
+    db.archive_thread("A")
+    assert db.get_thread("A") is not None
+
+
+def test_show_in_list_defaults_to_1(db):
+    """New threads have show_in_list=1 by default."""
+    db.create_thread("Topic A", session_id="s1")
+    t = db.get_thread("A")
+    assert t is not None
+    assert t["show_in_list"] == 1
+
+
+# ------------------------------------------------------------------
+# get_archive_candidates tests
+# ------------------------------------------------------------------
+
+def test_get_archive_candidates_empty(db):
+    """No candidates when only one active thread exists."""
+    db.create_thread("Topic A", session_id="s1")
+    db.set_current_thread("A")
+    candidates = db.get_archive_candidates()
+    assert candidates == []
+
+
+def test_get_archive_candidates_done(db):
+    """A done thread (non-current) is a candidate."""
+    db.create_thread("Topic A", session_id="s1")
+    db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread("A")
+    db.update_thread("B", status="done")
+    candidates = db.get_archive_candidates()
+    assert len(candidates) == 1
+    assert candidates[0]["thread_id"] == "B"
+
+
+def test_get_archive_candidates_failed(db):
+    """A failed thread (non-current) is a candidate."""
+    db.create_thread("Topic A", session_id="s1")
+    db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread("A")
+    db.update_thread("B", status="failed")
+    candidates = db.get_archive_candidates()
+    assert len(candidates) == 1
+    assert candidates[0]["thread_id"] == "B"
+
+
+def test_get_archive_candidates_old_inactive(db):
+    """A thread inactive > 48 hours (not background/waiting) is a candidate."""
+    from datetime import datetime, timezone, timedelta
+    db.create_thread("Topic A", session_id="s1")
+    db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread("A")
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
+    db.update_thread("B", last_active=old_time, status="active")
+    candidates = db.get_archive_candidates()
+    assert any(c["thread_id"] == "B" for c in candidates)
+
+
+def test_get_archive_candidates_idle_24h(db):
+    """A thread with status='idle' and last_active > 24 hours is a candidate."""
+    from datetime import datetime, timezone, timedelta
+    db.create_thread("Topic A", session_id="s1")
+    db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread("A")
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+    db.update_thread("B", status="idle", last_active=old_time)
+    candidates = db.get_archive_candidates()
+    assert any(c["thread_id"] == "B" for c in candidates)
+
+
+def test_get_archive_candidates_excludes_current(db):
+    """Current thread is never a candidate even if it would otherwise qualify."""
+    db.create_thread("Topic A", session_id="s1")
+    db.set_current_thread("A")
+    db.update_thread("A", status="done")
+    candidates = db.get_archive_candidates()
+    assert all(c["thread_id"] != "A" for c in candidates)
+
+
+def test_get_archive_candidates_excludes_already_archived(db):
+    """Already-archived threads are excluded from candidates."""
+    db.create_thread("Topic A", session_id="s1")
+    db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread("A")
+    db.archive_thread("B")
+    candidates = db.get_archive_candidates()
+    assert all(c["thread_id"] != "B" for c in candidates)
+
+
+def test_get_archive_candidates_background_not_candidate_for_48h_rule(db):
+    """Background threads inactive > 48h are NOT candidates (excluded by status filter)."""
+    from datetime import datetime, timezone, timedelta
+    db.create_thread("Topic A", session_id="s1")
+    db.create_thread("Topic B", session_id="s1")
+    db.set_current_thread("A")
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
+    db.update_thread("B", status="background", last_active=old_time, agent_task_id="task_1")
+    candidates = db.get_archive_candidates()
+    assert all(c["thread_id"] != "B" for c in candidates)

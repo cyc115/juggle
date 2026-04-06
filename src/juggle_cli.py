@@ -222,6 +222,29 @@ def _last_sentences(text: str, max_chars: int = 200) -> str:
     return snippet
 
 
+def _sort_key_for_topic(thread: dict, current_id: str, db) -> tuple:
+    """Return a sort key tuple for cmd_show_topics ordering.
+
+    Order: Waiting (⏸️) → Agent running (🏃) → Active/current → Idle/done → Archived
+    Lower tuple value = shown first.
+    """
+    tid = thread["thread_id"]
+    emoji = db.get_thread_state(thread, current_id)
+
+    if emoji == "⏸️":
+        tier = 0
+    elif emoji == "🏃\u200d♂️":
+        tier = 1
+    elif tid == current_id:
+        tier = 2
+    elif emoji in ("💤", "✅", "❌"):
+        tier = 3
+    else:
+        tier = 2  # active but not current
+
+    return (tier,)
+
+
 def cmd_show_topics(_):
     db = get_db()
     threads = db.get_all_threads()
@@ -231,8 +254,23 @@ def cmd_show_topics(_):
 
     current = db.get_current_thread()
 
-    # Sort by last_active descending
-    threads.sort(key=lambda t: t.get("last_active") or "", reverse=True)
+    # Filter out archived threads (show_in_list = 0)
+    threads = [t for t in threads if t.get("show_in_list", 1) != 0]
+
+    if not threads:
+        print("No topics.")
+        return
+
+    # Sort: Waiting → Agent running → Active/current → Idle/done → Archived
+    # Within each tier, most-recently-active first (ISO timestamps sort lexicographically;
+    # invert chars so descending order is achieved with a plain ascending sort).
+    def _full_sort_key(t: dict) -> tuple:
+        tier = _sort_key_for_topic(t, current or "", db)[0]
+        last_active = t.get("last_active") or ""
+        inverted = "".join(chr(0x10FFFF - ord(c)) for c in last_active) if last_active else ""
+        return (tier, inverted)
+
+    threads.sort(key=_full_sort_key)
 
     # State suffix text map
     _state_suffix_text = {
@@ -337,6 +375,26 @@ def cmd_show_topics(_):
 
     print()
     print('Use "/juggle:resume-topic <id>" to switch topics, or just keep talking.')
+
+
+def cmd_get_archive_candidates(_):
+    db = get_db()
+    candidates = db.get_archive_candidates()
+    if not candidates:
+        print("No archive candidates.")
+        return
+    for t in candidates:
+        tid = t["thread_id"]
+        topic = t["topic"]
+        status = t["status"]
+        last_active = t.get("last_active") or ""
+        print(f"[{tid}] {topic}  {status}  ({last_active})")
+
+
+def cmd_archive_thread(args):
+    db = get_db()
+    db.archive_thread(args.thread_id)
+    print(f"Thread {args.thread_id} archived.")
 
 
 def cmd_get_shared_context(args):
@@ -542,6 +600,17 @@ def main():
     # show-topics
     p_show = subparsers.add_parser("show-topics", help="Show all topics")
     p_show.set_defaults(func=cmd_show_topics)
+
+    # get-archive-candidates
+    p_archive_candidates = subparsers.add_parser(
+        "get-archive-candidates", help="List threads that are candidates for archiving"
+    )
+    p_archive_candidates.set_defaults(func=cmd_get_archive_candidates)
+
+    # archive-thread
+    p_archive = subparsers.add_parser("archive-thread", help="Archive a thread")
+    p_archive.add_argument("thread_id", help="Thread ID to archive")
+    p_archive.set_defaults(func=cmd_archive_thread)
 
     # get-shared-context
     p_get_shared = subparsers.add_parser("get-shared-context", help="Read shared context entries")

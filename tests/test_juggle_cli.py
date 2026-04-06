@@ -194,3 +194,80 @@ def test_get_messages_plain(started_db):
     assert result.returncode == 0
     assert "user: hello world" in result.stdout
     assert "assistant: hi there" in result.stdout
+
+
+# ------------------------------------------------------------------
+# archive-thread CLI tests
+# ------------------------------------------------------------------
+
+def test_archive_thread_cli(started_db):
+    """archive-thread sets status=archived and prints confirmation."""
+    result = run_cli(["archive-thread", "A"], started_db)
+    assert result.returncode == 0
+    assert "Thread A archived" in result.stdout
+
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(started_db))
+    t = db.get_thread("A")
+    assert t is not None
+    assert t["status"] == "archived"
+    assert t["show_in_list"] == 0
+
+
+# ------------------------------------------------------------------
+# get-archive-candidates CLI tests
+# ------------------------------------------------------------------
+
+def test_get_archive_candidates_none(started_db):
+    """Prints 'No archive candidates.' when nothing qualifies."""
+    # Thread A is current — should be excluded
+    result = run_cli(["get-archive-candidates"], started_db)
+    assert result.returncode == 0
+    assert "No archive candidates." in result.stdout
+
+
+def test_get_archive_candidates_finds_done(started_db):
+    """Lists a done non-current thread as a candidate."""
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(started_db))
+    db.create_thread("Second topic", session_id="")
+    db.update_thread("B", status="done")
+    # Current is A, B is done → candidate
+
+    result = run_cli(["get-archive-candidates"], started_db)
+    assert result.returncode == 0
+    assert "[B]" in result.stdout
+    assert "done" in result.stdout
+
+
+def test_get_archive_candidates_excludes_archived(started_db):
+    """Already-archived threads do not appear in candidate list."""
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(started_db))
+    db.create_thread("Second topic", session_id="")
+    db.archive_thread("B")
+
+    result = run_cli(["get-archive-candidates"], started_db)
+    assert result.returncode == 0
+    assert "[B]" not in result.stdout
+
+
+# ------------------------------------------------------------------
+# show-topics filters archived threads
+# ------------------------------------------------------------------
+
+def test_show_topics_hides_archived(started_db):
+    """show-topics does not display threads with show_in_list=0."""
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(started_db))
+    db.create_thread("Second topic", session_id="")
+    db.archive_thread("B")
+
+    result = run_cli(["show-topics"], started_db)
+    assert result.returncode == 0
+    assert "[B]" not in result.stdout
+    assert "[A]" in result.stdout

@@ -45,6 +45,16 @@ def get_db() -> JuggleDB:
     return JuggleDB(str(DB_PATH))
 
 
+def get_classification_candidates(threads: list[dict]) -> list[dict]:
+    """Return threads eligible for topic classification match.
+
+    Only threads with status not in ('done', 'archived') are considered.
+    If no match is found among these candidates, a new thread should be
+    created — closed threads are never resurrected.
+    """
+    return [t for t in threads if t.get("status") not in ("done", "archived")]
+
+
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
