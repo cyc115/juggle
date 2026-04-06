@@ -85,6 +85,18 @@ class ContextBuilder:
                     )
 
         # ------------------------------------------------------------------
+        # Stale summary flag
+        # ------------------------------------------------------------------
+        if current_thread and thread:
+            msg_count = self.db.get_message_count(current_thread, exclude_junk=True)
+            summarized_count = thread.get("summarized_msg_count") or 0
+            delta = msg_count - summarized_count
+            if delta >= 3:
+                parts.append(
+                    f"[SUMMARY STALE: {delta} new messages — summarize after responding]"
+                )
+
+        # ------------------------------------------------------------------
         # Shared project context (decisions + facts only)
         # ------------------------------------------------------------------
         shared = [
