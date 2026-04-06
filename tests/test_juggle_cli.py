@@ -84,6 +84,7 @@ def test_update_thread_meta(started_db):
     db = JuggleDB(str(started_db))
     db.update_thread("A", key_decisions=["Use SQLite"])
     t = db.get_thread("A")
+    assert t is not None
     decisions = json.loads(t["key_decisions"])
     assert "Use SQLite" in decisions
 
@@ -94,6 +95,7 @@ def test_update_summary(started_db):
     db = JuggleDB(str(started_db))
     db.update_thread("A", summary="We decided to use juggle.")
     t = db.get_thread("A")
+    assert t is not None
     assert t["summary"] == "We decided to use juggle."
 
 
@@ -103,6 +105,7 @@ def test_close_thread(started_db):
     db = JuggleDB(str(started_db))
     db.update_thread("A", status="closed")
     t = db.get_thread("A")
+    assert t is not None
     assert t["status"] == "closed"
 
 
@@ -133,6 +136,7 @@ def test_complete_agent(started_db):
     db.update_thread("A", agent_result="Done", status="done")
     db.add_notification("A", "Topic A complete")
     t = db.get_thread("A")
+    assert t is not None
     assert t["status"] == "done"
     pending = db.get_pending_notifications()
     assert len(pending) == 1
@@ -144,6 +148,7 @@ def test_fail_agent(started_db):
     db = JuggleDB(str(started_db))
     db.update_thread("A", status="failed", agent_result="timeout")
     t = db.get_thread("A")
+    assert t is not None
     assert t["status"] == "failed"
 
 
@@ -156,6 +161,7 @@ def test_set_summarized_count(started_db):
     from juggle_db import JuggleDB
     db = JuggleDB(str(started_db))
     thread = db.get_thread("A")
+    assert thread is not None
     assert thread["summarized_msg_count"] == 5
 
 

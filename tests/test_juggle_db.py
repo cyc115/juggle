@@ -50,7 +50,7 @@ def test_create_thread_sequential(db):
 
 
 def test_create_thread_max_4(db):
-    for i, label in enumerate(["A", "B", "C", "D"]):
+    for _, label in enumerate(["A", "B", "C", "D"]):
         db.create_thread(f"Topic {label}", session_id="s1")
     with pytest.raises(ValueError, match="Maximum of 4"):
         db.create_thread("Topic E", session_id="s1")
@@ -114,7 +114,7 @@ def test_add_and_get_messages(db):
 def test_get_messages_token_budget(db):
     db.create_thread("My topic", session_id="s1")
     # Add many messages; budget should limit what's returned
-    for i in range(20):
+    for _ in range(20):
         db.add_message("A", "user", "x" * 400)  # ~100 tokens each
     msgs = db.get_messages("A", token_budget=500)
     # 500 token budget / ~100 tokens per msg = ~5 msgs

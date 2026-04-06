@@ -22,6 +22,7 @@ class ContextBuilder:
 
         current_thread = self.db.get_current_thread()
         all_threads = self.db.get_all_threads()
+        thread = None
 
         # ------------------------------------------------------------------
         # Current topic line
