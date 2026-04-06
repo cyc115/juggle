@@ -145,3 +145,46 @@ def test_fail_agent(started_db):
     db.update_thread("A", status="failed", agent_result="timeout")
     t = db.get_thread("A")
     assert t["status"] == "failed"
+
+
+def test_set_summarized_count(started_db):
+    result = run_cli(["set-summarized-count", "A", "5"], started_db)
+    assert result.returncode == 0
+    assert "5" in result.stdout
+
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(started_db))
+    thread = db.get_thread("A")
+    assert thread["summarized_msg_count"] == 5
+
+
+def test_get_stale_threads_empty(started_db):
+    result = run_cli(["get-stale-threads"], started_db)
+    assert result.returncode == 0
+    assert "No stale" in result.stdout
+
+
+def test_get_stale_threads_finds_stale(started_db):
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(started_db))
+    for i in range(3):
+        db.add_message("A", "user", f"real question {i}")
+
+    result = run_cli(["get-stale-threads"], started_db)
+    assert result.returncode == 0
+    assert "A" in result.stdout
+
+
+def test_get_messages_plain(started_db):
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(started_db))
+    db.add_message("A", "user", "hello world")
+    db.add_message("A", "assistant", "hi there")
+
+    result = run_cli(["get-messages", "A", "--plain"], started_db)
+    assert result.returncode == 0
+    assert "user: hello world" in result.stdout
+    assert "assistant: hi there" in result.stdout

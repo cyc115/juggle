@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude" / "juggle"))
-DB_PATH = _DATA_DIR / "juggle.db"
+DB_PATH = Path(os.environ["_JUGGLE_TEST_DB"]) if "_JUGGLE_TEST_DB" in os.environ else _DATA_DIR / "juggle.db"
 SRC_DIR = Path(__file__).parent
 
 
@@ -398,6 +398,44 @@ def cmd_get_context(_):
     print(result)
 
 
+def cmd_set_summarized_count(args):
+    db = get_db()
+    if not db.get_thread(args.thread_id):
+        print(f"Error: Thread {args.thread_id} not found.")
+        sys.exit(1)
+    db.set_summarized_count(args.thread_id, args.count)
+    print(f"Summarized count set to {args.count} for Thread {args.thread_id}.")
+
+
+def cmd_get_stale_threads(args):
+    db = get_db()
+    stale = db.get_stale_threads(threshold=args.threshold)
+    if not stale:
+        print("No stale threads.")
+        return
+    for t in stale:
+        print(f"{t['thread_id']} {t['topic']} (delta={t['delta']})")
+
+
+def cmd_get_messages(args):
+    db = get_db()
+    messages = db.get_messages(args.thread_id, token_budget=9999)
+    if args.limit:
+        messages = messages[-args.limit:]
+    if not messages:
+        print("No messages.")
+        return
+    if args.plain:
+        for m in messages:
+            print(f"{m['role']}: {m['content']}")
+    else:
+        for m in messages:
+            content = m["content"]
+            if len(content) > 200:
+                content = content[:200] + "..."
+            print(f"  [{m['role']}] {content}")
+
+
 def cmd_init_db(_):
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
     db = get_db()
@@ -502,6 +540,24 @@ def main():
     # init-db
     p_init = subparsers.add_parser("init-db", help="Initialize DB schema")
     p_init.set_defaults(func=cmd_init_db)
+
+    # set-summarized-count
+    p_set_count = subparsers.add_parser("set-summarized-count", help="Set summarized message count")
+    p_set_count.add_argument("thread_id")
+    p_set_count.add_argument("count", type=int)
+    p_set_count.set_defaults(func=cmd_set_summarized_count)
+
+    # get-stale-threads
+    p_stale = subparsers.add_parser("get-stale-threads", help="List threads with stale summaries")
+    p_stale.add_argument("--threshold", type=int, default=3)
+    p_stale.set_defaults(func=cmd_get_stale_threads)
+
+    # get-messages
+    p_msgs = subparsers.add_parser("get-messages", help="Show messages for a thread")
+    p_msgs.add_argument("thread_id")
+    p_msgs.add_argument("--limit", type=int, default=None)
+    p_msgs.add_argument("--plain", action="store_true", help="Plain role: content format")
+    p_msgs.set_defaults(func=cmd_get_messages)
 
     args = parser.parse_args()
 
