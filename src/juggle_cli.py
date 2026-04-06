@@ -234,8 +234,21 @@ def _last_sentences(text: str, max_chars: int = 200) -> str:
     if not text:
         return ""
     text = text.strip()
-    # Split on sentence-ending punctuation followed by whitespace
+    # Sanitize: strip markdown code blocks (``` ... ```)
     import re
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    # Strip lines consisting only of tree-drawing characters and whitespace
+    tree_chars = r"[│├└─\s]"
+    text = "\n".join(
+        line for line in text.splitlines()
+        if not re.fullmatch(tree_chars + r"+", line)
+    )
+    # Strip resulting empty lines
+    text = "\n".join(line for line in text.splitlines() if line.strip())
+    text = text.strip()
+    if not text:
+        return ""
+    # Split on sentence-ending punctuation followed by whitespace
     parts = re.split(r"(?<=[.?!])\s+", text)
     parts = [p for p in parts if p]
     if not parts:

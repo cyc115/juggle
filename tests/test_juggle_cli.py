@@ -6,6 +6,11 @@ from pathlib import Path
 
 import pytest
 
+SRC_DIR_TOP = str(Path(__file__).parent.parent / "src")
+if SRC_DIR_TOP not in sys.path:
+    sys.path.insert(0, SRC_DIR_TOP)
+from juggle_cli import _last_sentences
+
 CLI = str(Path(__file__).parent.parent / "src" / "juggle_cli.py")
 SRC_DIR = str(Path(__file__).parent.parent / "src")
 
@@ -353,6 +358,13 @@ def test_extract_decision_prompt_no_messages():
 # ------------------------------------------------------------------
 # show-topics ⏸️ decision prompt rendering tests
 # ------------------------------------------------------------------
+
+def test_last_sentences_strips_code_block():
+    msg = "Do the thing.\n```\n│\n├── [A] foo\n└── [B] bar\n```"
+    result = _last_sentences(msg)
+    assert "│" not in result
+    assert "Do the thing" in result
+
 
 def test_show_topics_waiting_thread_shows_decision_prompt(tmp_path, capsys):
     """⏸️ thread shows 🤔 decision prompt instead of Last: Q/A block."""
