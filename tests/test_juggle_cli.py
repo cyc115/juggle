@@ -63,7 +63,7 @@ def test_show_topics_empty(started_db):
 
 
 def test_create_thread(started_db):
-    db_path, general_tid = started_db
+    db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
     db = JuggleDB(str(db_path))
@@ -76,7 +76,7 @@ def test_create_thread(started_db):
 
 
 def test_switch_thread(started_db):
-    db_path, general_tid = started_db
+    db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
     db = JuggleDB(str(db_path))
@@ -181,7 +181,7 @@ def test_set_summarized_count(started_db):
 
 
 def test_get_stale_threads_empty(started_db):
-    db_path, general_tid = started_db
+    db_path, _ = started_db
     result = run_cli(["get-stale-threads"], db_path)
     assert result.returncode == 0
     assert "No stale" in result.stdout
@@ -240,7 +240,7 @@ def test_archive_thread_cli(started_db):
 
 def test_get_archive_candidates_none(started_db):
     """Prints 'No archive candidates.' when nothing qualifies."""
-    db_path, general_tid = started_db
+    db_path, _ = started_db
     # Thread A is current — should be excluded
     result = run_cli(["get-archive-candidates"], db_path)
     assert result.returncode == 0
@@ -249,7 +249,7 @@ def test_get_archive_candidates_none(started_db):
 
 def test_get_archive_candidates_finds_done(started_db):
     """Lists a done non-current thread as a candidate."""
-    db_path, general_tid = started_db
+    db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
     db = JuggleDB(str(db_path))
@@ -265,7 +265,7 @@ def test_get_archive_candidates_finds_done(started_db):
 
 def test_get_archive_candidates_excludes_archived(started_db):
     """Already-archived threads do not appear in candidate list."""
-    db_path, general_tid = started_db
+    db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
     db = JuggleDB(str(db_path))
@@ -283,7 +283,7 @@ def test_get_archive_candidates_excludes_archived(started_db):
 
 def test_show_topics_hides_archived(started_db):
     """show-topics does not display threads with show_in_list=0."""
-    db_path, general_tid = started_db
+    db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
     db = JuggleDB(str(db_path))
