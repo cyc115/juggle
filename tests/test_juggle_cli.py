@@ -294,3 +294,57 @@ def test_show_topics_hides_archived(started_db):
     assert result.returncode == 0
     assert "[B]" not in result.stdout
     assert "[A]" in result.stdout
+
+
+# ------------------------------------------------------------------
+# _extract_decision_prompt tests
+# ------------------------------------------------------------------
+
+def test_extract_decision_prompt_with_question():
+    """Extracts last sentence containing ? from assistant message."""
+    sys.path.insert(0, SRC_DIR)
+    from juggle_cli import _extract_decision_prompt
+    result = _extract_decision_prompt(
+        "We talked about things. Which option do you want?",
+        "some user text"
+    )
+    assert result == "🤔 Which option do you want?"
+
+
+def test_extract_decision_prompt_no_question_falls_back_to_user():
+    """When no ? in assistant message, shows user message as 📬 prompt."""
+    sys.path.insert(0, SRC_DIR)
+    from juggle_cli import _extract_decision_prompt
+    result = _extract_decision_prompt(
+        "Implementation complete.",
+        "Merge back to main locally, then push"
+    )
+    assert result == '📬 Respond to: "Merge back to main locally, then push"'
+
+
+def test_extract_decision_prompt_truncates_long_question():
+    """Questions longer than 80 chars are truncated."""
+    sys.path.insert(0, SRC_DIR)
+    from juggle_cli import _extract_decision_prompt
+    long_q = "Do you want option A which does something or option B which does something else entirely?"
+    result = _extract_decision_prompt(long_q, "user")
+    assert result.startswith("🤔 ")
+    assert len(result) <= 83  # "🤔 " + 80 chars
+
+
+def test_extract_decision_prompt_truncates_long_user_message():
+    """User messages longer than 60 chars are truncated with ..."""
+    sys.path.insert(0, SRC_DIR)
+    from juggle_cli import _extract_decision_prompt
+    long_user = "This is a very long user message that goes on and on and says many things"
+    result = _extract_decision_prompt(None, long_user)
+    assert result.startswith('📬 Respond to: "')
+    assert result.endswith('..."')
+
+
+def test_extract_decision_prompt_no_messages():
+    """Returns generic fallback when no messages."""
+    sys.path.insert(0, SRC_DIR)
+    from juggle_cli import _extract_decision_prompt
+    result = _extract_decision_prompt(None, None)
+    assert result == "🤔 Waiting for input"

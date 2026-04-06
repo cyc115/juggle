@@ -247,6 +247,32 @@ def _last_sentences(text: str, max_chars: int = 200) -> str:
     return snippet
 
 
+def _extract_decision_prompt(last_assistant: str | None, last_user: str | None) -> str:
+    """Return a concise actionable prompt for a ⏸️ waiting thread.
+
+    Extracts the last question from the assistant's message, or falls back
+    to showing the unanswered user message.
+    """
+    import re as _re
+
+    if last_assistant and "?" in last_assistant:
+        sentences = _re.split(r"(?<=[.!?])\s+", last_assistant.strip())
+        questions = [s.strip() for s in sentences if "?" in s and len(s.strip()) > 5]
+        if questions:
+            q = _re.sub(r"\*+", "", questions[-1]).strip()
+            if len(q) > 80:
+                q = q[:77] + "..."
+            return f"🤔 {q}"
+
+    if last_user:
+        msg = last_user.strip()
+        if len(msg) > 60:
+            msg = msg[:57] + "..."
+        return f'📬 Respond to: "{msg}"'
+
+    return "🤔 Waiting for input"
+
+
 def _sort_key_for_topic(thread: dict, current_id: str, db) -> tuple:
     """Return a sort key tuple for cmd_show_topics ordering.
 
