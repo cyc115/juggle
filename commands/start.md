@@ -192,3 +192,31 @@ When switching (via `/juggle:resume-topic` or implicit):
 - Max 4 concurrent topics
 - Max 3 background agents simultaneously
 - Agent timeout: 15 minutes
+
+---
+
+## Auto-Summary
+
+When the JUGGLE ACTIVE block contains `[SUMMARY STALE: N new messages — summarize after responding]`:
+
+1. Complete your response to the user normally — do not delay
+2. After responding, spawn a Haiku background agent:
+
+**Pre-dispatch checklist applies.** Strip all JUGGLE context from the agent prompt.
+
+Agent prompt template:
+```
+[JUGGLE_THREAD:<thread_id>]
+Task: Refresh thread summary.
+Current summary: <paste existing summary, or "none">
+Messages (run this and paste output):
+  python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-messages <thread_id> --plain --limit 10
+
+Write 2-3 sentences building on the current summary. Cover: what was decided, built, or remains open.
+Run:
+  python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <thread_id> "<new summary>"
+  python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py set-summarized-count <thread_id> <msg_count from get-stale-threads>
+Output: Done. No prose.
+```
+
+Use `model: haiku`. One summarizer per stale thread — do not batch into a single agent.
