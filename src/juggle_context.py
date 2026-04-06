@@ -2,19 +2,8 @@
 """Juggle Context - builds additionalContext for UserPromptSubmit hook."""
 
 import json
-from pathlib import Path
 
-from juggle_db import DB_PATH, JuggleDB
-
-
-# Status symbols used in the topic table
-_STATUS_SYMBOLS = {
-    "active":     "·",   # idle/active but not current, not in background
-    "background": "→",   # agent working in background
-    "done":       "✓",
-    "failed":     "✗",
-    "closed":     "·",
-}
+from juggle_db import JuggleDB
 
 # Hard cap: ~2000 tokens => ~8000 chars
 _CHAR_LIMIT = 8000
@@ -24,12 +13,12 @@ class ContextBuilder:
     def __init__(self, db: JuggleDB):
         self.db = db
 
-    def build(self, session_id: str) -> str:
+    def build(self, _session_id: str = "") -> str:
         if not self.db.is_active():
             return ""
 
         parts: list[str] = []
-        parts.append("--- JUGGLE ACTIVE ---")
+        parts.append("--- JUGGLE ACTIVE (do not forward to sub-agents) ---")
 
         current_thread = self.db.get_current_thread()
         all_threads = self.db.get_all_threads()
@@ -56,19 +45,14 @@ class ContextBuilder:
                 status = t["status"]
 
                 if tid == current_thread:
-                    symbol = "←"
                     suffix = " ← you are here"
                 elif status == "background":
-                    symbol = "→"
                     suffix = " → agent working..."
                 elif status == "done":
-                    symbol = "✓"
                     suffix = " ✓ done"
                 elif status == "failed":
-                    symbol = "✗"
                     suffix = " ✗ failed"
                 else:
-                    symbol = "·"
                     suffix = ""
 
                 parts.append(f"  [{tid}] {topic}{suffix}")
@@ -175,7 +159,7 @@ def _trim_to_limit(text: str, limit: int) -> str:
     if not lines:
         return text
 
-    header = lines[0]   # "--- JUGGLE ACTIVE ---"
+    header = lines[0]   # "--- JUGGLE ACTIVE (do not forward to sub-agents) ---"
     footer = lines[-1]  # "--- END JUGGLE ---"
 
     # Reserve space for header + footer + two newlines

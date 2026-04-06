@@ -123,8 +123,22 @@ When the user asks for any implementation work, follow this exact sequence:
 
 ## Background Agent Dispatch Format
 
+**Pre-Dispatch Checklist** — verify every item before calling Agent(run_in_background=True):
+```
+□ First line of prompt: [JUGGLE_THREAD:<id>]
+□ No "--- JUGGLE ACTIVE ---" or any JUGGLE context block in the prompt
+□ Each line passes: "would the agent fail without this?" — if no, cut it
+□ No conversation history, thread summaries, or unrelated agent results
+□ Output format specified (bullets, no file dumps)
+```
+
+Scoping rules by phase:
+- **Phase 1 (plan)**: Only files/snippets for this task. Use `get-shared-context --type decision` for cross-thread facts.
+- **Phase 2 (implement)**: Approved plan bullets + file paths. Nothing else.
+- **Research**: Specific files/question only. No JUGGLE block.
+
 All background agents must be dispatched with:
-- Tag `[JUGGLE_THREAD:<thread_id>]` somewhere in the prompt (required for hook to link it)
+- Tag `[JUGGLE_THREAD:<thread_id>]` as the first line of the prompt (required for hook to link it)
 - `run_in_background: true`
 - Clear instruction on output format: concise bullets only, no verbose narration
 

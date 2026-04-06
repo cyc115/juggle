@@ -181,6 +181,17 @@ def handle_post_tool_use(data: dict) -> None:
             db = get_db()
             db.update_thread(thread_id, agent_task_id=task_id, status="background")
             logging.info("Linked agent task %s to juggle thread %s", task_id, thread_id)
+
+        # Violation logging: warn if JUGGLE ACTIVE block was forwarded to a sub-agent.
+        if "JUGGLE ACTIVE" in prompt:
+            db = get_db()
+            warning = (
+                f"[juggle] WARNING: Agent prompt for thread {thread_id or '?'} contains "
+                f"'JUGGLE ACTIVE' block — context leaked to sub-agent. "
+                f"Strip JUGGLE blocks before dispatching agents."
+            )
+            db.add_notification(thread_id or "A", warning)
+            logging.warning("JUGGLE ACTIVE leaked into sub-agent prompt for thread %s", thread_id)
     except Exception as exc:
         logging.error("PostToolUse handler error: %s", exc, exc_info=True)
 

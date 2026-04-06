@@ -288,6 +288,28 @@ def cmd_show_topics(_):
     print('Use "/juggle:resume-topic <id>" to switch topics, or just keep talking.')
 
 
+def cmd_get_shared_context(args):
+    db = get_db()
+    rows = db.get_shared_context()
+
+    if args.type:
+        rows = [r for r in rows if r["context_type"] == args.type]
+    if args.thread:
+        rows = [r for r in rows if r.get("source_thread") == args.thread]
+    if args.limit:
+        rows = rows[-args.limit:]
+
+    if args.plain:
+        if not rows:
+            print("(no shared context)")
+            return
+        for r in rows:
+            src = f" (Thread {r['source_thread']})" if r.get("source_thread") else ""
+            print(f"[{r['context_type']}]{src} {r['content']}")
+    else:
+        print(json.dumps(rows, indent=2))
+
+
 def cmd_add_shared(args):
     db = get_db()
     db.add_shared(args.type, args.content, source_thread=args.thread)
@@ -431,6 +453,18 @@ def main():
     # show-topics
     p_show = subparsers.add_parser("show-topics", help="Show all topics")
     p_show.set_defaults(func=cmd_show_topics)
+
+    # get-shared-context
+    p_get_shared = subparsers.add_parser("get-shared-context", help="Read shared context entries")
+    p_get_shared.add_argument("--type", dest="type", default=None, metavar="TYPE",
+                              help="Filter by type: decision, fact, note")
+    p_get_shared.add_argument("--thread", dest="thread", default=None, metavar="THREAD_ID",
+                              help="Filter by source thread")
+    p_get_shared.add_argument("--limit", dest="limit", type=int, default=0, metavar="N",
+                              help="Return at most N most-recent entries")
+    p_get_shared.add_argument("--plain", dest="plain", action="store_true",
+                              help="Plain text output for prompt inclusion (default: JSON)")
+    p_get_shared.set_defaults(func=cmd_get_shared_context)
 
     # add-shared
     p_shared = subparsers.add_parser("add-shared", help="Add to shared context")
