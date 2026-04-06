@@ -17,6 +17,7 @@ class ContextBuilder:
 
         parts: list[str] = []
         parts.append("--- JUGGLE ACTIVE (do not forward to sub-agents) ---")
+        parts.append("RULE: Every Agent call MUST use run_in_background=true. No foreground agents ever.")
 
         current_thread = self.db.get_current_thread()
         all_threads = self.db.get_all_threads()

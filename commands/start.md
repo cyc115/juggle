@@ -64,6 +64,7 @@ The orchestrator is a coordinator only. These rules are non-negotiable:
 - **NEVER** write plan files inline — send an agent to write and report back
 - **NEVER** show file contents, diffs, tool output, or bash output in the main thread
 - **NEVER** perform research inline — research always goes to an agent
+- **NEVER dispatch a foreground agent** — every Agent call MUST use `run_in_background: true`. The orchestrator must remain responsive to user input at all times. No exceptions.
 
 The only direct tool calls permitted are `Bash` calls to `juggle_cli.py` for backend state management (start, create-thread, switch-thread, show-topics, complete-agent, etc.).
 
