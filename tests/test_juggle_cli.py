@@ -348,3 +348,38 @@ def test_extract_decision_prompt_no_messages():
     from juggle_cli import _extract_decision_prompt
     result = _extract_decision_prompt(None, None)
     assert result == "🤔 Waiting for input"
+
+
+# ------------------------------------------------------------------
+# show-topics ⏸️ decision prompt rendering tests
+# ------------------------------------------------------------------
+
+def test_show_topics_waiting_thread_shows_decision_prompt(tmp_path, capsys):
+    """⏸️ thread shows 🤔 decision prompt instead of Last: Q/A block."""
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    from juggle_cli import cmd_show_topics
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    db.set_active(True)
+    tid_a = db.create_thread("Topic A", session_id="")
+    db.set_current_thread(tid_a)
+    tid_b = db.create_thread("Waiting Topic", session_id="")
+    db.add_message(tid_b, "assistant", "Should I proceed with option A or B?")
+    db.add_message(tid_b, "user", "Go with option A")
+
+    # Patch get_db to return our test db
+    import juggle_cli
+    original_get_db = juggle_cli.get_db
+    juggle_cli.get_db = lambda: db
+    try:
+        cmd_show_topics(None)
+    finally:
+        juggle_cli.get_db = original_get_db
+
+    out = capsys.readouterr().out
+    assert "🤔" in out or "📬" in out
+    # The waiting thread section should not contain a Last: Q/A block
+    waiting_section = out.split("Waiting Topic")[1].split("\n\n")[0]
+    assert "Last:" not in waiting_section
