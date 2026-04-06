@@ -39,6 +39,12 @@ Simple questions, clarifications, status checks, short answers.
 
 Examples: "what does this file do?", "what's the weather?", "show me my topics"
 
+### Category 1.5: Simple File Operation
+Writing a plan file, reading a config, checking a file exists, writing a doc.
+**Route**: Background agent. Agent performs the operation and returns only: path + 1-line description.
+
+Examples: "write plan to the plan directory", "check if file X exists", "write this to a doc"
+
 ### Category 2: Research / Investigation
 Understand a codebase, explore options, read files, gather context.
 **Route**: Dispatch a background research agent. Main thread only shows the result summary.
@@ -46,6 +52,22 @@ Understand a codebase, explore options, read files, gather context.
 ### Category 3: Implementation / Changes
 Build something, edit files, refactor, create a plugin, write code, fix bugs.
 **Route**: Two-phase background dispatch — plan first, implement after approval. Main thread only sees plan bullets and final status. Never sees file reads, edits, or intermediate steps.
+
+---
+
+## Orchestrator Rules — The Orchestrator Never Does Work
+
+The orchestrator is a coordinator only. These rules are non-negotiable:
+
+- **NEVER** use Read, Write, Edit, Glob, Grep, or Bash directly (except `juggle_cli.py` state commands)
+- **NEVER** read files for context inline — send an agent to read and summarize
+- **NEVER** write plan files inline — send an agent to write and report back
+- **NEVER** show file contents, diffs, tool output, or bash output in the main thread
+- **NEVER** perform research inline — research always goes to an agent
+
+The only direct tool calls permitted are `Bash` calls to `juggle_cli.py` for backend state management (start, create-thread, switch-thread, show-topics, complete-agent, etc.).
+
+**Violating these rules defeats the purpose of Juggle.** When in doubt: dispatch an agent.
 
 ---
 
@@ -68,12 +90,22 @@ When the user asks for any implementation work, follow this exact sequence:
 3. Dispatch a **background planning agent** with:
    - The full task description
    - All relevant context (current files, existing code, constraints)
-   - Instruction to return ONLY a concise bullet-point plan — no prose, no file contents, no code
+   - Instruction to read relevant files, write the plan file to the appropriate path, and return ONLY:
+     ```
+     Written to <relative/path/to/plan.md>.
+
+     Plan:
+     • [step 1]
+     • [step 2]
+     • [step 3]
+     ```
    - Tag `[JUGGLE_THREAD:<thread_id>]` in the prompt so the hook links it
 
-4. When the planning agent completes, present its output as:
+4. When the planning agent completes, the orchestrator surfaces ONLY the path + bullet list:
    ```
    Plan ready — [task label]
+
+   Written to <relative/path/to/plan.md>.
 
    • [step 1]
    • [step 2]
@@ -103,8 +135,9 @@ When the user asks for any implementation work, follow this exact sequence:
    [Topic X done] <task label> — <1-line summary of what changed>. Use /juggle:resume-topic X to review.
    ```
 
-### Main Thread Rules for Implementation Tasks
+### Main Thread Rules (all categories)
 
+- **NEVER** use Read, Write, Edit, Glob, Grep, or Bash in the main thread (except juggle_cli.py)
 - **NEVER** read files inline during implementation
 - **NEVER** show file diffs, edit blocks, or bash output in the main thread
 - **NEVER** ask clarifying questions mid-implementation — gather all context before dispatching
