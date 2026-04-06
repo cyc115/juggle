@@ -21,10 +21,11 @@ CREATE TABLE IF NOT EXISTS threads (
   key_decisions   TEXT DEFAULT '[]',
   open_questions  TEXT DEFAULT '[]',
   last_user_intent TEXT DEFAULT '',
-  agent_task_id   TEXT,
-  agent_result    TEXT,
-  created_at      TEXT NOT NULL,
-  last_active     TEXT NOT NULL
+  agent_task_id         TEXT,
+  agent_result          TEXT,
+  summarized_msg_count  INTEGER DEFAULT 0,
+  created_at            TEXT NOT NULL,
+  last_active           TEXT NOT NULL
 );
 """
 
@@ -89,6 +90,13 @@ class JuggleDB:
             conn.execute(CREATE_SHARED_CONTEXT)
             conn.execute(CREATE_NOTIFICATIONS)
             conn.execute(CREATE_SESSION)
+            # Migration: add summarized_msg_count for existing DBs
+            try:
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN summarized_msg_count INTEGER DEFAULT 0"
+                )
+            except Exception:
+                pass  # column already exists
             conn.commit()
 
     # ------------------------------------------------------------------
@@ -252,13 +260,25 @@ class JuggleDB:
             )
             conn.commit()
 
-    def get_message_count(self, thread_id: str) -> int:
+    def get_message_count(self, thread_id: str, exclude_junk: bool = True) -> int:
+        """Count user messages for a thread, optionally excluding junk."""
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id = ?",
+            rows = conn.execute(
+                "SELECT content FROM messages WHERE thread_id = ? AND role = 'user'",
                 (thread_id,),
-            ).fetchone()
-            return row["cnt"] if row else 0
+            ).fetchall()
+        if not exclude_junk:
+            return len(rows)
+        count = 0
+        for row in rows:
+            content = row["content"]
+            if (
+                not content.startswith("<task-notification")
+                and "task-id" not in content
+                and not content.strip().startswith("/")
+            ):
+                count += 1
+        return count
 
     # ------------------------------------------------------------------
     # Shared context
@@ -383,3 +403,20 @@ class JuggleDB:
     def update_thread_summary(self, thread_id: str, summary: str):
         """Write a summary string to threads.summary."""
         self.update_thread(thread_id, summary=summary)
+
+    def set_summarized_count(self, thread_id: str, count: int) -> None:
+        """Record how many messages were present at last summarization."""
+        self.update_thread(thread_id, summarized_msg_count=count)
+
+    def get_stale_threads(self, threshold: int = 3) -> list[dict]:
+        """Return threads where substantive user message delta >= threshold."""
+        threads = self.get_all_threads()
+        stale = []
+        for t in threads:
+            tid = t["thread_id"]
+            msg_count = self.get_message_count(tid, exclude_junk=True)
+            summarized = t.get("summarized_msg_count") or 0
+            delta = msg_count - summarized
+            if delta >= threshold:
+                stale.append({**t, "delta": delta, "msg_count": msg_count})
+        return stale

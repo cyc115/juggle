@@ -171,3 +171,49 @@ def test_get_background_agents(db):
     agents = db.get_background_agents()
     assert len(agents) == 1
     assert agents[0]["agent_task_id"] == "task_123"
+
+
+def test_summarized_msg_count_default_zero(db):
+    tid = db.create_thread("Topic A", session_id="s1")
+    thread = db.get_thread(tid)
+    assert thread["summarized_msg_count"] == 0
+
+
+def test_set_summarized_count(db):
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.set_summarized_count(tid, 5)
+    thread = db.get_thread(tid)
+    assert thread["summarized_msg_count"] == 5
+
+
+def test_get_message_count_excludes_junk(db):
+    db.set_active(True)
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "real question about auth")
+    db.add_message(tid, "user", "/juggle:show-topics")           # junk: slash cmd
+    db.add_message(tid, "user", "<task-notification>...</task-notification>")  # junk
+    db.add_message(tid, "user", "another real question")
+    db.add_message(tid, "assistant", "some response")             # excluded: not user
+    assert db.get_message_count(tid, exclude_junk=True) == 2
+    assert db.get_message_count(tid, exclude_junk=False) == 4    # counts all user rows
+
+
+def test_get_stale_threads(db):
+    db.set_active(True)
+    tid = db.create_thread("Topic A", session_id="s1")
+    for i in range(3):
+        db.add_message(tid, "user", f"real question {i}")
+    stale = db.get_stale_threads(threshold=3)
+    assert len(stale) == 1
+    assert stale[0]["thread_id"] == tid
+    assert stale[0]["delta"] == 3
+
+
+def test_get_stale_threads_not_stale_after_set(db):
+    db.set_active(True)
+    tid = db.create_thread("Topic A", session_id="s1")
+    for i in range(3):
+        db.add_message(tid, "user", f"real question {i}")
+    db.set_summarized_count(tid, 3)
+    stale = db.get_stale_threads(threshold=3)
+    assert len(stale) == 0
