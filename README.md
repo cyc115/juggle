@@ -20,7 +20,7 @@ Multi-topic conversation orchestrator for Claude Code. Discuss one topic while b
 ## How It Works
 
 1. Run `/juggle:start` — initializes the database and activates hooks
-2. Talk normally — juggle detects topic shifts and offers to create new threads
+2. Talk normally — juggle detects topic shifts and automatically creates new threads
 3. Send work to background — agents research/build while you keep talking
 4. Get notified — completion notices appear at the next natural pause
 5. Switch topics — `/juggle:resume-topic B` restores full context from the database
@@ -54,16 +54,21 @@ Emoji indicators shown in `show-topics` (priority: current > background > done >
 |-------|-----------|
 | 👉 | Current thread |
 | 🏃 | Agent running (`status=background`) |
-| ⏸️ | Unanswered question — last assistant message ends with `?` and no real user reply follows; applies to any non-archived status |
+| ⏸️ | Unanswered question — last assistant message ends with `?` and no real user reply follows; applies when `status` is `active` or `done` and last assistant message has an unanswered `?` |
 | ✅ | Done (`status=done`, no unanswered question) |
 | ❌ | Failed (`status=failed`) |
-| 🗄️ | Idle >48 hours (`last_active` older than 48h, `status=active`) |
+| 🗄️ | Stale (idle >48h) — distinct from `status=archived` threads which are hidden entirely |
 | 💤 | Idle >30 minutes (`last_active` older than 30m, `status=active`) |
 
 ## Limits
 
-- Max 4 concurrent topics
-- Max 3 background agents
+| Limit | Default | Env var override |
+|---|---|---|
+| Concurrent topics | 10 | `JUGGLE_MAX_THREADS` |
+| Background agents | 20 | `JUGGLE_MAX_BACKGROUND_AGENTS` |
+
+Set env vars in your shell profile or `~/.claude/settings.json` to override.
+
 - 15-minute agent timeout
 - Topics persist across session compactions via SQLite
 
