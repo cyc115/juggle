@@ -16,7 +16,7 @@ from pathlib import Path
 # Add the directory containing this file to sys.path so we can import siblings.
 sys.path.insert(0, str(Path(__file__).parent))
 
-from juggle_db import JuggleDB
+from juggle_db import JuggleDB, MAX_BACKGROUND_AGENTS
 from juggle_context import build_context_string
 
 _DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude" / "juggle"))
@@ -187,6 +187,25 @@ def handle_post_tool_use(data: dict) -> None:
 
         # Only handle background agent calls.
         if not tool_input.get("run_in_background", False):
+            sys.exit(0)
+
+        # Concurrency check: warn if max background agents already reached.
+        db = get_db()
+        background_count = sum(
+            1 for t in db.get_all_threads() if t["status"] == "background"
+        )
+        if background_count >= MAX_BACKGROUND_AGENTS:
+            warning = (
+                f"⚠️ JUGGLE: Max concurrent agents ({MAX_BACKGROUND_AGENTS}) reached. "
+                "Wait for one to finish before dispatching another."
+            )
+            output = {
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": warning,
+                }
+            }
+            print(json.dumps(output))
             sys.exit(0)
 
         # Extract JUGGLE_THREAD:<id> from the agent prompt.

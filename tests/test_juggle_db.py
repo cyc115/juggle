@@ -53,9 +53,10 @@ def test_create_thread_sequential(db):
 
 
 def test_create_thread_max_10(db):
-    for i in range(10):
+    from juggle_db import MAX_THREADS
+    for i in range(MAX_THREADS):
         db.create_thread(f"Topic {i}", session_id="s1")
-    with pytest.raises(ValueError, match="Maximum of 10"):
+    with pytest.raises(ValueError, match=f"Maximum of {MAX_THREADS}"):
         db.create_thread("Topic overflow", session_id="s1")
 
 

@@ -2,11 +2,14 @@
 """Juggle DB - SQLite state manager for multi-topic conversation orchestrator."""
 
 import json
+import os as _os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+MAX_THREADS: int = int(_os.environ.get("JUGGLE_MAX_THREADS", 10))
+MAX_BACKGROUND_AGENTS: int = int(_os.environ.get("JUGGLE_MAX_BACKGROUND_AGENTS", 20))
 
 DB_PATH = Path.home() / ".claude" / "juggle" / "juggle.db"
 
@@ -218,9 +221,9 @@ class JuggleDB:
         with self._connect() as conn:
             rows = conn.execute("SELECT id, status FROM threads").fetchall()
             active_count = sum(1 for row in rows if row["status"] != "archived")
-            if active_count >= 10:
+            if active_count >= MAX_THREADS:
                 raise ValueError(
-                    "Maximum of 10 threads already exist. "
+                    f"Maximum of {MAX_THREADS} threads already exist. "
                     "Archive or complete a thread before creating a new one."
                 )
             new_id = str(uuid.uuid4())
