@@ -162,7 +162,7 @@ When the user asks for any implementation work, follow this exact sequence:
 □ First line of prompt: [JUGGLE_THREAD:<id>]
 □ No "--- JUGGLE ACTIVE ---" or any JUGGLE context block in the prompt
 □ Each line passes: "would the agent fail without this?" — if no, cut it
-□ No task description prose — find/replace strings or commands speak for themselves
+□ Task description: 1 line max, imperative ("Fix X in Y" not a paragraph)
 □ Compact headers: "Edit both:" not "Files to edit (both must be updated):"
 □ Use "Find:" / "Replace:" not "In each file, find the X section. It contains:"
 □ No transitional phrases: "After editing both files," / "Then run:" — order implies sequence
@@ -173,6 +173,7 @@ When the user asks for any implementation work, follow this exact sequence:
 **Compact format example** (find/replace task):
 ```
 [JUGGLE_THREAD:<id>]
+Fix summary style in auto-summary prompt.
 Edit both:
 - /path/to/file.py
 - /cache/path/file.py
