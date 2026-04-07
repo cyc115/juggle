@@ -34,6 +34,32 @@ Topics:
   [C] Quick Q: env var config   done (results ready)
 ```
 
+## Thread Status Types
+
+DB `status` column values and what sets them:
+
+| Status | Set by | Meaning |
+|--------|--------|---------|
+| `active` | `create-thread` | Normal open thread |
+| `background` | `set-agent` | Background agent running |
+| `done` | `complete-agent` | Work completed |
+| `failed` | `fail-agent` | Agent failed |
+| `archived` | `archive-thread` | Archived (hidden from list) |
+
+## Display States
+
+Emoji indicators shown in `show-topics` (priority: current > background > done > failed > archived > waiting > idle):
+
+| Emoji | Condition |
+|-------|-----------|
+| 👉 | Current thread |
+| 🏃 | Agent running (`status=background`) |
+| ⏸️ | Unanswered question — last assistant message ends with `?` and no real user reply follows; applies to any non-archived status |
+| ✅ | Done (`status=done`, no unanswered question) |
+| ❌ | Failed (`status=failed`) |
+| 🗄️ | Idle >48 hours (`last_active` older than 48h, `status=active`) |
+| 💤 | Idle >30 minutes (`last_active` older than 30m, `status=active`) |
+
 ## Limits
 
 - Max 4 concurrent topics
