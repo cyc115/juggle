@@ -243,6 +243,10 @@ def _last_sentences(text: str, max_chars: int = 200) -> str:
         line for line in text.splitlines()
         if not re.fullmatch(tree_chars + r"+", line)
     )
+    # Strip lines starting with tree-drawing characters (tree+text mixed lines)
+    lines = text.splitlines()
+    lines = [l for l in lines if not re.match(r'^\s*[│├└┌┐─]\s*', l)]
+    text = "\n".join(lines).strip()
     # Strip resulting empty lines
     text = "\n".join(line for line in text.splitlines() if line.strip())
     text = text.strip()

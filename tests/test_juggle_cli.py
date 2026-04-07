@@ -366,6 +366,17 @@ def test_last_sentences_strips_code_block():
     assert "Do the thing" in result
 
 
+def test_last_sentences_strips_tree_text_mixed_lines():
+    """Lines starting with tree-drawing chars followed by text are stripped."""
+    msg = "Here is a summary.\n├── ✅ [F] UUID storage + ephemeral label migration  done\n└── ❓ What next?\nPlease decide."
+    result = _last_sentences(msg)
+    assert "├──" not in result
+    assert "└──" not in result
+    assert "UUID storage" not in result
+    # Non-tree text must survive
+    assert "Please decide" in result or "Here is a summary" in result
+
+
 def test_show_topics_waiting_thread_shows_decision_prompt(tmp_path, capsys):
     """⏸️ thread shows 🤔 decision prompt instead of Last: Q/A block."""
     sys.path.insert(0, SRC_DIR)

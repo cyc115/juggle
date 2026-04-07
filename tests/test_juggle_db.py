@@ -398,6 +398,20 @@ def test_get_thread_state_done_answered_question_returns_done(db):
     assert state == "✅"
 
 
+def test_get_thread_state_done_junk_only_reply_returns_paused(db):
+    """get_thread_state returns ⏸️ for done threads where only junk messages follow the question."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "some question")
+    db.add_message(tid, "assistant", "Do you want me to proceed?")
+    # Only junk "replies" — slash commands and task-notifications
+    db.add_message(tid, "user", "/juggle:show-topics")
+    db.add_message(tid, "user", "<task-notification>task-id: abc</task-notification>")
+    db.update_thread(tid, status="done")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    assert state == "⏸️"
+
+
 def test_get_last_exchange_skips_junk_user_messages(db):
     """get_last_exchange should skip junk user messages and fall back to the previous real one."""
     tid = db.create_thread("Topic A", session_id="s1")

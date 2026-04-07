@@ -560,11 +560,12 @@ class JuggleDB:
                     (tid,),
                 ).fetchone()
                 if asst_row and asst_row["content"].rstrip().endswith("?"):
-                    user_after = conn.execute(
-                        "SELECT 1 FROM messages WHERE thread_id = ? AND role = 'user' AND id > ?",
+                    user_rows = conn.execute(
+                        "SELECT content FROM messages WHERE thread_id = ? AND role = 'user' AND id > ? ORDER BY id ASC",
                         (tid, asst_row["id"]),
-                    ).fetchone()
-                    if not user_after:
+                    ).fetchall()
+                    has_real_reply = any(not self._is_junk_message(r["content"]) for r in user_rows)
+                    if not has_real_reply:
                         return "⏸️"
             return "✅"
 
