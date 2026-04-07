@@ -553,6 +553,19 @@ class JuggleDB:
 
         # Done
         if status == "done":
+            # Check if last assistant message is an unanswered question
+            with self._connect() as conn:
+                asst_row = conn.execute(
+                    "SELECT id, content FROM messages WHERE thread_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+                    (tid,),
+                ).fetchone()
+                if asst_row and asst_row["content"].rstrip().endswith("?"):
+                    user_after = conn.execute(
+                        "SELECT 1 FROM messages WHERE thread_id = ? AND role = 'user' AND id > ?",
+                        (tid, asst_row["id"]),
+                    ).fetchone()
+                    if not user_after:
+                        return "⏸️"
             return "✅"
 
         # Failed

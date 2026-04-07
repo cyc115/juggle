@@ -375,6 +375,29 @@ def test_get_thread_state_priority_current_over_background(db):
     assert state == "👉"
 
 
+def test_get_thread_state_done_unanswered_question_returns_paused(db):
+    """get_thread_state returns ⏸️ for done threads where last assistant msg ends with ? and no user reply."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "some question")
+    db.add_message(tid, "assistant", "Do you want me to proceed?")
+    db.update_thread(tid, status="done")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    assert state == "⏸️"
+
+
+def test_get_thread_state_done_answered_question_returns_done(db):
+    """get_thread_state returns ✅ for done threads where user replied after assistant question."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.add_message(tid, "user", "some question")
+    db.add_message(tid, "assistant", "Do you want me to proceed?")
+    db.add_message(tid, "user", "yes please")
+    db.update_thread(tid, status="done")
+    thread = db.get_thread(tid)
+    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    assert state == "✅"
+
+
 def test_get_last_exchange_skips_junk_user_messages(db):
     """get_last_exchange should skip junk user messages and fall back to the previous real one."""
     tid = db.create_thread("Topic A", session_id="s1")
