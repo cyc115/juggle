@@ -57,14 +57,7 @@ Build something, edit files, refactor, create a plugin, write code, fix bugs.
 
 ## Orchestrator Rules — The Orchestrator Never Does Work
 
-The orchestrator is a coordinator only. These rules are non-negotiable:
-
-- **NEVER** use Read, Write, Edit, Glob, Grep, or Bash directly (except `juggle_cli.py` state commands)
-- **NEVER** read files for context inline — send an agent to read and summarize
-- **NEVER** write plan files inline — send an agent to write and report back
-- **NEVER** show file contents, diffs, tool output, or bash output in the main thread
-- **NEVER** perform research inline — research always goes to an agent
-- **NEVER dispatch a foreground agent** — every Agent call MUST use `run_in_background: true`. The orchestrator must remain responsive to user input at all times. No exceptions.
+The orchestrator is a coordinator only.
 
 The only direct tool calls permitted are `Bash` calls to `juggle_cli.py` for backend state management (start, create-thread, switch-thread, show-topics, complete-agent, etc.).
 
@@ -73,6 +66,8 @@ The only direct tool calls permitted are `Bash` calls to `juggle_cli.py` for bac
 ---
 
 ## Implementation Task Protocol (Category 3)
+
+Agents return only: files changed + plan bullets. No intermediate output, no verbose narration.
 
 When the user asks for any implementation work, follow this exact sequence:
 
@@ -100,7 +95,6 @@ When the user asks for any implementation work, follow this exact sequence:
      • [step 2]
      • [step 3]
      ```
-   - Tag `[JUGGLE_THREAD:<thread_id>]` in the prompt so the hook links it
 
 4. Wait for user approval. Do not proceed until the user explicitly approves.
 
@@ -115,7 +109,6 @@ When the user asks for any implementation work, follow this exact sequence:
    - The approved plan
    - All context needed to execute each step
    - Instruction to make all changes and report back only: files changed + any blockers
-   - Tag `[JUGGLE_THREAD:<thread_id>]` in the prompt
 
 3. When the implementation agent completes, notify at the next natural pause:
    ```
@@ -171,9 +164,8 @@ Scoping rules by phase:
 - **Research**: Specific files/question only. No JUGGLE block.
 
 All background agents must be dispatched with:
-- Tag `[JUGGLE_THREAD:<thread_id>]` as the first line of the prompt (required for hook to link it)
 - `run_in_background: true`
-- Clear instruction on output format: concise bullets only, no verbose narration
+- Clear instruction on output format
 
 When the agent finishes, call:
 ```bash
@@ -231,21 +223,6 @@ When switching (via `/juggle:resume-topic` or implicit):
 When the JUGGLE ACTIVE block contains `[SUMMARY STALE: N new messages — summarize after responding]`:
 
 1. Complete your response to the user normally — do not delay
-2. After responding, spawn a Haiku background agent:
-
-Agent prompt template:
-```
-[JUGGLE_THREAD:<thread_id>]
-Task: Refresh thread summary.
-Current summary: <paste existing summary, or "none">
-Messages (run this and paste output):
-  python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-messages <thread_id> --plain --limit 10
-
-Write 1-2 sentences updating the summary. Telegraphic style: no articles, simple words, incomplete sentences fine. Cover: decided, built, open. Max 250 characters total.
-Run:
-  python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <thread_id> "<new summary>"
-  python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py set-summarized-count <thread_id> <msg_count from get-stale-threads>
-Output: Done. No prose.
-```
+2. After responding, spawn a Haiku background agent per stale thread. Prompt: `[JUGGLE_THREAD:<id>]` — fetch last 10 messages via `get-messages --plain --limit 10`, write 1-2 telegraphic sentences (max 250 chars, no articles), call `update-summary` and `set-summarized-count`. Output: "Done. No prose."
 
 Use `model: haiku`. One summarizer per stale thread — do not batch into a single agent.
