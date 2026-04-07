@@ -49,7 +49,7 @@ class ContextBuilder:
                 if tid == current_thread:
                     suffix = " ← you are here"
                 elif status == "background":
-                    suffix = " 🏃 agent working..."
+                    suffix = " 🏃\u200d♂️ agent working..."
                 elif status == "done":
                     suffix = " ✓ done"
                 elif status == "failed":
@@ -141,7 +141,9 @@ def _trim_to_limit(text: str, limit: int) -> str:
         return text
 
     # Keep as much of the body as fits
-    trimmed_body = body[:body_budget - 4] + "\n..."
+    cut = body[:body_budget - 4]
+    cut = cut[:cut.rfind(' ')] if ' ' in cut else cut
+    trimmed_body = cut + "\n..."
     return f"{header}\n{trimmed_body}\n{footer}"
 
 
