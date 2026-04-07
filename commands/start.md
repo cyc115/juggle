@@ -41,7 +41,7 @@ Examples: "what does this file do?", "what's the weather?", "show me my topics"
 
 ### Category 1.5: Simple File Operation
 Writing a plan file, reading a config, checking a file exists, writing a doc.
-**Route**: Background agent. Agent performs the operation and returns only: path + 1-line description.
+**Route**: Background agent. Agent performs the operation and returns only: path + result.
 
 Examples: "write plan to the plan directory", "check if file X exists", "write this to a doc"
 
@@ -102,21 +102,7 @@ When the user asks for any implementation work, follow this exact sequence:
      ```
    - Tag `[JUGGLE_THREAD:<thread_id>]` in the prompt so the hook links it
 
-4. When the planning agent completes, the orchestrator surfaces ONLY the path + bullet list:
-   ```
-   Plan ready — [task label]
-
-   Written to <relative/path/to/plan.md>.
-
-   • [step 1]
-   • [step 2]
-   • [step 3]
-   ...
-
-   Approve to implement, or say what to change.
-   ```
-
-5. Wait for user approval. Do not proceed until the user explicitly approves.
+4. Wait for user approval. Do not proceed until the user explicitly approves.
 
 ### Phase 2 — Implement (background)
 
@@ -135,14 +121,6 @@ When the user asks for any implementation work, follow this exact sequence:
    ```
    [Topic X done] <task label> — <1-line summary of what changed>. Use /juggle:resume-topic X to review.
    ```
-
-### Main Thread Rules (all categories)
-
-- **NEVER** use Read, Write, Edit, Glob, Grep, or Bash in the main thread (except juggle_cli.py)
-- **NEVER** read files inline during implementation
-- **NEVER** show file diffs, edit blocks, or bash output in the main thread
-- **NEVER** ask clarifying questions mid-implementation — gather all context before dispatching
-- The main thread should only ever contain: task acknowledged → plan bullets → approved → running → done
 
 ---
 
@@ -188,7 +166,7 @@ Output: files changed + commit hash.
 ```
 
 Scoping rules by phase:
-- **Phase 1 (plan)**: Only files/snippets for this task. Use `get-shared-context --type decision` for cross-thread facts.
+- **Phase 1 (plan)**: Only files/snippets for this task. Use `juggle_cli.py get-shared-context --type decision` for cross-thread decisions.
 - **Phase 2 (implement)**: Approved plan bullets + file paths. Nothing else.
 - **Research**: Specific files/question only. No JUGGLE block.
 
@@ -221,10 +199,7 @@ On every user message, also check for topic shifts:
 
 ## Completion Notifications
 
-Show at the next natural pause, not mid-conversation:
-```
-[Topic B done] API rate limiting analysis ready — 3 findings. /juggle:resume-topic B to view.
-```
+Show at the next natural pause, not mid-conversation: `[Topic B done] API rate limiting analysis ready — 3 findings. /juggle:resume-topic B to view.`
 
 ---
 
@@ -257,8 +232,6 @@ When the JUGGLE ACTIVE block contains `[SUMMARY STALE: N new messages — summar
 
 1. Complete your response to the user normally — do not delay
 2. After responding, spawn a Haiku background agent:
-
-**Pre-dispatch checklist applies.** Strip all JUGGLE context from the agent prompt.
 
 Agent prompt template:
 ```
