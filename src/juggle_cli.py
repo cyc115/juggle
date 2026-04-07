@@ -197,7 +197,7 @@ def cmd_close_thread(args):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
     label = thread.get("label") or args.thread_id
-    db.update_thread(thread_uuid, status="closed")
+    db.update_thread(thread_uuid, status="done")
     print(f"Thread {label} ({thread['topic']}) closed.")
 
 

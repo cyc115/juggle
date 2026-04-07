@@ -502,17 +502,6 @@ def test_get_archive_candidates_old_inactive(db):
     assert any(c["id"] == tid_b for c in candidates)
 
 
-def test_get_archive_candidates_idle_24h(db):
-    """A thread with status='idle' and last_active > 24 hours is a candidate."""
-    from datetime import datetime, timezone, timedelta
-    tid_a = db.create_thread("Topic A", session_id="s1")
-    tid_b = db.create_thread("Topic B", session_id="s1")
-    db.set_current_thread(tid_a)
-    old_time = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-    db.update_thread(tid_b, status="idle", last_active=old_time)
-    candidates = db.get_archive_candidates()
-    assert any(c["id"] == tid_b for c in candidates)
-
 
 def test_get_archive_candidates_excludes_current(db):
     """Current thread is never a candidate even if it would otherwise qualify."""
@@ -717,14 +706,14 @@ def test_unarchive_thread_restores_show_in_list(db):
     assert t["show_in_list"] == 1
 
 
-def test_unarchive_thread_sets_status_done(db):
-    """unarchive_thread sets status='done'."""
+def test_unarchive_thread_sets_status_active(db):
+    """unarchive_thread sets status='active'."""
     tid = db.create_thread("Topic A", session_id="s1")
     db.archive_thread(tid)
     db.unarchive_thread(tid)
     t = db.get_thread(tid)
     assert t is not None
-    assert t["status"] == "done"
+    assert t["status"] == "active"
 
 
 def test_unarchive_thread_assigns_label(db):
@@ -762,7 +751,7 @@ def test_unarchive_thread_full_cycle(db):
 
     label = db.unarchive_thread(tid)
     t = db.get_thread(tid)
-    assert t["status"] == "done"
+    assert t["status"] == "active"
     assert t["show_in_list"] == 1
     assert t["label"] == label
     assert label is not None

@@ -303,7 +303,7 @@ def test_unarchive_thread_cli(started_db):
 
     t = db.get_thread(second_tid)
     assert t is not None
-    assert t["status"] == "done"
+    assert t["status"] == "active"
     assert t["show_in_list"] == 1
     assert t["label"] is not None
 
@@ -324,7 +324,7 @@ def test_unarchive_thread_cli_by_uuid(started_db):
 
     t = db.get_thread(tid)
     assert t is not None
-    assert t["status"] == "done"
+    assert t["status"] == "active"
     assert t["show_in_list"] == 1
 
 

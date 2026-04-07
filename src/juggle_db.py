@@ -655,11 +655,11 @@ class JuggleDB:
             conn.commit()
 
     def unarchive_thread(self, thread_id: str) -> str:
-        """Unarchive a thread: restore show_in_list=1, set status=done, assign a new label."""
+        """Unarchive a thread: restore show_in_list=1, set status=active, assign a new label."""
         with self._connect() as conn:
             label = _assign_label(conn)
             conn.execute(
-                "UPDATE threads SET status = 'done', show_in_list = 1, label = ? WHERE id = ?",
+                "UPDATE threads SET status = 'active', show_in_list = 1, label = ? WHERE id = ?",
                 (label, thread_id),
             )
             conn.commit()
@@ -710,9 +710,6 @@ class JuggleDB:
 
                         # last_active > 48 hours AND status not background/waiting
                         if age_seconds > 48 * 3600 and status not in ("background", "waiting"):
-                            is_candidate = True
-                        # status == 'idle' AND last_active > 24 hours
-                        elif status == "idle" and age_seconds > 24 * 3600:
                             is_candidate = True
                     except (ValueError, TypeError):
                         pass
