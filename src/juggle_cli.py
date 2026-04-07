@@ -183,7 +183,11 @@ def cmd_update_summary(args):
     if not db.get_thread(thread_uuid):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
-    db.update_thread(thread_uuid, summary=args.summary)
+    summary = args.summary
+    # Truncate at word boundary if over 150 chars
+    if len(summary) > 150:
+        summary = summary[:150].rsplit(' ', 1)[0]
+    db.update_thread(thread_uuid, summary=summary)
     updated = db.get_thread(thread_uuid)
     label = (updated.get("label") if updated else None) or args.thread_id
     print(f"Summary updated for Thread {label}.")

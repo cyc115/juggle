@@ -247,7 +247,7 @@ Current summary: <paste existing summary, or "none">
 Messages (run this and paste output):
   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-messages <thread_id> --plain --limit 10
 
-Write 1-2 sentences updating the summary. Telegraphic style: no articles, simple words, incomplete sentences fine. Cover: decided, built, open.
+Write 1-2 sentences updating the summary. Telegraphic style: no articles, simple words, incomplete sentences fine. Cover: decided, built, open. Max 150 characters total.
 Run:
   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <thread_id> "<new summary>"
   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py set-summarized-count <thread_id> <msg_count from get-stale-threads>
