@@ -654,6 +654,17 @@ class JuggleDB:
             )
             conn.commit()
 
+    def unarchive_thread(self, thread_id: str) -> str:
+        """Unarchive a thread: restore show_in_list=1, set status=done, assign a new label."""
+        with self._connect() as conn:
+            label = _assign_label(conn)
+            conn.execute(
+                "UPDATE threads SET status = 'done', show_in_list = 1, label = ? WHERE id = ?",
+                (label, thread_id),
+            )
+            conn.commit()
+        return label
+
     def get_archive_candidates(self) -> list[dict]:
         """Return threads that are candidates for archiving.
 

@@ -283,6 +283,51 @@ def test_get_archive_candidates_excludes_archived(started_db):
 
 
 # ------------------------------------------------------------------
+# unarchive-thread CLI tests
+# ------------------------------------------------------------------
+
+def test_unarchive_thread_cli(started_db):
+    """unarchive-thread restores thread and prints 'Thread X unarchived.'"""
+    db_path, general_tid = started_db
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(db_path))
+
+    # Archive first, then unarchive via CLI
+    second_tid = db.create_thread("Second topic", session_id="")
+    db.archive_thread(second_tid)
+
+    result = run_cli(["unarchive-thread", second_tid], db_path)
+    assert result.returncode == 0
+    assert "unarchived" in result.stdout
+
+    t = db.get_thread(second_tid)
+    assert t is not None
+    assert t["status"] == "done"
+    assert t["show_in_list"] == 1
+    assert t["label"] is not None
+
+
+def test_unarchive_thread_cli_by_uuid(started_db):
+    """unarchive-thread accepts full UUID."""
+    db_path, general_tid = started_db
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(db_path))
+
+    tid = db.create_thread("Archived topic", session_id="")
+    db.archive_thread(tid)
+
+    result = run_cli(["unarchive-thread", tid], db_path)
+    assert result.returncode == 0
+    assert "unarchived" in result.stdout
+
+    t = db.get_thread(tid)
+    assert t["status"] == "done"
+    assert t["show_in_list"] == 1
+
+
+# ------------------------------------------------------------------
 # show-topics filters archived threads
 # ------------------------------------------------------------------
 

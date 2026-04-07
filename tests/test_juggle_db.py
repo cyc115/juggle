@@ -701,3 +701,68 @@ def test_label_recycled_after_archive(db):
 
     tid_b = db.create_thread("Second", session_id="s1")
     assert db.get_thread(tid_b)["label"] == "A"  # 'A' recycled
+
+
+# ------------------------------------------------------------------
+# unarchive_thread tests
+# ------------------------------------------------------------------
+
+def test_unarchive_thread_restores_show_in_list(db):
+    """unarchive_thread sets show_in_list=1."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.archive_thread(tid)
+    db.unarchive_thread(tid)
+    t = db.get_thread(tid)
+    assert t is not None
+    assert t["show_in_list"] == 1
+
+
+def test_unarchive_thread_sets_status_done(db):
+    """unarchive_thread sets status='done'."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.archive_thread(tid)
+    db.unarchive_thread(tid)
+    t = db.get_thread(tid)
+    assert t is not None
+    assert t["status"] == "done"
+
+
+def test_unarchive_thread_assigns_label(db):
+    """unarchive_thread assigns a non-null label."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.archive_thread(tid)
+    label = db.unarchive_thread(tid)
+    t = db.get_thread(tid)
+    assert t is not None
+    assert t["label"] is not None
+    assert t["label"] == label
+    assert len(label) == 1
+    assert label.isalpha()
+
+
+def test_unarchive_thread_returns_label(db):
+    """unarchive_thread return value matches stored label."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.archive_thread(tid)
+    returned_label = db.unarchive_thread(tid)
+    t = db.get_thread(tid)
+    assert t["label"] == returned_label
+
+
+def test_unarchive_thread_full_cycle(db):
+    """create → archive → unarchive produces expected state."""
+    tid = db.create_thread("Topic A", session_id="s1")
+    assert db.get_thread(tid)["label"] == "A"
+
+    db.archive_thread(tid)
+    t = db.get_thread(tid)
+    assert t["status"] == "archived"
+    assert t["label"] is None
+    assert t["show_in_list"] == 0
+
+    label = db.unarchive_thread(tid)
+    t = db.get_thread(tid)
+    assert t["status"] == "done"
+    assert t["show_in_list"] == 1
+    assert t["label"] == label
+    assert label is not None

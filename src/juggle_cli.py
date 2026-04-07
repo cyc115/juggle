@@ -463,6 +463,13 @@ def cmd_archive_thread(args):
     print(f"Thread {label} archived.")
 
 
+def cmd_unarchive_thread(args):
+    db = get_db()
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    label = db.unarchive_thread(thread_uuid)
+    print(f"Thread {label} unarchived.")
+
+
 def cmd_get_shared_context(args):
     db = get_db()
     rows = db.get_shared_context()
@@ -685,6 +692,11 @@ def main():
     p_archive = subparsers.add_parser("archive-thread", help="Archive a thread")
     p_archive.add_argument("thread_id", help="Thread ID to archive")
     p_archive.set_defaults(func=cmd_archive_thread)
+
+    # unarchive-thread
+    p_unarchive = subparsers.add_parser("unarchive-thread", help="Unarchive a thread")
+    p_unarchive.add_argument("thread_id", help="Thread ID to unarchive (label or UUID)")
+    p_unarchive.set_defaults(func=cmd_unarchive_thread)
 
     # get-shared-context
     p_get_shared = subparsers.add_parser("get-shared-context", help="Read shared context entries")
