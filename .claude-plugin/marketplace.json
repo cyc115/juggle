@@ -9,7 +9,7 @@
       "source": "./",
       "description": "Multi-topic conversation orchestrator. Discuss one topic while background agents research or build for others.",
       "category": "productivity",
-      "version": "1.0.0"
+      "version": "1.0.1"
     }
   ]
 }
