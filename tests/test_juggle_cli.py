@@ -288,7 +288,7 @@ def test_get_archive_candidates_excludes_archived(started_db):
 
 def test_unarchive_thread_cli(started_db):
     """unarchive-thread restores thread and prints 'Thread X unarchived.'"""
-    db_path, general_tid = started_db
+    db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
     db = JuggleDB(str(db_path))
@@ -310,7 +310,7 @@ def test_unarchive_thread_cli(started_db):
 
 def test_unarchive_thread_cli_by_uuid(started_db):
     """unarchive-thread accepts full UUID."""
-    db_path, general_tid = started_db
+    db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
     db = JuggleDB(str(db_path))
@@ -323,6 +323,7 @@ def test_unarchive_thread_cli_by_uuid(started_db):
     assert "unarchived" in result.stdout
 
     t = db.get_thread(tid)
+    assert t is not None
     assert t["status"] == "done"
     assert t["show_in_list"] == 1
 
