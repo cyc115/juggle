@@ -5,35 +5,33 @@ allowed-tools: Bash, Agent, Edit, Write
 
 # /juggle:resume-topic — Switch Conversation Topic
 
-When the user runs `/juggle:resume-topic <id>`, switch the foreground conversation to the specified topic.
-
 ## Arguments
-- `<id>` — The topic letter (A, B, C, D). Required.
+- `<id>` — Topic letter (A, B, C, D). Required.
 
-## What to Do
+## Steps
 
-1. **Save the current topic's state** before switching. Generate a rolling summary of the conversation so far, then persist it:
+1. Save current topic state:
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <current_id> "<summary>"
    ```
-   Also save key decisions and open questions as they arise:
+   Save decisions/questions as they arise:
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-meta <current_id> --add-decision "<text>"
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-meta <current_id> --add-question "<text>"
    ```
 
-2. **Load the target topic from the backend**:
+2. Load target topic:
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py switch-thread <id>
    ```
-   If this errors with "Thread not found", respond:
-   `"Topic [X] doesn't exist. Use /juggle:show-topics to see open topics."`
+   On "Thread not found":
+   `"Topic [X] doesn't exist. Use /juggle:show-topics."`
 
-3. **Present the loaded context** to the user:
+3. Present loaded context:
    ```
    Returning to Topic [X]: [label]
 
-   Where we left off: [summary from CLI output]
+   Where we left off: [summary]
 
    Key decisions:
    - [from CLI output]
@@ -42,12 +40,12 @@ When the user runs `/juggle:resume-topic <id>`, switch the foreground conversati
    - [from CLI output]
 
    [If background agent completed:]
-   Background results: [agent_result from CLI output]
+   Background results: [agent_result]
    ```
 
-4. **If the topic has a completed background agent result**: Present the results and ask if the user wants to discuss them or move on.
+4. Completed agent result: present results, ask to discuss or move on.
 
-5. **If the topic has a failed background agent**: Show the error reason and ask if the user wants to retry.
+5. Failed agent: show error, ask to retry.
 
-6. **Offer to send the previous topic to background** if it had ongoing work:
-   `"Want me to continue working on Topic [previous] in the background while you're here?"`
+6. Offer to background prior topic if it had ongoing work:
+   `"Continue Topic [previous] in background?"`

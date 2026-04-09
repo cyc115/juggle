@@ -3,77 +3,72 @@ description: Archive completed or stale conversation topics to reduce clutter
 allowed-tools: Bash
 ---
 
-# /juggle:archive-topics — Archive Completed or Stale Topics
+# /juggle:archive-topics — Archive Topics
 
-When the user runs `/juggle:archive-topics`, scan for threads ready to be archived and let the user confirm before archiving anything.
-
-## Step 1: Get archive candidates
+## Step 1: Get candidates
 
 Run:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-archive-candidates
 ```
 
-If the output is `No archive candidates.` — respond:
-> "Nothing to archive right now."
+On `No archive candidates.`:
+> "Nothing to archive."
 
-Stop here.
+Stop.
 
 ## Step 2: Present candidates
-
-Format the output as a list with status badge and last_active for each candidate. For example:
 
 ```
 Found N topics ready to archive:
 
-  [C] Battery usage check      ✅ done — completed 1 hr ago
-  [B] Juggle architecture research  ✅ done — completed 2 hrs ago
-  [A] General                  💤 idle — no activity for 9 hours
+  [C] Battery usage check          ✅ done — 1 hr ago
+  [B] Juggle architecture research ✅ done — 2 hrs ago
+  [A] General                      💤 idle — 9 hrs ago
 
 Archive all N? (yes / pick / skip)
-  yes   — archive all
-  pick  — choose individually
-  skip  — do nothing
+  yes  — archive all
+  pick — choose individually
+  skip — do nothing
 ```
 
-Wait for the user's response.
+Wait for response.
 
 ## Step 3: Handle response
 
-### "yes" — archive all candidates
+### "yes"
 
-For each candidate thread, run:
+For each candidate:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py archive-thread <tid>
 ```
 
-Report what was archived:
+Report:
 ```
-Archived N topics: [C] Battery usage check, [B] Juggle architecture research, [A] General
+Archived N topics: [C] Battery usage check, [B] Juggle research, [A] General
 ```
 
-### "pick" — choose individually
+### "pick"
 
-For each candidate in order, ask:
+For each candidate:
 ```
 Archive [C] Battery usage check? (y/n)
 ```
 
-Wait for the user's answer before moving to the next. Archive confirmed threads one at a time:
+Wait before next. Archive confirmed threads:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py archive-thread <tid>
 ```
 
-At the end, report which threads were archived and which were skipped.
+Report archived and skipped.
 
-### "skip" — do nothing
+### "skip"
 
-Respond:
 > "No changes made."
 
 ## Error handling
 
-If any `archive-thread` command errors, report the error and continue with the remaining threads. Do not abort the whole operation on a single failure.
+On `archive-thread` error: report and continue. Don't abort.
 
-If juggle is not active or the CLI errors on `get-archive-candidates`:
-> "Juggle mode isn't active. Run /juggle:start to activate it."
+On CLI error or juggle not active:
+> "Juggle not active. Run /juggle:start."
