@@ -1,0 +1,138 @@
+"""Tests for JuggleTmuxManager — subprocess calls are mocked."""
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, patch, call
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+
+@pytest.fixture
+def mgr():
+    from juggle_tmux import JuggleTmuxManager
+    return JuggleTmuxManager(session_name="juggle-test")
+
+
+def _ok(stdout=""):
+    """Return a mock CompletedProcess with returncode=0."""
+    m = MagicMock()
+    m.returncode = 0
+    m.stdout = stdout
+    return m
+
+
+def _fail():
+    m = MagicMock()
+    m.returncode = 1
+    m.stdout = ""
+    return m
+
+
+def test_ensure_session_creates_when_missing(mgr):
+    with patch("subprocess.run") as mock_run:
+        mock_run.side_effect = [_ok(), _fail(), _ok()]  # which, has-session fail, new-session
+        mgr.ensure_session()
+    calls = [c.args[0] for c in mock_run.call_args_list]
+    assert any("new-session" in c for c in calls)
+
+
+def test_ensure_session_skips_if_exists(mgr):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = _ok()
+        mgr.ensure_session()
+    calls = [c.args[0] for c in mock_run.call_args_list]
+    assert all("new-session" not in c for c in calls)
+
+
+def test_ensure_session_raises_if_no_tmux(mgr):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = _fail()  # which tmux → not found
+        with pytest.raises(RuntimeError, match="tmux not found"):
+            mgr.ensure_session()
+
+
+def test_spawn_pane_returns_pane_id(mgr):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = _ok(stdout="%5\n")
+        pane_id = mgr.spawn_pane()
+    assert pane_id == "%5"
+
+
+def test_verify_pane_true_when_present(mgr):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = _ok(stdout="%1\n%3\n%5\n")
+        assert mgr.verify_pane("%3") is True
+
+
+def test_verify_pane_false_when_absent(mgr):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = _ok(stdout="%1\n%2\n")
+        assert mgr.verify_pane("%9") is False
+
+
+def test_kill_pane_calls_tmux(mgr):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = _ok()
+        mgr.kill_pane("%3")
+    args = mock_run.call_args.args[0]
+    assert "kill-pane" in args
+    assert "-t" in args
+    assert "%3" in args
+
+
+def test_send_task_loads_and_pastes(mgr, tmp_path):
+    with patch("subprocess.run") as mock_run, \
+         patch("time.sleep"), \
+         patch("juggle_tmux.uuid") as mock_uuid:
+        mock_uuid.uuid4.return_value.hex.__getitem__ = lambda s, i: "abc12345"
+        mock_run.return_value = _ok()
+        mgr.send_task("%3", "do something", is_new=False)
+    calls = [c.args[0] for c in mock_run.call_args_list]
+    assert any("load-buffer" in c for c in calls)
+    assert any("paste-buffer" in c for c in calls)
+    assert any("send-keys" in c for c in calls)
+
+
+def test_send_task_sleeps_when_new(mgr):
+    with patch("subprocess.run") as mock_run, \
+         patch("time.sleep") as mock_sleep:
+        mock_run.return_value = _ok()
+        mgr.send_task("%3", "do something", is_new=True)
+    mock_sleep.assert_called_once_with(2)
+
+
+def test_send_task_no_sleep_when_not_new(mgr):
+    with patch("subprocess.run") as mock_run, \
+         patch("time.sleep") as mock_sleep:
+        mock_run.return_value = _ok()
+        mgr.send_task("%3", "do something", is_new=False)
+    mock_sleep.assert_not_called()
+
+
+def test_spawn_agent_creates_db_record(mgr, tmp_path):
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+
+    with patch.object(mgr, "ensure_session"), \
+         patch.object(mgr, "spawn_pane", return_value="%7"), \
+         patch.object(mgr, "start_claude_in_pane"):
+        agent = mgr.spawn_agent(db, role="coder")
+
+    assert agent["role"] == "coder"
+    assert agent["pane_id"] == "%7"
+    assert agent["status"] == "idle"
+
+
+def test_decommission_agent_kills_pane_and_deletes(mgr, tmp_path):
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    agent_id = db.create_agent(role="coder", pane_id="%3")
+
+    with patch.object(mgr, "kill_pane") as mock_kill:
+        mgr.decommission_agent(db, agent_id)
+
+    mock_kill.assert_called_once_with("%3")
+    assert db.get_agent(agent_id) is None
