@@ -156,6 +156,7 @@ Agents return: files changed + plan bullets. No intermediate output.
 □ No JUGGLE context block in prompt
 □ Prompt ends with: python3 juggle_cli.py complete-agent <thread_id> "<1-line result>"
 □ (release-agent is appended automatically by send-task)
+□ Context source: either inline OR "read <file>" — never both
 ```
 
 **Dispatch pattern**:
