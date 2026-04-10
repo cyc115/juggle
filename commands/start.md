@@ -78,18 +78,20 @@ Agents return: files changed + plan bullets. No intermediate output.
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<task label>"
    ```
 
-3. Dispatch background planning agent with:
-   - Full task description
-   - Relevant context (files, constraints)
-   - Return format only:
-     ```
-     Written to <relative/path/to/plan.md>.
+3. Dispatch background planning agent:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role planner
+   # → <agent_id> <pane_id>
+   cat > /tmp/juggle_task.txt << 'EOF'
+   [JUGGLE_THREAD:<thread_id>]
+   Write implementation plan for: <task description>
+   Read relevant files. Write plan to /Users/mikechen/Documents/personal/projects/juggle/plan/<date>-<name>.md
 
-     Plan:
-     • [step 1]
-     • [step 2]
-     • [step 3]
-     ```
+   On completion:
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
+   EOF
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/juggle_task.txt
+   ```
 
 4. Wait for user approval. Do not proceed without it.
 
@@ -100,10 +102,22 @@ Agents return: files changed + plan bullets. No intermediate output.
    Implementing in background. Topic [X] running — what else?
    ```
 
-2. Dispatch background implementation agent with:
-   - Approved plan
-   - File paths
-   - Return format: files changed + blockers only
+2. Dispatch background implementation agent:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role coder
+   # → <agent_id> <pane_id>
+   cat > /tmp/juggle_task.txt << 'EOF'
+   [JUGGLE_THREAD:<thread_id>]
+   Implement approved plan:
+   <paste approved plan bullets>
+
+   Files: <list file paths>
+
+   On completion:
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Done. <files changed>"
+   EOF
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/juggle_task.txt
+   ```
 
 3. On completion, notify at next natural pause:
    ```
@@ -115,60 +129,75 @@ Agents return: files changed + plan bullets. No intermediate output.
 ## Research Protocol (Category 2)
 
 1. Say: `"Researching in background..."`
-2. Create topic thread. Dispatch background research agent.
-3. On complete: short bulleted summary only. No raw exploration output.
+2. Create topic thread.
+3. Dispatch background research agent:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role researcher
+   cat > /tmp/juggle_task.txt << 'EOF'
+   [JUGGLE_THREAD:<thread_id>]
+   <research question — specific files/question only>
+
+   On completion:
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings summary>"
+   EOF
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/juggle_task.txt
+   ```
+4. On complete: short bulleted summary only. No raw exploration output.
 
 ---
 
-## Background Agent Dispatch Format
+## Tmux Agent Dispatch Format
 
-**Pre-Dispatch Checklist** — verify before every `Agent(run_in_background=True)`:
+**Pre-Dispatch Checklist** — verify before every agent dispatch:
 ```
-□ First line: [JUGGLE_THREAD:<id>]
+□ Thread ID resolved (use label or UUID)
+□ Role selected: researcher (Cat 2), planner (Cat 3 phase 1), coder (Cat 3 phase 2)
+□ Prompt file contains [JUGGLE_THREAD:<id>] as first line
 □ No JUGGLE context block in prompt
-□ Each line: "would agent fail without this?" — if no, cut it
-□ Task: 1 line, imperative ("Fix X in Y")
-□ Compact headers: "Edit both:" not "Files to edit (both must be updated):"
-□ Use "Find:" / "Replace:" not verbose descriptions
-□ No transitional phrases ("After editing...", "Then run:")
-□ No conversation history or unrelated agent results
-□ Output format specified
+□ Prompt ends with: python3 juggle_cli.py complete-agent <thread_id> "<1-line result>"
+□ (release-agent is appended automatically by send-task)
 ```
 
-**Compact format example**:
+**Dispatch pattern**:
+```bash
+# 1. Get best idle agent (spawns if needed)
+python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role coder
+# → <agent_id> <pane_id> [new]
+
+# 2. Write task prompt to temp file
+cat > /tmp/juggle_task.txt << 'EOF'
+[JUGGLE_THREAD:<thread_id>]
+<task: 1 line, imperative>
+
+<context: files, constraints — only what agent needs>
+
+On completion:
+python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<1-line result>"
+EOF
+
+# 3. Send to agent (appends release-agent automatically)
+python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/juggle_task.txt
 ```
-[JUGGLE_THREAD:<id>]
-Fix summary style in auto-summary prompt.
-Edit both:
-- /path/to/file.py
-- /cache/path/file.py
 
-Find: `old string`
-Replace: `new string`
-
-git add file.py && git commit -m "fix: description"
-python3 juggle_cli.py complete-agent <id> "<result>"
-
-Output: files changed + commit hash.
-```
-
-Scoping by phase:
-- **Phase 1 (plan)**: Task-relevant files only. Use `get-shared-context --type decision` for cross-thread decisions.
-- **Phase 2 (implement)**: Approved plan bullets + file paths. Nothing else.
-- **Research**: Specific files/question only. No JUGGLE block.
-
-All background agents:
-- `run_in_background: true`
-- Clear output format
+**Role selection**:
+| Task | Role |
+|---|---|
+| Cat 1.5: simple file op | (no --role; any idle agent) |
+| Cat 2: research | `--role researcher` |
+| Cat 3 phase 1: plan | `--role planner` |
+| Cat 3 phase 2: implement | `--role coder` |
 
 On agent completion:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<concise result>"
+# Called automatically by the agent itself — no orchestrator action needed.
+# Orchestrator picks up result via pending notifications on next message.
+python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>"
 ```
 
-On agent failure:
+On agent failure — if the agent outputs an error before completing, it should call:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py fail-agent <thread_id> "<error>"
+python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py release-agent <agent_id>
 ```
 
 ---
@@ -208,9 +237,9 @@ At next natural pause only:
 ## Limits
 
 - Max `JUGGLE_MAX_THREADS` concurrent topics (default: 10)
-- Max `JUGGLE_MAX_BACKGROUND_AGENTS` concurrent agents (default: 20)
-- Agent timeout: 15 minutes
-- L2 agents may spawn unlimited subagents. Juggle does not track L3.
+- Max `JUGGLE_MAX_BACKGROUND_AGENTS` agents in pool (default: 20)
+- Agents persist until: explicit decommission, or assigned thread is archived
+- L2 agents (inside tmux panes) may use any tools. Juggle does not track L3.
 
 ---
 
@@ -219,6 +248,18 @@ At next natural pause only:
 When JUGGLE ACTIVE block contains `[SUMMARY STALE: N new messages — summarize after responding]`:
 
 1. Respond normally first. No delay.
-2. After responding: spawn Haiku background agent per stale thread. Prompt: `[JUGGLE_THREAD:<id>]` — fetch last 10 messages via `get-messages --plain --limit 10`, write 1-2 telegraphic sentences (max 250 chars, no articles), call `update-summary` and `set-summarized-count`. Output: "Done. No prose."
-
-Use `model: haiku`. One agent per stale thread. No batching.
+2. After responding: get a researcher agent and send the summarization task:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id>
+   cat > /tmp/summary_task.txt << 'EOF'
+   [JUGGLE_THREAD:<thread_id>]
+   Summarize thread. Run:
+     python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-messages <thread_id> --plain --limit 10
+   Write 1-2 telegraphic sentences (max 250 chars, no articles). Then:
+     python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <thread_id> "<summary>"
+     python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py set-summarized-count <thread_id> <count>
+     python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Done."
+   EOF
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/summary_task.txt
+   ```
+One dispatch per stale thread. No batching.

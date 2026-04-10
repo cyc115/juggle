@@ -528,6 +528,7 @@ def test_get_agent_marks_busy(started_db):
     agent_id = result.stdout.strip().split()[0]
     db = JuggleDB(str(db_path))
     agent = db.get_agent(agent_id)
+    assert agent is not None
     assert agent["status"] == "busy"
     assert agent["assigned_thread"] == thread_id
 
@@ -546,6 +547,7 @@ def test_release_agent_marks_idle(started_db):
 
     db = JuggleDB(str(db_path))
     agent = db.get_agent(agent_id)
+    assert agent is not None
     assert agent["status"] == "idle"
     assert agent["assigned_thread"] is None
 
@@ -562,6 +564,7 @@ def test_release_agent_adds_context_thread(started_db):
 
     db = JuggleDB(str(db_path))
     agent = db.get_agent(agent_id)
+    assert agent is not None
     context = json.loads(agent["context_threads"])
     assert thread_id in context
 
@@ -663,4 +666,5 @@ def test_archive_thread_marks_busy_agents_pending(started_db):
     result = run_cli(["archive-thread", thread_id], db_path)
     assert result.returncode == 0
     agent = JuggleDB(str(db_path)).get_agent(agent_id)
+    assert agent is not None
     assert agent["status"] == "decommission_pending"
