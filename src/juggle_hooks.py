@@ -16,7 +16,7 @@ from pathlib import Path
 # Add the directory containing this file to sys.path so we can import siblings.
 sys.path.insert(0, str(Path(__file__).parent))
 
-from juggle_db import JuggleDB, MAX_BACKGROUND_AGENTS
+from juggle_db import JuggleDB
 from juggle_context import build_context_string
 
 _DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude" / "juggle"))
@@ -154,7 +154,7 @@ def handle_session_start(data: dict) -> None:
 
 
 def handle_post_tool_use(data: dict) -> None:
-    """Capture background agent task IDs from Agent tool calls."""
+    """Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls."""
     if not is_active():
         sys.exit(0)
 
@@ -166,8 +166,8 @@ def handle_post_tool_use(data: dict) -> None:
         if tool_name in FORBIDDEN_TOOLS and is_active():
             warning = (
                 f"⚠️ ORCHESTRATOR VIOLATION: You used [{tool_name}] directly in the main thread. "
-                "All file reads, edits, and searches MUST go through background agents. "
-                "Dispatch an Agent with run_in_background=true instead."
+                "All file reads, edits, and searches MUST go through tmux agents. "
+                "Dispatch a task to a tmux agent instead."
             )
             output = {
                 "hookSpecificOutput": {
@@ -185,60 +185,10 @@ def handle_post_tool_use(data: dict) -> None:
         if not isinstance(tool_input, dict):
             sys.exit(0)
 
-        # Only handle background agent calls.
-        if not tool_input.get("run_in_background", False):
-            sys.exit(0)
-
-        # Concurrency check: warn if max background agents already reached.
-        db = get_db()
-        background_count = sum(
-            1 for t in db.get_all_threads() if t["status"] == "background"
-        )
-        if background_count >= MAX_BACKGROUND_AGENTS:
-            warning = (
-                f"⚠️ JUGGLE: Max concurrent agents ({MAX_BACKGROUND_AGENTS}) reached. "
-                "Wait for one to finish before dispatching another."
-            )
-            output = {
-                "hookSpecificOutput": {
-                    "hookEventName": "PostToolUse",
-                    "additionalContext": warning,
-                }
-            }
-            print(json.dumps(output))
-            sys.exit(0)
-
         # Extract JUGGLE_THREAD:<id> from the agent prompt.
         prompt = tool_input.get("prompt", "")
         thread_match = re.search(r"\[JUGGLE_THREAD:([^\]]+)\]", prompt)
-        if not thread_match:
-            sys.exit(0)
-        thread_id = thread_match.group(1)
-
-        # Extract task_id from the tool response.
-        tool_response = data.get("tool_response", "")
-        task_id = None
-
-        if isinstance(tool_response, dict):
-            task_id = tool_response.get("task_id")
-        elif isinstance(tool_response, str):
-            # Try JSON parse first.
-            try:
-                parsed = json.loads(tool_response)
-                if isinstance(parsed, dict):
-                    task_id = parsed.get("task_id")
-            except (json.JSONDecodeError, ValueError):
-                pass
-            # Fall back to string pattern match.
-            if task_id is None:
-                id_match = re.search(r'"?task_id"?\s*[=:]\s*"?([A-Za-z0-9_-]+)"?', tool_response)
-                if id_match:
-                    task_id = id_match.group(1)
-
-        if task_id and thread_id:
-            db = get_db()
-            db.update_thread(thread_id, agent_task_id=task_id, status="background")
-            logging.info("Linked agent task %s to juggle thread %s", task_id, thread_id)
+        thread_id = thread_match.group(1) if thread_match else None
 
         # Violation logging: warn if JUGGLE ACTIVE block was forwarded to a sub-agent.
         if "JUGGLE ACTIVE" in prompt:

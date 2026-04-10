@@ -120,3 +120,52 @@ def test_classification_candidates_includes_all_open_statuses():
 
 def test_classification_candidates_empty_input():
     assert get_classification_candidates([]) == []
+
+
+# ---------------------------------------------------------------------------
+# PostToolUse handler tests
+# ---------------------------------------------------------------------------
+
+def test_post_tool_use_forbidden_tool_warns(active_db, monkeypatch):
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
+    import importlib
+    import io
+    import sys as _sys
+    import json
+    import juggle_hooks
+    importlib.reload(juggle_hooks)
+
+    data = {"tool_name": "Read", "tool_input": {}, "tool_response": ""}
+
+    old_stdout = _sys.stdout
+    _sys.stdout = io.StringIO()
+    try:
+        with pytest.raises(SystemExit):
+            juggle_hooks.handle_post_tool_use(data)
+        output = _sys.stdout.getvalue()
+    finally:
+        _sys.stdout = old_stdout
+
+    parsed = json.loads(output)
+    assert "ORCHESTRATOR VIOLATION" in parsed["hookSpecificOutput"]["additionalContext"]
+
+
+def test_post_tool_use_no_agent_task_id_tracking(active_db, monkeypatch):
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
+    import importlib
+    import juggle_hooks
+    importlib.reload(juggle_hooks)
+
+    thread_id = active_db.get_current_thread()
+    prompt = f"[JUGGLE_THREAD:{thread_id}] Do some work."
+    data = {
+        "tool_name": "Agent",
+        "tool_input": {"prompt": prompt, "run_in_background": True},
+        "tool_response": '{"task_id": "abc-123"}',
+    }
+
+    with pytest.raises(SystemExit):
+        juggle_hooks.handle_post_tool_use(data)
+
+    thread = active_db.get_thread(thread_id)
+    assert thread["status"] != "background"
