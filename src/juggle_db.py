@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS session (
 );
 """
 
+CREATE_AGENTS = """
+CREATE TABLE IF NOT EXISTS agents (
+  id              TEXT PRIMARY KEY,
+  role            TEXT NOT NULL,
+  pane_id         TEXT NOT NULL,
+  assigned_thread TEXT,
+  status          TEXT NOT NULL DEFAULT 'idle',
+  context_threads TEXT NOT NULL DEFAULT '[]',
+  created_at      TEXT NOT NULL,
+  last_active     TEXT NOT NULL
+);
+"""
+
 
 def _assign_label(conn: sqlite3.Connection) -> str:
     """Return first letter A–Z not currently held by any non-archived thread."""
@@ -105,6 +118,7 @@ class JuggleDB:
             conn.execute(CREATE_SHARED_CONTEXT)
             conn.execute(CREATE_NOTIFICATIONS)
             conn.execute(CREATE_SESSION)
+            conn.execute(CREATE_AGENTS)
             self._migrate(conn)
             conn.commit()
 
@@ -167,6 +181,13 @@ class JuggleDB:
                 conn.execute("ALTER TABLE threads ADD COLUMN label TEXT")
             except Exception:
                 pass
+
+        # Migration 5: add agents table for tmux persistent agent pool
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        if "agents" not in tables:
+            conn.execute(CREATE_AGENTS)
 
     # ------------------------------------------------------------------
     # Session helpers
@@ -664,6 +685,90 @@ class JuggleDB:
             )
             conn.commit()
         return label
+
+    # ------------------------------------------------------------------
+    # Agent pool operations
+    # ------------------------------------------------------------------
+
+    def create_agent(self, role: str, pane_id: str) -> str:
+        """Create a new agent record. Returns the agent UUID."""
+        new_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO agents
+                  (id, role, pane_id, assigned_thread, status, context_threads, created_at, last_active)
+                VALUES (?, ?, ?, NULL, 'idle', '[]', ?, ?)
+                """,
+                (new_id, role, pane_id, now, now),
+            )
+            conn.commit()
+        return new_id
+
+    def get_agent(self, agent_id: str) -> dict | None:
+        """Look up an agent by UUID. Returns None if not found."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agents WHERE id = ?", (agent_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_all_agents(self) -> list[dict]:
+        """Return all agents ordered by creation time."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agents ORDER BY created_at"
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def update_agent(self, agent_id: str, **kwargs):
+        """Update any column(s) on an agent row. Serializes list values to JSON."""
+        if not kwargs:
+            return
+        serialized = {
+            k: json.dumps(v) if isinstance(v, list) else v
+            for k, v in kwargs.items()
+        }
+        set_clause = ", ".join(f"{col} = ?" for col in serialized)
+        values = list(serialized.values()) + [agent_id]
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE agents SET {set_clause} WHERE id = ?",
+                values,
+            )
+            conn.commit()
+
+    def delete_agent(self, agent_id: str):
+        """Delete an agent record."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
+            conn.commit()
+
+    def get_best_agent(self, thread_id: str, role: str | None = None) -> dict | None:
+        """Return the best idle agent for a given thread using scoring.
+
+        Scoring (higher = better):
+          +2 if thread_id is in agent's context_threads (has existing context)
+          +1 if agent's role matches the requested role
+
+        Ties broken by most recent last_active.
+        Returns None if no idle agents exist.
+        """
+        idle = [a for a in self.get_all_agents() if a["status"] == "idle"]
+        if not idle:
+            return None
+
+        def _score(agent: dict) -> tuple:
+            context = json.loads(agent.get("context_threads") or "[]")
+            s = 0
+            if thread_id in context:
+                s += 2
+            if role and agent["role"] == role:
+                s += 1
+            return (s, agent["last_active"])
+
+        return max(idle, key=_score)
 
     def get_archive_candidates(self) -> list[dict]:
         """Return threads that are candidates for archiving.
