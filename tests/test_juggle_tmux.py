@@ -1,7 +1,7 @@
 """Tests for JuggleTmuxManager — subprocess calls are mocked."""
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -81,11 +81,10 @@ def test_kill_pane_calls_tmux(mgr):
     assert "%3" in args
 
 
-def test_send_task_loads_and_pastes(mgr, tmp_path):
+def test_send_task_loads_and_pastes(mgr):
     with patch("subprocess.run") as mock_run, \
          patch("time.sleep"), \
-         patch("juggle_tmux.uuid") as mock_uuid:
-        mock_uuid.uuid4.return_value.hex.__getitem__ = lambda s, i: "abc12345"
+         patch("juggle_tmux.uuid"):
         mock_run.return_value = _ok()
         mgr.send_task("%3", "do something", is_new=False)
     calls = [c.args[0] for c in mock_run.call_args_list]

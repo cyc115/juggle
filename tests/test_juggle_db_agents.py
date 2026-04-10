@@ -92,7 +92,7 @@ def test_get_best_agent_skips_busy(db):
 
 
 def test_get_best_agent_prefers_context_match(db):
-    a1 = db.create_agent(role="coder", pane_id="%1")
+    _a1 = db.create_agent(role="coder", pane_id="%1")
     a2 = db.create_agent(role="coder", pane_id="%2")
     # a2 has worked on thread-1 before
     db.update_agent(a2, context_threads=["thread-1"])
@@ -101,7 +101,7 @@ def test_get_best_agent_prefers_context_match(db):
 
 
 def test_get_best_agent_prefers_role_match(db):
-    a1 = db.create_agent(role="researcher", pane_id="%1")
+    _a1 = db.create_agent(role="researcher", pane_id="%1")
     a2 = db.create_agent(role="coder", pane_id="%2")
     result = db.get_best_agent("thread-1", role="coder")
     assert result["id"] == a2
@@ -109,7 +109,7 @@ def test_get_best_agent_prefers_role_match(db):
 
 def test_get_best_agent_context_beats_role(db):
     a1 = db.create_agent(role="researcher", pane_id="%1")
-    a2 = db.create_agent(role="coder", pane_id="%2")
+    _a2 = db.create_agent(role="coder", pane_id="%2")
     # a1 has context for this thread (score=2), a2 has role match (score=1)
     db.update_agent(a1, context_threads=["thread-1"])
     result = db.get_best_agent("thread-1", role="coder")

@@ -464,6 +464,20 @@ def cmd_archive_thread(args):
     thread = db.get_thread(thread_uuid)
     label = thread.get("label") or args.thread_id if thread else args.thread_id
     db.archive_thread(thread_uuid)
+
+    # Decommission agents still assigned to this thread
+    sys.path.insert(0, str(SRC_DIR))
+    from juggle_tmux import JuggleTmuxManager
+    mgr = JuggleTmuxManager()
+    assigned = [a for a in db.get_all_agents() if a.get("assigned_thread") == thread_uuid]
+    for agent in assigned:
+        status = agent["status"]
+        if status == "idle":
+            mgr.decommission_agent(db, agent["id"])
+        elif status == "busy":
+            db.update_agent(agent["id"], status="decommission_pending")
+        # decommission_pending: already handled; no-op
+
     print(f"Thread {label} archived.")
 
 
@@ -578,6 +592,157 @@ def cmd_check_agents(_):
         if t["status"] == "background"
     ]
     print(json.dumps(background))
+
+
+def cmd_spawn_agent(args):
+    db = get_db()
+    db.init_db()
+    sys.path.insert(0, str(SRC_DIR))
+    from juggle_tmux import JuggleTmuxManager
+    mgr = JuggleTmuxManager()
+    try:
+        agent = mgr.spawn_agent(db, args.role)
+    except (RuntimeError, ValueError) as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    print(f"{agent['id']} {agent['pane_id']}")
+
+
+def cmd_list_agents(_):
+    db = get_db()
+    agents = db.get_all_agents()
+    if not agents:
+        print("No agents.")
+        return
+    for a in agents:
+        assigned = (a.get("assigned_thread") or "-")[:8]
+        print(
+            f"{a['id'][:8]}  {a['role']:<12}  {a['status']:<22}  "
+            f"{assigned}  {a['pane_id']}  {a['last_active'][:19]}"
+        )
+
+
+def cmd_get_agent(args):
+    db = get_db()
+    db.init_db()
+    sys.path.insert(0, str(SRC_DIR))
+    from juggle_tmux import JuggleTmuxManager
+    from juggle_db import MAX_BACKGROUND_AGENTS
+
+    thread_uuid = _resolve_thread(db, args.thread_id)
+
+    all_agents = db.get_all_agents()
+    if len(all_agents) >= MAX_BACKGROUND_AGENTS:
+        print(f"Error: Agent pool full ({MAX_BACKGROUND_AGENTS} max). Wait for one to finish.")
+        sys.exit(1)
+
+    agent = db.get_best_agent(thread_uuid, role=args.role)
+    is_new = agent is None
+
+    if is_new:
+        mgr = JuggleTmuxManager()
+        try:
+            agent = mgr.spawn_agent(db, args.role or "researcher")
+        except (RuntimeError, ValueError) as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+
+    now = datetime.now(timezone.utc).isoformat()
+    db.update_agent(agent["id"], status="busy", assigned_thread=thread_uuid, last_active=now)
+    db.update_thread(thread_uuid, status="background")
+
+    suffix = " new" if is_new else ""
+    print(f"{agent['id']} {agent['pane_id']}{suffix}")
+
+
+def cmd_release_agent(args):
+    db = get_db()
+    agent = db.get_agent(args.agent_id)
+    if agent is None:
+        return  # no-op for unknown agent
+
+    if agent["status"] == "decommission_pending":
+        sys.path.insert(0, str(SRC_DIR))
+        from juggle_tmux import JuggleTmuxManager
+        JuggleTmuxManager().decommission_agent(db, args.agent_id)
+        print(f"Agent {args.agent_id[:8]} decommissioned.")
+        return
+
+    # Add current assigned_thread to context_threads before clearing
+    assigned = agent.get("assigned_thread")
+    now = datetime.now(timezone.utc).isoformat()
+    if assigned:
+        import json as _json
+        context = _json.loads(agent.get("context_threads") or "[]")
+        if assigned not in context:
+            context.append(assigned)
+        context = context[-10:]  # cap at last 10 to avoid unbounded token growth
+        db.update_agent(
+            args.agent_id,
+            status="idle",
+            assigned_thread=None,
+            context_threads=context,
+            last_active=now,
+        )
+    else:
+        db.update_agent(args.agent_id, status="idle", last_active=now)
+
+    print(f"Agent {args.agent_id[:8]} released.")
+
+
+def cmd_decommission_agent(args):
+    db = get_db()
+    agent = db.get_agent(args.agent_id)
+    if agent is None:
+        print(f"Error: Agent {args.agent_id} not found.")
+        sys.exit(1)
+    sys.path.insert(0, str(SRC_DIR))
+    from juggle_tmux import JuggleTmuxManager
+    JuggleTmuxManager().decommission_agent(db, args.agent_id)
+    print(f"Agent {args.agent_id[:8]} decommissioned.")
+
+
+def cmd_send_task(args):
+    db = get_db()
+    agent = db.get_agent(args.agent_id)
+    if agent is None:
+        print(f"Error: Agent {args.agent_id} not found.")
+        sys.exit(1)
+
+    prompt_path = Path(args.prompt_file)
+    if not prompt_path.exists():
+        print(f"Error: Prompt file {args.prompt_file} not found.")
+        sys.exit(1)
+
+    sys.path.insert(0, str(SRC_DIR))
+    from juggle_tmux import JuggleTmuxManager
+    mgr = JuggleTmuxManager()
+
+    pane_id = agent["pane_id"]
+
+    # If pane died, re-spawn a fresh agent in its place
+    if not mgr.verify_pane(pane_id):
+        mgr.ensure_session()
+        new_pane_id = mgr.spawn_pane()
+        mgr.start_claude_in_pane(new_pane_id)
+        db.update_agent(args.agent_id, pane_id=new_pane_id)
+        pane_id = new_pane_id
+        agent = db.get_agent(args.agent_id)
+        is_new = True
+    else:
+        import json as _json
+        context = _json.loads(agent.get("context_threads") or "[]")
+        is_new = len(context) == 0
+
+    # Append release-agent call to prompt so agent returns to pool on completion
+    prompt = prompt_path.read_text()
+    release_line = f"\npython3 {SRC_DIR}/juggle_cli.py release-agent {args.agent_id}"
+    full_prompt = prompt.rstrip() + release_line
+
+    now = datetime.now(timezone.utc).isoformat()
+    db.update_agent(args.agent_id, last_active=now)
+    mgr.send_task(pane_id, full_prompt, is_new=is_new)
+    print(f"Task sent to agent {args.agent_id[:8]} (pane {pane_id}).")
 
 
 def cmd_get_context(_):
@@ -742,6 +907,38 @@ def main():
     # check-agents
     p_check = subparsers.add_parser("check-agents", help="List background agents as JSON")
     p_check.set_defaults(func=cmd_check_agents)
+
+    # spawn-agent
+    p_spawn = subparsers.add_parser("spawn-agent", help="Spawn a new tmux agent")
+    p_spawn.add_argument("role", choices=["researcher", "coder", "planner"])
+    p_spawn.set_defaults(func=cmd_spawn_agent)
+
+    # list-agents
+    p_list_agents = subparsers.add_parser("list-agents", help="List all tmux agents")
+    p_list_agents.set_defaults(func=cmd_list_agents)
+
+    # get-agent
+    p_get_agent = subparsers.add_parser("get-agent", help="Get best idle agent (or spawn new)")
+    p_get_agent.add_argument("thread_id", help="Thread ID or label")
+    p_get_agent.add_argument("--role", dest="role", default=None,
+                              choices=["researcher", "coder", "planner"])
+    p_get_agent.set_defaults(func=cmd_get_agent)
+
+    # release-agent
+    p_release = subparsers.add_parser("release-agent", help="Return agent to idle pool")
+    p_release.add_argument("agent_id", help="Agent UUID")
+    p_release.set_defaults(func=cmd_release_agent)
+
+    # decommission-agent
+    p_decommission = subparsers.add_parser("decommission-agent", help="Kill agent pane + remove from DB")
+    p_decommission.add_argument("agent_id", help="Agent UUID")
+    p_decommission.set_defaults(func=cmd_decommission_agent)
+
+    # send-task
+    p_send_task = subparsers.add_parser("send-task", help="Send prompt file to agent pane")
+    p_send_task.add_argument("agent_id", help="Agent UUID")
+    p_send_task.add_argument("prompt_file", help="Path to prompt file")
+    p_send_task.set_defaults(func=cmd_send_task)
 
     # get-context
     p_ctx = subparsers.add_parser("get-context", help="Print context string")
