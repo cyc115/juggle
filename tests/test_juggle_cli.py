@@ -604,9 +604,6 @@ def test_decommission_agent_removes_from_db(started_db):
 
 def test_send_task_appends_release_and_sends(started_db, tmp_path):
     """send-task should append release-agent call and invoke send_task on manager."""
-    sys.path.insert(0, SRC_DIR)
-    from juggle_db import JuggleDB
-
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
@@ -621,8 +618,8 @@ def test_send_task_appends_release_and_sends(started_db, tmp_path):
     assert "sent" in result.stdout.lower()
 
 
-def test_send_task_error_on_missing_prompt_file(started_db, tmp_path):
-    db_path, thread_id = started_db
+def test_send_task_error_on_missing_prompt_file(started_db):
+    db_path, _ = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["spawn-agent", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
