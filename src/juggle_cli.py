@@ -614,12 +614,40 @@ def cmd_list_agents(_):
     if not agents:
         print("No agents.")
         return
+
+    STATUS_EMOJI = {
+        "idle": "💤",
+        "busy": "🟢",
+        "decommission_pending": "⚠️",
+    }
+    now = datetime.now(timezone.utc)
+    idle_count = sum(1 for a in agents if a["status"] == "idle")
+    sep = "─" * 56
+
+    print(f"Agents ({len(agents)} total, {idle_count} idle)")
+    print(sep)
     for a in agents:
-        assigned = (a.get("assigned_thread") or "-")[:8]
+        emoji = STATUS_EMOJI.get(a["status"], "❓")
+        short_id = a["id"][:8]
+        role = a["role"]
+        pane = a["pane_id"]
+        thread = (a.get("assigned_thread") or "")[:8] or "-"
+        last_active = a.get("last_active") or ""
+        age = "-"
+        if last_active:
+            try:
+                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                secs = int((now - dt).total_seconds())
+                age = f"{secs}s" if secs < 60 else (f"{secs // 60}m" if secs < 3600 else f"{secs // 3600}h")
+            except (ValueError, TypeError):
+                pass
         print(
-            f"{a['id'][:8]}  {a['role']:<12}  {a['status']:<22}  "
-            f"{assigned}  {a['pane_id']}  {a['last_active'][:19]}"
+            f"{emoji} [{short_id}]  {role:<12}  pane={pane:<6}  "
+            f"thread={thread:<8}  age={age}"
         )
+    print(sep)
 
 
 def cmd_get_agent(args):
@@ -630,6 +658,13 @@ def cmd_get_agent(args):
     from juggle_db import MAX_BACKGROUND_AGENTS
 
     thread_uuid = _resolve_thread(db, args.thread_id)
+    mgr = JuggleTmuxManager()
+
+    # Purge dead panes before pool-full check and candidate selection.
+    for a in db.get_all_agents():
+        if a["status"] == "idle" and not mgr.verify_pane(a["pane_id"]):
+            print(f"[juggle] Dead pane detected ({a['pane_id']}), removing agent {a['id'][:8]}.")
+            db.delete_agent(a["id"])
 
     all_agents = db.get_all_agents()
     if len(all_agents) >= MAX_BACKGROUND_AGENTS:
@@ -640,9 +675,9 @@ def cmd_get_agent(args):
     is_new = agent is None
 
     if is_new:
-        mgr = JuggleTmuxManager()
         try:
             agent = mgr.spawn_agent(db, args.role or "researcher", model=getattr(args, "model", None))
+            print(f"[juggle] No idle agent available, spawned new agent {agent['id'][:8]}.")
         except (RuntimeError, ValueError) as e:
             print(f"Error: {e}")
             sys.exit(1)
