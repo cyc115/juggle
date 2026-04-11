@@ -645,7 +645,7 @@ def cmd_list_agents(_):
                 pass
         print(
             f"{emoji} [{short_id}]  {role:<12}  pane={pane:<6}  "
-            f"thread={thread:<8}  age={age}"
+            f"topic={thread:<8}  age={age}"
         )
     print(sep)
 
