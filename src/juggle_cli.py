@@ -601,7 +601,7 @@ def cmd_spawn_agent(args):
     from juggle_tmux import JuggleTmuxManager
     mgr = JuggleTmuxManager()
     try:
-        agent = mgr.spawn_agent(db, args.role)
+        agent = mgr.spawn_agent(db, args.role, model=getattr(args, "model", None))
     except (RuntimeError, ValueError) as e:
         print(f"Error: {e}")
         sys.exit(1)
@@ -642,7 +642,7 @@ def cmd_get_agent(args):
     if is_new:
         mgr = JuggleTmuxManager()
         try:
-            agent = mgr.spawn_agent(db, args.role or "researcher")
+            agent = mgr.spawn_agent(db, args.role or "researcher", model=getattr(args, "model", None))
         except (RuntimeError, ValueError) as e:
             print(f"Error: {e}")
             sys.exit(1)
@@ -911,6 +911,8 @@ def main():
     # spawn-agent
     p_spawn = subparsers.add_parser("spawn-agent", help="Spawn a new tmux agent")
     p_spawn.add_argument("role", choices=["researcher", "coder", "planner"])
+    p_spawn.add_argument("--model", dest="model", default=None,
+                          help="Claude model alias or full name (e.g. 'haiku', 'sonnet')")
     p_spawn.set_defaults(func=cmd_spawn_agent)
 
     # list-agents
@@ -922,6 +924,8 @@ def main():
     p_get_agent.add_argument("thread_id", help="Thread ID or label")
     p_get_agent.add_argument("--role", dest="role", default=None,
                               choices=["researcher", "coder", "planner"])
+    p_get_agent.add_argument("--model", dest="model", default=None,
+                              help="Claude model alias or full name (e.g. 'haiku', 'sonnet')")
     p_get_agent.set_defaults(func=cmd_get_agent)
 
     # release-agent

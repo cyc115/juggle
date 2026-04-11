@@ -72,6 +72,11 @@ Set env vars in your shell profile or `~/.claude/settings.json` to override.
 - 15-minute agent timeout
 - Topics persist across session compactions via SQLite
 
+## Roadmap
+
+- [ ] `juggle watch` — terminal dashboard for `watch -n` showing current topic, agent status, and thread list
+- [ ] Append `Q:` / `A:` to each response for quick at-a-glance dialogue review
+
 ## Data
 
 Topic state is stored in `$CLAUDE_PLUGIN_DATA/juggle.db` and persists across plugin updates.

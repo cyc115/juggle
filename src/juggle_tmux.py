@@ -36,25 +36,36 @@ class JuggleTmuxManager:
                 "-d", "-x", "220", "-y", "50",
             )
 
+    def _first_window(self) -> str:
+        """Return the target string for the first window (respects base-index)."""
+        result = self._run_tmux(
+            "list-windows", "-t", self.session_name, "-F", "#{window_index}"
+        )
+        first = result.stdout.strip().splitlines()[0] if result.stdout.strip() else "0"
+        return f"{self.session_name}:{first}"
+
     def spawn_pane(self) -> str:
-        """Split window 0 to create a new pane. Returns pane_id like '%5'."""
+        """Split the first window to create a new pane. Returns pane_id like '%5'."""
         result = self._run_tmux(
             "split-window",
-            "-t", f"{self.session_name}:0",
+            "-t", self._first_window(),
             "-v", "-P", "-F", "#{pane_id}",
         )
         return result.stdout.strip()
 
-    def start_claude_in_pane(self, pane_id: str) -> None:
+    def start_claude_in_pane(self, pane_id: str, model: str | None = None) -> None:
         """Send the 'claude' command to a pane."""
-        self._run_tmux("send-keys", "-t", pane_id, "claude", "Enter")
+        cmd = f"claude --dangerously-skip-permissions"
+        if model:
+            cmd += f" --model {model}"
+        self._run_tmux("send-keys", "-t", pane_id, cmd, "Enter")
 
     def verify_pane(self, pane_id: str) -> bool:
-        """Return True if pane_id exists in window 0 of the juggle session."""
+        """Return True if pane_id exists in the juggle session."""
         if os.environ.get("JUGGLE_TMUX_MOCK_PANE") or os.environ.get("JUGGLE_TMUX_MOCK_SEND"):
             return True
         result = self._run_tmux(
-            "list-panes", "-t", f"{self.session_name}:0", "-F", "#{pane_id}"
+            "list-panes", "-t", self._first_window(), "-F", "#{pane_id}"
         )
         return pane_id in result.stdout.splitlines()
 
@@ -85,7 +96,7 @@ class JuggleTmuxManager:
             if Path(tmp).exists():
                 os.unlink(tmp)
 
-    def spawn_agent(self, db, role: str) -> dict:
+    def spawn_agent(self, db, role: str, model: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.
 
         db must be a JuggleDB instance with init_db() already called.
@@ -111,7 +122,7 @@ class JuggleTmuxManager:
 
         self.ensure_session()
         pane_id = self.spawn_pane()
-        self.start_claude_in_pane(pane_id)
+        self.start_claude_in_pane(pane_id, model=model)
 
         agent_id = db.create_agent(role=role, pane_id=pane_id)
         return db.get_agent(agent_id)
