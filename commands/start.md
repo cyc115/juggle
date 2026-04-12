@@ -10,11 +10,12 @@ allowed-tools: Read, Glob, Grep, Bash, Agent, Edit, Write
 Run:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py start
+cat ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])"
 ```
 
 Acknowledge:
 ```
-Juggle active.
+Juggle v<version> active.
 - `/juggle:show-topics` — all open topics
 - `/juggle:resume-topic <id>` — switch topic
 ```
