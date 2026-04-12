@@ -94,22 +94,13 @@ def test_send_task_loads_and_pastes(mgr):
 
 
 def test_send_task_sleeps_when_new(mgr):
-    # is_new=True: send is dispatched in a background thread with a 2s delay.
-    # We patch threading.Thread to capture whether it was called.
-    import threading as _threading
-    started = []
-    class _FakeThread:
-        def __init__(self, target, daemon=False):
-            self._target = target
-        def start(self):
-            started.append(True)
+    # is_new=True: sleeps inline then sends synchronously.
     with patch("subprocess.run") as mock_run, \
-         patch("juggle_tmux.threading") as mock_threading:
+         patch("juggle_tmux.time.sleep") as mock_sleep:
         mock_run.return_value = _ok()
-        mock_threading.Thread.side_effect = _FakeThread
         mgr.send_task("%3", "do something", is_new=True)
-    # Thread was started (non-blocking path)
-    assert len(started) == 1
+    mock_sleep.assert_called_once_with(3)
+    assert mock_run.call_count == 3
 
 
 def test_send_task_no_sleep_when_not_new(mgr):

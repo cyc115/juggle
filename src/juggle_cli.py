@@ -898,9 +898,7 @@ def cmd_send_task(args):
         agent = db.get_agent(args.agent_id)
         is_new = True
     else:
-        import json as _json
-        context = _json.loads(agent.get("context_threads") or "[]")
-        is_new = len(context) == 0
+        is_new = False
 
     # Append release-agent call to prompt so agent returns to pool on completion
     prompt = prompt_path.read_text()

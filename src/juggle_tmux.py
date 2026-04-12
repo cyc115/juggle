@@ -3,7 +3,6 @@
 
 import os
 import subprocess
-import threading
 import time
 import uuid
 from pathlib import Path
@@ -95,13 +94,9 @@ class JuggleTmuxManager:
                     os.unlink(tmp)
 
         if is_new:
-            # New pane: claude needs ~2s to start; delay in background thread
-            def _delayed_send() -> None:
-                time.sleep(2)
-                _do_send()
-            threading.Thread(target=_delayed_send, daemon=True).start()
-        else:
-            _do_send()
+            # New pane: claude needs a few seconds to start
+            time.sleep(3)
+        _do_send()
 
     def spawn_agent(self, db, role: str, model: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.
