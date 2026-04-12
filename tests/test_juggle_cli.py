@@ -505,11 +505,10 @@ def test_get_agent_spawns_when_pool_empty(started_db):
 
 def test_get_agent_reuses_idle_agent(started_db):
     db_path, thread_id = started_db
-    # First: spawn an idle agent
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         run_cli(["spawn-agent", "coder"], db_path)
-    # Second: get-agent should reuse it
-    result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        # get-agent must also run with mock so dead-pane purge doesn't delete the agent
+        result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
     assert result.returncode == 0
     parts = result.stdout.strip().split()
     assert len(parts) == 2  # agent_id, pane_id (no "new")
@@ -540,9 +539,8 @@ def test_release_agent_marks_idle(started_db):
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
-    agent_id = r.stdout.strip().split()[0]
-
-    result = run_cli(["release-agent", agent_id], db_path)
+        agent_id = r.stdout.strip().split()[0]
+        result = run_cli(["release-agent", agent_id], db_path)
     assert result.returncode == 0
 
     db = JuggleDB(str(db_path))
@@ -559,8 +557,8 @@ def test_release_agent_adds_context_thread(started_db):
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
-    agent_id = r.stdout.strip().split()[0]
-    run_cli(["release-agent", agent_id], db_path)
+        agent_id = r.stdout.strip().split()[0]
+        run_cli(["release-agent", agent_id], db_path)
 
     db = JuggleDB(str(db_path))
     agent = db.get_agent(agent_id)
@@ -658,8 +656,8 @@ def test_archive_thread_marks_busy_agents_pending(started_db):
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
-    agent_id = r.stdout.strip().split()[0]
-    # Agent is busy (still assigned)
+        agent_id = r.stdout.strip().split()[0]
+    # Agent is busy (still assigned); archive-thread doesn't need mock
     result = run_cli(["archive-thread", thread_id], db_path)
     assert result.returncode == 0
     agent = JuggleDB(str(db_path)).get_agent(agent_id)

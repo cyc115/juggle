@@ -737,7 +737,7 @@ def cmd_get_agent(args):
     # Purge dead panes before pool-full check and candidate selection.
     for a in db.get_all_agents():
         if a["status"] == "idle" and not mgr.verify_pane(a["pane_id"]):
-            print(f"[juggle] Dead pane detected ({a['pane_id']}), removing agent {a['id'][:8]}.")
+            print(f"[juggle] Dead pane detected ({a['pane_id']}), removing agent {a['id'][:8]}.", file=sys.stderr)
             db.delete_agent(a["id"])
 
     all_agents = db.get_all_agents()
@@ -751,7 +751,7 @@ def cmd_get_agent(args):
     if is_new:
         try:
             agent = mgr.spawn_agent(db, args.role or "researcher", model=getattr(args, "model", None))
-            print(f"[juggle] No idle agent available, spawned new agent {agent['id'][:8]}.")
+            print(f"[juggle] No idle agent available, spawned new agent {agent['id'][:8]}.", file=sys.stderr)
         except (RuntimeError, ValueError) as e:
             print(f"Error: {e}")
             sys.exit(1)
