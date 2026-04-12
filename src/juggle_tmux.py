@@ -20,17 +20,12 @@ class JuggleTmuxManager:
             text=True,
         )
 
-    def _tmux_installed(self) -> bool:
-        result = subprocess.run(["which", "tmux"], capture_output=True)
-        return result.returncode == 0
-
     def ensure_session(self) -> None:
         """Create the juggle tmux session + window 0 if not already running."""
-        if not self._tmux_installed():
-            raise RuntimeError(
-                "tmux not found. Install tmux to use persistent agents."
-            )
-        result = self._run_tmux("has-session", "-t", self.session_name)
+        try:
+            result = self._run_tmux("has-session", "-t", self.session_name)
+        except FileNotFoundError:
+            raise RuntimeError("tmux not found. Install tmux to use persistent agents.")
         if result.returncode != 0:
             self._run_tmux(
                 "new-session", "-s", self.session_name,

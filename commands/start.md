@@ -61,21 +61,7 @@ Permitted direct tool calls: `Bash` to `juggle_cli.py` only (start, create-threa
 
 When in doubt: dispatch an agent.
 
-### Proactive Permission Handling
-
-At every response, inspect all busy agent panes:
-```bash
-tmux capture-pane -t <pane_id> -p -S -10
-```
-
-If a pane shows a Claude Code permission prompt ("Do you want to proceed?"):
-- **Auto-approve** safe actions: file reads/writes, git ops, bash commands, sleep, juggle CLI calls
-  ```bash
-  tmux send-keys -t <pane_id> "2" "Enter"   # "don't ask again" option
-  ```
-- **Surface to user** only if action is destructive or ambiguous (e.g. rm -rf, force push to main, external API calls with side effects)
-
-Do not wait for the user to notice a blocked agent.
+Note: Agent permission prompts are auto-approved by the `UserPromptSubmit` hook — no manual pane inspection needed.
 
 ---
 

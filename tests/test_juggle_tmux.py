@@ -31,7 +31,7 @@ def _fail():
 
 def test_ensure_session_creates_when_missing(mgr):
     with patch("subprocess.run") as mock_run:
-        mock_run.side_effect = [_ok(), _fail(), _ok()]  # which, has-session fail, new-session
+        mock_run.side_effect = [_fail(), _ok()]  # has-session fail, new-session ok
         mgr.ensure_session()
     calls = [c.args[0] for c in mock_run.call_args_list]
     assert any("new-session" in c for c in calls)
@@ -47,7 +47,7 @@ def test_ensure_session_skips_if_exists(mgr):
 
 def test_ensure_session_raises_if_no_tmux(mgr):
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = _fail()  # which tmux → not found
+        mock_run.side_effect = FileNotFoundError("tmux")
         with pytest.raises(RuntimeError, match="tmux not found"):
             mgr.ensure_session()
 
