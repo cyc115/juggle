@@ -7,6 +7,7 @@ Usage: python juggle_cli.py <command> [args]
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -658,7 +659,8 @@ def cmd_list_agents(_):
     }
     now = datetime.now(timezone.utc)
     idle_count = sum(1 for a in agents if a["status"] == "idle")
-    sep = "─" * 56
+    term_width = shutil.get_terminal_size(fallback=(100, 24)).columns
+    sep = "─" * min(term_width, 100)
 
     print(f"Agents ({len(agents)} total, {idle_count} idle)")
     print(sep)
@@ -691,10 +693,10 @@ def cmd_list_agents(_):
                 lbl = t.get("label") or ""
                 ttl = t.get("title") or " ".join(t["topic"].split()[:5])
                 full = f"{lbl}: {ttl}" if lbl else ttl
-                topic_str = full[:20]
+                topic_str = full[:35]
         print(
             f"{emoji} [{short_id}]  {role:<12}  pane={pane:<6}  "
-            f"topic={topic_str:<20}  age={age}{idle_hint}"
+            f"topic={topic_str:<35}  age={age}{idle_hint}"
         )
     print(sep)
 
