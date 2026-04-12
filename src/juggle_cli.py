@@ -7,6 +7,7 @@ Usage: python juggle_cli.py <command> [args]
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -73,12 +74,39 @@ def cmd_stop(_):
     print("Juggle stopped.")
 
 
+def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
+    """Generate a 5-10 word title for a thread via claude -p. Stores result in DB.
+
+    Falls back to first 5 words of topic if claude is unavailable or returns garbage.
+    Returns the title string.
+    """
+    fallback = " ".join(topic.split()[:5])
+    prompt = (
+        f'Give a 5-10 word title for this task: "{topic}". '
+        f'Reply with the title only. No punctuation. No quotes. No explanation.'
+    )
+    try:
+        result = subprocess.run(
+            ["claude", "-p", prompt],
+            capture_output=True, text=True, timeout=20
+        )
+        title = result.stdout.strip()
+        # Sanity check: non-empty and not excessively long
+        if not title or len(title.split()) > 15:
+            title = fallback
+    except Exception:
+        title = fallback
+    db.update_thread(thread_uuid, title=title)
+    return title
+
+
 def cmd_create_thread(args):
     db = get_db()
     thread_uuid = db.create_thread(args.topic, session_id="")
     db.set_current_thread(thread_uuid)
     thread = db.get_thread(thread_uuid)
     label = thread["label"] if thread else thread_uuid
+    _generate_title_for_thread(db, thread_uuid, args.topic)
     print(f"Created Topic {label}: {args.topic}. Now in Topic {label}.")
 
 
@@ -366,6 +394,7 @@ def cmd_show_topics(_):
         tid = t["id"]
         label = t.get("label") or tid[:8]
         topic = t["topic"]
+        title = t.get("title") or topic
         status = t["status"]
         last_active = _humanize_dt(t.get("last_active") or "")
 
@@ -374,7 +403,7 @@ def cmd_show_topics(_):
         state_suffix = _state_suffix_text.get(emoji, "")
 
         # Header line
-        header = f"{branch} {emoji} **[{label}] {topic}**  ({last_active})"
+        header = f"{branch} {emoji} **[{label}] {title}**  ({last_active})"
         if state_suffix:
             header = f"{header}  {state_suffix}"
         print(header)
@@ -452,10 +481,10 @@ def cmd_get_archive_candidates(_):
         return
     for t in candidates:
         label = t.get("label") or t["id"][:8]
-        topic = t["topic"]
+        title = t.get("title") or t["topic"]
         status = t["status"]
         last_active = t.get("last_active") or ""
-        print(f"[{label}] {topic}  {status}  ({last_active})")
+        print(f"[{label}] {title}  {status}  ({last_active})")
 
 
 def cmd_archive_thread(args):
@@ -643,11 +672,43 @@ def cmd_list_agents(_):
                 age = f"{secs}s" if secs < 60 else (f"{secs // 60}m" if secs < 3600 else f"{secs // 3600}h")
             except (ValueError, TypeError):
                 pass
+        topic_str = "-"
+        if a.get("assigned_thread"):
+            t = db.get_thread(a["assigned_thread"])
+            if t:
+                lbl = t.get("label") or ""
+                ttl = t.get("title") or " ".join(t["topic"].split()[:5])
+                topic_str = f"{lbl}: {ttl}" if lbl else ttl
         print(
             f"{emoji} [{short_id}]  {role:<12}  pane={pane:<6}  "
-            f"topic={thread:<8}  age={age}"
+            f"topic={topic_str}  age={age}"
         )
     print(sep)
+
+
+def cmd_generate_title(args):
+    db = get_db()
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
+    if not thread:
+        print(f"Error: Thread {args.thread_id} not found.")
+        sys.exit(1)
+    title = _generate_title_for_thread(db, thread_uuid, thread["topic"])
+    print(title)
+
+
+def cmd_backfill_titles(_):
+    db = get_db()
+    threads = db.get_all_threads()
+    missing = [t for t in threads if not t.get("title")]
+    if not missing:
+        print("All threads have titles.")
+        return
+    for t in missing:
+        label = t.get("label") or t["id"][:8]
+        print(f"Generating title for thread {label}...")
+        _generate_title_for_thread(db, t["id"], t["topic"])
+    print(f"Backfilled {len(missing)} threads.")
 
 
 def cmd_get_agent(args):
@@ -953,6 +1014,15 @@ def main():
     # list-agents
     p_list_agents = subparsers.add_parser("list-agents", help="List all tmux agents")
     p_list_agents.set_defaults(func=cmd_list_agents)
+
+    # generate-title
+    p_gen_title = subparsers.add_parser("generate-title", help="Generate short title for a thread")
+    p_gen_title.add_argument("thread_id", help="Thread ID or label")
+    p_gen_title.set_defaults(func=cmd_generate_title)
+
+    # backfill-titles
+    p_backfill = subparsers.add_parser("backfill-titles", help="Generate titles for all untitled threads")
+    p_backfill.set_defaults(func=cmd_backfill_titles)
 
     # get-agent
     p_get_agent = subparsers.add_parser("get-agent", help="Get best idle agent (or spawn new)")

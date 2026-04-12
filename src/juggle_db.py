@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS threads (
   agent_result    TEXT,
   show_in_list    INTEGER NOT NULL DEFAULT 1,
   summarized_msg_count INTEGER NOT NULL DEFAULT 0,
+  title           TEXT DEFAULT '',
   created_at      TEXT NOT NULL,
   last_active     TEXT NOT NULL
 );
@@ -179,6 +180,13 @@ class JuggleDB:
         if "label" not in cols and "id" in cols:
             try:
                 conn.execute("ALTER TABLE threads ADD COLUMN label TEXT")
+            except Exception:
+                pass
+
+        # Migration 6: add title column for LLM-generated short titles
+        if "title" not in cols:
+            try:
+                conn.execute("ALTER TABLE threads ADD COLUMN title TEXT DEFAULT ''")
             except Exception:
                 pass
 
