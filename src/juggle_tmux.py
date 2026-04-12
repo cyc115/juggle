@@ -89,9 +89,9 @@ class JuggleTmuxManager:
                 f"sleep 5; "
                 f"tmux load-buffer -b juggle '{tmp}'; "
                 f"tmux paste-buffer -b juggle -t '{pane_id}'; "
-                f"tmux send-keys -t '{pane_id}' Enter; "
+                f"tmux send-keys -t '{pane_id}' C-m; "
                 f"sleep 10; "
-                f"tmux send-keys -t '{pane_id}' Enter; "
+                f"tmux send-keys -t '{pane_id}' C-m; "
                 f"rm -f '{tmp}'"
             )
             subprocess.Popen(
@@ -104,7 +104,7 @@ class JuggleTmuxManager:
             try:
                 self._run_tmux("load-buffer", "-b", "juggle", tmp)
                 self._run_tmux("paste-buffer", "-b", "juggle", "-t", pane_id)
-                self._run_tmux("send-keys", "-t", pane_id, "Enter")
+                self._run_tmux("send-keys", "-t", pane_id, "C-m")
             finally:
                 if Path(tmp).exists():
                     os.unlink(tmp)
