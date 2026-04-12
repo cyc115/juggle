@@ -2,6 +2,7 @@
 """Juggle DB - SQLite state manager for multi-topic conversation orchestrator."""
 
 import json
+import logging
 import os as _os
 import sqlite3
 import uuid
@@ -85,6 +86,27 @@ CREATE TABLE IF NOT EXISTS agents (
 );
 """
 
+CREATE_DOMAINS = """
+CREATE TABLE IF NOT EXISTS domains (
+  name  TEXT PRIMARY KEY
+);
+"""
+
+CREATE_DOMAIN_PATHS = """
+CREATE TABLE IF NOT EXISTS domain_paths (
+  path_fragment TEXT NOT NULL PRIMARY KEY,
+  domain        TEXT NOT NULL REFERENCES domains(name)
+);
+"""
+
+_INITIAL_DOMAINS = ["juggle", "vault", "work"]
+
+_INITIAL_DOMAIN_PATHS = [
+    ("/github/juggle", "juggle"),
+    ("/Documents/personal", "vault"),
+    ("/work/", "work"),
+]
+
 
 def _assign_label(conn: sqlite3.Connection) -> str:
     """Return first letter A–Z not currently held by any non-archived thread."""
@@ -120,6 +142,8 @@ class JuggleDB:
             conn.execute(CREATE_NOTIFICATIONS)
             conn.execute(CREATE_SESSION)
             conn.execute(CREATE_AGENTS)
+            conn.execute(CREATE_DOMAINS)
+            conn.execute(CREATE_DOMAIN_PATHS)
             self._migrate(conn)
             conn.commit()
 
@@ -197,6 +221,42 @@ class JuggleDB:
         if "agents" not in tables:
             conn.execute(CREATE_AGENTS)
 
+        # Migration 7: add domain to threads
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        if "domain" not in cols:
+            try:
+                conn.execute("ALTER TABLE threads ADD COLUMN domain TEXT DEFAULT NULL")
+            except Exception:
+                pass
+
+        # Migration 8: add domain to agents
+        agent_cols = {row["name"] for row in conn.execute("PRAGMA table_info(agents)").fetchall()}
+        if "domain" not in agent_cols:
+            try:
+                conn.execute("ALTER TABLE agents ADD COLUMN domain TEXT DEFAULT NULL")
+            except Exception:
+                pass
+
+        # Migration 9: seed domains + domain_paths tables if empty
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        if "domains" in tables:
+            existing_domains = {row[0] for row in conn.execute("SELECT name FROM domains").fetchall()}
+            for name in _INITIAL_DOMAINS:
+                if name not in existing_domains:
+                    conn.execute("INSERT OR IGNORE INTO domains (name) VALUES (?)", (name,))
+        if "domain_paths" in tables:
+            existing_paths = {row[0] for row in conn.execute(
+                "SELECT path_fragment FROM domain_paths"
+            ).fetchall()}
+            for path_fragment, domain in _INITIAL_DOMAIN_PATHS:
+                if path_fragment not in existing_paths:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO domain_paths (path_fragment, domain) VALUES (?, ?)",
+                        (path_fragment, domain),
+                    )
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -241,7 +301,7 @@ class JuggleDB:
     # Thread operations
     # ------------------------------------------------------------------
 
-    def create_thread(self, topic: str, session_id: str) -> str:
+    def create_thread(self, topic: str, session_id: str, domain: str | None = None) -> str:
         """Create a new thread. Returns the UUID of the new thread.
 
         Assigns next available A–Z label. Raises ValueError if 10 non-archived
@@ -264,10 +324,10 @@ class JuggleDB:
                   (id, label, session_id, topic, status,
                    summary, key_decisions, open_questions,
                    last_user_intent, agent_task_id, agent_result,
-                   show_in_list, summarized_msg_count, created_at, last_active)
-                VALUES (?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?)
+                   show_in_list, summarized_msg_count, domain, created_at, last_active)
+                VALUES (?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?)
                 """,
-                (new_id, label, session_id, topic, now, now),
+                (new_id, label, session_id, topic, domain, now, now),
             )
             conn.commit()
             return new_id
@@ -753,18 +813,37 @@ class JuggleDB:
             conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
             conn.commit()
 
-    def get_best_agent(self, thread_id: str, role: str | None = None) -> dict | None:
+    def get_best_agent(self, thread_id: str, role: str | None = None,
+                       domain: str | None = None) -> dict | None:
         """Return the best idle agent for a given thread using scoring.
+
+        Domain filtering (applied before scoring):
+          - domain is non-null → only agents with matching domain OR null domain
+          - domain is null → only agents with null domain (fresh/unassigned)
 
         Scoring (higher = better):
           +2 if thread_id is in agent's context_threads (has existing context)
           +1 if agent's role matches the requested role
 
         Ties broken by most recent last_active.
-        Returns None if no idle agents exist.
+        Returns None if no suitable idle agents exist.
         """
         idle = [a for a in self.get_all_agents() if a["status"] == "idle"]
         if not idle:
+            return None
+
+        if domain:
+            # Non-null domain: accept agents with matching domain or null domain
+            idle = [
+                a for a in idle
+                if a.get("domain") is None or a.get("domain") == domain
+            ]
+        else:
+            # Null domain thread: only fresh agents (domain=null) to avoid cross-pollination
+            idle = [a for a in idle if a.get("domain") is None]
+
+        if not idle:
+            logging.info("domain filter: no idle '%s' agents, will spawn fresh", domain)
             return None
 
         def _score(agent: dict) -> tuple:
@@ -777,6 +856,55 @@ class JuggleDB:
             return (s, agent["last_active"])
 
         return max(idle, key=_score)
+
+    # ------------------------------------------------------------------
+    # Domain registry
+    # ------------------------------------------------------------------
+
+    def register_domain(self, name: str) -> None:
+        """Insert domain name into domains table. No-op if already exists."""
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO domains (name) VALUES (?)", (name,))
+            conn.commit()
+
+    def get_domains(self) -> list[str]:
+        """Return all registered domain names."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT name FROM domains ORDER BY name").fetchall()
+            return [row["name"] for row in rows]
+
+    def is_known_domain(self, name: str) -> bool:
+        """Return True if name is a registered domain."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT name FROM domains WHERE name = ?", (name,)
+            ).fetchone()
+            return row is not None
+
+    def add_domain_path(self, path_fragment: str, domain: str) -> None:
+        """Insert or replace a path_fragment → domain mapping."""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO domain_paths (path_fragment, domain) VALUES (?, ?)",
+                (path_fragment, domain),
+            )
+            conn.commit()
+
+    def get_domain_paths(self) -> list[dict]:
+        """Return all path→domain mappings."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT path_fragment, domain FROM domain_paths ORDER BY path_fragment"
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def infer_domain_from_prompt(self, prompt: str) -> str | None:
+        """Return first domain whose path_fragment appears in prompt, or None."""
+        mappings = self.get_domain_paths()
+        for m in mappings:
+            if m["path_fragment"] in prompt:
+                return m["domain"]
+        return None
 
     def get_archive_candidates(self) -> list[dict]:
         """Return threads that are candidates for archiving.

@@ -106,12 +106,17 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
 
 def cmd_create_thread(args):
     db = get_db()
-    thread_uuid = db.create_thread(args.topic, session_id="")
+    domain = getattr(args, "domain", None)
+    if domain is not None and not db.is_known_domain(domain):
+        print(f"Unknown domain '{domain}'. Run: juggle register-domain {domain}")
+        sys.exit(1)
+    thread_uuid = db.create_thread(args.topic, session_id="", domain=domain)
     db.set_current_thread(thread_uuid)
     thread = db.get_thread(thread_uuid)
     label = thread["label"] if thread else thread_uuid
     _generate_title_for_thread(db, thread_uuid, args.topic)
-    print(f"Created Topic {label}: {args.topic}. Now in Topic {label}.")
+    domain_str = f" [domain={domain}]" if domain else ""
+    print(f"Created Topic {label}: {args.topic}.{domain_str} Now in Topic {label}.")
 
 
 def cmd_switch_thread(args):
@@ -641,6 +646,21 @@ def cmd_spawn_agent(args):
     print(f"{agent['id']} {agent['pane_id']}")
 
 
+def cmd_register_domain(args):
+    db = get_db()
+    db.register_domain(args.name)
+    print(f"Domain '{args.name}' registered.")
+
+
+def cmd_register_domain_path(args):
+    db = get_db()
+    if not db.is_known_domain(args.domain):
+        print(f"Unknown domain '{args.domain}'. Run: juggle register-domain {args.domain}")
+        sys.exit(1)
+    db.add_domain_path(args.path_fragment, args.domain)
+    print(f"Path '{args.path_fragment}' → domain '{args.domain}' registered.")
+
+
 def cmd_list_agents(_):
     db = get_db()
     agents = db.get_all_agents()
@@ -694,9 +714,10 @@ def cmd_list_agents(_):
                 ttl = t.get("title") or " ".join(t["topic"].split()[:5])
                 full = f"{lbl}: {ttl}" if lbl else ttl
                 topic_str = full[:35]
+        domain_str = a.get("domain") or "-"
         print(
             f"{emoji} [{short_id}]  {role:<12}  pane={pane:<6}  "
-            f"topic={topic_str:<35}  age={age}{idle_hint}"
+            f"domain={domain_str:<10}  topic={topic_str:<35}  age={age}{idle_hint}"
         )
     print(sep)
 
@@ -726,6 +747,9 @@ def cmd_backfill_titles(_):
     print(f"Backfilled {len(missing)} threads.")
 
 
+_AGENT_TTL_SECS = 24 * 3600  # 24h idle TTL before an agent is decommissioned
+
+
 def cmd_get_agent(args):
     db = get_db()
     db.init_db()
@@ -734,20 +758,44 @@ def cmd_get_agent(args):
     from juggle_db import MAX_BACKGROUND_AGENTS
 
     thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
     mgr = JuggleTmuxManager()
 
-    # Purge dead panes before pool-full check and candidate selection.
+    # Purge dead panes and 24h-stale idle agents before pool-full check.
+    now_ts = datetime.now(timezone.utc)
     for a in db.get_all_agents():
-        if a["status"] == "idle" and not mgr.verify_pane(a["pane_id"]):
+        if a["status"] != "idle":
+            continue
+        # Dead pane check
+        if not mgr.verify_pane(a["pane_id"]):
             print(f"[juggle] Dead pane detected ({a['pane_id']}), removing agent {a['id'][:8]}.", file=sys.stderr)
             db.delete_agent(a["id"])
+            continue
+        # 24h TTL check
+        last_active = a.get("last_active") or ""
+        if last_active:
+            try:
+                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if (now_ts - dt).total_seconds() > _AGENT_TTL_SECS:
+                    print(f"[juggle] Agent {a['id'][:8]} idle >24h, decommissioning.", file=sys.stderr)
+                    mgr.decommission_agent(db, a["id"])
+                    continue
+            except (ValueError, TypeError):
+                pass
 
     all_agents = db.get_all_agents()
     if len(all_agents) >= MAX_BACKGROUND_AGENTS:
         print(f"Error: Agent pool full ({MAX_BACKGROUND_AGENTS} max). Wait for one to finish.")
         sys.exit(1)
 
-    agent = db.get_best_agent(thread_uuid, role=args.role)
+    # Determine domain: thread domain takes priority, then infer from topic/prompt
+    thread_domain = thread.get("domain") if thread else None
+    if thread_domain is None:
+        thread_domain = db.infer_domain_from_prompt(thread.get("topic", "") if thread else "")
+
+    agent = db.get_best_agent(thread_uuid, role=args.role, domain=thread_domain)
     is_new = agent is None
 
     if is_new:
@@ -759,7 +807,8 @@ def cmd_get_agent(args):
             sys.exit(1)
 
     now = datetime.now(timezone.utc).isoformat()
-    db.update_agent(agent["id"], status="busy", assigned_thread=thread_uuid, last_active=now)
+    db.update_agent(agent["id"], status="busy", assigned_thread=thread_uuid,
+                    last_active=now, domain=thread_domain)
     db.update_thread(thread_uuid, status="background")
 
     suffix = " new" if is_new else ""
@@ -931,7 +980,21 @@ def main():
     # create-thread
     p_create = subparsers.add_parser("create-thread", help="Create a new topic thread")
     p_create.add_argument("topic", help="Topic name")
+    p_create.add_argument("--domain", dest="domain", default=None,
+                          help="Domain tag for agent isolation (e.g. 'juggle', 'vault', 'work')")
     p_create.set_defaults(func=cmd_create_thread)
+
+    # register-domain
+    p_reg_domain = subparsers.add_parser("register-domain", help="Register a new domain name")
+    p_reg_domain.add_argument("name", help="Domain name (e.g. 'juggle', 'vault')")
+    p_reg_domain.set_defaults(func=cmd_register_domain)
+
+    # register-domain-path
+    p_reg_path = subparsers.add_parser("register-domain-path",
+                                        help="Map a path fragment to a domain for auto-detection")
+    p_reg_path.add_argument("path_fragment", help="Path substring (e.g. '/github/juggle')")
+    p_reg_path.add_argument("domain", help="Domain name to map to")
+    p_reg_path.set_defaults(func=cmd_register_domain_path)
 
     # switch-thread
     p_switch = subparsers.add_parser("switch-thread", help="Switch to a topic thread")
