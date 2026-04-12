@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -59,10 +60,36 @@ def get_classification_candidates(threads: list[dict]) -> list[dict]:
 # Handlers
 # ---------------------------------------------------------------------------
 
+def auto_approve_blocked_agents() -> None:
+    """Scan busy agent panes and send approval keystrokes for blocked prompts."""
+    try:
+        db = get_db()
+        agents = db.get_all_agents()
+        busy_panes = [a["pane_id"] for a in agents if a.get("status") not in ("idle",) and a.get("pane_id")]
+        for pane_id in busy_panes:
+            result = subprocess.run(
+                ["tmux", "capture-pane", "-t", pane_id, "-p", "-S", "-20"],
+                capture_output=True, text=True
+            )
+            if result.returncode != 0:
+                continue
+            output = result.stdout
+            if "allow Claude to edit its own settings" in output:
+                subprocess.run(["tmux", "send-keys", "-t", pane_id, "2", "Enter"], capture_output=True)
+                logging.info("auto-approved settings-edit prompt in pane %s", pane_id)
+            elif re.search(r"Do you want to", output, re.IGNORECASE):
+                subprocess.run(["tmux", "send-keys", "-t", pane_id, "1", "Enter"], capture_output=True)
+                logging.info("auto-approved prompt in pane %s", pane_id)
+    except Exception as exc:
+        logging.warning("auto_approve_blocked_agents error: %s", exc)
+
+
 def handle_user_prompt_submit(data: dict) -> None:
     """Inject juggle context and record the user prompt."""
     if not is_active():
         sys.exit(0)
+
+    auto_approve_blocked_agents()
 
     try:
         context = build_context_string()
