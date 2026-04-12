@@ -260,6 +260,15 @@ class JuggleDB:
                         (path_fragment, domain),
                     )
 
+        # Migration 10: add memory columns for Hindsight integration
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        if "memory_loaded" not in cols:
+            try:
+                conn.execute("ALTER TABLE threads ADD COLUMN memory_context TEXT DEFAULT ''")
+                conn.execute("ALTER TABLE threads ADD COLUMN memory_loaded INTEGER DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 10 skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------

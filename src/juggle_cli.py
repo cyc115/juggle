@@ -23,6 +23,17 @@ DB_PATH = Path(os.environ["_JUGGLE_TEST_DB"]) if "_JUGGLE_TEST_DB" in os.environ
 
 JUGGLE_IDLE_THRESHOLD_SECS = int(os.environ.get("JUGGLE_IDLE_THRESHOLD_SECS", "30"))
 
+JUGGLE_CONFIG_PATH = Path(os.environ.get(
+    "_JUGGLE_CONFIG_PATH",
+    str(Path.home() / ".juggle" / "config.json"),
+))
+
+
+def _get_hindsight_client():
+    """Return HindsightClient or None if disabled/unconfigured."""
+    from juggle_hindsight import HindsightClient
+    return HindsightClient.from_config(str(JUGGLE_CONFIG_PATH))
+
 
 def get_db():
     from juggle_db import JuggleDB
@@ -124,6 +135,26 @@ def cmd_create_thread(args):
         args=(get_db(), thread_uuid, args.topic),
         daemon=True,
     ).start()
+    # Auto-recall memory for the new thread. Runs in a thread so output
+    # is printed before recall starts; joined so the process doesn't exit
+    # before recall completes (max wait = DEFAULT_TIMEOUT * 2 + 2s restart).
+    def _auto_recall():
+        try:
+            client = _get_hindsight_client()
+            if client is None:
+                return
+            result = client.recall(args.topic)
+            db2 = get_db()
+            if result:
+                db2.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
+            else:
+                db2.update_thread(thread_uuid, memory_loaded=1)
+        except Exception:
+            pass  # non-blocking
+
+    recall_thread = threading.Thread(target=_auto_recall, daemon=False)
+    recall_thread.start()
+    recall_thread.join(timeout=10)  # wait up to 10s; never blocks user for longer
 
 
 def cmd_switch_thread(args):
@@ -939,6 +970,56 @@ def cmd_init_db(_):
     print("DB initialized.")
 
 
+def cmd_recall(args):
+    """Recall memories from Hindsight for a thread."""
+    client = _get_hindsight_client()
+    if client is None:
+        return  # disabled or unconfigured
+
+    db = get_db()
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    result = client.recall(args.query)
+
+    if result:
+        db.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
+        print(result)
+    else:
+        db.update_thread(thread_uuid, memory_loaded=1)
+
+
+def cmd_recall_if_cold(args):
+    """Recall only if thread hasn't loaded memory yet."""
+    db = get_db()
+    thread_uuid = _resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
+    if not thread:
+        print(f"Error: Thread {args.thread_id} not found.")
+        sys.exit(1)
+    if thread.get("memory_loaded", 0):
+        return  # already loaded, no-op
+
+    client = _get_hindsight_client()
+    if client is None:
+        return
+
+    result = client.recall(args.query)
+    if result:
+        db.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
+        print(result)
+    else:
+        db.update_thread(thread_uuid, memory_loaded=1)
+
+
+def cmd_retain(args):
+    """Retain content as memory in Hindsight."""
+    client = _get_hindsight_client()
+    if client is None:
+        return  # disabled or unconfigured
+
+    context = getattr(args, "context", None)
+    client.retain(args.content, context=context)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Juggle CLI - multi-topic conversation orchestrator"
@@ -1128,6 +1209,26 @@ def main():
     p_msgs.add_argument("--limit", type=int, default=None)
     p_msgs.add_argument("--plain", action="store_true", help="Plain role: content format")
     p_msgs.set_defaults(func=cmd_get_messages)
+
+    # recall
+    p_recall = subparsers.add_parser("recall", help="Recall memories from Hindsight")
+    p_recall.add_argument("thread_id", help="Thread ID or label")
+    p_recall.add_argument("query", help="Query to recall memories for")
+    p_recall.set_defaults(func=cmd_recall)
+
+    # recall-if-cold
+    p_recall_cold = subparsers.add_parser("recall-if-cold", help="Recall only if thread is cold")
+    p_recall_cold.add_argument("thread_id", help="Thread ID or label")
+    p_recall_cold.add_argument("query", help="Query to recall memories for")
+    p_recall_cold.set_defaults(func=cmd_recall_if_cold)
+
+    # retain
+    p_retain = subparsers.add_parser("retain", help="Retain content as memory")
+    p_retain.add_argument("thread_id", help="Thread ID or label")
+    p_retain.add_argument("content", help="Content to retain")
+    p_retain.add_argument("--context", dest="context", default=None,
+                          help="Context type: learnings, procedures, preferences")
+    p_retain.set_defaults(func=cmd_retain)
 
     args = parser.parse_args()
 

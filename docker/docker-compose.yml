@@ -1,0 +1,18 @@
+services:
+  hindsight:
+    image: ghcr.io/vectorize-io/hindsight:latest
+    container_name: juggle-hindsight
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18888:8888"
+      - "127.0.0.1:19999:9999"
+    volumes:
+      - "${JUGGLE_DATA_DIR:-${HOME}/.juggle}/memory/pg0:/home/hindsight/.pg0"
+    environment:
+      - HINDSIGHT_API_LLM_PROVIDER=${HINDSIGHT_LLM_PROVIDER:-openai}
+      - HINDSIGHT_API_LLM_BASE_URL=${HINDSIGHT_LLM_BASE_URL:-https://openrouter.ai/api/v1}
+      - HINDSIGHT_API_LLM_API_KEY=${OPENROUTER_KEY}
+      - HINDSIGHT_API_LLM_MODEL=${HINDSIGHT_LLM_MODEL:-moonshotai/kimi-k2.5}
+      - HINDSIGHT_API_TENANT_API_KEY=juggle
+      - HINDSIGHT_API_TENANT_KEY_MAP=juggle:juggle
+    mem_limit: 2g

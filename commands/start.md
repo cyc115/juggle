@@ -84,6 +84,11 @@ Agents return: files changed + plan bullets. No intermediate output.
 3. Dispatch background planning agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role planner` and this prompt:
    ```
    [JUGGLE_THREAD:<thread_id>]
+   # Memory Context
+   Before starting, recall relevant memory:
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<task description>"
+   Use any returned context to inform your plan.
+
    Write implementation plan for: <task description>
    Read relevant files. Write plan to /Users/mikechen/Documents/personal/projects/juggle/plan/<date>-<name>.md
 
@@ -128,6 +133,11 @@ Agents return: files changed + plan bullets. No intermediate output.
    5. If still failing after max_retries:
       call complete-agent with "PARTIAL: <what passed> | FAILED: <what failed and why> | <files changed>"
 
+   # After completing work, retain learnings:
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<summary of what was done, approach taken, key findings>"
+   # If user corrected approach or expressed preference during task:
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<preference or correction>" --context preferences
+
    On completion:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result per above>"
    ```
@@ -145,7 +155,15 @@ Agents return: files changed + plan bullets. No intermediate output.
 3. Dispatch background research agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role researcher` and this prompt:
    ```
    [JUGGLE_THREAD:<thread_id>]
+   # Memory Context
+   Before starting, recall relevant memory:
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<research question>"
+   Use any returned context to inform your research.
+
    <research question — specific files/question only>
+
+   # After completing research, retain findings:
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<summary of findings>"
 
    On completion:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings summary>"
