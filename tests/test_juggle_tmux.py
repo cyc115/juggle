@@ -98,7 +98,9 @@ def test_send_task_sleeps_when_new(mgr):
          patch("time.sleep") as mock_sleep:
         mock_run.return_value = _ok()
         mgr.send_task("%3", "do something", is_new=True)
-    mock_sleep.assert_called_once_with(2)
+    # sleep(2) for new-agent startup, sleep(1) after paste-buffer
+    assert mock_sleep.call_args_list[0] == ((2,),)
+    assert mock_sleep.call_args_list[1] == ((1,),)
 
 
 def test_send_task_no_sleep_when_not_new(mgr):
@@ -106,7 +108,8 @@ def test_send_task_no_sleep_when_not_new(mgr):
          patch("time.sleep") as mock_sleep:
         mock_run.return_value = _ok()
         mgr.send_task("%3", "do something", is_new=False)
-    mock_sleep.assert_not_called()
+    # sleep(1) after paste-buffer always fires
+    mock_sleep.assert_called_once_with(1)
 
 
 def test_spawn_agent_creates_db_record(mgr, tmp_path):
@@ -135,3 +138,21 @@ def test_decommission_agent_kills_pane_and_deletes(mgr, tmp_path):
 
     mock_kill.assert_called_once_with("%3")
     assert db.get_agent(agent_id) is None
+
+
+def test_get_pane_last_used_returns_int(mgr):
+    mock = MagicMock(return_value=MagicMock(stdout="1712800000\n"))
+    with patch.object(mgr, "_run_tmux", mock):
+        result = mgr.get_pane_last_used("%5")
+    mock.assert_called_once_with("display", "-pt", "%5", "#{pane_last_used}")
+    assert result == 1712800000
+
+
+def test_get_pane_last_used_returns_zero_on_empty(mgr):
+    with patch.object(mgr, "_run_tmux", MagicMock(return_value=MagicMock(stdout=""))):
+        assert mgr.get_pane_last_used("%5") == 0
+
+
+def test_get_pane_last_used_returns_zero_on_non_int(mgr):
+    with patch.object(mgr, "_run_tmux", MagicMock(return_value=MagicMock(stdout="not-a-number"))):
+        assert mgr.get_pane_last_used("%5") == 0

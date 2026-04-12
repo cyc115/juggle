@@ -91,7 +91,8 @@ class JuggleTmuxManager:
                 time.sleep(2)
             self._run_tmux("load-buffer", "-b", "juggle", tmp)
             self._run_tmux("paste-buffer", "-b", "juggle", "-t", pane_id)
-            self._run_tmux("send-keys", "-t", pane_id, "", "Enter")
+            time.sleep(1)
+            self._run_tmux("send-keys", "-t", pane_id, "Enter")
         finally:
             if Path(tmp).exists():
                 os.unlink(tmp)
@@ -126,6 +127,15 @@ class JuggleTmuxManager:
 
         agent_id = db.create_agent(role=role, pane_id=pane_id)
         return db.get_agent(agent_id)
+
+    def get_pane_last_used(self, pane_id: str) -> int:
+        """Return Unix timestamp of pane's last activity, or 0 on failure."""
+        result = self._run_tmux("display", "-pt", pane_id, "#{pane_last_used}")
+        raw = result.stdout.strip()
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return 0
 
     def decommission_agent(self, db, agent_id: str) -> None:
         """Kill the agent's pane and remove it from the DB."""

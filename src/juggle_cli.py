@@ -9,12 +9,15 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-_DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude" / "juggle"))
+_DATA_DIR = Path(os.environ.get("JUGGLE_DATA_DIR", Path.home() / ".claude" / "plugins" / "data" / "juggle"))
 DB_PATH = Path(os.environ["_JUGGLE_TEST_DB"]) if "_JUGGLE_TEST_DB" in os.environ else _DATA_DIR / "juggle.db"
 SRC_DIR = Path(__file__).parent
+
+JUGGLE_IDLE_THRESHOLD_SECS = int(os.environ.get("JUGGLE_IDLE_THRESHOLD_SECS", "30"))
 
 
 def get_db():
@@ -644,6 +647,10 @@ def cmd_list_agents(_):
         print("No agents.")
         return
 
+    sys.path.insert(0, str(SRC_DIR))
+    from juggle_tmux import JuggleTmuxManager
+    mgr = JuggleTmuxManager()
+
     STATUS_EMOJI = {
         "idle": "💤",
         "busy": "🟢",
@@ -657,10 +664,15 @@ def cmd_list_agents(_):
     print(sep)
     for a in agents:
         emoji = STATUS_EMOJI.get(a["status"], "❓")
+        idle_hint = ""
+        if a["status"] == "busy":
+            last_used = mgr.get_pane_last_used(a["pane_id"])
+            if last_used and (time.time() - last_used) > JUGGLE_IDLE_THRESHOLD_SECS:
+                emoji = "⏸️"
+                idle_hint = " waiting?"
         short_id = a["id"][:8]
         role = a["role"]
         pane = a["pane_id"]
-        thread = (a.get("assigned_thread") or "")[:8] or "-"
         last_active = a.get("last_active") or ""
         age = "-"
         if last_active:
@@ -678,10 +690,11 @@ def cmd_list_agents(_):
             if t:
                 lbl = t.get("label") or ""
                 ttl = t.get("title") or " ".join(t["topic"].split()[:5])
-                topic_str = f"{lbl}: {ttl}" if lbl else ttl
+                full = f"{lbl}: {ttl}" if lbl else ttl
+                topic_str = full[:20]
         print(
             f"{emoji} [{short_id}]  {role:<12}  pane={pane:<6}  "
-            f"topic={topic_str}  age={age}"
+            f"topic={topic_str:<20}  age={age}{idle_hint}"
         )
     print(sep)
 
