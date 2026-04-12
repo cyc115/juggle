@@ -1,0 +1,21 @@
+# Libraries
+
+- `src/juggle_cli.py`
+  - function get_db: ()
+  - function cmd_start: (_)
+  - function cmd_stop: (_)
+  - function cmd_create_thread: (args)
+  - function cmd_switch_thread: (args)
+  - function cmd_update_meta: (args)
+  - _...26 more_
+- `src/juggle_context.py` — function build_context_string: (db_path) -> str, class ContextBuilder
+- `src/juggle_db.py` — class JuggleDB
+- `src/juggle_hooks.py`
+  - function is_active: () -> bool
+  - function get_db: () -> JuggleDB
+  - function get_classification_candidates: (threads) -> list[dict]
+  - function handle_user_prompt_submit: (data) -> None
+  - function handle_stop: (data) -> None
+  - function handle_session_start: (data) -> None
+  - _...2 more_
+- `src/juggle_tmux.py` — class JuggleTmuxManager
