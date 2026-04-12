@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Juggle Context - builds additionalContext for UserPromptSubmit hook."""
 
-from juggle_db import JuggleDB
+from juggle_db import JuggleDB, _is_junk_message, _thread_age_seconds
 
 # Hard cap: ~2000 tokens => ~8000 chars
 _CHAR_LIMIT = 8000
@@ -17,6 +17,24 @@ def _build(db: JuggleDB) -> str:
     parts: list[str] = []
     parts.append("--- JUGGLE ACTIVE (do not forward to sub-agents) ---")
     parts.append("RULE: Every Agent call MUST use run_in_background=true. No foreground agents ever.")
+
+    # ------------------------------------------------------------------
+    # ACTION REQUIRED — completed agent notifications (top of block)
+    # ------------------------------------------------------------------
+    notifications = db.get_pending_notifications()
+    completion_notifs = [n for n in notifications if "completed" in n["message"] or "results ready" in n["message"]]
+    other_notifs = [n for n in notifications if n not in completion_notifs]
+
+    if completion_notifs:
+        parts.append("")
+        parts.append("⚠️ ACTION REQUIRED — Tell user about completed agents BEFORE doing anything else:")
+        for n in completion_notifs:
+            attempts = n.get("delivery_attempts") or 0
+            if attempts >= 3:
+                parts.append(f"  🚨 UNACKNOWLEDGED (attempt {attempts}): {n['message']}")
+            else:
+                parts.append(f"  → {n['message']}")
+        parts.append("After announcing completions to user, proceed with their request.")
 
     current_thread = db.get_current_thread()
     all_threads = db.get_all_threads()
@@ -103,13 +121,12 @@ def _build(db: JuggleDB) -> str:
             )
 
     # ------------------------------------------------------------------
-    # Pending notifications
+    # Pending notifications (non-completion only; completions shown at top)
     # ------------------------------------------------------------------
-    notifications = db.get_pending_notifications()
-    if notifications:
+    if other_notifs:
         parts.append("")
         parts.append("Pending notifications:")
-        for n in notifications:
+        for n in other_notifs:
             parts.append(
                 f"  \u26a1 {n['message']}"
             )
@@ -174,6 +191,73 @@ def build_context_string(db_path=None) -> str:
     """
     db = JuggleDB(db_path=db_path)
     return _build(db)
+
+
+def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
+    """Return emoji state string for a thread dict.
+
+    Returns one of: "👉", "🏃‍♂️", "⏸️", "💤", "✅", "❌", "🗄️", or "".
+    Priority (highest wins): current > background > done > failed > archived > waiting > idle
+    """
+    tid = thread["id"]
+    status = thread.get("status") or "active"
+    last_active = thread.get("last_active") or ""
+
+    # Current
+    if tid == current_thread_id:
+        return "👉"
+
+    # Background (agent running)
+    if status == "background":
+        return "🏃\u200d♂️"
+
+    # Done
+    if status == "done":
+        with db._connect() as conn:
+            asst_row = conn.execute(
+                "SELECT id, content FROM messages WHERE thread_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+                (tid,),
+            ).fetchone()
+            if asst_row and asst_row["content"].rstrip().endswith("?"):
+                user_rows = conn.execute(
+                    "SELECT content FROM messages WHERE thread_id = ? AND role = 'user' AND id > ? ORDER BY id ASC",
+                    (tid, asst_row["id"]),
+                ).fetchall()
+                has_real_reply = any(not _is_junk_message(r["content"]) for r in user_rows)
+                if not has_real_reply:
+                    return "⏸️"
+        return "✅"
+
+    # Failed
+    if status == "failed":
+        return "❌"
+
+    # Archived: last_active > 48 hours ago
+    age = _thread_age_seconds(last_active)
+    if age is not None and age > 48 * 3600:
+        return "🗄️"
+
+    # For waiting / idle detection we need the last assistant message
+    with db._connect() as conn:
+        assistant_row = conn.execute(
+            """
+            SELECT role, content, created_at FROM messages
+            WHERE thread_id = ? AND role = 'assistant'
+            ORDER BY id DESC LIMIT 1
+            """,
+            (tid,),
+        ).fetchone()
+
+    # Waiting: last message role == assistant AND content ends with "?"
+    if assistant_row:
+        if assistant_row["content"].rstrip().endswith("?"):
+            return "⏸️"
+
+    # Idle: last assistant message exists (no "?") AND last_active > 30 min ago
+    if assistant_row and age is not None and age > 30 * 60:
+        return "💤"
+
+    return ""
 
 
 if __name__ == "__main__":

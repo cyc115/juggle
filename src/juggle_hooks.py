@@ -116,6 +116,10 @@ def handle_user_prompt_submit(data: dict) -> None:
     auto_approve_blocked_agents()
 
     try:
+        # Increment delivery attempts for pending notifications before building context
+        db = get_db()
+        db.increment_delivery_attempts()
+
         context = build_context_string()
         if context:
             output = {
@@ -233,8 +237,8 @@ def handle_post_tool_use(data: dict) -> None:
     try:
         tool_name = data.get("tool_name", "")
 
-        # Violation detection: warn if orchestrator used file tools directly
-        FORBIDDEN_TOOLS = {"Read", "Edit", "Write", "Glob", "Grep", "NotebookEdit"}
+        # Violation detection: warn if orchestrator used file/search tools directly
+        FORBIDDEN_TOOLS = {"Read", "Edit", "Write", "Glob", "Grep", "NotebookEdit", "WebFetch", "WebSearch"}
         if tool_name in FORBIDDEN_TOOLS and is_active():
             warning = (
                 f"⚠️ ORCHESTRATOR VIOLATION: You used [{tool_name}] directly in the main thread. "
@@ -255,6 +259,21 @@ def handle_post_tool_use(data: dict) -> None:
 
         tool_input = data.get("tool_input", {})
         if not isinstance(tool_input, dict):
+            sys.exit(0)
+
+        # Violation: foreground Agent call (run_in_background not set or false)
+        if not tool_input.get("run_in_background"):
+            warning = (
+                "⚠️ ORCHESTRATOR VIOLATION: Foreground Agent call detected. "
+                "All Agent calls MUST use run_in_background=true. The orchestrator must stay responsive."
+            )
+            output = {
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": warning,
+                }
+            }
+            print(json.dumps(output))
             sys.exit(0)
 
         # Extract JUGGLE_THREAD:<id> from the agent prompt.

@@ -142,9 +142,9 @@ def test_set_and_check_agent(started_db):
     from juggle_db import JuggleDB
     db = JuggleDB(str(db_path))
     db.update_thread(general_tid, agent_task_id="task_abc", status="background")
-    agents = db.get_background_agents()
-    assert len(agents) == 1
-    assert agents[0]["agent_task_id"] == "task_abc"
+    threads = [t for t in db.get_all_threads() if t["status"] == "background" and t.get("agent_task_id")]
+    assert len(threads) == 1
+    assert threads[0]["agent_task_id"] == "task_abc"
 
 
 def test_complete_agent(started_db):
@@ -430,7 +430,8 @@ def test_show_topics_waiting_thread_shows_decision_prompt(tmp_path, capsys):
     """⏸️ thread shows 🤔 decision prompt instead of Last: Q/A block."""
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
-    from juggle_cli import cmd_show_topics
+    from juggle_cmd_threads import cmd_show_topics
+    import juggle_cmd_threads
 
     db = JuggleDB(str(tmp_path / "test.db"))
     db.init_db()
@@ -442,13 +443,12 @@ def test_show_topics_waiting_thread_shows_decision_prompt(tmp_path, capsys):
     db.add_message(tid_b, "user", "Go with option A")
 
     # Patch get_db to return our test db
-    import juggle_cli
-    original_get_db = juggle_cli.get_db
-    juggle_cli.get_db = lambda: db
+    original_get_db = juggle_cmd_threads.get_db
+    juggle_cmd_threads.get_db = lambda: db
     try:
         cmd_show_topics(None)
     finally:
-        juggle_cli.get_db = original_get_db
+        juggle_cmd_threads.get_db = original_get_db
 
     out = capsys.readouterr().out
     assert "🤔" in out or "📬" in out

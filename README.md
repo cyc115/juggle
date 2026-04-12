@@ -1,6 +1,33 @@
 # Juggle
 
-Multi-topic conversation orchestrator for Claude Code. Discuss one topic while background agents research or build for others — switch between threads freely without losing context.
+Claude Code can only hold one conversation at a time. You're designing an auth module, you need to look up rate-limiting best practices, and you want to check an env var config, but each detour blows away the context you've been building. You either serialize everything or lose your train of thought.
+
+Juggle fixes this. It gives Claude Code parallel conversation threads backed by persistent memory, so you can work on multiple topics simultaneously without losing context on any of them.
+
+### How it works in practice
+
+You're building a feature and hit a question about API rate limits. Instead of derailing your current thread:
+
+1. You mention rate limiting. Juggle detects the topic shift and opens a new thread.
+2. A background agent spins up in a tmux pane to research rate-limiting patterns while you keep designing.
+3. When the agent finishes, you get a notification at the next natural pause. Your original thread is untouched.
+4. You switch back and forth between threads freely. Context is restored from SQLite, not from your memory.
+
+No copy-pasting prompts. No "where was I?" after a tangent. Just type naturally and let Juggle manage the concurrency.
+
+### Key capabilities
+
+**Background agents via tmux.** Dispatch research, code generation, or analysis to background agents running in tmux panes. They work in parallel while your main conversation continues uninterrupted. Up to 20 concurrent agents.
+
+**Persistent multi-topic threads.** Every thread is stored in SQLite with full message history. Session compactions, restarts, and context window limits don't erase your work. Pick up any topic exactly where you left off.
+
+**Auto-approver.** Background agents get stuck on permission prompts ("Do you want to allow..."). Juggle's `UserPromptSubmit` hook detects blocked panes and automatically sends approval keystrokes, so agents don't stall while you're focused elsewhere.
+
+**Orchestrator guardrails.** The main thread acts as a coordinator, not a worker. Juggle warns you if the orchestrator uses file tools directly instead of delegating to agents, keeping the separation clean.
+
+### What you get back
+
+Time and focus. Instead of one serial conversation that context-switches between topics, you get a workspace where multiple lines of work progress in parallel. The context for each thread is machine-managed, not human-managed. You stop being the bottleneck.
 
 ## Install
 

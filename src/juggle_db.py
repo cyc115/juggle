@@ -3,16 +3,16 @@
 
 import json
 import logging
-import os as _os
+import os
 import sqlite3
-
-_log = logging.getLogger(__name__)
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-MAX_THREADS: int = int(_os.environ.get("JUGGLE_MAX_THREADS", 10))
-MAX_BACKGROUND_AGENTS: int = int(_os.environ.get("JUGGLE_MAX_BACKGROUND_AGENTS", 20))
+_log = logging.getLogger(__name__)
+
+MAX_THREADS: int = int(os.environ.get("JUGGLE_MAX_THREADS", 10))
+MAX_BACKGROUND_AGENTS: int = int(os.environ.get("JUGGLE_MAX_BACKGROUND_AGENTS", 20))
 
 DEFAULT_DATA_DIR = Path.home() / ".claude" / "juggle"
 DB_PATH = DEFAULT_DATA_DIR / "juggle.db"
@@ -120,6 +120,30 @@ def _assign_label(conn: sqlite3.Connection) -> str:
         if letter not in used:
             return letter
     raise ValueError("All 26 labels in use. Archive a thread first.")
+
+
+def _thread_age_seconds(last_active: str) -> float | None:
+    """Parse last_active ISO timestamp, return seconds since now, or None."""
+    if not last_active:
+        return None
+    try:
+        dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds()
+    except (ValueError, TypeError):
+        return None
+
+
+def _is_junk_message(content: str) -> bool:
+    """Return True if content is a junk/system message to be excluded from display."""
+    return (
+        content.startswith("<task-notification")
+        or "</task-notification>" in content
+        or "task-id" in content
+        or "<tool_uses>" in content
+        or content.strip().startswith("/")
+    )
 
 
 class JuggleDB:
@@ -268,6 +292,14 @@ class JuggleDB:
                 conn.execute("ALTER TABLE threads ADD COLUMN memory_loaded INTEGER DEFAULT 0")
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 10 skipped: %s", e)
+
+        # Migration 11: add delivery_attempts to notifications for escalation
+        notif_cols = {row["name"] for row in conn.execute("PRAGMA table_info(notifications)").fetchall()}
+        if "delivery_attempts" not in notif_cols:
+            try:
+                conn.execute("ALTER TABLE notifications ADD COLUMN delivery_attempts INTEGER DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 11 skipped: %s", e)
 
     # ------------------------------------------------------------------
     # Session helpers
@@ -441,17 +473,6 @@ class JuggleDB:
             )
             conn.commit()
 
-    @staticmethod
-    def _is_junk_message(content: str) -> bool:
-        """Return True if content is a junk/system message to be excluded from display."""
-        return (
-            content.startswith("<task-notification")
-            or "</task-notification>" in content
-            or "task-id" in content
-            or "<tool_uses>" in content
-            or content.strip().startswith("/")
-        )
-
     def get_message_count(self, thread_id: str, exclude_junk: bool = True) -> int:
         """Count user messages for a thread, optionally excluding junk."""
         with self._connect() as conn:
@@ -463,7 +484,7 @@ class JuggleDB:
             return len(rows)
         count = 0
         for row in rows:
-            if not self._is_junk_message(row["content"]):
+            if not _is_junk_message(row["content"]):
                 count += 1
         return count
 
@@ -529,22 +550,14 @@ class JuggleDB:
             )
             conn.commit()
 
-    # ------------------------------------------------------------------
-    # Background agents
-    # ------------------------------------------------------------------
-
-    def get_background_agents(self) -> list[dict]:
-        """Return threads with status='background' and agent_task_id set."""
+    def increment_delivery_attempts(self) -> None:
+        """Increment delivery_attempts for all pending (undelivered) notifications."""
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM threads
-                WHERE status = 'background'
-                  AND agent_task_id IS NOT NULL
-                ORDER BY created_at
-                """
-            ).fetchall()
-            return [dict(row) for row in rows]
+            conn.execute(
+                "UPDATE notifications SET delivery_attempts = COALESCE(delivery_attempts, 0) + 1 "
+                "WHERE delivered = 0"
+            )
+            conn.commit()
 
     def get_last_exchange(self, thread_id: str) -> dict:
         """Return the last user message and last assistant message for a thread.
@@ -574,7 +587,7 @@ class JuggleDB:
 
         user_row = None
         for row in user_rows:
-            if not self._is_junk_message(row["content"]):
+            if not _is_junk_message(row["content"]):
                 user_row = row
                 break
 
@@ -613,7 +626,7 @@ class JuggleDB:
         # Collect non-junk user message ids in order (ascending)
         user_msgs = [
             row for row in all_rows
-            if row["role"] == "user" and not self._is_junk_message(row["content"])
+            if row["role"] == "user" and not _is_junk_message(row["content"])
         ]
 
         # Take last n user messages (most recent first after reversing)
@@ -633,101 +646,6 @@ class JuggleDB:
             result.append({"user": user_row["content"], "assistant": assistant_content})
 
         return result
-
-    def get_thread_state(self, thread: dict, current_thread_id: str) -> str:
-        """Return emoji state string for a thread dict.
-
-        Returns one of: "👉", "🏃\u200d♂️", "⏸️", "💤", "✅", "❌", "🗄️", or "".
-        Priority (highest wins): current > background > done > failed > archived > waiting > idle
-        """
-        tid = thread["id"]
-        status = thread.get("status") or "active"
-        last_active = thread.get("last_active") or ""
-
-        # Current
-        if tid == current_thread_id:
-            return "👉"
-
-        # Background (agent running)
-        if status == "background":
-            return "🏃\u200d♂️"
-
-        # Done
-        if status == "done":
-            # Check if last assistant message is an unanswered question
-            with self._connect() as conn:
-                asst_row = conn.execute(
-                    "SELECT id, content FROM messages WHERE thread_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
-                    (tid,),
-                ).fetchone()
-                if asst_row and asst_row["content"].rstrip().endswith("?"):
-                    user_rows = conn.execute(
-                        "SELECT content FROM messages WHERE thread_id = ? AND role = 'user' AND id > ? ORDER BY id ASC",
-                        (tid, asst_row["id"]),
-                    ).fetchall()
-                    has_real_reply = any(not self._is_junk_message(r["content"]) for r in user_rows)
-                    if not has_real_reply:
-                        return "⏸️"
-            return "✅"
-
-        # Failed
-        if status == "failed":
-            return "❌"
-
-        # Archived: last_active > 48 hours ago
-        now = datetime.now(timezone.utc)
-        archived = False
-        if last_active:
-            try:
-                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                age_seconds = (now - dt).total_seconds()
-                if age_seconds > 48 * 3600:
-                    archived = True
-            except (ValueError, TypeError):
-                pass
-
-        if archived:
-            return "🗄️"
-
-        # For waiting / idle detection we need the last assistant message
-        with self._connect() as conn:
-            assistant_row = conn.execute(
-                """
-                SELECT role, content, created_at FROM messages
-                WHERE thread_id = ? AND role = 'assistant'
-                ORDER BY id DESC LIMIT 1
-                """,
-                (tid,),
-            ).fetchone()
-
-        # Waiting: last message role == assistant AND content ends with "?"
-        if assistant_row:
-            if assistant_row["content"].rstrip().endswith("?"):
-                return "⏸️"
-
-        # Idle: last assistant message exists (no "?") AND last_active > 30 min ago
-        if assistant_row and last_active:
-            try:
-                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                age_seconds = (now - dt).total_seconds()
-                if age_seconds > 30 * 60:
-                    return "💤"
-            except (ValueError, TypeError):
-                pass
-
-        return ""
-
-    def update_thread_summary(self, thread_id: str, summary: str):
-        """Write a summary string to threads.summary."""
-        self.update_thread(thread_id, summary=summary)
-
-    def set_summarized_count(self, thread_id: str, count: int) -> None:
-        """Record how many messages were present at last summarization."""
-        self.update_thread(thread_id, summarized_msg_count=count)
 
     def get_stale_threads(self, threshold: int = 3) -> list[dict]:
         """Return threads where substantive user message delta >= threshold.
@@ -750,7 +668,7 @@ class JuggleDB:
         # Count non-junk messages per thread in Python
         counts: dict[str, int] = {}
         for row in rows:
-            if not self._is_junk_message(row["content"]):
+            if not _is_junk_message(row["content"]):
                 counts[row["thread_id"]] = counts.get(row["thread_id"], 0) + 1
 
         stale = []
@@ -952,43 +870,20 @@ class JuggleDB:
         """
         current_thread = self.get_current_thread()
         threads = self.get_all_threads()
-        now = datetime.now(timezone.utc)
         candidates = []
         for t in threads:
             tid = t["id"]
             status = t.get("status") or "active"
 
-            # Exclude current thread
-            if tid == current_thread:
+            if tid == current_thread or status == "archived":
                 continue
 
-            # Exclude already-archived threads
-            if status == "archived":
+            if status in ("done", "failed"):
+                candidates.append(t)
                 continue
 
-            # Check candidate criteria
-            is_candidate = False
-
-            if status == "done":
-                is_candidate = True
-            elif status == "failed":
-                is_candidate = True
-            else:
-                last_active = t.get("last_active") or ""
-                if last_active:
-                    try:
-                        dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
-                        if dt.tzinfo is None:
-                            dt = dt.replace(tzinfo=timezone.utc)
-                        age_seconds = (now - dt).total_seconds()
-
-                        # last_active > 48 hours AND status not background/waiting
-                        if age_seconds > 48 * 3600 and status not in ("background", "waiting"):
-                            is_candidate = True
-                    except (ValueError, TypeError):
-                        pass
-
-            if is_candidate:
+            age = _thread_age_seconds(t.get("last_active") or "")
+            if age is not None and age > 48 * 3600 and status not in ("background", "waiting"):
                 candidates.append(t)
 
         return candidates

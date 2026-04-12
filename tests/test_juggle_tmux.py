@@ -105,14 +105,17 @@ def test_send_task_spawns_bg_subprocess_when_new(mgr):
     assert "sleep 10" in script
 
 
-def test_send_task_no_sleep_when_not_new(mgr):
-    # is_new=False: sends synchronously, no sleep, no thread
+def test_send_task_existing_agent_has_delay_and_retry(mgr):
+    # is_new=False: paste + 1s delay + C-m + background retry
     with patch("subprocess.run") as mock_run, \
-         patch("time.sleep") as mock_sleep:
+         patch("time.sleep") as mock_sleep, \
+         patch("subprocess.Popen") as mock_popen:
         mock_run.return_value = _ok()
         mgr.send_task("%3", "do something", is_new=False)
-    # No sleep at all for existing agents
-    mock_sleep.assert_not_called()
+    # 1s delay between paste and Enter
+    mock_sleep.assert_called_once_with(1)
+    # Background retry Popen spawned
+    mock_popen.assert_called_once()
 
 
 def test_spawn_agent_creates_db_record(mgr, tmp_path):

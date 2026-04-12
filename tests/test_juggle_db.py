@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from juggle_context import get_thread_state
 from juggle_db import JuggleDB
 
 
@@ -167,16 +168,6 @@ def test_mark_notifications_empty_list(db):
     db.mark_notifications_delivered([])
 
 
-def test_get_background_agents(db):
-    tid = db.create_thread("My topic", session_id="s1")
-    assert db.get_background_agents() == []
-
-    db.update_thread(tid, status="background", agent_task_id="task_123")
-    agents = db.get_background_agents()
-    assert len(agents) == 1
-    assert agents[0]["agent_task_id"] == "task_123"
-
-
 def test_summarized_msg_count_default_zero(db):
     tid = db.create_thread("Topic A", session_id="s1")
     thread = db.get_thread(tid)
@@ -185,7 +176,7 @@ def test_summarized_msg_count_default_zero(db):
 
 def test_set_summarized_count(db):
     tid = db.create_thread("Topic A", session_id="s1")
-    db.set_summarized_count(tid, 5)
+    db.update_thread(tid, summarized_msg_count=5)
     thread = db.get_thread(tid)
     assert thread["summarized_msg_count"] == 5
 
@@ -218,7 +209,7 @@ def test_get_stale_threads_not_stale_after_set(db):
     tid = db.create_thread("Topic A", session_id="s1")
     for i in range(3):
         db.add_message(tid, "user", f"real question {i}")
-    db.set_summarized_count(tid, 3)
+    db.update_thread(tid, summarized_msg_count=3)
     stale = db.get_stale_threads(threshold=3)
     assert len(stale) == 0
 
@@ -290,7 +281,7 @@ def test_get_thread_state_current(db):
     """get_thread_state returns 👉 for the current thread."""
     tid = db.create_thread("Topic A", session_id="s1")
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id=tid)
+    state = get_thread_state(db, thread, current_thread_id=tid)
     assert state == "👉"
 
 
@@ -299,7 +290,7 @@ def test_get_thread_state_background(db):
     tid = db.create_thread("Topic A", session_id="s1")
     db.update_thread(tid, status="background", agent_task_id="task_123")
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == "🏃\u200d♂️"
 
 
@@ -308,7 +299,7 @@ def test_get_thread_state_done(db):
     tid = db.create_thread("Topic A", session_id="s1")
     db.update_thread(tid, status="done")
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == "✅"
 
 
@@ -317,7 +308,7 @@ def test_get_thread_state_failed(db):
     tid = db.create_thread("Topic A", session_id="s1")
     db.update_thread(tid, status="failed")
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == "❌"
 
 
@@ -328,7 +319,7 @@ def test_get_thread_state_archived(db):
     old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
     db.update_thread(tid, last_active=old_time)
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == "🗄️"
 
 
@@ -338,7 +329,7 @@ def test_get_thread_state_waiting(db):
     db.add_message(tid, "user", "some question")
     db.add_message(tid, "assistant", "Do you want the Secure flag set on the cookie?")
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == "⏸️"
 
 
@@ -351,7 +342,7 @@ def test_get_thread_state_idle(db):
     old_time = (datetime.now(timezone.utc) - timedelta(minutes=31)).isoformat()
     db.update_thread(tid, last_active=old_time)
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == "💤"
 
 
@@ -362,7 +353,7 @@ def test_get_thread_state_no_badge_recent_active(db):
     db.add_message(tid, "assistant", "Here is the answer.")
     # last_active is just now (set by add_message), so not idle
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == ""
 
 
@@ -371,7 +362,7 @@ def test_get_thread_state_priority_current_over_background(db):
     tid = db.create_thread("Topic A", session_id="s1")
     db.update_thread(tid, status="background", agent_task_id="task_1")
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id=tid)
+    state = get_thread_state(db, thread, current_thread_id=tid)
     assert state == "👉"
 
 
@@ -382,7 +373,7 @@ def test_get_thread_state_done_unanswered_question_returns_paused(db):
     db.add_message(tid, "assistant", "Do you want me to proceed?")
     db.update_thread(tid, status="done")
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == "⏸️"
 
 
@@ -394,7 +385,7 @@ def test_get_thread_state_done_answered_question_returns_done(db):
     db.add_message(tid, "user", "yes please")
     db.update_thread(tid, status="done")
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == "✅"
 
 
@@ -408,7 +399,7 @@ def test_get_thread_state_done_junk_only_reply_returns_paused(db):
     db.add_message(tid, "user", "<task-notification>task-id: abc</task-notification>")
     db.update_thread(tid, status="done")
     thread = db.get_thread(tid)
-    state = db.get_thread_state(thread, current_thread_id="not-this-thread")
+    state = get_thread_state(db, thread, current_thread_id="not-this-thread")
     assert state == "⏸️"
 
 

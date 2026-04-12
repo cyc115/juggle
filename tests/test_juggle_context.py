@@ -36,7 +36,7 @@ def test_stale_flag_emitted_at_threshold(active_db):
 def test_stale_flag_not_emitted_after_count_updated(active_db):
     for i in range(3):
         active_db.add_message(active_db.get_current_thread(), "user", f"real question {i}")
-    active_db.set_summarized_count(active_db.get_current_thread(), 3)
+    active_db.update_thread(active_db.get_current_thread(), summarized_msg_count=3)
     ctx = ContextBuilder(active_db).build()
     assert "SUMMARY STALE" not in ctx
 

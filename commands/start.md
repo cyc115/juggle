@@ -27,6 +27,31 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<topic label>"
 
 ---
 
+## CLI Quick Reference
+
+All commands: `python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <cmd> [args]`
+
+| Command | Usage |
+|---------|-------|
+| `create-thread <label>` | New topic thread |
+| `switch-thread <id>` | Switch active topic |
+| `show-topics` | List all threads |
+| `close-thread <id>` | Mark thread done |
+| `archive-thread <id>` | Archive thread |
+| `get-agent <thread_id> --role <role>` | Get idle agent (spawns if needed). Roles: `researcher`, `planner`, `coder` |
+| `send-task <agent_id> <prompt_file>` | Send task file to agent pane |
+| `complete-agent <thread_id> "<result>"` | Mark agent task done + notify |
+| `fail-agent <thread_id> "<error>"` | Mark agent task failed |
+| `release-agent <agent_id>` | Return agent to idle pool |
+| `list-agents` | Show all agents with status |
+| `update-summary <id> "<text>"` | Update thread summary |
+| `get-messages <id> --plain --limit N` | Read thread messages |
+| `get-archive-candidates` | List archivable threads |
+
+**Do NOT use:** `spawn-agent` directly — always use `get-agent` (handles pool reuse).
+
+---
+
 ## Task Classification (every message)
 
 Classify before responding. Never do inline implementation. Always use agents.
@@ -50,18 +75,6 @@ Explore codebase. Gather context.
 ### Category 3: Implementation / Changes
 Build. Edit. Refactor. Fix bugs.
 **Route**: Two-phase background dispatch — plan, then implement after approval. Main thread: plan bullets + final status only.
-
----
-
-## Orchestrator Rules
-
-Orchestrator coordinates only. No direct work.
-
-Permitted direct tool calls: `Bash` to `juggle_cli.py` only (start, create-thread, switch-thread, show-topics, complete-agent, etc.).
-
-When in doubt: dispatch an agent.
-
-Note: Agent permission prompts are auto-approved by the `UserPromptSubmit` hook — no manual pane inspection needed.
 
 ---
 
@@ -215,18 +228,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> "$TASK_FILE
 | Cat 3 phase 1: plan | `--role planner` |
 | Cat 3 phase 2: implement | `--role coder` |
 
-On agent completion:
-```bash
-# Called automatically by the agent itself — no orchestrator action needed.
-# Orchestrator picks up result via pending notifications on next message.
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>"
-```
-
-On agent failure — if the agent outputs an error before completing, it should call:
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py fail-agent <thread_id> "<error>"
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py release-agent <agent_id>
-```
+Agent completion/failure: agents call `complete-agent` or `fail-agent` + `release-agent` themselves (see CLI Quick Reference).
 
 ---
 
@@ -239,25 +241,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py release-agent <agent_id>
 
 ---
 
-## Completion Notifications
-
-At next natural pause only:
-```
-[Topic B done] API rate limiting — 3 findings. /juggle:resume-topic B to view.
-```
-
----
-
 ## Topic Switching
 
-1. Save current summary:
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <id> "<summary>"
-   ```
-2. Load target:
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py switch-thread <id>
-   ```
+1. `update-summary` on current thread
+2. `switch-thread` to target
 3. Present: summary, key decisions, open questions.
 
 ---
@@ -269,21 +256,3 @@ At next natural pause only:
 - Agents persist until: explicit decommission, or assigned thread is archived
 - L2 agents (inside tmux panes) may use any tools. Juggle does not track L3.
 
----
-
-## Auto-Summary
-
-When JUGGLE ACTIVE block contains `[SUMMARY STALE: N new messages — summarize after responding]`:
-
-1. Respond normally first. No delay.
-2. After responding: get a researcher agent and send the summarization task using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with this prompt:
-   ```
-   [JUGGLE_THREAD:<thread_id>]
-   Summarize thread. Run:
-     python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-messages <thread_id> --plain --limit 10
-   Write 1-2 telegraphic sentences (max 250 chars, no articles). Then:
-     python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <thread_id> "<summary>"
-     python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py set-summarized-count <thread_id> <count>
-     python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Done."
-   ```
-One dispatch per stale thread. No batching.

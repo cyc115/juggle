@@ -3,6 +3,7 @@
 
 import os
 import subprocess
+import time
 import uuid
 from pathlib import Path
 
@@ -104,7 +105,15 @@ class JuggleTmuxManager:
             try:
                 self._run_tmux("load-buffer", "-b", "juggle", tmp)
                 self._run_tmux("paste-buffer", "-b", "juggle", "-t", pane_id)
+                time.sleep(1)  # let Claude Code process pasted input
                 self._run_tmux("send-keys", "-t", pane_id, "C-m")
+                # Retry Enter after 5s in case first was swallowed
+                subprocess.Popen(
+                    ["bash", "-c", f"sleep 5; tmux send-keys -t '{pane_id}' C-m"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
             finally:
                 if Path(tmp).exists():
                     os.unlink(tmp)
