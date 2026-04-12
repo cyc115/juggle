@@ -94,22 +94,32 @@ def test_send_task_loads_and_pastes(mgr):
 
 
 def test_send_task_sleeps_when_new(mgr):
+    # is_new=True: send is dispatched in a background thread with a 2s delay.
+    # We patch threading.Thread to capture whether it was called.
+    import threading as _threading
+    started = []
+    class _FakeThread:
+        def __init__(self, target, daemon=False):
+            self._target = target
+        def start(self):
+            started.append(True)
     with patch("subprocess.run") as mock_run, \
-         patch("time.sleep") as mock_sleep:
+         patch("juggle_tmux.threading") as mock_threading:
         mock_run.return_value = _ok()
+        mock_threading.Thread.side_effect = _FakeThread
         mgr.send_task("%3", "do something", is_new=True)
-    # sleep(2) for new-agent startup, sleep(1) after paste-buffer
-    assert mock_sleep.call_args_list[0] == ((2,),)
-    assert mock_sleep.call_args_list[1] == ((1,),)
+    # Thread was started (non-blocking path)
+    assert len(started) == 1
 
 
 def test_send_task_no_sleep_when_not_new(mgr):
+    # is_new=False: sends synchronously, no sleep, no thread
     with patch("subprocess.run") as mock_run, \
          patch("time.sleep") as mock_sleep:
         mock_run.return_value = _ok()
         mgr.send_task("%3", "do something", is_new=False)
-    # sleep(1) after paste-buffer always fires
-    mock_sleep.assert_called_once_with(1)
+    # No sleep at all for existing agents
+    mock_sleep.assert_not_called()
 
 
 def test_spawn_agent_creates_db_record(mgr, tmp_path):

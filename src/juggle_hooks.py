@@ -17,10 +17,10 @@ from pathlib import Path
 # Add the directory containing this file to sys.path so we can import siblings.
 sys.path.insert(0, str(Path(__file__).parent))
 
-from juggle_db import JuggleDB
+from juggle_db import JuggleDB, DEFAULT_DATA_DIR
 from juggle_context import build_context_string
 
-_DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude" / "juggle"))
+_DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA", DEFAULT_DATA_DIR))
 DB_PATH = _DATA_DIR / "juggle.db"
 
 logging.basicConfig(
@@ -60,6 +60,22 @@ def get_classification_candidates(threads: list[dict]) -> list[dict]:
 # Handlers
 # ---------------------------------------------------------------------------
 
+# Patterns that are always safe to approve (send "1" = proceed).
+# Nothing containing destructive keywords is auto-approved.
+_SAFE_APPROVE_PATTERNS = [
+    r"Do you want to proceed with",
+    r"Do you want to overwrite",
+    r"Do you want to create",
+    r"Would you like to",
+]
+
+# Keywords that indicate a destructive action — never auto-approve if present.
+_DESTRUCTIVE_KEYWORDS = [
+    "delete", "force", "reset", "remove", "drop", "destroy",
+    "push to main", "push to master",
+]
+
+
 def auto_approve_blocked_agents() -> None:
     """Scan busy agent panes and send approval keystrokes for blocked prompts."""
     try:
@@ -74,10 +90,18 @@ def auto_approve_blocked_agents() -> None:
             if result.returncode != 0:
                 continue
             output = result.stdout
+
             if "allow Claude to edit its own settings" in output:
                 subprocess.run(["tmux", "send-keys", "-t", pane_id, "2", "Enter"], capture_output=True)
                 logging.info("auto-approved settings-edit prompt in pane %s", pane_id)
-            elif re.search(r"Do you want to", output, re.IGNORECASE):
+                continue
+
+            output_lower = output.lower()
+            if any(kw in output_lower for kw in _DESTRUCTIVE_KEYWORDS):
+                logging.info("skipped auto-approve (destructive keyword) in pane %s", pane_id)
+                continue
+
+            if any(re.search(p, output, re.IGNORECASE) for p in _SAFE_APPROVE_PATTERNS):
                 subprocess.run(["tmux", "send-keys", "-t", pane_id, "1", "Enter"], capture_output=True)
                 logging.info("auto-approved prompt in pane %s", pane_id)
     except Exception as exc:
@@ -115,6 +139,17 @@ def handle_user_prompt_submit(data: dict) -> None:
     sys.exit(0)
 
 
+# Patterns indicating the orchestrator asked for permission instead of acting.
+_PERMISSION_ASKING_PATTERNS = [
+    r"should i (proceed|dispatch|implement|go ahead|make|fix|run)",
+    r"want me to (implement|dispatch|fix|proceed|run|make)",
+    r"shall i (implement|dispatch|proceed|fix)",
+    r"dispatch the coder\??",
+    r"ready to implement\??",
+    r"do you want me to",
+]
+
+
 def handle_stop(data: dict) -> None:
     """Capture last assistant message and mark notifications delivered."""
     if not is_active():
@@ -135,6 +170,16 @@ def handle_stop(data: dict) -> None:
                     thread_id,
                     len(last_msg),
                 )
+
+                # Violation: orchestrator asked for permission instead of acting
+                if any(re.search(p, last_msg, re.IGNORECASE) for p in _PERMISSION_ASKING_PATTERNS):
+                    db.add_notification(
+                        thread_id,
+                        "⚠️ ORCHESTRATOR: You asked for permission instead of acting. "
+                        "Clear fixes → dispatch immediately. Only gate on genuine design "
+                        "decisions via AskUserQuestion.",
+                    )
+                    logging.warning("Stop: permission-asking detected in thread %s", thread_id)
 
         pending = db.get_pending_notifications()
         ids = [n["id"] for n in pending]

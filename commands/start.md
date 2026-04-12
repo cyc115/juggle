@@ -95,11 +95,8 @@ Agents return: files changed + plan bullets. No intermediate output.
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<task label>"
    ```
 
-3. Dispatch background planning agent:
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role planner
-   # → <agent_id> <pane_id>
-   cat > /tmp/juggle_task.txt << 'EOF'
+3. Dispatch background planning agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role planner` and this prompt:
+   ```
    [JUGGLE_THREAD:<thread_id>]
    Write implementation plan for: <task description>
    Read relevant files. Write plan to /Users/mikechen/Documents/personal/projects/juggle/plan/<date>-<name>.md
@@ -118,24 +115,19 @@ Agents return: files changed + plan bullets. No intermediate output.
 
    On completion:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
-   EOF
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/juggle_task.txt
    ```
 
-4. Wait for user approval. Do not proceed without it.
+4. **Dispatch immediately.** If plan has no open design decisions → dispatch Phase 2 without asking. For genuine design decisions (architecture, behavior trade-offs) → surface via AskUserQuestion UI, then dispatch once resolved. Never ask "should I proceed?" as plain text.
 
 ### Phase 2 — Implement (background)
 
-1. On approval, say:
+1. Say:
    ```
    Implementing in background. Topic [X] running — what else?
    ```
 
-2. Dispatch background implementation agent:
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role coder
-   # → <agent_id> <pane_id>
-   cat > /tmp/juggle_task.txt << 'EOF'
+2. Dispatch background implementation agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role coder` and this prompt:
+   ```
    [JUGGLE_THREAD:<thread_id>]
    Implement approved plan:
    <paste approved plan bullets>
@@ -152,8 +144,6 @@ Agents return: files changed + plan bullets. No intermediate output.
 
    On completion:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result per above>"
-   EOF
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/juggle_task.txt
    ```
 
 3. On completion, notify at next natural pause:
@@ -166,17 +156,13 @@ Agents return: files changed + plan bullets. No intermediate output.
 
 1. Say: `"Researching in background..."`
 2. Create topic thread.
-3. Dispatch background research agent:
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role researcher
-   cat > /tmp/juggle_task.txt << 'EOF'
+3. Dispatch background research agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role researcher` and this prompt:
+   ```
    [JUGGLE_THREAD:<thread_id>]
    <research question — specific files/question only>
 
    On completion:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings summary>"
-   EOF
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/juggle_task.txt
    ```
 4. On complete: short bulleted summary only. No raw exploration output.
 
@@ -201,8 +187,9 @@ Agents return: files changed + plan bullets. No intermediate output.
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role coder
 # → <agent_id> <pane_id> [new]
 
-# 2. Write task prompt to temp file
-cat > /tmp/juggle_task.txt << 'EOF'
+# 2. Write task prompt to unique temp file (avoid /tmp collisions under parallel dispatch)
+TASK_FILE="/tmp/juggle_task_$(date +%s%N).txt"
+cat > "$TASK_FILE" << 'EOF'
 [JUGGLE_THREAD:<thread_id>]
 <task: 1 line, imperative>
 
@@ -213,7 +200,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<1-l
 EOF
 
 # 3. Send to agent (appends release-agent automatically)
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/juggle_task.txt
+python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> "$TASK_FILE"
 ```
 
 **Role selection**:
@@ -285,10 +272,8 @@ At next natural pause only:
 When JUGGLE ACTIVE block contains `[SUMMARY STALE: N new messages — summarize after responding]`:
 
 1. Respond normally first. No delay.
-2. After responding: get a researcher agent and send the summarization task:
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id>
-   cat > /tmp/summary_task.txt << 'EOF'
+2. After responding: get a researcher agent and send the summarization task using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with this prompt:
+   ```
    [JUGGLE_THREAD:<thread_id>]
    Summarize thread. Run:
      python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-messages <thread_id> --plain --limit 10
@@ -296,7 +281,5 @@ When JUGGLE ACTIVE block contains `[SUMMARY STALE: N new messages — summarize 
      python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <thread_id> "<summary>"
      python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py set-summarized-count <thread_id> <count>
      python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Done."
-   EOF
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/summary_task.txt
    ```
 One dispatch per stale thread. No batching.

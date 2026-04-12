@@ -10,19 +10,21 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-_DATA_DIR = Path(os.environ.get("JUGGLE_DATA_DIR", Path.home() / ".claude" / "plugins" / "data" / "juggle"))
-DB_PATH = Path(os.environ["_JUGGLE_TEST_DB"]) if "_JUGGLE_TEST_DB" in os.environ else _DATA_DIR / "juggle.db"
 SRC_DIR = Path(__file__).parent
+sys.path.insert(0, str(SRC_DIR))
+from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR, DB_PATH as _DEFAULT_DB_PATH
+
+DB_PATH = Path(os.environ["_JUGGLE_TEST_DB"]) if "_JUGGLE_TEST_DB" in os.environ else _DEFAULT_DB_PATH
 
 JUGGLE_IDLE_THRESHOLD_SECS = int(os.environ.get("JUGGLE_IDLE_THRESHOLD_SECS", "30"))
 
 
 def get_db():
-    sys.path.insert(0, str(SRC_DIR))
     from juggle_db import JuggleDB
     return JuggleDB(str(DB_PATH))
 
@@ -114,9 +116,14 @@ def cmd_create_thread(args):
     db.set_current_thread(thread_uuid)
     thread = db.get_thread(thread_uuid)
     label = thread["label"] if thread else thread_uuid
-    _generate_title_for_thread(db, thread_uuid, args.topic)
     domain_str = f" [domain={domain}]" if domain else ""
     print(f"Created Topic {label}: {args.topic}.{domain_str} Now in Topic {label}.")
+    # Title generation is cosmetic — run in background so create-thread returns immediately.
+    threading.Thread(
+        target=_generate_title_for_thread,
+        args=(get_db(), thread_uuid, args.topic),
+        daemon=True,
+    ).start()
 
 
 def cmd_switch_thread(args):
@@ -207,9 +214,6 @@ def cmd_update_meta(args):
         open_questions = [q for q in open_questions if q != args.resolve_question]
         db.update_thread(thread_uuid, open_questions=open_questions)
 
-    if args.intent:
-        db.update_thread(thread_uuid, last_user_intent=args.intent)
-
     label = thread.get("label") or args.thread_id
     print(f"Updated metadata for Thread {label}.")
 
@@ -271,38 +275,8 @@ def _humanize_dt(iso_str: str) -> str:
 
 
 def _last_sentences(text: str, max_chars: int = 200) -> str:
-    """Return the last 1-2 sentences of text, capped at max_chars."""
-    if not text:
-        return ""
-    text = text.strip()
-    # Sanitize: strip markdown code blocks (``` ... ```)
-    import re
-    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
-    # Strip lines consisting only of tree-drawing characters and whitespace
-    tree_chars = r"[│├└─\s]"
-    text = "\n".join(
-        line for line in text.splitlines()
-        if not re.fullmatch(tree_chars + r"+", line)
-    )
-    # Strip lines starting with tree-drawing characters (tree+text mixed lines)
-    lines = text.splitlines()
-    lines = [l for l in lines if not re.match(r'^\s*[│├└┌┐─]\s*', l)]
-    text = "\n".join(lines).strip()
-    # Strip resulting empty lines
-    text = "\n".join(line for line in text.splitlines() if line.strip())
-    text = text.strip()
-    if not text:
-        return ""
-    # Split on sentence-ending punctuation followed by whitespace
-    parts = re.split(r"(?<=[.?!])\s+", text)
-    parts = [p for p in parts if p]
-    if not parts:
-        return text[:max_chars]
-    # Take last 2 non-empty parts
-    snippet = " ".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
-    if len(snippet) > max_chars:
-        snippet = snippet[-max_chars:].lstrip()
-    return snippet
+    """Return the tail of text, capped at max_chars."""
+    return text.strip()[:max_chars] if text else ""
 
 
 def _extract_decision_prompt(last_assistant: str | None, last_user: str | None) -> str:
@@ -500,7 +474,10 @@ def cmd_archive_thread(args):
     db = get_db()
     thread_uuid = _resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
-    label = thread.get("label") or args.thread_id if thread else args.thread_id
+    if not thread:
+        print(f"Error: Thread {args.thread_id} not found.")
+        sys.exit(1)
+    label = thread.get("label") or args.thread_id
     db.archive_thread(thread_uuid)
 
     # Decommission agents still assigned to this thread
@@ -1007,7 +984,6 @@ def main():
     p_meta.add_argument("--add-decision", dest="add_decision", default=None, metavar="TEXT")
     p_meta.add_argument("--add-question", dest="add_question", default=None, metavar="TEXT")
     p_meta.add_argument("--resolve-question", dest="resolve_question", default=None, metavar="TEXT")
-    p_meta.add_argument("--intent", dest="intent", default=None, metavar="TEXT")
     p_meta.set_defaults(func=cmd_update_meta)
 
     # update-summary

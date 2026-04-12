@@ -5,6 +5,8 @@ import json
 import logging
 import os as _os
 import sqlite3
+
+_log = logging.getLogger(__name__)
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +14,8 @@ from pathlib import Path
 MAX_THREADS: int = int(_os.environ.get("JUGGLE_MAX_THREADS", 10))
 MAX_BACKGROUND_AGENTS: int = int(_os.environ.get("JUGGLE_MAX_BACKGROUND_AGENTS", 20))
 
-DB_PATH = Path.home() / ".claude" / "juggle" / "juggle.db"
+DEFAULT_DATA_DIR = Path.home() / ".claude" / "juggle"
+DB_PATH = DEFAULT_DATA_DIR / "juggle.db"
 
 CREATE_THREADS = """
 CREATE TABLE IF NOT EXISTS threads (
@@ -190,31 +193,31 @@ class JuggleDB:
         if "summarized_msg_count" not in cols:
             try:
                 conn.execute("ALTER TABLE threads ADD COLUMN summarized_msg_count INTEGER DEFAULT 0")
-            except Exception:
-                pass
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 2 skipped: %s", e)
 
         # Migration 3 (new DBs): add show_in_list if missing
         if "show_in_list" not in cols:
             try:
                 conn.execute("ALTER TABLE threads ADD COLUMN show_in_list INTEGER NOT NULL DEFAULT 1")
-            except Exception:
-                pass
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 3 skipped: %s", e)
 
         # Migration 4 (new DBs): add label if missing
         if "label" not in cols and "id" in cols:
             try:
                 conn.execute("ALTER TABLE threads ADD COLUMN label TEXT")
-            except Exception:
-                pass
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 4 skipped: %s", e)
 
-        # Migration 6: add title column for LLM-generated short titles
+        # Migration 5: add title column for LLM-generated short titles
         if "title" not in cols:
             try:
                 conn.execute("ALTER TABLE threads ADD COLUMN title TEXT DEFAULT ''")
-            except Exception:
-                pass
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 5 skipped: %s", e)
 
-        # Migration 5: add agents table for tmux persistent agent pool
+        # Migration 6: add agents table for tmux persistent agent pool
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()}
@@ -226,16 +229,16 @@ class JuggleDB:
         if "domain" not in cols:
             try:
                 conn.execute("ALTER TABLE threads ADD COLUMN domain TEXT DEFAULT NULL")
-            except Exception:
-                pass
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 7 skipped: %s", e)
 
         # Migration 8: add domain to agents
         agent_cols = {row["name"] for row in conn.execute("PRAGMA table_info(agents)").fetchall()}
         if "domain" not in agent_cols:
             try:
                 conn.execute("ALTER TABLE agents ADD COLUMN domain TEXT DEFAULT NULL")
-            except Exception:
-                pass
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 8 skipped: %s", e)
 
         # Migration 9: seed domains + domain_paths tables if empty
         tables = {row[0] for row in conn.execute(
@@ -718,12 +721,33 @@ class JuggleDB:
         self.update_thread(thread_id, summarized_msg_count=count)
 
     def get_stale_threads(self, threshold: int = 3) -> list[dict]:
-        """Return threads where substantive user message delta >= threshold."""
+        """Return threads where substantive user message delta >= threshold.
+
+        Uses a single DB query for all threads instead of N per-thread calls.
+        """
         threads = self.get_all_threads()
+        if not threads:
+            return []
+
+        thread_ids = [t["id"] for t in threads]
+        placeholders = ", ".join("?" * len(thread_ids))
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT thread_id, content FROM messages "
+                f"WHERE thread_id IN ({placeholders}) AND role = 'user'",
+                thread_ids,
+            ).fetchall()
+
+        # Count non-junk messages per thread in Python
+        counts: dict[str, int] = {}
+        for row in rows:
+            if not self._is_junk_message(row["content"]):
+                counts[row["thread_id"]] = counts.get(row["thread_id"], 0) + 1
+
         stale = []
         for t in threads:
             tid = t["id"]
-            msg_count = self.get_message_count(tid, exclude_junk=True)
+            msg_count = counts.get(tid, 0)
             summarized = t.get("summarized_msg_count") or 0
             delta = msg_count - summarized
             if delta >= threshold:

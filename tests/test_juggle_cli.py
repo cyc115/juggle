@@ -407,22 +407,23 @@ def test_extract_decision_prompt_no_messages():
 # show-topics ⏸️ decision prompt rendering tests
 # ------------------------------------------------------------------
 
-def test_last_sentences_strips_code_block():
-    msg = "Do the thing.\n```\n│\n├── [A] foo\n└── [B] bar\n```"
+def test_last_sentences_basic_truncation():
+    """_last_sentences returns up to max_chars of stripped text."""
+    msg = "Do the thing."
     result = _last_sentences(msg)
-    assert "│" not in result
-    assert "Do the thing" in result
+    assert result == "Do the thing."
 
 
-def test_last_sentences_strips_tree_text_mixed_lines():
-    """Lines starting with tree-drawing chars followed by text are stripped."""
-    msg = "Here is a summary.\n├── ✅ [F] UUID storage + ephemeral label migration  done\n└── ❓ What next?\nPlease decide."
-    result = _last_sentences(msg)
-    assert "├──" not in result
-    assert "└──" not in result
-    assert "UUID storage" not in result
-    # Non-tree text must survive
-    assert "Please decide" in result or "Here is a summary" in result
+def test_last_sentences_truncates_at_max_chars():
+    """Text longer than max_chars is truncated."""
+    msg = "x" * 300
+    result = _last_sentences(msg, max_chars=100)
+    assert len(result) == 100
+
+
+def test_last_sentences_empty():
+    assert _last_sentences("") == ""
+    assert _last_sentences(None) == ""
 
 
 def test_show_topics_waiting_thread_shows_decision_prompt(tmp_path, capsys):

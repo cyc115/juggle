@@ -3,6 +3,7 @@
 
 import os
 import subprocess
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -79,23 +80,33 @@ class JuggleTmuxManager:
         """Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
 
         Uses a temp file to avoid shell-escaping issues with multi-line prompts.
-        Sleeps 2s before sending if is_new=True (claude CLI startup delay).
+        For new agents (is_new=True): sends in a daemon thread after a 2s delay
+        so the caller is not blocked waiting for claude CLI startup.
+        For existing agents: sends synchronously (no sleep needed).
         No-op if JUGGLE_TMUX_MOCK_SEND=1.
         """
         if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
             return
         tmp = f"/tmp/juggle_task_{uuid.uuid4().hex[:8]}.txt"
-        try:
-            Path(tmp).write_text(prompt)
-            if is_new:
+        Path(tmp).write_text(prompt)
+
+        def _do_send() -> None:
+            try:
+                self._run_tmux("load-buffer", "-b", "juggle", tmp)
+                self._run_tmux("paste-buffer", "-b", "juggle", "-t", pane_id)
+                self._run_tmux("send-keys", "-t", pane_id, "Enter")
+            finally:
+                if Path(tmp).exists():
+                    os.unlink(tmp)
+
+        if is_new:
+            # New pane: claude needs ~2s to start; delay in background thread
+            def _delayed_send() -> None:
                 time.sleep(2)
-            self._run_tmux("load-buffer", "-b", "juggle", tmp)
-            self._run_tmux("paste-buffer", "-b", "juggle", "-t", pane_id)
-            time.sleep(1)
-            self._run_tmux("send-keys", "-t", pane_id, "Enter")
-        finally:
-            if Path(tmp).exists():
-                os.unlink(tmp)
+                _do_send()
+            threading.Thread(target=_delayed_send, daemon=True).start()
+        else:
+            _do_send()
 
     def spawn_agent(self, db, role: str, model: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.
