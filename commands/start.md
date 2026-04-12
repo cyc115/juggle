@@ -104,6 +104,18 @@ Agents return: files changed + plan bullets. No intermediate output.
    Write implementation plan for: <task description>
    Read relevant files. Write plan to /Users/mikechen/Documents/personal/projects/juggle/plan/<date>-<name>.md
 
+   The plan MUST include a ## Verification section:
+   ## Verification
+   commands:
+     - <test runner>        # e.g. pytest tests/, npm test
+     - <lint/type-check>    # e.g. ruff check src/, mypy src/, tsc --noEmit
+     - <smoke test>         # e.g. python -c "import app; app.main()"
+   max_retries: <1 simple | 2 moderate | 3 complex/cross-cutting>
+   success_criteria: <one sentence — what passing looks like>
+
+   Discover commands from: CLAUDE.md, README, pyproject.toml, package.json, Makefile.
+   Use sensible defaults if none found.
+
    On completion:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
    EOF
@@ -130,16 +142,23 @@ Agents return: files changed + plan bullets. No intermediate output.
 
    Files: <list file paths>
 
+   After implementing, run the verification loop:
+   1. Read the ## Verification section from the plan file.
+   2. Run each command. Capture output.
+   3. If all pass: call complete-agent with "Done. All checks pass. <files changed>"
+   4. If any fail: fix the failures and re-run. Repeat up to max_retries times.
+   5. If still failing after max_retries:
+      call complete-agent with "PARTIAL: <what passed> | FAILED: <what failed and why> | <files changed>"
+
    On completion:
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Done. <files changed>"
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result per above>"
    EOF
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> /tmp/juggle_task.txt
    ```
 
 3. On completion, notify at next natural pause:
-   ```
-   [Topic X done] <task label> — <1-line summary>. /juggle:resume-topic X to review.
-   ```
+   - If result starts with "Done": `[Topic X done] <task label> — all checks pass. /juggle:resume-topic X to review.`
+   - If result starts with "PARTIAL": `[Topic X] ⚠️ <task label> — <what failed>. /juggle:resume-topic X to review.`
 
 ---
 
