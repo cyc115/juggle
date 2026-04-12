@@ -3,7 +3,6 @@
 
 import os
 import subprocess
-import time
 import uuid
 from pathlib import Path
 
@@ -74,9 +73,9 @@ class JuggleTmuxManager:
         """Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
 
         Uses a temp file to avoid shell-escaping issues with multi-line prompts.
-        For new agents (is_new=True): sends in a daemon thread after a 2s delay
-        so the caller is not blocked waiting for claude CLI startup.
-        For existing agents: sends synchronously (no sleep needed).
+        For new agents (is_new=True): spawns a background subprocess that waits
+        for Claude Code to start, pastes, and retries Enter after 10s.
+        For existing agents: sends synchronously.
         No-op if JUGGLE_TMUX_MOCK_SEND=1.
         """
         if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
@@ -84,7 +83,24 @@ class JuggleTmuxManager:
         tmp = f"/tmp/juggle_task_{uuid.uuid4().hex[:8]}.txt"
         Path(tmp).write_text(prompt)
 
-        def _do_send() -> None:
+        if is_new:
+            # Background subprocess: survives parent exit, handles delays
+            script = (
+                f"sleep 5; "
+                f"tmux load-buffer -b juggle '{tmp}'; "
+                f"tmux paste-buffer -b juggle -t '{pane_id}'; "
+                f"tmux send-keys -t '{pane_id}' Enter; "
+                f"sleep 10; "
+                f"tmux send-keys -t '{pane_id}' Enter; "
+                f"rm -f '{tmp}'"
+            )
+            subprocess.Popen(
+                ["bash", "-c", script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        else:
             try:
                 self._run_tmux("load-buffer", "-b", "juggle", tmp)
                 self._run_tmux("paste-buffer", "-b", "juggle", "-t", pane_id)
@@ -92,11 +108,6 @@ class JuggleTmuxManager:
             finally:
                 if Path(tmp).exists():
                     os.unlink(tmp)
-
-        if is_new:
-            # New pane: claude needs a few seconds to start
-            time.sleep(3)
-        _do_send()
 
     def spawn_agent(self, db, role: str, model: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.

@@ -93,14 +93,16 @@ def test_send_task_loads_and_pastes(mgr):
     assert any("send-keys" in c for c in calls)
 
 
-def test_send_task_sleeps_when_new(mgr):
-    # is_new=True: sleeps inline then sends synchronously.
-    with patch("subprocess.run") as mock_run, \
-         patch("juggle_tmux.time.sleep") as mock_sleep:
-        mock_run.return_value = _ok()
+def test_send_task_spawns_bg_subprocess_when_new(mgr):
+    # is_new=True: spawns background subprocess with sleep+paste+retry
+    with patch("subprocess.Popen") as mock_popen:
         mgr.send_task("%3", "do something", is_new=True)
-    mock_sleep.assert_called_once_with(3)
-    assert mock_run.call_count == 3
+    mock_popen.assert_called_once()
+    args = mock_popen.call_args
+    script = args[0][0][2]  # ["bash", "-c", script]
+    assert "sleep 5" in script
+    assert "paste-buffer" in script
+    assert "sleep 10" in script
 
 
 def test_send_task_no_sleep_when_not_new(mgr):
