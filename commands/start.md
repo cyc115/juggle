@@ -38,7 +38,7 @@ All commands: `python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <cmd> [args]`
 | `show-topics` | List all threads |
 | `close-thread <id>` | Mark thread done |
 | `archive-thread <id>` | Archive thread |
-| `get-agent <thread_id> --role <role>` | Get idle agent (spawns if needed). Roles: `researcher`, `planner`, `coder` |
+| `get-agent <thread_id> --role <role> [--model <model>]` | Get idle agent (spawns if needed). Roles: `researcher`, `planner`, `coder`. Models: `sonnet` (default), `haiku`, `opus` |
 | `send-task <agent_id> <prompt_file>` | Send task file to agent pane |
 | `complete-agent <thread_id> "<result>"` | Mark agent task done + notify |
 | `fail-agent <thread_id> "<error>"` | Mark agent task failed |
@@ -75,6 +75,12 @@ Explore codebase. Gather context.
 ### Category 3: Implementation / Changes
 Build. Edit. Refactor. Fix bugs.
 **Route**: Two-phase background dispatch — plan, then implement after approval. Main thread: plan bullets + final status only.
+
+---
+
+## Orchestrator Rules
+
+Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When in doubt: dispatch an agent.
 
 ---
 
@@ -146,10 +152,10 @@ Agents return: files changed + plan bullets. No intermediate output.
    5. If still failing after max_retries:
       call complete-agent with "PARTIAL: <what passed> | FAILED: <what failed and why> | <files changed>"
 
-   # After completing work, retain learnings:
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<summary of what was done, approach taken, key findings>"
-   # If user corrected approach or expressed preference during task:
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<preference or correction>" --context preferences
+   # Retain only: decisions (what+why), user corrections, non-obvious findings, hard-to-re-derive config.
+   # Skip: "done", file lists, routine output (git has that).
+   # Format: "<what> because <why>" --context <learnings|preferences|procedures>
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<what> because <why>" --context learnings
 
    On completion:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result per above>"
@@ -175,8 +181,9 @@ Agents return: files changed + plan bullets. No intermediate output.
 
    <research question — specific files/question only>
 
-   # After completing research, retain findings:
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<summary of findings>"
+   # Retain only: decisions (what+why), user corrections, non-obvious findings, hard-to-re-derive config.
+   # Skip: routine findings derivable from code. Format: "<what> because <why>"
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<what> because <why>" --context learnings
 
    On completion:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings summary>"

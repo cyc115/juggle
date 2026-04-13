@@ -4,6 +4,7 @@
 import json
 import shutil
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,10 +12,27 @@ from pathlib import Path
 from juggle_cli_common import (
     SRC_DIR,
     JUGGLE_IDLE_THRESHOLD_SECS,
+    _get_hindsight_client,
     _last_sentences,
     _resolve_thread,
     get_db,
 )
+
+
+def _auto_retain(topic, result):
+    """Fire-and-forget: retain task result to Hindsight memory."""
+    if len(result.strip()) < 20:
+        return
+    client = _get_hindsight_client()
+    if client is None:
+        return
+    content = f"[{topic}] {result}"
+    if len(content) > 10_000:
+        content = content[:10_000]
+    try:
+        client.retain(content, context="learnings")
+    except Exception:
+        pass
 
 _AGENT_TTL_SECS = 24 * 3600  # 24h idle TTL before an agent is decommissioned
 
@@ -67,6 +85,14 @@ def cmd_complete_agent(args):
         f"Use: python juggle_cli.py switch-thread {label}"
     )
     db.add_notification(thread_uuid, notification)
+
+    # Auto-retain result to Hindsight memory (fire-and-forget)
+    threading.Thread(
+        target=_auto_retain,
+        args=(thread.get("topic", ""), args.result_summary),
+        daemon=True,
+    ).start()
+
     print(f"Thread {label} agent completed.")
 
 
@@ -81,6 +107,14 @@ def cmd_fail_agent(args):
     db.update_thread(thread_uuid, status="failed", agent_result=args.error)
     notification = f"[Topic {label} failed] {thread['topic']} — {args.error}"
     db.add_notification(thread_uuid, notification)
+
+    # Auto-retain error to Hindsight memory (fire-and-forget)
+    threading.Thread(
+        target=_auto_retain,
+        args=(thread.get("topic", ""), args.error),
+        daemon=True,
+    ).start()
+
     print(f"Thread {label} agent failed.")
 
 
