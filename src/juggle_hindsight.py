@@ -64,7 +64,7 @@ class HindsightClient:
         except (json.JSONDecodeError, KeyError):
             return None
 
-    def _request(self, method: str, path: str, body: dict | None = None) -> dict:
+    def _request(self, method: str, path: str, body: dict | None = None, timeout: int | None = None) -> dict:
         """Make HTTP request to Hindsight API. Returns parsed JSON or empty dict."""
         url = f"{self.api_url}{path}"
         data = json.dumps(body).encode() if body else None
@@ -78,21 +78,21 @@ class HindsightClient:
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as resp:
                 return json.loads(resp.read())
         except (urllib.error.URLError, urllib.error.HTTPError, OSError, json.JSONDecodeError) as e:
             _log.warning("Hindsight API error: %s %s — %s", method, path, e)
             raise HindsightError(str(e)) from e
 
-    def _request_with_retry(self, method: str, path: str, body: dict | None = None) -> dict:
+    def _request_with_retry(self, method: str, path: str, body: dict | None = None, timeout: int | None = None) -> dict:
         """Request with one retry after auto-restart on failure."""
         try:
-            return self._request(method, path, body)
+            return self._request(method, path, body, timeout=timeout)
         except HindsightError:
             _log.info("Hindsight unreachable, attempting auto-restart...")
             self._restart_service()
             try:
-                return self._request(method, path, body)
+                return self._request(method, path, body, timeout=timeout)
             except HindsightError as e:
                 self._log_error(f"Failed after restart: {e}")
                 return {}
@@ -133,7 +133,7 @@ class HindsightClient:
             return False
 
     def recall(self, query: str, max_tokens: int = 4096) -> str:
-        """Recall memories matching query. Returns formatted text or empty string."""
+        """Recall memories matching query via vector search."""
         if not query.strip():
             return ""
         body = {"query": query, "max_tokens": max_tokens}
@@ -151,6 +151,19 @@ class HindsightClient:
             if text:
                 lines.append(f"- {text}")
         return "\n".join(lines)
+
+    def reflect(self, query: str, timeout: int = 60) -> str:
+        """Reflect on memories matching query. Returns LLM-synthesized answer or empty string."""
+        if not query.strip():
+            return ""
+        body = {"query": query}
+        result = self._request_with_retry(
+            "POST",
+            f"/v1/default/banks/{self.bank}/reflect",
+            body,
+            timeout=min(timeout, 60),
+        )
+        return result.get("text", "")
 
     def retain(self, content: str, context: str | None = None) -> None:
         """Retain content as memory. Non-blocking — failures are logged, not raised."""
