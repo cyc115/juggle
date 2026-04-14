@@ -30,27 +30,38 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
-          }
-        ]
-      },
+    "PreToolUse": [
       {
         "matcher": "Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
           }
         ]
       },
       {
         "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
+          }
+        ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
         "hooks": [
           {
             "type": "command",

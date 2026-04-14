@@ -74,24 +74,6 @@ def cmd_create_thread(args):
         args=(get_db(), thread_uuid, args.topic),
         daemon=True,
     ).start()
-    # Auto-recall memory for the new thread.
-    def _auto_recall():
-        try:
-            client = _get_hindsight_client()
-            if client is None:
-                return
-            result = client.recall(args.topic)
-            db2 = get_db()
-            if result:
-                db2.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
-            else:
-                db2.update_thread(thread_uuid, memory_loaded=1)
-        except Exception:
-            pass  # non-blocking
-
-    recall_thread = threading.Thread(target=_auto_recall, daemon=False)
-    recall_thread.start()
-    recall_thread.join(timeout=10)
 
 
 def cmd_switch_thread(args):

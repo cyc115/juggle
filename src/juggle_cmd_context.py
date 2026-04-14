@@ -2,6 +2,7 @@
 """Juggle CLI — Shared context, memory, domain, and misc commands."""
 
 import json
+import subprocess
 import sys
 
 from juggle_cli_common import (
@@ -64,7 +65,7 @@ def cmd_recall(args):
 
     db = get_db()
     thread_uuid = _resolve_thread(db, args.thread_id)
-    result = client.recall(args.query)
+    result = client.reflect(args.query)
 
     if result:
         db.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
@@ -88,7 +89,7 @@ def cmd_recall_if_cold(args):
     if client is None:
         return
 
-    result = client.recall(args.query)
+    result = client.reflect(args.query)
     if result:
         db.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
         print(result)
@@ -104,6 +105,25 @@ def cmd_retain(args):
 
     context = getattr(args, "context", None)
     client.retain(args.content, context=context)
+
+
+def cmd_grep_vault(args):
+    """Search vault for terms. Returns matching file paths only."""
+    vault = args.vault_path
+    results = []
+    for term in args.terms[:5]:
+        try:
+            proc = subprocess.run(
+                ["grep", "-ril", "--include=*.md", term, vault],
+                capture_output=True, text=True, timeout=5,
+            )
+            for line in proc.stdout.strip().split("\n"):
+                if line and line not in results:
+                    results.append(line)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            continue
+    if results:
+        print("\n".join(results[:20]))
 
 
 def cmd_register_domain(args):

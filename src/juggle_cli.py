@@ -58,6 +58,7 @@ from juggle_cmd_context import (
     cmd_recall,
     cmd_recall_if_cold,
     cmd_retain,
+    cmd_grep_vault,
     cmd_register_domain,
     cmd_register_domain_path,
 )
@@ -185,8 +186,8 @@ def main():
     # spawn-agent
     p_spawn = subparsers.add_parser("spawn-agent", help="Spawn a new tmux agent")
     p_spawn.add_argument("role", choices=["researcher", "coder", "planner"])
-    p_spawn.add_argument("--model", dest="model", default=None,
-                          help="Claude model alias or full name (e.g. 'haiku', 'sonnet')")
+    p_spawn.add_argument("--model", dest="model", default="sonnet",
+                          help="Claude model alias or full name (default: sonnet)")
     p_spawn.set_defaults(func=cmd_spawn_agent)
 
     # list-agents
@@ -207,8 +208,8 @@ def main():
     p_get_agent.add_argument("thread_id", help="Thread ID or label")
     p_get_agent.add_argument("--role", dest="role", default=None,
                               choices=["researcher", "coder", "planner"])
-    p_get_agent.add_argument("--model", dest="model", default=None,
-                              help="Claude model alias or full name (e.g. 'haiku', 'sonnet')")
+    p_get_agent.add_argument("--model", dest="model", default="sonnet",
+                              help="Claude model alias or full name (default: sonnet)")
     p_get_agent.set_defaults(func=cmd_get_agent)
 
     # release-agent
@@ -264,6 +265,13 @@ def main():
     p_recall_cold.add_argument("thread_id", help="Thread ID or label")
     p_recall_cold.add_argument("query", help="Query to recall memories for")
     p_recall_cold.set_defaults(func=cmd_recall_if_cold)
+
+    # grep-vault
+    p_grep = subparsers.add_parser("grep-vault", help="Search vault for terms (file paths only)")
+    p_grep.add_argument("terms", nargs="+", help="Search terms (max 5)")
+    p_grep.add_argument("--vault-path", default=str(Path.home() / "Documents" / "personal"),
+                        help="Vault path to search")
+    p_grep.set_defaults(func=cmd_grep_vault)
 
     # retain
     p_retain = subparsers.add_parser("retain", help="Retain content as memory")

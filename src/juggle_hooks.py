@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 # Add the directory containing this file to sys.path so we can import siblings.
@@ -44,6 +45,60 @@ def is_active() -> bool:
 
 def get_db() -> JuggleDB:
     return JuggleDB(str(DB_PATH))
+
+
+_FINANCE_KEYWORDS = re.compile(
+    r"\$|dollar|account|routing|payment|tax|irs|refund|balance|transfer|invest|fund|\bira\b|hsa|401k|income|wage|salary|credit|debit",
+    re.IGNORECASE,
+)
+_IDENTITY_KEYWORDS = re.compile(
+    r"ssn|license|passport|\bdob\b|date of birth|social security|id number|\bein\b|\btin\b|driver",
+    re.IGNORECASE,
+)
+_ACCOMPLISHMENT_KEYWORDS = re.compile(
+    r"\b(filed|completed|finished|done|submitted|launched|shipped|achieved|accomplished)\b",
+    re.IGNORECASE,
+)
+_PREFERENCE_KEYWORDS = re.compile(
+    r"\b(prefer|always|never|don't|do not|remember|stop|start|like|dislike|want|need)\b",
+    re.IGNORECASE,
+)
+
+_CORRECTION_PATTERNS = re.compile(
+    r"\b(actually|no it\'s|no,? it\'s|wrong,? it\'s|should be|i meant|to clarify|the correct|it should|correction)\b",
+    re.IGNORECASE,
+)
+
+
+def _classify_context(text: str) -> str:
+    """Classify text into a Hindsight context tag."""
+    if _ACCOMPLISHMENT_KEYWORDS.search(text):
+        return "accomplishment"
+    if _PREFERENCE_KEYWORDS.search(text):
+        return "preference"
+    if _IDENTITY_KEYWORDS.search(text):
+        return "identity"
+    if _FINANCE_KEYWORDS.search(text):
+        return "finance"
+    return "conversation"
+
+
+def _retain_conversation_turn(role: str, content: str, topic: str, context_override: str | None = None) -> None:
+    """Fire-and-forget: retain a conversation turn to Hindsight."""
+    if len(content.strip()) < 20:
+        return
+    try:
+        from juggle_hindsight import HindsightClient
+        client = HindsightClient.from_config()
+        if client is None:
+            return
+        text = f"[{topic}] ({role}) {content}"
+        if len(text) > 10_000:
+            text = text[:10_000]
+        context = context_override if context_override is not None else _classify_context(content)
+        client.retain(text, context=context)
+    except Exception:
+        pass
 
 
 def get_classification_candidates(threads: list[dict]) -> list[dict]:
@@ -137,6 +192,14 @@ def handle_user_prompt_submit(data: dict) -> None:
             thread_id = db.get_current_thread()
             if thread_id is not None:
                 db.add_message(thread_id, "user", prompt)
+                thread = db.get_thread(thread_id)
+                topic = thread.get("topic", "") if thread else ""
+                forced_ctx = "preferences" if _CORRECTION_PATTERNS.search(prompt) else None
+                threading.Thread(
+                    target=_retain_conversation_turn,
+                    args=("user", prompt, topic, forced_ctx),
+                    daemon=True,
+                ).start()
     except Exception as exc:
         logging.error("UserPromptSubmit handler error: %s", exc, exc_info=True)
 
@@ -174,6 +237,15 @@ def handle_stop(data: dict) -> None:
                     thread_id,
                     len(last_msg),
                 )
+
+                # Auto-retain assistant response to Hindsight
+                thread = db.get_thread(thread_id)
+                topic = thread.get("topic", "") if thread else ""
+                threading.Thread(
+                    target=_retain_conversation_turn,
+                    args=("assistant", last_msg, topic),
+                    daemon=True,
+                ).start()
 
                 # Violation: orchestrator asked for permission instead of acting
                 if any(re.search(p, last_msg, re.IGNORECASE) for p in _PERMISSION_ASKING_PATTERNS):
@@ -229,6 +301,32 @@ def handle_session_start(data: dict) -> None:
     sys.exit(0)
 
 
+def handle_pre_tool_use(data: dict) -> None:
+    """Hard-block Edit/Write/NotebookEdit in the orchestrator main thread."""
+    if not is_active():
+        sys.exit(0)
+
+    try:
+        tool_name = data.get("tool_name", "")
+        BLOCKED_TOOLS = {"Edit", "Write", "NotebookEdit"}
+        if tool_name in BLOCKED_TOOLS:
+            output = {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "decision": "block",
+                    "reason": (
+                        f"Orchestrator cannot use {tool_name} directly. "
+                        "Dispatch to a tmux agent instead."
+                    ),
+                }
+            }
+            print(json.dumps(output))
+    except Exception as exc:
+        logging.error("PreToolUse handler error: %s", exc, exc_info=True)
+
+    sys.exit(0)
+
+
 def handle_post_tool_use(data: dict) -> None:
     """Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls."""
     if not is_active():
@@ -237,12 +335,12 @@ def handle_post_tool_use(data: dict) -> None:
     try:
         tool_name = data.get("tool_name", "")
 
-        # Violation detection: warn if orchestrator used file/search tools directly
-        FORBIDDEN_TOOLS = {"Read", "Edit", "Write", "Glob", "Grep", "NotebookEdit", "WebFetch", "WebSearch"}
-        if tool_name in FORBIDDEN_TOOLS and is_active():
+        # Warning-only for search/read tools (sometimes legitimate for quick lookups)
+        WARNING_TOOLS = {"Read", "Glob", "Grep", "WebFetch", "WebSearch"}
+        if tool_name in WARNING_TOOLS:
             warning = (
                 f"⚠️ ORCHESTRATOR VIOLATION: You used [{tool_name}] directly in the main thread. "
-                "All file reads, edits, and searches MUST go through tmux agents. "
+                "All file reads and searches MUST go through tmux agents. "
                 "Dispatch a task to a tmux agent instead."
             )
             output = {
@@ -306,6 +404,7 @@ HANDLERS = {
     "UserPromptSubmit": handle_user_prompt_submit,
     "Stop": handle_stop,
     "SessionStart": handle_session_start,
+    "PreToolUse": handle_pre_tool_use,
     "PostToolUse": handle_post_tool_use,
 }
 

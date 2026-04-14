@@ -12,7 +12,7 @@ services:
       - HINDSIGHT_API_LLM_PROVIDER=${HINDSIGHT_LLM_PROVIDER:-openai}
       - HINDSIGHT_API_LLM_BASE_URL=${HINDSIGHT_LLM_BASE_URL:-https://openrouter.ai/api/v1}
       - HINDSIGHT_API_LLM_API_KEY=${OPENROUTER_KEY}
-      - HINDSIGHT_API_LLM_MODEL=${HINDSIGHT_LLM_MODEL:-moonshotai/kimi-k2.5}
+      - HINDSIGHT_API_LLM_MODEL=${HINDSIGHT_LLM_MODEL:-@preset/hidsight-routing}
       - HINDSIGHT_API_TENANT_API_KEY=juggle
       - HINDSIGHT_API_TENANT_KEY_MAP=juggle:juggle
-    mem_limit: 2g
+    mem_limit: 4g
