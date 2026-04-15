@@ -293,3 +293,80 @@ def cmd_digest(args):
         log_path = log_dir / f"juggle-digest-{date_str}.md"
         log_path.write_text(output)
         print(f"Saved to {log_path}")
+
+
+def cmd_next_action(args):
+    """Switch to the highest-priority action item (blocker > review > idle OQ > open question)."""
+    db = get_db()
+    current_id = db.get_current_thread()
+
+    all_threads = db.get_all_threads()
+    visible = [
+        t for t in all_threads
+        if t.get("show_in_list", 1) != 0 and t.get("status") != "archived"
+    ]
+
+    from juggle_db import _thread_age_seconds  # private import — acceptable for v1
+
+    target_thread = None
+    action_line = None
+
+    # 1. Blocker
+    for t in visible:
+        ar = t.get("agent_result") or ""
+        if ar.startswith("⚠️ BLOCKER:"):
+            blocker_text = ar[len("⚠️ BLOCKER:"):].strip()
+            label = t.get("label") or "?"
+            target_thread = t
+            action_line = f"⚠️ [{label}] BLOCKER: {blocker_text}"
+            break
+
+    # 2. Review: done + result + not current
+    if target_thread is None:
+        for t in visible:
+            tid = t["id"]
+            status = t.get("status") or "active"
+            ar = t.get("agent_result") or ""
+            if status == "done" and ar and tid != current_id:
+                label = t.get("label") or "?"
+                target_thread = t
+                action_line = f"📬 [{label}] Agent finished — results ready"
+                break
+
+    # 3. Idle with open question (last_active > 2h)
+    if target_thread is None:
+        for t in visible:
+            oq = json.loads(t.get("open_questions") or "[]")
+            if not oq:
+                continue
+            age = _thread_age_seconds(t.get("last_active"))
+            if age is not None and age > 2 * 3600:
+                label = t.get("label") or "?"
+                target_thread = t
+                action_line = f"💬 [{label}] Idle with open questions"
+                break
+
+    # 4. Any thread with open questions
+    if target_thread is None:
+        for t in visible:
+            oq = json.loads(t.get("open_questions") or "[]")
+            if oq:
+                label = t.get("label") or "?"
+                target_thread = t
+                action_line = f"❓ [{label}] {oq[0]}"
+                break
+
+    if target_thread is None:
+        print("✓ No action items — all clear.")
+        return
+
+    print(action_line)
+
+    # Switch to target thread unless already current
+    if target_thread["id"] == current_id:
+        return
+
+    from juggle_cmd_threads import cmd_switch_thread
+    import argparse
+    switch_args = argparse.Namespace(thread_id=target_thread.get("label") or target_thread["id"])
+    cmd_switch_thread(switch_args)

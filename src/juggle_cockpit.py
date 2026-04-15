@@ -322,7 +322,8 @@ def render_agents_column(
             # Show — for idle >5m
             duration = "—" if (age is None or age > 300) else _fmt_duration(age)
 
-        line = f"{dot} {short_id}  {role:<10}  {thread_label:<3}  {duration}"
+        label_display = f"[{thread_label}]" if thread_label != "—" else " — "
+        line = f"{dot} {label_display} {short_id}  {role:<10}  {duration}"
         line = truncate(line, content_w)
 
         if a_status == "idle":

@@ -17,7 +17,7 @@
   - function cmd_init_db: (_)
   - function cmd_recall: (args)
   - function cmd_recall_if_cold: (args)
-  - _...5 more_
+  - _...6 more_
 - `src/juggle_cmd_threads.py`
   - function cmd_start: (_)
   - function cmd_stop: (_)

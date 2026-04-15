@@ -62,6 +62,7 @@ from juggle_cmd_context import (
     cmd_register_domain,
     cmd_register_domain_path,
     cmd_digest,
+    cmd_next_action,
 )
 
 
@@ -296,6 +297,10 @@ def main():
     p_digest.add_argument("--save", action="store_true",
                           help="Write to ~/.juggle/logs/juggle-digest-YYYY-MM-DD.md")
     p_digest.set_defaults(func=cmd_digest)
+
+    # next-action
+    p_next = subparsers.add_parser("next-action", help="Switch to highest-priority action item")
+    p_next.set_defaults(func=cmd_next_action)
 
     args = parser.parse_args()
 
