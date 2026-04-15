@@ -32,7 +32,7 @@
   - function truncate: (s, max_w) -> str
   - function pad_cell: (s, width) -> str
   - function column_widths: (total_cols) -> tuple[int, int, int]
-  - function make_header: (title, width) -> str
+  - function make_header_row: (titles, widths) -> str
   - _...6 more_
 - `src/juggle_context.py`
   - function build_context_string: (db_path) -> str

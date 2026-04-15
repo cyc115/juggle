@@ -4,7 +4,7 @@
 
 > 0 routes | 0 models | 0 components | 11 lib files | 8 env vars | 0 middleware | 0% test coverage
 > **Token savings:** this file is ~800 tokens. Without it, AI exploration would cost ~7,700 tokens. **Saves ~6,900 tokens per conversation.**
-> **Last scanned:** 2026-04-15 08:16 — re-run after significant changes
+> **Last scanned:** 2026-04-15 08:21 — re-run after significant changes
 
 ---
 
@@ -42,7 +42,7 @@
   - function truncate: (s, max_w) -> str
   - function pad_cell: (s, width) -> str
   - function column_widths: (total_cols) -> tuple[int, int, int]
-  - function make_header: (title, width) -> str
+  - function make_header_row: (titles, widths) -> str
   - _...6 more_
 - `src/juggle_context.py`
   - function build_context_string: (db_path) -> str

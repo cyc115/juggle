@@ -129,8 +129,11 @@ def pad_cell(s: str, width: int) -> str:
 # ---------------------------------------------------------------------------
 
 def column_widths(total_cols: int) -> tuple[int, int, int]:
-    """Return (w_topics, w_actions, w_agents) for total_cols terminal width."""
-    usable = total_cols - 3  # 3 │ borders
+    """Return (w_topics, w_actions, w_agents) for total_cols terminal width.
+
+    Content rows use shared borders: │ col1 │ col2 │ col3 │ = 4 border chars.
+    """
+    usable = total_cols - 4  # 4 │ borders (shared)
     w_topics = int(usable * 0.30)
     w_agents = int(usable * 0.30)
     w_actions = usable - w_topics - w_agents  # absorbs rounding
@@ -141,19 +144,21 @@ def column_widths(total_cols: int) -> tuple[int, int, int]:
 # Header / footer builders
 # ---------------------------------------------------------------------------
 
-def make_header(title: str, width: int) -> str:
-    """Build ╭─ TITLE ─...─╮ of exactly `width` display chars."""
-    inner = f" {title} "
-    dashes_needed = width - 2 - len(inner)  # -2 for ╭ ╮
-    if dashes_needed < 0:
-        inner = inner[:width - 2]
-        dashes_needed = 0
-    return "╭─" + inner + "─" * dashes_needed + "╮"
+def make_header_row(titles: list[str], widths: list[int]) -> str:
+    """Build ╭─ T1 ──┬─ T2 ──┬─ T3 ──╮  totaling sum(widths)+4 = terminal width."""
+    parts = []
+    for title, w in zip(titles, widths):
+        # Each part is exactly w chars (matches the cell width between │ borders)
+        inner = f"─ {title} "
+        fill = w - len(inner)
+        parts.append(inner + "─" * max(0, fill))
+    return "╭" + "┬".join(parts) + "╮"
 
 
-def make_footer(width: int) -> str:
-    """Build ╰─...─╯ of exactly `width` display chars."""
-    return "╰" + "─" * (width - 2) + "╯"
+def make_footer_row(widths: list[int]) -> str:
+    """Build ╰──────┴────────┴──────╯  totaling sum(widths)+4 = terminal width."""
+    parts = ["─" * w for w in widths]
+    return "╰" + "┴".join(parts) + "╯"
 
 
 # ---------------------------------------------------------------------------
@@ -463,10 +468,9 @@ def render_frame(cols: int, rows: int) -> str:
     out_lines: list[str] = []
 
     # Headers
-    header = (
-        make_header("TOPICS", w_topics)
-        + make_header("ACTION ITEMS", w_actions)
-        + make_header("AGENTS", w_agents)
+    header = make_header_row(
+        ["TOPICS", "ACTION ITEMS", "AGENTS"],
+        [w_topics, w_actions, w_agents],
     )
     out_lines.append(header)
 
@@ -478,11 +482,7 @@ def render_frame(cols: int, rows: int) -> str:
         out_lines.append("│" + tc + "│" + ac + "│" + agc + "│")
 
     # Footers
-    footer = (
-        make_footer(w_topics)
-        + make_footer(w_actions)
-        + make_footer(w_agents)
-    )
+    footer = make_footer_row([w_topics, w_actions, w_agents])
     out_lines.append(footer)
 
     return "\n".join(out_lines) + "\n"
