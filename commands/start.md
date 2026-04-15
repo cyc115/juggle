@@ -12,13 +12,6 @@ Run:
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py start
 ```
 
-Acknowledge:
-```
-Juggle v<version> active.
-- `/juggle:show-topics` — all open topics
-- `/juggle:resume-topic <id>` — switch topic
-```
-
 Auto-create Topic A from first substantive message:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<topic label>"

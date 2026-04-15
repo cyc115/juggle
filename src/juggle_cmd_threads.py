@@ -42,12 +42,14 @@ def cmd_start(_):
         db.set_current_thread(thread_uuid)
         thread = db.get_thread(thread_uuid)
         label = thread["label"] if thread else thread_uuid
-        print(f"Juggle v{ver} started. Topic {label} created. Use 'create-thread <topic>' to create more topics.")
+        print(f"Juggle v{ver} started. Topic {label} created.")
     else:
         current = db.get_current_thread()
         if not current and threads:
             db.set_current_thread(threads[0]["id"])
         print(f"Juggle v{ver} started.")
+    print("- `/juggle:show-topics` — all open topics")
+    print("- `/juggle:resume-topic <id>` — switch topic")
 
 
 def cmd_stop(_):
