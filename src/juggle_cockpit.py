@@ -435,9 +435,9 @@ def render_actions_column(
 # Frame assembly
 # ---------------------------------------------------------------------------
 
-def render_frame(cols: int, rows: int) -> str:
+def render_frame(cols: int, rows: int, db_path: str | None = None) -> str:
     """Render a complete cockpit frame as a string."""
-    db = JuggleDB()
+    db = JuggleDB(db_path=db_path)
     all_threads = db.get_all_threads()
     all_agents = db.get_all_agents()
     current_id = db.get_current_thread()
@@ -492,9 +492,9 @@ def render_frame(cols: int, rows: int) -> str:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run() -> None:
+def run(db_path: str | None = None) -> None:
     """Start the cockpit refresh loop."""
-    db = JuggleDB()
+    db = JuggleDB(db_path=db_path)
     if not db.is_active():
         print("Juggle inactive. Run /juggle:start first.")
         sys.exit(1)
@@ -505,13 +505,24 @@ def run() -> None:
         sys.exit(1)
 
     while True:
-        cols, rows = shutil.get_terminal_size()
-        frame = render_frame(cols, rows)
-        sys.stdout.write("\033[H\033[J" + frame)
-        sys.stdout.flush()
+        try:
+            cols, rows = shutil.get_terminal_size()
+            frame = render_frame(cols, rows, db_path=db_path)
+            sys.stdout.write("\033[H\033[J" + frame)
+            sys.stdout.flush()
+        except Exception as e:
+            sys.stdout.write(f"\033[H\033[J{RED}[error] {e}{RESET}\n")
+            sys.stdout.flush()
         time.sleep(REFRESH_INTERVAL)
 
 
 if __name__ == "__main__":
+    import argparse
+
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
-    run()
+
+    parser = argparse.ArgumentParser(description="Juggle Cockpit dashboard")
+    parser.add_argument("--db", dest="db_path", default=None,
+                        help="Path to juggle.db file")
+    args = parser.parse_args()
+    run(db_path=args.db_path)
