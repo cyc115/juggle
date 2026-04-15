@@ -203,6 +203,10 @@ def cmd_switch_thread(args):
 
     db.set_current_thread(thread_uuid)
 
+    # Mark as reviewed if switching to a done thread with agent results
+    if thread.get("status") == "done" and thread.get("agent_result"):
+        db.update_thread(thread_uuid, reviewed=1)
+
     # Hardcoded recall — fires on every switch regardless of LLM behavior
     from juggle_context import _recall_for_thread
     memories = _recall_for_thread(thread["topic"])

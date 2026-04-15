@@ -301,6 +301,14 @@ class JuggleDB:
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 11 skipped: %s", e)
 
+        # Migration 12: add reviewed flag for cockpit REVIEW nudge
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        if "reviewed" not in cols:
+            try:
+                conn.execute("ALTER TABLE threads ADD COLUMN reviewed INTEGER DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 12 skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------

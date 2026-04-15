@@ -19,21 +19,6 @@ from juggle_cli_common import (
 )
 
 
-def _auto_retain(topic, result):
-    """Fire-and-forget: retain task result to Hindsight memory."""
-    if len(result.strip()) < 20:
-        return
-    client = _get_hindsight_client()
-    if client is None:
-        return
-    content = f"[{topic}] {result}"
-    if len(content) > 10_000:
-        content = content[:10_000]
-    try:
-        client.retain(content, context="learnings")
-    except Exception:
-        pass
-
 _AGENT_TTL_SECS = 24 * 3600  # 24h idle TTL before an agent is decommissioned
 
 
@@ -58,7 +43,7 @@ def cmd_complete_agent(args):
         sys.exit(1)
     label = thread.get("label") or args.thread_id
 
-    db.update_thread(thread_uuid, agent_result=args.result_summary, status="done")
+    db.update_thread(thread_uuid, agent_result=args.result_summary, status="done", reviewed=0)
 
     # Store the agent result as an assistant message so it's visible in get_last_exchange.
     if args.result_summary:
@@ -86,12 +71,26 @@ def cmd_complete_agent(args):
     )
     db.add_notification(thread_uuid, notification)
 
-    # Auto-retain result to Hindsight memory (fire-and-forget)
-    threading.Thread(
-        target=_auto_retain,
-        args=(thread.get("topic", ""), args.result_summary),
-        daemon=True,
-    ).start()
+    # Explicit retain — only if --retain provided; warn to stderr if omitted
+    retain_text = getattr(args, "retain_text", None)
+    if retain_text:
+        def _do_retain(text, topic):
+            client = _get_hindsight_client()
+            if client:
+                try:
+                    client.retain(f"[{topic}] {text}", context="learnings")
+                except Exception:
+                    pass
+        threading.Thread(
+            target=_do_retain,
+            args=(retain_text, thread.get("topic", "")),
+            daemon=True,
+        ).start()
+    else:
+        print(
+            "Warning: no --retain provided. Pass --retain to preserve useful context.",
+            file=sys.stderr,
+        )
 
     print(f"Thread {label} agent completed.")
 
@@ -107,13 +106,6 @@ def cmd_fail_agent(args):
     db.update_thread(thread_uuid, status="failed", agent_result=args.error)
     notification = f"[Topic {label} failed] {thread['topic']} — {args.error}"
     db.add_notification(thread_uuid, notification)
-
-    # Auto-retain error to Hindsight memory (fire-and-forget)
-    threading.Thread(
-        target=_auto_retain,
-        args=(thread.get("topic", ""), args.error),
-        daemon=True,
-    ).start()
 
     print(f"Thread {label} agent failed.")
 

@@ -327,7 +327,7 @@ def cmd_next_action(args):
             tid = t["id"]
             status = t.get("status") or "active"
             ar = t.get("agent_result") or ""
-            if status == "done" and ar and tid != current_id:
+            if status == "done" and ar and tid != current_id and not t.get("reviewed"):
                 label = t.get("label") or "?"
                 target_thread = t
                 action_line = f"📬 [{label}] Agent finished — results ready"

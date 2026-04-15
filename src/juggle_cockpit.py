@@ -106,7 +106,6 @@ def truncate(s: str, max_w: int) -> str:
                 i = j + 1
                 continue
         ch = s[i]
-        cp = ord(ch)
         ch_w = 1 + (1 if _emoji_extra_width(ch) > 0 else 0)
         if width + ch_w > max_w - 1:
             return result + "…"
@@ -189,8 +188,8 @@ def _get_priority_tier(thread: dict, current_id: str | None, state_emoji: str) -
     if agent_result.startswith("⚠️ BLOCKER:"):
         return TIER_BLOCKER
 
-    # REVIEW: done + has result + not current
-    if status == "done" and agent_result and tid != current_id:
+    # REVIEW: done + has result + not current + not yet reviewed
+    if status == "done" and agent_result and tid != current_id and not thread.get("reviewed"):
         return TIER_REVIEW
 
     # ACTIVE: background agent running
@@ -326,7 +325,9 @@ def render_agents_column(
         line = f"{dot} {label_display} {short_id}  {role:<10}  {duration}"
         line = truncate(line, content_w)
 
-        if a_status == "idle":
+        if a_status == "busy":
+            line = f"{GREEN}{line}{RESET}"
+        elif a_status == "idle":
             line = f"{DIM}{line}{RESET}"
         elif a_status == "decommission_pending":
             line = f"{YELLOW}{line}{RESET}"
@@ -377,7 +378,8 @@ def render_actions_column(
         tid = thread["id"]
         status = thread.get("status") or "active"
         agent_result = thread.get("agent_result") or ""
-        if status == "done" and agent_result and tid != current_id and not agent_result.startswith("⚠️ BLOCKER:"):
+        if (status == "done" and agent_result
+                and not agent_result.startswith("⚠️ BLOCKER:") and not thread.get("reviewed")):
             review_labels.append(thread.get("label") or "?")
 
     if review_labels:
