@@ -6,9 +6,9 @@
 
 ## Scale
 
-10 library files · 8 environment variables
+11 library files · 8 environment variables
 
-**Libraries:** 10 files — see [libraries.md](./libraries.md)
+**Libraries:** 11 files — see [libraries.md](./libraries.md)
 
 ## Required Environment Variables
 

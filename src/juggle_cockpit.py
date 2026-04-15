@@ -1,0 +1,503 @@
+#!/usr/bin/env python3
+"""Juggle Cockpit — three-column live terminal dashboard.
+
+Display-only. Never writes to DB. Never calls subprocess.
+
+Run:  python3 src/juggle_cockpit.py
+Exit: Ctrl-C
+"""
+
+import json
+import re
+import shutil
+import signal
+import sys
+import time
+
+from juggle_db import JuggleDB
+from juggle_db import _thread_age_seconds  # private import — acceptable for v1
+from juggle_context import get_thread_state
+
+# ---------------------------------------------------------------------------
+# ANSI constants
+# ---------------------------------------------------------------------------
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+RED = "\033[31m"
+YELLOW = "\033[33m"
+GREEN = "\033[32m"
+WHITE = "\033[97m"
+
+REFRESH_INTERVAL = 1.0
+
+# Priority tiers (lower = higher priority)
+TIER_BLOCKER = 0
+TIER_REVIEW = 1
+TIER_ACTIVE = 2
+TIER_CURRENT = 3
+TIER_WAITING = 4
+TIER_IDLE = 5
+TIER_DONE = 6
+
+
+# ---------------------------------------------------------------------------
+# String / display helpers
+# ---------------------------------------------------------------------------
+
+def strip_ansi(s: str) -> str:
+    """Remove ANSI escape sequences from s."""
+    return re.sub(r"\033\[[0-9;]*m", "", s)
+
+
+def _emoji_extra_width(s: str) -> int:
+    """Count extra width consumed by double-wide emoji characters."""
+    # Basic heuristic: code points in common emoji ranges add 1 extra cell
+    count = 0
+    for ch in s:
+        cp = ord(ch)
+        if (
+            0x1F000 <= cp <= 0x1FFFF  # misc symbols / emoji
+            or 0x2600 <= cp <= 0x26FF  # misc symbols
+            or 0x2700 <= cp <= 0x27BF  # dingbats
+            or 0x231A <= cp <= 0x231B  # watch / hourglass
+            or 0x23E9 <= cp <= 0x23F3
+            or 0x25AA <= cp <= 0x25FE
+            or 0x2614 <= cp <= 0x2615
+            or 0x2648 <= cp <= 0x2653
+            or 0x267F == cp
+            or 0x2693 == cp
+            or 0x26A1 == cp
+            or 0x26CE == cp
+            or 0x26D4 == cp
+            or 0x26EA == cp
+            or 0x26F2 <= cp <= 0x26F3
+            or 0x26F5 == cp
+            or 0x26FA == cp
+            or 0x26FD == cp
+        ):
+            count += 1
+    return count
+
+
+def display_width(s: str) -> int:
+    """Return the display width of s accounting for ANSI codes and emoji."""
+    clean = strip_ansi(s)
+    return len(clean) + _emoji_extra_width(clean)
+
+
+def truncate(s: str, max_w: int) -> str:
+    """Truncate s to at most max_w display cells, appending … if needed."""
+    if display_width(s) <= max_w:
+        return s
+    # Binary-search for the right cut point (ANSI sequences complicate simple slicing)
+    result = ""
+    width = 0
+    for ch in s:
+        ch_w = display_width(ch)
+        if width + ch_w > max_w - 1:
+            return result + "…"
+        result += ch
+        width += ch_w
+    return result
+
+
+def pad_cell(s: str, width: int) -> str:
+    """Pad s with trailing spaces so display width == width."""
+    dw = display_width(s)
+    if dw < width:
+        return s + " " * (width - dw)
+    return s
+
+
+# ---------------------------------------------------------------------------
+# Column layout
+# ---------------------------------------------------------------------------
+
+def column_widths(total_cols: int) -> tuple[int, int, int]:
+    """Return (w_topics, w_actions, w_agents) for total_cols terminal width."""
+    usable = total_cols - 3  # 3 │ borders
+    w_topics = int(usable * 0.30)
+    w_agents = int(usable * 0.30)
+    w_actions = usable - w_topics - w_agents  # absorbs rounding
+    return w_topics, w_actions, w_agents
+
+
+# ---------------------------------------------------------------------------
+# Header / footer builders
+# ---------------------------------------------------------------------------
+
+def make_header(title: str, width: int) -> str:
+    """Build ╭─ TITLE ─...─╮ of exactly `width` display chars."""
+    inner = f" {title} "
+    dashes_needed = width - 2 - len(inner)  # -2 for ╭ ╮
+    if dashes_needed < 0:
+        inner = inner[:width - 2]
+        dashes_needed = 0
+    return "╭─" + inner + "─" * dashes_needed + "╮"
+
+
+def make_footer(width: int) -> str:
+    """Build ╰─...─╯ of exactly `width` display chars."""
+    return "╰" + "─" * (width - 2) + "╯"
+
+
+# ---------------------------------------------------------------------------
+# Duration formatting
+# ---------------------------------------------------------------------------
+
+def _fmt_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "—"
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m"
+    return f"{int(seconds // 3600)}h"
+
+
+# ---------------------------------------------------------------------------
+# Priority tier calculation (Feature 2)
+# ---------------------------------------------------------------------------
+
+def _get_priority_tier(thread: dict, current_id: str | None, state_emoji: str) -> int:
+    """Return numeric priority tier for a thread. Lower = higher priority."""
+    tid = thread["id"]
+    status = thread.get("status") or "active"
+    agent_result = thread.get("agent_result") or ""
+
+    # BLOCKER: agent_result starts with ⚠️ BLOCKER:
+    if agent_result.startswith("⚠️ BLOCKER:"):
+        return TIER_BLOCKER
+
+    # REVIEW: done + has result + not current
+    if status == "done" and agent_result and tid != current_id:
+        return TIER_REVIEW
+
+    # ACTIVE: background agent running
+    if status == "background":
+        return TIER_ACTIVE
+
+    # CURRENT
+    if tid == current_id:
+        return TIER_CURRENT
+
+    # WAITING: emoji returned is ⏸️
+    if "⏸️" in state_emoji:
+        return TIER_WAITING
+
+    # IDLE: last_active > 2h
+    age = _thread_age_seconds(thread.get("last_active"))
+    if age is not None and age > 2 * 3600:
+        return TIER_IDLE
+
+    # DONE
+    if status == "done":
+        return TIER_DONE
+
+    return TIER_IDLE
+
+
+# ---------------------------------------------------------------------------
+# Topics column renderer
+# ---------------------------------------------------------------------------
+
+def render_topics_column(
+    threads: list[dict],
+    current_id: str | None,
+    db: "JuggleDB",
+    content_w: int,
+) -> list[str]:
+    """Return list of content strings (no padding) for topics column."""
+    rows: list[str] = []
+
+    visible = [
+        t for t in threads
+        if t.get("show_in_list", 1) != 0 and t.get("status") != "archived"
+    ]
+
+    # Compute state emoji and tier per thread
+    enriched = []
+    for t in visible:
+        emoji = get_thread_state(db, t, current_id or "")
+        tier = _get_priority_tier(t, current_id, emoji)
+        enriched.append((tier, t, emoji))
+
+    enriched.sort(key=lambda x: x[0])
+
+    for tier, thread, emoji in enriched:
+        label = thread.get("label") or "?"
+        title = thread.get("title") or thread.get("topic") or "?"
+        status = thread.get("status") or "active"
+
+        # Duration for background threads
+        duration_str = ""
+        if status == "background":
+            age = _thread_age_seconds(thread.get("last_active"))
+            if age is not None:
+                duration_str = f" {YELLOW}{_fmt_duration(age)}{RESET}"
+
+        prefix = f"{emoji} [{label}] "
+        prefix_w = display_width(prefix)
+        dur_w = display_width(strip_ansi(duration_str)) + (1 if duration_str else 0)
+        title_max = content_w - prefix_w - dur_w
+        title_trunc = truncate(title, max(1, title_max))
+
+        line = prefix + title_trunc + duration_str
+
+        # Apply tier colors
+        if tier == TIER_BLOCKER:
+            line = f"{RED}{line}{RESET}"
+        elif tier == TIER_REVIEW:
+            line = f"{YELLOW}{line}{RESET}"
+        elif tier == TIER_ACTIVE:
+            line = f"{GREEN}{line}{RESET}"
+        elif tier == TIER_CURRENT:
+            line = f"{BOLD}{WHITE}{line}{RESET}"
+        elif tier in (TIER_IDLE, TIER_DONE):
+            line = f"{DIM}{line}{RESET}"
+
+        rows.append(line)
+
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Agents column renderer
+# ---------------------------------------------------------------------------
+
+def render_agents_column(
+    agents: list[dict],
+    content_w: int,
+) -> list[str]:
+    """Return list of content strings for agents column."""
+    if not agents:
+        return [f"{DIM}no agents{RESET}"]
+
+    def _agent_sort_key(a: dict) -> int:
+        s = a.get("status") or ""
+        if s == "busy":
+            return 0
+        if s == "decommission_pending":
+            return 1
+        return 2
+
+    sorted_agents = sorted(agents, key=_agent_sort_key)
+
+    rows: list[str] = []
+    for agent in sorted_agents:
+        a_status = agent.get("status") or "idle"
+        short_id = (agent.get("id") or "????")[:4]
+        role = (agent.get("role") or "")[:10]
+        thread_label = agent.get("assigned_thread_label") or "—"
+        age = _thread_age_seconds(agent.get("last_active"))
+
+        if a_status == "busy":
+            dot = "🟢"
+            duration = _fmt_duration(age)
+        elif a_status == "decommission_pending":
+            dot = "⚠️"
+            duration = _fmt_duration(age)
+        else:
+            dot = "💤"
+            # Show — for idle >5m
+            duration = "—" if (age is None or age > 300) else _fmt_duration(age)
+
+        line = f"{dot} {short_id}  {role:<10}  {thread_label:<3}  {duration}"
+        line = truncate(line, content_w)
+
+        if a_status == "idle":
+            line = f"{DIM}{line}{RESET}"
+        elif a_status == "decommission_pending":
+            line = f"{YELLOW}{line}{RESET}"
+
+        rows.append(line)
+
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Action Items column renderer (Feature 3 nudges)
+# ---------------------------------------------------------------------------
+
+def _extract_blocker_text(agent_result: str | None) -> str | None:
+    if agent_result and agent_result.startswith("⚠️ BLOCKER:"):
+        return agent_result[len("⚠️ BLOCKER:"):].strip()
+    return None
+
+
+def render_actions_column(
+    threads: list[dict],
+    current_id: str | None,
+    content_w: int,
+) -> list[str]:
+    """Return list of content strings for action items column."""
+    rows: list[str] = []
+
+    visible = [
+        t for t in threads
+        if t.get("show_in_list", 1) != 0 and t.get("status") != "archived"
+    ]
+
+    # 1. Blockers
+    for thread in visible:
+        blocker_text = _extract_blocker_text(thread.get("agent_result"))
+        if blocker_text:
+            label = thread.get("label") or "?"
+            prefix = f"⚠️ [{label}] "
+            text = truncate(prefix + blocker_text, content_w)
+            rows.append(f"{RED}{text}{RESET}")
+
+    # 2. Nudges — capped at 3 total lines
+    nudges: list[str] = []
+
+    # Review nudge: done + result + not current → group by label
+    review_labels = []
+    for thread in visible:
+        tid = thread["id"]
+        status = thread.get("status") or "active"
+        agent_result = thread.get("agent_result") or ""
+        if status == "done" and agent_result and tid != current_id and not agent_result.startswith("⚠️ BLOCKER:"):
+            review_labels.append(thread.get("label") or "?")
+
+    if review_labels:
+        labels_str = " ".join(f"[{lb}]" for lb in review_labels)
+        nudge = f"📬 {labels_str} agent finished — results ready"
+        nudges.append(f"{YELLOW}{truncate(nudge, content_w)}{RESET}")
+
+    # Idle-with-open-question nudge
+    idle_oq_labels = []
+    for thread in visible:
+        oq = json.loads(thread.get("open_questions") or "[]")
+        if not oq:
+            continue
+        age = _thread_age_seconds(thread.get("last_active"))
+        if age is not None and age > 2 * 3600:
+            idle_oq_labels.append((thread.get("label") or "?", age))
+
+    if idle_oq_labels:
+        labels_str = " ".join(f"[{lb}]" for lb, _ in idle_oq_labels)
+        nudge = f"💬 {labels_str} idle with open questions"
+        nudges.append(f"{YELLOW}{truncate(nudge, content_w)}{RESET}")
+
+    # Stale blocker nudge (>4h)
+    stale_labels = []
+    for thread in visible:
+        blocker_text = _extract_blocker_text(thread.get("agent_result"))
+        if not blocker_text:
+            continue
+        age = _thread_age_seconds(thread.get("last_active"))
+        if age is not None and age > 4 * 3600:
+            stale_labels.append((thread.get("label") or "?", age))
+
+    if stale_labels:
+        for lb, age in stale_labels:
+            nudge = f"🔴 [{lb}] blocker unaddressed {_fmt_duration(age)}"
+            nudges.append(f"{RED}{truncate(nudge, content_w)}{RESET}")
+
+    rows.extend(nudges[:3])
+
+    # 3. Open questions
+    for thread in visible:
+        oq_list = json.loads(thread.get("open_questions") or "[]")
+        label = thread.get("label") or "?"
+        for oq in oq_list:
+            prefix = f"❓ [{label}] "
+            text = truncate(prefix + str(oq), content_w)
+            rows.append(f"{YELLOW}{text}{RESET}")
+
+    if not rows:
+        rows.append(f"{DIM}{GREEN}✓ no blockers or open questions{RESET}")
+
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Frame assembly
+# ---------------------------------------------------------------------------
+
+def render_frame(cols: int, rows: int) -> str:
+    """Render a complete cockpit frame as a string."""
+    db = JuggleDB()
+    all_threads = db.get_all_threads()
+    all_agents = db.get_all_agents()
+    current_id = db.get_current_thread()
+
+    w_topics, w_actions, w_agents = column_widths(cols)
+    content_topics = w_topics - 2   # 1 space padding each side
+    content_actions = w_actions - 2
+    content_agents = w_agents - 2
+    display_rows = max(1, rows - 3)  # header + footer + 1 margin
+
+    # Render columns
+    topics_lines = render_topics_column(all_threads, current_id, db, content_topics)
+    agents_lines = render_agents_column(all_agents, content_agents)
+    actions_lines = render_actions_column(all_threads, current_id, content_actions)
+
+    # Pad each column to display_rows
+    def _pad_col(lines: list[str], count: int) -> list[str]:
+        padded = list(lines[:count])
+        while len(padded) < count:
+            padded.append("")
+        return padded
+
+    topics_lines = _pad_col(topics_lines, display_rows)
+    actions_lines = _pad_col(actions_lines, display_rows)
+    agents_lines = _pad_col(agents_lines, display_rows)
+
+    # Build output
+    out_lines: list[str] = []
+
+    # Headers
+    header = (
+        make_header("TOPICS", w_topics)
+        + make_header("ACTION ITEMS", w_actions)
+        + make_header("AGENTS", w_agents)
+    )
+    out_lines.append(header)
+
+    # Content rows
+    for i in range(display_rows):
+        tc = " " + pad_cell(truncate(topics_lines[i], content_topics), content_topics) + " "
+        ac = " " + pad_cell(truncate(actions_lines[i], content_actions), content_actions) + " "
+        agc = " " + pad_cell(truncate(agents_lines[i], content_agents), content_agents) + " "
+        out_lines.append("│" + tc + "│" + ac + "│" + agc + "│")
+
+    # Footers
+    footer = (
+        make_footer(w_topics)
+        + make_footer(w_actions)
+        + make_footer(w_agents)
+    )
+    out_lines.append(footer)
+
+    return "\n".join(out_lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def run() -> None:
+    """Start the cockpit refresh loop."""
+    db = JuggleDB()
+    if not db.is_active():
+        print("Juggle inactive. Run /juggle:start first.")
+        sys.exit(1)
+
+    cols, rows = shutil.get_terminal_size()
+    if cols < 80:
+        print("Terminal too narrow (need 80+ cols).")
+        sys.exit(1)
+
+    while True:
+        cols, rows = shutil.get_terminal_size()
+        frame = render_frame(cols, rows)
+        sys.stdout.write("\033[H\033[J" + frame)
+        sys.stdout.flush()
+        time.sleep(REFRESH_INTERVAL)
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    run()

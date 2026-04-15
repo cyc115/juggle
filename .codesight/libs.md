@@ -17,7 +17,7 @@
   - function cmd_init_db: (_)
   - function cmd_recall: (args)
   - function cmd_recall_if_cold: (args)
-  - _...4 more_
+  - _...5 more_
 - `src/juggle_cmd_threads.py`
   - function cmd_start: (_)
   - function cmd_stop: (_)
@@ -26,9 +26,19 @@
   - function cmd_update_meta: (args)
   - function cmd_update_summary: (args)
   - _...10 more_
+- `src/juggle_cockpit.py`
+  - function strip_ansi: (s) -> str
+  - function display_width: (s) -> int
+  - function truncate: (s, max_w) -> str
+  - function pad_cell: (s, width) -> str
+  - function column_widths: (total_cols) -> tuple[int, int, int]
+  - function make_header: (title, width) -> str
+  - _...6 more_
 - `src/juggle_context.py`
   - function build_context_string: (db_path) -> str
   - function get_thread_state: (db, thread, current_thread_id) -> str
+  - function render_topics_tree: (db, memories) -> str
+  - function build_startup_output: (db) -> str
   - class ContextBuilder
 - `src/juggle_db.py` — class JuggleDB
 - `src/juggle_hindsight.py` — class HindsightError, class HindsightClient

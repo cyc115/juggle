@@ -2,7 +2,7 @@
 
 > **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.
 
-**10 library files** across 10 modules
+**11 library files** across 11 modules
 
 ## Juggle_cli_common.py (1 files)
 
@@ -24,9 +24,13 @@
 
 - `src/juggle_cmd_threads.py` — cmd_start, cmd_stop, cmd_create_thread, cmd_switch_thread, cmd_update_meta, cmd_update_summary, …
 
+## Juggle_cockpit.py (1 files)
+
+- `src/juggle_cockpit.py` — strip_ansi, display_width, truncate, pad_cell, column_widths, make_header, …
+
 ## Juggle_context.py (1 files)
 
-- `src/juggle_context.py` — build_context_string, get_thread_state, ContextBuilder
+- `src/juggle_context.py` — build_context_string, get_thread_state, render_topics_tree, build_startup_output, ContextBuilder
 
 ## Juggle_db.py (1 files)
 

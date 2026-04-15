@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | javascript
 
-> 0 routes | 0 models | 0 components | 10 lib files | 8 env vars | 0 middleware | 0% test coverage
-> **Token savings:** this file is ~700 tokens. Without it, AI exploration would cost ~7,400 tokens. **Saves ~6,700 tokens per conversation.**
-> **Last scanned:** 2026-04-15 05:40 — re-run after significant changes
+> 0 routes | 0 models | 0 components | 11 lib files | 8 env vars | 0 middleware | 0% test coverage
+> **Token savings:** this file is ~800 tokens. Without it, AI exploration would cost ~7,700 tokens. **Saves ~6,900 tokens per conversation.**
+> **Last scanned:** 2026-04-15 08:06 — re-run after significant changes
 
 ---
 
@@ -27,7 +27,7 @@
   - function cmd_init_db: (_)
   - function cmd_recall: (args)
   - function cmd_recall_if_cold: (args)
-  - _...4 more_
+  - _...5 more_
 - `src/juggle_cmd_threads.py`
   - function cmd_start: (_)
   - function cmd_stop: (_)
@@ -36,9 +36,19 @@
   - function cmd_update_meta: (args)
   - function cmd_update_summary: (args)
   - _...10 more_
+- `src/juggle_cockpit.py`
+  - function strip_ansi: (s) -> str
+  - function display_width: (s) -> int
+  - function truncate: (s, max_w) -> str
+  - function pad_cell: (s, width) -> str
+  - function column_widths: (total_cols) -> tuple[int, int, int]
+  - function make_header: (title, width) -> str
+  - _...6 more_
 - `src/juggle_context.py`
   - function build_context_string: (db_path) -> str
   - function get_thread_state: (db, thread, current_thread_id) -> str
+  - function render_topics_tree: (db, memories) -> str
+  - function build_startup_output: (db) -> str
   - class ContextBuilder
 - `src/juggle_db.py` — class JuggleDB
 - `src/juggle_hindsight.py` — class HindsightError, class HindsightClient

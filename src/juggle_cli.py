@@ -61,6 +61,7 @@ from juggle_cmd_context import (
     cmd_grep_vault,
     cmd_register_domain,
     cmd_register_domain_path,
+    cmd_digest,
 )
 
 
@@ -171,6 +172,13 @@ def main():
     p_complete = subparsers.add_parser("complete-agent", help="Mark agent task as complete")
     p_complete.add_argument("thread_id", help="Thread ID")
     p_complete.add_argument("result_summary", help="Result summary text")
+    p_complete.add_argument(
+        "--retain",
+        dest="retain_text",
+        default=None,
+        metavar="TEXT",
+        help="Explicit retain text (key decisions, personal details, non-obvious learnings)",
+    )
     p_complete.set_defaults(func=cmd_complete_agent)
 
     # fail-agent
@@ -280,6 +288,14 @@ def main():
     p_retain.add_argument("--context", dest="context", default=None,
                           help="Context type: learnings, procedures, preferences")
     p_retain.set_defaults(func=cmd_retain)
+
+    # digest
+    p_digest = subparsers.add_parser("digest", help="Summarize activity since last session")
+    p_digest.add_argument("--since", dest="since", default="yesterday",
+                          help="Cutoff: ISO timestamp, 'today', or 'yesterday' (default)")
+    p_digest.add_argument("--save", action="store_true",
+                          help="Write to ~/.juggle/logs/juggle-digest-YYYY-MM-DD.md")
+    p_digest.set_defaults(func=cmd_digest)
 
     args = parser.parse_args()
 
