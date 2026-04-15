@@ -435,9 +435,10 @@ def render_actions_column(
 # Frame assembly
 # ---------------------------------------------------------------------------
 
-def render_frame(cols: int, rows: int, db_path: str | None = None) -> str:
+def render_frame(cols: int, rows: int, db: "JuggleDB | None" = None, db_path: str | None = None) -> str:
     """Render a complete cockpit frame as a string."""
-    db = JuggleDB(db_path=db_path)
+    if db is None:
+        db = JuggleDB(db_path=db_path)
     all_threads = db.get_all_threads()
     all_agents = db.get_all_agents()
     current_id = db.get_current_thread()
@@ -492,9 +493,25 @@ def render_frame(cols: int, rows: int, db_path: str | None = None) -> str:
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _make_cockpit_db(db_path: str | None = None) -> JuggleDB:
+    """Create a JuggleDB with a persistent connection for cockpit use.
+
+    Normal JuggleDB._connect() creates a new connection each call. In a 1s
+    refresh loop that leaks file descriptors. We cache one connection and
+    return it on every _connect() call.
+    """
+    import sqlite3 as _sqlite3
+
+    db = JuggleDB(db_path=db_path)
+    conn = _sqlite3.connect(str(db.db_path))
+    conn.row_factory = _sqlite3.Row
+    db._connect = lambda: conn  # noqa: E731 — intentional monkey-patch
+    return db
+
+
 def run(db_path: str | None = None) -> None:
     """Start the cockpit refresh loop."""
-    db = JuggleDB(db_path=db_path)
+    db = _make_cockpit_db(db_path)
     if not db.is_active():
         print("Juggle inactive. Run /juggle:start first.")
         sys.exit(1)
@@ -507,7 +524,7 @@ def run(db_path: str | None = None) -> None:
     while True:
         try:
             cols, rows = shutil.get_terminal_size()
-            frame = render_frame(cols, rows, db_path=db_path)
+            frame = render_frame(cols, rows, db=db)
             sys.stdout.write("\033[H\033[J" + frame)
             sys.stdout.flush()
         except Exception as e:
