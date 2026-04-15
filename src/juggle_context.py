@@ -22,6 +22,11 @@ def _build(db: JuggleDB) -> str:
     # ACTION REQUIRED — completed agent notifications (top of block)
     # ------------------------------------------------------------------
     notifications = db.get_pending_notifications()
+    # Auto-clear notifications shown 3+ times without acknowledgement
+    stale_ids = [n["id"] for n in notifications if (n.get("delivery_attempts") or 0) >= 3]
+    if stale_ids:
+        db.mark_notifications_delivered(stale_ids)
+    notifications = [n for n in notifications if n["id"] not in stale_ids]
     completion_notifs = [n for n in notifications if "completed" in n["message"] or "results ready" in n["message"]]
     other_notifs = [n for n in notifications if n not in completion_notifs]
 
@@ -37,7 +42,8 @@ def _build(db: JuggleDB) -> str:
         parts.append("After announcing completions to user, proceed with their request.")
 
     current_thread = db.get_current_thread()
-    all_threads = db.get_all_threads()
+    all_threads = [t for t in db.get_all_threads()
+                   if t.get("status") != "archived" and t.get("show_in_list", 1) != 0]
     thread = None
 
     # ------------------------------------------------------------------

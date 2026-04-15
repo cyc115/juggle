@@ -3,6 +3,7 @@
 
 import json
 import sys
+from pathlib import Path
 import threading
 
 from juggle_cli_common import (
@@ -19,6 +20,14 @@ from juggle_context import get_thread_state
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
 
 
+def _get_version():
+    plugin_json = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+    try:
+        return json.loads(plugin_json.read_text())["version"]
+    except Exception:
+        return "?"
+
+
 def cmd_start(_):
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -26,18 +35,19 @@ def cmd_start(_):
     db.init_db()
     db.set_active(True)
 
+    ver = _get_version()
     threads = db.get_all_threads()
     if not threads:
         thread_uuid = db.create_thread("General", session_id="")
         db.set_current_thread(thread_uuid)
         thread = db.get_thread(thread_uuid)
         label = thread["label"] if thread else thread_uuid
-        print(f"Juggle started. Topic {label} created. Use 'create-thread <topic>' to create more topics.")
+        print(f"Juggle v{ver} started. Topic {label} created. Use 'create-thread <topic>' to create more topics.")
     else:
         current = db.get_current_thread()
         if not current and threads:
             db.set_current_thread(threads[0]["id"])
-        print("Juggle started.")
+        print(f"Juggle v{ver} started.")
 
 
 def cmd_stop(_):
