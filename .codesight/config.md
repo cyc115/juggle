@@ -2,10 +2,9 @@
 
 ## Environment Variables
 
-- `_JUGGLE_TEST_DB` **required** — src/juggle_cli.py
+- `_JUGGLE_TEST_DB` **required** — src/juggle_cli_common.py
 - `CLAUDE_PLUGIN_DATA` **required** — src/juggle_hooks.py
-- `JUGGLE_DATA_DIR` **required** — src/juggle_cli.py
-- `JUGGLE_IDLE_THRESHOLD_SECS` **required** — src/juggle_cli.py
+- `JUGGLE_IDLE_THRESHOLD_SECS` **required** — src/juggle_cli_common.py
 - `JUGGLE_MAX_BACKGROUND_AGENTS` **required** — src/juggle_db.py
 - `JUGGLE_MAX_THREADS` **required** — src/juggle_db.py
 - `JUGGLE_TMUX_MOCK_KILL` **required** — src/juggle_tmux.py

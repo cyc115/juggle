@@ -1,21 +1,43 @@
 # Libraries
 
-- `src/juggle_cli.py`
-  - function get_db: ()
+- `src/juggle_cli.py` — function main: ()
+- `src/juggle_cli_common.py` — function get_db: ()
+- `src/juggle_cmd_agents.py`
+  - function cmd_set_agent: (args)
+  - function cmd_complete_agent: (args)
+  - function cmd_fail_agent: (args)
+  - function cmd_check_agents: (_)
+  - function cmd_spawn_agent: (args)
+  - function cmd_list_agents: (_)
+  - _...4 more_
+- `src/juggle_cmd_context.py`
+  - function cmd_get_shared_context: (args)
+  - function cmd_add_shared: (args)
+  - function cmd_get_context: (_)
+  - function cmd_init_db: (_)
+  - function cmd_recall: (args)
+  - function cmd_recall_if_cold: (args)
+  - _...4 more_
+- `src/juggle_cmd_threads.py`
   - function cmd_start: (_)
   - function cmd_stop: (_)
   - function cmd_create_thread: (args)
   - function cmd_switch_thread: (args)
   - function cmd_update_meta: (args)
-  - _...26 more_
-- `src/juggle_context.py` — function build_context_string: (db_path) -> str, class ContextBuilder
+  - function cmd_update_summary: (args)
+  - _...10 more_
+- `src/juggle_context.py`
+  - function build_context_string: (db_path) -> str
+  - function get_thread_state: (db, thread, current_thread_id) -> str
+  - class ContextBuilder
 - `src/juggle_db.py` — class JuggleDB
+- `src/juggle_hindsight.py` — class HindsightError, class HindsightClient
 - `src/juggle_hooks.py`
   - function is_active: () -> bool
   - function get_db: () -> JuggleDB
   - function get_classification_candidates: (threads) -> list[dict]
+  - function auto_approve_blocked_agents: () -> None
   - function handle_user_prompt_submit: (data) -> None
   - function handle_stop: (data) -> None
-  - function handle_session_start: (data) -> None
-  - _...2 more_
+  - _...4 more_
 - `src/juggle_tmux.py` — class JuggleTmuxManager
