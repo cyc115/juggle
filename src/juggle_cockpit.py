@@ -90,15 +90,29 @@ def truncate(s: str, max_w: int) -> str:
     """Truncate s to at most max_w display cells, appending … if needed."""
     if display_width(s) <= max_w:
         return s
-    # Binary-search for the right cut point (ANSI sequences complicate simple slicing)
+    # Walk the string, skipping ANSI escape sequences for width counting
     result = ""
     width = 0
-    for ch in s:
-        ch_w = display_width(ch)
+    i = 0
+    while i < len(s):
+        # Detect ANSI escape sequence
+        if s[i] == "\033" and i + 1 < len(s) and s[i + 1] == "[":
+            j = i + 2
+            while j < len(s) and (s[j].isdigit() or s[j] == ";"):
+                j += 1
+            if j < len(s) and s[j] == "m":
+                # Copy the entire ANSI sequence without counting width
+                result += s[i : j + 1]
+                i = j + 1
+                continue
+        ch = s[i]
+        cp = ord(ch)
+        ch_w = 1 + (1 if _emoji_extra_width(ch) > 0 else 0)
         if width + ch_w > max_w - 1:
             return result + "…"
         result += ch
         width += ch_w
+        i += 1
     return result
 
 
