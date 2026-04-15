@@ -6,7 +6,6 @@ No dependency on the hindsight CLI binary.
 
 import json
 import logging
-import os
 import subprocess
 import urllib.error
 import urllib.request
@@ -22,7 +21,7 @@ JUGGLE_LOG_DIR = JUGGLE_CONFIG_DIR / "logs"
 DEFAULT_API_URL = "http://localhost:18888"
 DEFAULT_API_KEY = "juggle"
 DEFAULT_BANK = "juggle"
-DEFAULT_TIMEOUT = 3  # seconds
+DEFAULT_TIMEOUT = 10  # seconds
 
 
 class HindsightError(Exception):
@@ -81,7 +80,7 @@ class HindsightClient:
             with urllib.request.urlopen(req, timeout=timeout or self.timeout) as resp:
                 return json.loads(resp.read())
         except (urllib.error.URLError, urllib.error.HTTPError, OSError, json.JSONDecodeError) as e:
-            _log.warning("Hindsight API error: %s %s — %s", method, path, e)
+            _log.debug("Hindsight API error: %s %s — %s", method, path, e)
             raise HindsightError(str(e)) from e
 
     def _request_with_retry(self, method: str, path: str, body: dict | None = None, timeout: int | None = None) -> dict:

@@ -276,18 +276,8 @@ def handle_session_start(data: dict) -> None:
         # Inject context for resume/compact or when reason is unknown/absent.
         if reason not in ("new",):
             db = get_db()
-            current_thread = db.get_current_thread()
-            if current_thread:
-                thread = db.get_thread(current_thread)
-                thread_label = thread["label"] if (thread and thread.get("label")) else (current_thread[:8] if current_thread else "unknown")
-            else:
-                thread_label = "unknown"
-            topic_count = len(db.get_all_threads())
-            additional_context = (
-                f"JUGGLE RESTORED: {thread_label} active. "
-                f"{topic_count} topics. "
-                "Call `python juggle_cli.py show-topics` to see status."
-            )
+            from juggle_context import build_startup_output
+            additional_context = build_startup_output(db)
             output = {
                 "hookSpecificOutput": {
                     "hookEventName": "SessionStart",

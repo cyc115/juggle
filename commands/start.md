@@ -48,6 +48,14 @@ All commands: `python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <cmd> [args]`
 
 Classify before responding. Never do inline implementation. Always use agents.
 
+### Category 0: Feature Discussion
+User proposes a new feature or idea.
+- Start with clarifying questions (simple design) or invoke brainstorming skill (unclear/needs fleshing out)
+- All discussion stays in main thread — not delegated
+- Once requirements are clear: dispatch researcher to research and draft design doc
+- Subagent writes output to vault project directory (`specs/` or `docs/` as appropriate)
+- After subagent completes: open the written file for user to review inline
+
 ### Category 1: Conversation / Question
 Simple questions. Short answers.
 **Route**: Answer directly. No agent.
@@ -73,6 +81,18 @@ Build. Edit. Refactor. Fix bugs.
 ## Orchestrator Rules
 
 Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When in doubt: dispatch an agent.
+
+**Parallel decomposition** — for complex tasks:
+- Break into independent components before dispatching
+- Identify which components have no dependency on each other → those run in parallel
+- Dispatch all independent agents in a single response; do not wait between them
+- Return to the user immediately after dispatching — do not do further work inline
+- Delegate all file reads, writes, and complex execution to sub-agents
+
+**Proactive problem solving** — when an agent surfaces a blocker or open question:
+- Do not relay it to the user bare — attempt to solve it first
+- Dispatch a research agent if more context is needed; tell user: `"Open question on Y — researching before I bring this to you."`
+- Present to user only after forming an educated suggestion or recommendation
 
 ---
 
@@ -131,10 +151,7 @@ Agents return: files changed + plan bullets. No intermediate output.
 2. Dispatch background implementation agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role coder` and this prompt:
    ```
    [JUGGLE_THREAD:<thread_id>]
-   Implement approved plan:
-   <paste approved plan bullets>
-
-   Files: <list file paths>
+   Implement plan at <plan_file_path>. Read it first.
 
    After implementing, run the verification loop:
    1. Read the ## Verification section from the plan file.
@@ -144,18 +161,20 @@ Agents return: files changed + plan bullets. No intermediate output.
    5. If still failing after max_retries:
       call complete-agent with "PARTIAL: <what passed> | FAILED: <what failed and why> | <files changed>"
 
-   # Retain only: decisions (what+why), user corrections, non-obvious findings, hard-to-re-derive config.
-   # Skip: "done", file lists, routine output (git has that).
-   # Format: "<what> because <why>" --context <learnings|preferences|procedures>
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<what> because <why>" --context learnings
-
    On completion:
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result per above>"
+   # Normal:  complete-agent <id> "Done. <summary>" --retain "<learnings>"
+   # Blocker: complete-agent <id> "⚠️ BLOCKER: <description>. <summary>" --retain "<learnings>"
+   # --retain format: minimal words. E.g. "chose SQLite over Postgres because single-user tool"
+   #                  "IL-1040 Line 1 = $826,751 (2024 joint AGI)" | "user prefers flat output"
+   # Skip: file lists, "done", routine output git already has.
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>" --retain "<key decisions, non-obvious learnings, personal/work details>"
    ```
 
-3. On completion, notify at next natural pause:
-   - If result starts with "Done": `[Topic X done] <task label> — all checks pass. /juggle:resume-topic X to review.`
-   - If result starts with "PARTIAL": `[Topic X] ⚠️ <task label> — <what failed>. /juggle:resume-topic X to review.`
+3. On completion, notify immediately — don't wait for next pause:
+   - If result is clean "Done": `[Topic X done] <task label> — all checks pass.`
+   - If result starts with `⚠️ BLOCKER:`: attempt to solve proactively before surfacing to user; dispatch researcher if needed; tell user: `"[Topic X done] <summary>. Open question on Y — researching before I bring this to you."` Then present recommendation + options.
+   - If result starts with "PARTIAL": `[Topic X] ⚠️ <task label> — <what failed>.` Attempt unambiguous fix; otherwise present root cause + options.
+   - **Principle**: never surface a bare blocker — always do the prep work first.
 
 ---
 
@@ -173,12 +192,10 @@ Agents return: files changed + plan bullets. No intermediate output.
 
    <research question — specific files/question only>
 
-   # Retain only: decisions (what+why), user corrections, non-obvious findings, hard-to-re-derive config.
-   # Skip: routine findings derivable from code. Format: "<what> because <why>"
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <thread_id> "<what> because <why>" --context learnings
-
    On completion:
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings summary>"
+   # --retain: non-obvious findings, personal details, hard-to-re-derive config — minimal words.
+   # Skip: routine findings derivable from code or git.
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings summary>" --retain "<non-obvious findings, personal details>"
    ```
 4. On complete: short bulleted summary only. No raw exploration output.
 

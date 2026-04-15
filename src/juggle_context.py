@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Juggle Context - builds additionalContext for UserPromptSubmit hook."""
 
+import threading
+
+from juggle_cli_common import _humanize_dt, _extract_decision_prompt, _last_sentences
 from juggle_db import JuggleDB, _is_junk_message, _thread_age_seconds
 
 # Hard cap: ~2000 tokens => ~8000 chars
@@ -264,6 +267,216 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
         return "💤"
 
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Cross-session resume helpers
+# ---------------------------------------------------------------------------
+
+def _get_juggle_version() -> str:
+    import json as _json
+    from pathlib import Path
+    plugin_json = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+    try:
+        return _json.loads(plugin_json.read_text())["version"]
+    except Exception:
+        return "?"
+
+
+def _recall_for_thread(topic: str) -> list:
+    """Return up to 2 Hindsight snippet lines for a topic. Empty list on any failure."""
+    try:
+        from juggle_hindsight import HindsightClient
+        from juggle_cli_common import JUGGLE_CONFIG_PATH
+        client = HindsightClient.from_config(str(JUGGLE_CONFIG_PATH))
+        if client is None:
+            return []
+        raw = client.recall(topic, max_tokens=512)
+        if not raw:
+            return []
+        lines = [ln.lstrip("- ").strip() for ln in raw.splitlines() if ln.strip()]
+        return lines[:2]
+    except Exception:
+        return []
+
+
+def render_topics_tree(db: JuggleDB, memories: "dict | None" = None) -> str:
+    """Render the topics tree as a string.
+
+    memories: optional map of thread_id → list of recall snippet strings (🧠 lines).
+    Returns 'No topics.' if no visible threads.
+    """
+    import json as _json
+
+    threads = db.get_all_threads()
+    if not threads:
+        return "No topics."
+
+    current = db.get_current_thread()
+
+    # Filter archived / hidden threads
+    threads = [t for t in threads if t.get("show_in_list", 1) != 0]
+    if not threads:
+        return "No topics."
+
+    def _full_sort_key(t: dict) -> tuple:
+        tid = t["id"]
+        emoji = get_thread_state(db, t, current or "")
+        if emoji == "⏸️":
+            tier = 0
+        elif emoji == "🏃\u200d♂️":
+            tier = 1
+        elif tid == (current or ""):
+            tier = 2
+        elif emoji in ("💤", "✅", "❌"):
+            tier = 3
+        else:
+            tier = 2
+        last_active = t.get("last_active") or ""
+        inverted = "".join(chr(0x10FFFF - ord(c)) for c in last_active) if last_active else ""
+        return (tier, inverted)
+
+    threads.sort(key=_full_sort_key)
+
+    _state_suffix_text = {
+        "👉": "← YOU ARE HERE",
+        "🏃\u200d♂️": "agent running",
+        "⏸️": "waiting for you",
+        "💤": "idle",
+        "✅": "done",
+        "❌": "failed",
+        "🗄️": "archived",
+        "": "",
+    }
+
+    output_lines = ["Topics"]
+    last_idx = len(threads) - 1
+    for idx, t in enumerate(threads):
+        is_last = idx == last_idx
+        branch = "└──" if is_last else "├──"
+        vert = "    " if is_last else "│   "
+
+        tid = t["id"]
+        label = t.get("label") or tid[:8]
+        topic = t["topic"]
+        title = t.get("title") or topic
+        last_active = _humanize_dt(t.get("last_active") or "")
+
+        emoji = get_thread_state(db, t, current or "")
+        state_suffix = _state_suffix_text.get(emoji, "")
+
+        header = f"{branch} {emoji} **[{label}] {title}**  ({last_active})"
+        if state_suffix:
+            header = f"{header}  {state_suffix}"
+        output_lines.append(header)
+
+        summary = (t.get("summary") or "").strip()
+        summary_text = summary if summary else "no summary yet"
+        output_lines.append(f"{vert}├── Summary: {summary_text}")
+
+        key_decisions_raw = t.get("key_decisions") or "[]"
+        if isinstance(key_decisions_raw, str):
+            try:
+                key_decisions = _json.loads(key_decisions_raw)
+            except (_json.JSONDecodeError, ValueError):
+                key_decisions = []
+        else:
+            key_decisions = key_decisions_raw
+        for decision in key_decisions:
+            output_lines.append(f"{vert}├── ✅ {decision}")
+
+        # 🧠 Hindsight memories — injected after decisions, before open questions
+        if memories:
+            for snippet in memories.get(tid, []):
+                if snippet.strip():
+                    output_lines.append(f"{vert}├── 🧠 {snippet.strip()}")
+
+        open_questions_raw = t.get("open_questions") or "[]"
+        if isinstance(open_questions_raw, str):
+            try:
+                open_questions = _json.loads(open_questions_raw)
+            except (_json.JSONDecodeError, ValueError):
+                open_questions = []
+        else:
+            open_questions = open_questions_raw
+        for question in open_questions:
+            output_lines.append(f"{vert}├── ❓ {question}")
+
+        status = t["status"]
+        if status == "background":
+            agent_status = t.get("last_user_intent") or t.get("agent_task_id") or "running..."
+            output_lines.append(f"{vert}├── ⏳ {agent_status}")
+
+        if emoji == "⏸️":
+            exchange = db.get_last_exchange(tid)
+            decision = _extract_decision_prompt(
+                exchange.get("last_assistant"),
+                exchange.get("last_user"),
+            )
+            output_lines.append(f"{vert}└── {decision}")
+        else:
+            exchanges = db.get_recent_exchanges(tid, n=2)
+            exchange_labels = ["Last:", "Prior:"]
+            for ex_idx, exchange in enumerate(exchanges):
+                ex_label = exchange_labels[ex_idx] if ex_idx < len(exchange_labels) else "     "
+                user_text = _last_sentences(exchange.get("user") or "")
+                asst_text = _last_sentences(exchange.get("assistant") or "")
+                user_display = f'"{user_text}"' if user_text else "(none)"
+                asst_display = f'"{asst_text}"' if asst_text else "(none)"
+                connector = "└──" if ex_idx == len(exchanges) - 1 else "├──"
+                output_lines.append(f"{vert}{connector} {ex_label} Q: {user_display}")
+                output_lines.append(f"{vert}         A: {asst_display}")
+
+        if not is_last:
+            output_lines.append("│")
+
+    output_lines.append("")
+    output_lines.append('Use "/juggle:resume-topic <id>" to switch topics, or just keep talking.')
+
+    return "\n".join(output_lines)
+
+
+def build_startup_output(db: JuggleDB) -> str:
+    """Full enriched startup string: topics tree + per-thread Hindsight recalls.
+
+    Called by cmd_start (when threads exist) and handle_session_start (resume/compact).
+    """
+    # Lazy import to avoid circular dependency (juggle_context ← juggle_cmd_threads)
+    from juggle_cmd_threads import _cleanup_orphaned_threads
+    _cleanup_orphaned_threads(db)
+
+    threads = db.get_all_threads()
+    active = [
+        t for t in threads
+        if t.get("status") != "archived" and t.get("show_in_list", 1) != 0
+    ]
+
+    if not active:
+        return "Juggle active. No open topics."
+
+    # Parallel Hindsight recall — 2s timeout, failures silently swallowed
+    memories: dict = {}
+    lock = threading.Lock()
+
+    def _fetch(t: dict) -> None:
+        snippets = _recall_for_thread(t["topic"])
+        if snippets:
+            with lock:
+                memories[t["id"]] = snippets
+
+    recall_threads = [
+        threading.Thread(target=_fetch, args=(t,), daemon=True)
+        for t in active
+    ]
+    for rt in recall_threads:
+        rt.start()
+    for rt in recall_threads:
+        rt.join(timeout=10)
+
+    n = len(active)
+    ver = _get_juggle_version()
+    header = f"Juggle v{ver} active. Resuming {n} open topic{'s' if n != 1 else ''}:\n"
+    return header + render_topics_tree(db, memories=memories)
 
 
 if __name__ == "__main__":
