@@ -18,6 +18,7 @@ Read .codesight/CODESIGHT.md for the complete AI context map including all route
 - **Lightweight orchestrator.** Reuse existing components (DB tables, CLI patterns, tmux primitives) before introducing new abstractions. When a design decision could blow up complexity, stop and ask or cut to the simplest viable approach.
 - **Simple ≠ MVP.** Production quality, minimal new concepts.
 - **Reliability.** Juggle's behavior must be predictable and consistent. Prefer explicit state, deterministic code paths, and fail-loud errors over silent failures or ambiguous states.
+- **Code-enforced behavior.** Behavioral rules must be enforced in code or hooks — never prompt-only. Prompts can be forgotten. Any requirement that must always fire goes into a CLI command or hook.
 
 # Versioning
 
