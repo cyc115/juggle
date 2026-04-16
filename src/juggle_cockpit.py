@@ -570,6 +570,7 @@ def _make_cockpit_db(db_path: str | None = None) -> JuggleDB:
     import sqlite3 as _sqlite3
 
     db = JuggleDB(db_path=db_path)
+    db.init_db()  # run migrations before monkey-patching the connection
     conn = _sqlite3.connect(str(db.db_path))
     conn.row_factory = _sqlite3.Row
     db._connect = lambda: conn  # noqa: E731 — intentional monkey-patch
