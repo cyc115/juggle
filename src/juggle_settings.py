@@ -37,6 +37,7 @@ DEFAULTS: dict = {
         "refresh_interval_secs": 1.0,
         "column_ratios": [0.30, 0.40, 0.30],
         "max_nudge_lines": 3,
+        "max_notification_rows": 4,
         "idle_open_question_threshold_secs": 7200,
         "stale_blocker_threshold_secs": 14400,
         "thread_idle_threshold_secs": 1800,

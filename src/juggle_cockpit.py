@@ -436,6 +436,51 @@ def render_actions_column(
 
 
 # ---------------------------------------------------------------------------
+# Notifications column renderer
+# ---------------------------------------------------------------------------
+
+_NOTIF_STYLE = {
+    "info":    (WHITE, "✓"),
+    "warning": (YELLOW, "⚠"),
+    "error":   (RED, "✗"),
+}
+
+
+def render_notifications_column(
+    db: "JuggleDB",
+    content_w: int,
+    max_rows: int = 4,
+) -> list[str]:
+    """Return content strings for notification pane (non-action severity only)."""
+    conn = db._connect()
+    rows = conn.execute(
+        """
+        SELECT n.*, t.label as thread_label
+        FROM notifications n
+        LEFT JOIN threads t ON n.thread_id = t.id
+        WHERE n.severity != 'action'
+        ORDER BY n.id DESC LIMIT ?
+        """,
+        (max_rows,),
+    ).fetchall()
+    notifs = [dict(row) for row in rows]
+
+    if not notifs:
+        return [f"{DIM}no notifications{RESET}"]
+
+    result = []
+    for n in notifs:
+        sev = n.get("severity") or "info"
+        color, icon = _NOTIF_STYLE.get(sev, (WHITE, "✓"))
+        label = n.get("thread_label") or "?"
+        msg = n.get("message") or ""
+        line = f"{icon} [{label}] {msg}"
+        result.append(f"{color}{truncate(line, content_w)}{RESET}")
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Frame assembly
 # ---------------------------------------------------------------------------
 
@@ -453,12 +498,16 @@ def render_frame(cols: int, rows: int, db: "JuggleDB | None" = None, db_path: st
     content_agents = w_agents - 2
     display_rows = max(1, rows - 3)  # header + footer + 1 margin
 
+    notif_max_rows = _get_settings()["cockpit"]["max_notification_rows"]
+    actions_display_rows = max(0, display_rows - notif_max_rows - 1)  # -1 for divider row
+
     # Render columns
     topics_lines = render_topics_column(all_threads, current_id, db, content_topics)
     agents_lines = render_agents_column(all_agents, content_agents)
     actions_lines = render_actions_column(all_threads, current_id, content_actions)
+    notif_lines = render_notifications_column(db, content_actions, max_rows=notif_max_rows)
 
-    # Pad each column to display_rows
+    # Pad each column
     def _pad_col(lines: list[str], count: int) -> list[str]:
         padded = list(lines[:count])
         while len(padded) < count:
@@ -466,8 +515,17 @@ def render_frame(cols: int, rows: int, db: "JuggleDB | None" = None, db_path: st
         return padded
 
     topics_lines = _pad_col(topics_lines, display_rows)
-    actions_lines = _pad_col(actions_lines, display_rows)
+    actions_lines = _pad_col(actions_lines, actions_display_rows)
     agents_lines = _pad_col(agents_lines, display_rows)
+    notif_lines = _pad_col(notif_lines, notif_max_rows)
+
+    # Divider content for middle column (fills w_actions chars)
+    divider_title = "─ NOTIFICATIONS "
+    divider_inner = divider_title + "─" * max(0, w_actions - len(divider_title))
+
+    # Assemble combined middle column: actions + divider + notifications
+    middle_lines = actions_lines + [divider_inner] + notif_lines
+    divider_row_idx = actions_display_rows  # index where divider sits
 
     # Build output
     out_lines: list[str] = []
@@ -482,9 +540,14 @@ def render_frame(cols: int, rows: int, db: "JuggleDB | None" = None, db_path: st
     # Content rows
     for i in range(display_rows):
         tc = " " + pad_cell(truncate(topics_lines[i], content_topics), content_topics) + " "
-        ac = " " + pad_cell(truncate(actions_lines[i], content_actions), content_actions) + " "
         agc = " " + pad_cell(truncate(agents_lines[i], content_agents), content_agents) + " "
-        out_lines.append("│" + tc + "│" + ac + "│" + agc + "│")
+        if i == divider_row_idx:
+            # Divider row spans middle column with ├ and ┤ borders
+            out_lines.append("│" + tc + "├" + divider_inner + "┤" + agc + "│")
+        else:
+            mid_content = middle_lines[i] if i < len(middle_lines) else ""
+            ac = " " + pad_cell(truncate(mid_content, content_actions), content_actions) + " "
+            out_lines.append("│" + tc + "│" + ac + "│" + agc + "│")
 
     # Footers
     footer = make_footer_row([w_topics, w_actions, w_agents])

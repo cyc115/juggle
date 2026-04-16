@@ -69,7 +69,7 @@ def cmd_complete_agent(args):
         f"[Topic {label} completed] {thread['topic']} — results ready. "
         f"Use: python juggle_cli.py switch-thread {label}"
     )
-    db.add_notification(thread_uuid, notification)
+    db.add_notification(thread_uuid, notification, severity="info")
 
     # Explicit retain — only if --retain provided; warn to stderr if omitted
     retain_text = getattr(args, "retain_text", None)
@@ -105,7 +105,7 @@ def cmd_fail_agent(args):
     label = thread.get("label") or args.thread_id
     db.update_thread(thread_uuid, status="failed", agent_result=args.error)
     notification = f"[Topic {label} failed] {thread['topic']} — {args.error}"
-    db.add_notification(thread_uuid, notification)
+    db.add_notification(thread_uuid, notification, severity="error")
 
     print(f"Thread {label} agent failed.")
 
@@ -296,7 +296,7 @@ def cmd_release_agent(args):
             label = thread.get("label") or assigned[:8]
             db.update_thread(assigned, status="failed")
             db.add_notification(assigned,
-                f"[Topic {label} failed] Agent released without completing.")
+                f"[Topic {label} failed] Agent released without completing.", severity="error")
 
     print(f"Agent {args.agent_id[:8]} released.")
 

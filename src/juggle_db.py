@@ -307,6 +307,14 @@ class JuggleDB:
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 12 skipped: %s", e)
 
+        # Migration 13: add severity column for cockpit notification routing
+        notif_cols = {row["name"] for row in conn.execute("PRAGMA table_info(notifications)").fetchall()}
+        if "severity" not in notif_cols:
+            try:
+                conn.execute("ALTER TABLE notifications ADD COLUMN severity TEXT DEFAULT 'action'")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 13 skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -528,15 +536,15 @@ class JuggleDB:
     # Notifications
     # ------------------------------------------------------------------
 
-    def add_notification(self, thread_id: str, message: str):
+    def add_notification(self, thread_id: str, message: str, severity: str = "action"):
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO notifications (thread_id, message, delivered, created_at)
-                VALUES (?, ?, 0, ?)
+                INSERT INTO notifications (thread_id, message, delivered, severity, created_at)
+                VALUES (?, ?, 0, ?, ?)
                 """,
-                (thread_id, message, now),
+                (thread_id, message, severity, now),
             )
             conn.commit()
 

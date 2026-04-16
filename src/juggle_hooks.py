@@ -254,6 +254,7 @@ def handle_stop(data: dict) -> None:
                         "⚠️ ORCHESTRATOR: You asked for permission instead of acting. "
                         "Clear fixes → dispatch immediately. Only gate on genuine design "
                         "decisions via AskUserQuestion.",
+                        severity="warning",
                     )
                     logging.warning("Stop: permission-asking detected in thread %s", thread_id)
 
@@ -378,7 +379,7 @@ def handle_post_tool_use(data: dict) -> None:
                 f"Strip JUGGLE blocks before dispatching agents."
             )
             current = db.get_current_thread()
-            db.add_notification(thread_id or current or "", warning)
+            db.add_notification(thread_id or current or "", warning, severity="warning")
             logging.warning("JUGGLE ACTIVE leaked into sub-agent prompt for thread %s", thread_id)
     except Exception as exc:
         logging.error("PostToolUse handler error: %s", exc, exc_info=True)

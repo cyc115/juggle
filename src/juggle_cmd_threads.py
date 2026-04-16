@@ -327,7 +327,8 @@ def _cleanup_orphaned_threads(db) -> None:
     for t in orphans:
         label = t["label"] or t["id"][:8]
         db.add_notification(t["id"],
-            f"[Topic {label} failed] No agent assigned — orphaned thread cleaned up.")
+            f"[Topic {label} failed] No agent assigned — orphaned thread cleaned up.",
+            severity="error")
 
 
 def cmd_show_topics(_):
