@@ -120,7 +120,7 @@ def _assign_label(conn: sqlite3.Connection) -> str:
     raise ValueError("All 26 labels in use. Archive a thread first.")
 
 
-def _thread_age_seconds(last_active: str) -> float | None:
+def _thread_age_seconds(last_active: str | None) -> float | None:
     """Parse last_active ISO timestamp, return seconds since now, or None."""
     if not last_active:
         return None
@@ -445,8 +445,7 @@ class JuggleDB:
         Load messages newest-first until token budget is exhausted
         (token estimate = len(content) // 4), then return in chronological order.
         """
-        if token_budget is None:
-            token_budget = _get_settings()["message_history_token_budget"]
+        budget: int = token_budget if token_budget is not None else int(_get_settings()["message_history_token_budget"])
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -459,7 +458,7 @@ class JuggleDB:
             ).fetchall()
 
         selected = []
-        remaining = token_budget
+        remaining: int = budget
         for row in rows:
             estimate = len(row["content"]) // 4
             if estimate > remaining:
@@ -668,8 +667,7 @@ class JuggleDB:
 
         Uses a single DB query for all threads instead of N per-thread calls.
         """
-        if threshold is None:
-            threshold = _get_settings()["stale_summary_message_threshold"]
+        limit: int = threshold if threshold is not None else int(_get_settings()["stale_summary_message_threshold"])
         threads = self.get_all_threads()
         if not threads:
             return []
@@ -693,9 +691,9 @@ class JuggleDB:
         for t in threads:
             tid = t["id"]
             msg_count = counts.get(tid, 0)
-            summarized = t.get("summarized_msg_count") or 0
-            delta = msg_count - summarized
-            if delta >= threshold:
+            summarized: int = int(t.get("summarized_msg_count") or 0)
+            delta: int = msg_count - summarized
+            if delta >= limit:
                 stale.append({**t, "delta": delta, "msg_count": msg_count})
         return stale
 
