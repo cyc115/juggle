@@ -84,6 +84,15 @@ DEFAULTS: dict = {
     "agent": {
         "claude_launch_command": "claude --dangerously-skip-permissions",
     },
+
+    # Talkback TTS
+    "talkback": {
+        "enabled": False,
+        "port": 18787,
+        "voice": "af_heart",
+        "speed": 1.0,
+        "max_speak_chars": 200,
+    },
 }
 
 

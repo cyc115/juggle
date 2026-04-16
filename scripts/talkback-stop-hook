@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Stop hook: auto-speak assistant response via talkback if server is running."""
+import json
+import re
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+
+def _get_config() -> dict:
+    p = Path.home() / ".juggle" / "config.json"
+    try:
+        return json.loads(p.read_text()) if p.exists() else {}
+    except Exception:
+        return {}
+
+
+def _talkback_url() -> str:
+    port = _get_config().get("talkback", {}).get("port", 18787)
+    return f"http://localhost:{port}"
+
+
+def _max_chars() -> int:
+    return int(_get_config().get("talkback", {}).get("max_speak_chars", 200))
+
+
+def is_running(url: str) -> bool:
+    try:
+        urllib.request.urlopen(f"{url}/health", timeout=0.5)
+        return True
+    except Exception:
+        return False
+
+
+def sanitize(text: str) -> str:
+    # Remove code blocks
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    text = re.sub(r"`[^`\n]+`", "", text)
+    # Remove URLs
+    text = re.sub(r"https?://\S+", "", text)
+    # Remove UUIDs
+    text = re.sub(
+        r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+        "", text, flags=re.I
+    )
+    # Remove long hex strings (git hashes, agent IDs ≥7 hex chars)
+    text = re.sub(r"\b[0-9a-f]{7,}\b", "", text, flags=re.I)
+    # Remove long numbers (6+ digits)
+    text = re.sub(r"\b\d{6,}\b", "", text)
+    # Reduce file paths to basename
+    text = re.sub(r"/(?:[a-zA-Z0-9_.~-]+/)+([a-zA-Z0-9_.~-]+)", r"\1", text)
+    # Strip markdown formatting
+    text = re.sub(r"\*+|_+|#+|>\s*", "", text)
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def extract_summary(text: str, max_chars: int = 200) -> str | None:
+    # Tier 1: context card line
+    m = re.search(r"✅\s+\*\*A:\*\*\s*(.+?)(?:\n|$)", text)
+    if m:
+        result = sanitize(m.group(1).strip())
+        return result[:max_chars] if result else None
+
+    # Tier 2: short response — sanitize and speak whole thing
+    plain = sanitize(text)
+    if len(plain) <= 300:
+        return plain[:max_chars] if len(plain) >= 10 else None
+
+    # Tier 3: first 1–2 sentences from first substantive paragraph
+    for line in text.splitlines():
+        line = line.strip()
+        if (
+            line
+            and not line.startswith("#")
+            and not line.startswith("```")
+            and not line.startswith("|")
+            and not line.startswith("- [")
+            and len(line) > 20
+        ):
+            clean = sanitize(line)
+            if len(clean) >= 10:
+                sentences = re.split(r"(?<=[.!?])\s+", clean)
+                return " ".join(sentences[:2])[:max_chars]
+
+    return None
+
+
+def speak(text: str, url: str) -> None:
+    payload = json.dumps({"text": text}).encode()
+    req = urllib.request.Request(
+        f"{url}/speak",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(req, timeout=2)
+    except Exception:
+        pass
+
+
+def main():
+    url = _talkback_url()
+    if not is_running(url):
+        sys.exit(0)
+
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+
+    msg = data.get("last_assistant_message", "")
+    if not msg:
+        sys.exit(0)
+
+    summary = extract_summary(msg, max_chars=_max_chars())
+    if summary:
+        speak(summary, url)
+
+
+if __name__ == "__main__":
+    main()

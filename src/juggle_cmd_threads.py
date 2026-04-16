@@ -25,12 +25,45 @@ def _get_version():
         return "?"
 
 
+def _maybe_start_talkback() -> None:
+    """Start talkback server if talkback.enabled=true and not already running."""
+    import subprocess
+    import urllib.request
+
+    tb = _get_settings().get("talkback", {})
+    if not tb.get("enabled", False):
+        return
+
+    port = int(tb.get("port", 18787))
+    try:
+        urllib.request.urlopen(f"http://localhost:{port}/health", timeout=0.5)
+        return  # already running
+    except Exception:
+        pass
+
+    plugin_root = Path(__file__).resolve().parent.parent
+    talkback_bin = plugin_root / "scripts" / "talkback"
+    if not talkback_bin.exists():
+        return  # silently skip if not installed
+
+    log_path = Path("/tmp/talkback.log")
+    subprocess.Popen(
+        [str(talkback_bin), "--listen", str(port)],
+        stdout=log_path.open("a"),
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+
+
 def cmd_start(_):
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     db = get_db()
     db.init_db()
     db.set_active(True)
+
+    # Auto-start talkback if enabled in config
+    _maybe_start_talkback()
 
     ver = _get_version()
     threads = db.get_all_threads()

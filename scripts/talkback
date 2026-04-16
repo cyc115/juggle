@@ -1,0 +1,194 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12,<3.14"
+# dependencies = ["kokoro", "sounddevice", "numpy", "flask"]
+# ///
+"""Talkback — local TTS service using Kokoro. CLI + HTTP server modes."""
+
+import argparse
+import sys
+import threading
+import numpy as np
+import sounddevice as sd
+
+# ---------------------------------------------------------------------------
+# Global state for cancellation
+# ---------------------------------------------------------------------------
+_playback_lock = threading.Lock()
+_current_event: threading.Event | None = None  # set → stop
+
+
+_device: int | str | None = None  # set at startup via --device
+
+
+def _play_audio(audio: np.ndarray, samplerate: int = 24000) -> None:
+    """Play audio array, respecting cancellation via a threading.Event."""
+    global _current_event
+    with _playback_lock:
+        if _current_event is not None:
+            _current_event.set()
+        sd.stop()
+        stop_event = threading.Event()
+        _current_event = stop_event
+
+    if audio is None or len(audio) == 0:
+        return
+
+    finished = threading.Event()
+
+    def _callback(outdata, frames, time_info, status):
+        nonlocal pos
+        if stop_event.is_set():
+            raise sd.CallbackAbort
+        chunk = audio[pos : pos + frames]
+        if len(chunk) < frames:
+            outdata[: len(chunk), 0] = chunk
+            outdata[len(chunk) :] = 0
+            raise sd.CallbackStop
+        outdata[:, 0] = chunk
+        pos += frames
+
+    pos = 0
+    try:
+        stream = sd.OutputStream(
+            samplerate=samplerate,
+            channels=1,
+            dtype="float32",
+            device=_device,
+            callback=_callback,
+            finished_callback=finished.set,
+        )
+        stream.start()
+        finished.wait()
+        stream.stop()
+        stream.close()
+    except Exception:
+        pass
+
+
+def cancel_playback() -> None:
+    """Cancel current playback immediately."""
+    global _current_event
+    with _playback_lock:
+        if _current_event is not None:
+            _current_event.set()
+        sd.stop()
+        _current_event = None
+
+
+# ---------------------------------------------------------------------------
+# TTS engine (lazy-loaded)
+# ---------------------------------------------------------------------------
+_pipeline = None
+
+
+def _get_pipeline():
+    global _pipeline
+    if _pipeline is None:
+        from kokoro import KPipeline
+        _pipeline = KPipeline(lang_code="a")
+    return _pipeline
+
+
+def synthesize(text: str, voice: str = "af_heart", speed: float = 1.0) -> np.ndarray | None:
+    """Synthesize text to a numpy audio array."""
+    pipe = _get_pipeline()
+    chunks = []
+    for _graphemes, _phonemes, audio in pipe(text, voice=voice, speed=speed):
+        if audio is not None:
+            chunks.append(audio)
+    if not chunks:
+        return None
+    return np.concatenate(chunks)
+
+
+def speak(text: str, voice: str = "af_heart", speed: float = 1.0) -> None:
+    """Synthesize and play text. Cancels any ongoing playback first."""
+    if not text.strip():
+        cancel_playback()
+        return
+    audio = synthesize(text, voice=voice, speed=speed)
+    if audio is not None:
+        _play_audio(audio)
+
+
+# ---------------------------------------------------------------------------
+# HTTP server (Flask)
+# ---------------------------------------------------------------------------
+
+def run_server(port: int, voice: str, speed: float, device: int | str | None = None) -> None:
+    from flask import Flask, request, jsonify
+
+    app = Flask(__name__)
+
+    @app.route("/health", methods=["GET"])
+    def health():
+        return jsonify({"status": "ok"})
+
+    @app.route("/speak", methods=["POST"])
+    def handle_speak():
+        data = request.get_json(silent=True) or {}
+        text = data.get("text", "")
+        req_speed = data.get("speed", speed)
+        req_voice = data.get("voice", voice)
+
+        if not text.strip():
+            cancel_playback()
+            return jsonify({"status": "cancelled"})
+
+        t = threading.Thread(
+            target=speak,
+            args=(text,),
+            kwargs={"voice": req_voice, "speed": req_speed},
+            daemon=True,
+        )
+        t.start()
+        return jsonify({"status": "speaking"})
+
+    global _device
+    _device = device
+    print(f"[talkback] Loading Kokoro model...")
+    _get_pipeline()
+    dev_label = f"device={device}" if device is not None else "system default"
+    print(f"[talkback] Listening on http://localhost:{port} ({dev_label})")
+    app.run(host="127.0.0.1", port=port, threaded=True)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(description="Talkback TTS service")
+    parser.add_argument("text", nargs="?", default=None, help="Text to speak (CLI mode)")
+    parser.add_argument("--listen", type=int, default=None, metavar="PORT",
+                        help="Start HTTP server on PORT (default: 18787)")
+    parser.add_argument("--speed", type=float, default=1.0, help="Speech speed (default: 1.0)")
+    parser.add_argument("--voice", type=str, default="af_heart", help="Voice ID (default: af_heart)")
+    parser.add_argument("--device", type=str, default=None, metavar="DEVICE",
+                        help="Output device name or index (default: system default). Use --list-devices to see options.")
+    parser.add_argument("--list-devices", action="store_true", help="List available audio output devices and exit")
+    args = parser.parse_args()
+
+    if args.list_devices:
+        print(sd.query_devices())
+        sys.exit(0)
+
+    device: int | str | None = None
+    if args.device is not None:
+        try:
+            device = int(args.device)
+        except ValueError:
+            device = args.device
+
+    if args.listen is not None:
+        run_server(port=args.listen, voice=args.voice, speed=args.speed, device=device)
+    elif args.text:
+        speak(args.text, voice=args.voice, speed=args.speed)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
