@@ -5,12 +5,13 @@ import threading
 
 from juggle_cli_common import _humanize_dt, _extract_decision_prompt, _last_sentences
 from juggle_db import JuggleDB, _is_junk_message, _thread_age_seconds
+from juggle_settings import get_settings as _get_settings
 
-# Hard cap: ~2000 tokens => ~8000 chars
-_CHAR_LIMIT = 8000
+# Hard cap derived from settings: ~2000 tokens => ~8000 chars
+_CHAR_LIMIT: int = _get_settings()["context_injection_char_limit"]
 
 # Max chars for a non-current thread's summary teaser
-_TEASER_CHARS = 80
+_TEASER_CHARS: int = _get_settings()["context_teaser_chars"]
 
 
 def _build(db: JuggleDB) -> str:
@@ -25,8 +26,9 @@ def _build(db: JuggleDB) -> str:
     # ACTION REQUIRED — completed agent notifications (top of block)
     # ------------------------------------------------------------------
     notifications = db.get_pending_notifications()
-    # Auto-clear notifications shown 3+ times without acknowledgement
-    stale_ids = [n["id"] for n in notifications if (n.get("delivery_attempts") or 0) >= 3]
+    # Auto-clear notifications shown too many times without acknowledgement
+    _max_attempts = _get_settings()["notification_max_delivery_attempts"]
+    stale_ids = [n["id"] for n in notifications if (n.get("delivery_attempts") or 0) >= _max_attempts]
     if stale_ids:
         db.mark_notifications_delivered(stale_ids)
     notifications = [n for n in notifications if n["id"] not in stale_ids]
@@ -241,9 +243,9 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
     if status == "failed":
         return "❌"
 
-    # Archived: last_active > 48 hours ago
+    # Archived: last_active > archive threshold
     age = _thread_age_seconds(last_active)
-    if age is not None and age > 48 * 3600:
+    if age is not None and age > _get_settings()["cockpit"]["thread_archive_threshold_secs"]:
         return "🗄️"
 
     # For waiting / idle detection we need the last assistant message
@@ -262,8 +264,8 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
         if assistant_row["content"].rstrip().endswith("?"):
             return "⏸️"
 
-    # Idle: last assistant message exists (no "?") AND last_active > 30 min ago
-    if assistant_row and age is not None and age > 30 * 60:
+    # Idle: last assistant message exists (no "?") AND last_active > idle threshold
+    if assistant_row and age is not None and age > _get_settings()["cockpit"]["thread_idle_threshold_secs"]:
         return "💤"
 
     return ""
@@ -471,7 +473,7 @@ def build_startup_output(db: JuggleDB) -> str:
     for rt in recall_threads:
         rt.start()
     for rt in recall_threads:
-        rt.join(timeout=10)
+        rt.join(timeout=_get_settings()["hindsight"]["recall_join_timeout_secs"])
 
     n = len(active)
     ver = _get_juggle_version()

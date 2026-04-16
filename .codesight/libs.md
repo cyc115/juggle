@@ -50,4 +50,8 @@
   - function handle_user_prompt_submit: (data) -> None
   - function handle_stop: (data) -> None
   - _...4 more_
+- `src/juggle_settings.py`
+  - function get_settings: () -> dict
+  - function get: (key, default)
+  - function get_nested: (section, key, default)
 - `src/juggle_tmux.py` — class JuggleTmuxManager

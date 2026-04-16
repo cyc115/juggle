@@ -17,9 +17,9 @@ from juggle_cli_common import (
     _resolve_thread,
     get_db,
 )
+from juggle_settings import get_settings as _get_settings
 
-
-_AGENT_TTL_SECS = 24 * 3600  # 24h idle TTL before an agent is decommissioned
+_AGENT_TTL_SECS: int = _get_settings()["agent_idle_ttl_secs"]
 
 
 def cmd_set_agent(args):

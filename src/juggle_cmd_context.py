@@ -16,6 +16,7 @@ from juggle_cli_common import (
     get_db,
 )
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
+from juggle_settings import get_settings as _get_settings
 
 
 def cmd_get_shared_context(args):
@@ -287,7 +288,7 @@ def cmd_digest(args):
 
     # --save
     if getattr(args, "save", False):
-        log_dir = Path.home() / ".juggle" / "logs"
+        log_dir = Path(_get_settings()["paths"]["digest_log_dir"])
         log_dir.mkdir(parents=True, exist_ok=True)
         date_str = datetime.now().strftime("%Y-%m-%d")
         log_path = log_dir / f"juggle-digest-{date_str}.md"

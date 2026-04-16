@@ -3,7 +3,6 @@
 
 import json
 import logging
-import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -11,10 +10,12 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-MAX_THREADS: int = int(os.environ.get("JUGGLE_MAX_THREADS", 10))
-MAX_BACKGROUND_AGENTS: int = int(os.environ.get("JUGGLE_MAX_BACKGROUND_AGENTS", 20))
+from juggle_settings import get_settings as _get_settings  # noqa: E402
 
-DEFAULT_DATA_DIR = Path.home() / ".claude" / "juggle"
+MAX_THREADS: int = _get_settings()["max_threads"]
+MAX_BACKGROUND_AGENTS: int = _get_settings()["max_agents"]
+
+DEFAULT_DATA_DIR = Path(_get_settings()["paths"]["data_dir"])
 DB_PATH = DEFAULT_DATA_DIR / "juggle.db"
 
 CREATE_THREADS = """
@@ -102,12 +103,9 @@ CREATE TABLE IF NOT EXISTS domain_paths (
 );
 """
 
-_INITIAL_DOMAINS = ["juggle", "vault", "work"]
-
-_INITIAL_DOMAIN_PATHS = [
-    ("/github/juggle", "juggle"),
-    ("/Documents/personal", "vault"),
-    ("/work/", "work"),
+_INITIAL_DOMAINS: list[str] = _get_settings()["domains"]["initial_domains"]
+_INITIAL_DOMAIN_PATHS: list[tuple[str, str]] = [
+    (p, d) for p, d in _get_settings()["domains"]["initial_domain_paths"]
 ]
 
 
@@ -433,12 +431,14 @@ class JuggleDB:
     # ------------------------------------------------------------------
 
     def get_messages(
-        self, thread_id: str, token_budget: int = 1500
+        self, thread_id: str, token_budget: int | None = None
     ) -> list[dict]:
         """
         Load messages newest-first until token budget is exhausted
         (token estimate = len(content) // 4), then return in chronological order.
         """
+        if token_budget is None:
+            token_budget = _get_settings()["message_history_token_budget"]
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -655,11 +655,13 @@ class JuggleDB:
 
         return result
 
-    def get_stale_threads(self, threshold: int = 3) -> list[dict]:
+    def get_stale_threads(self, threshold: int | None = None) -> list[dict]:
         """Return threads where substantive user message delta >= threshold.
 
         Uses a single DB query for all threads instead of N per-thread calls.
         """
+        if threshold is None:
+            threshold = _get_settings()["stale_summary_message_threshold"]
         threads = self.get_all_threads()
         if not threads:
             return []
@@ -891,7 +893,7 @@ class JuggleDB:
                 continue
 
             age = _thread_age_seconds(t.get("last_active") or "")
-            if age is not None and age > 48 * 3600 and status not in ("background", "waiting"):
+            if age is not None and age > _get_settings()["cockpit"]["thread_archive_threshold_secs"] and status not in ("background", "waiting"):
                 candidates.append(t)
 
         return candidates

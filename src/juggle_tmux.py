@@ -7,10 +7,12 @@ import time
 import uuid
 from pathlib import Path
 
+from juggle_settings import get_settings as _get_settings
+
 
 class JuggleTmuxManager:
-    def __init__(self, session_name: str = "juggle"):
-        self.session_name = session_name
+    def __init__(self, session_name: str | None = None):
+        self.session_name = session_name or _get_settings()["tmux"]["session_name"]
 
     def _run_tmux(self, *args) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -26,9 +28,10 @@ class JuggleTmuxManager:
         except FileNotFoundError:
             raise RuntimeError("tmux not found. Install tmux to use persistent agents.")
         if result.returncode != 0:
+            _s = _get_settings()["tmux"]
             self._run_tmux(
                 "new-session", "-s", self.session_name,
-                "-d", "-x", "220", "-y", "50",
+                "-d", "-x", str(_s["session_width"]), "-y", str(_s["session_height"]),
             )
 
     def _first_window(self) -> str:
@@ -50,7 +53,7 @@ class JuggleTmuxManager:
 
     def start_claude_in_pane(self, pane_id: str, model: str | None = None) -> None:
         """Send the 'claude' command to a pane."""
-        cmd = f"claude --dangerously-skip-permissions"
+        cmd = _get_settings()["agent"]["claude_launch_command"]
         if model:
             cmd += f" --model {model}"
         self._run_tmux("send-keys", "-t", pane_id, cmd, "Enter")

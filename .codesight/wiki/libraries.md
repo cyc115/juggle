@@ -2,7 +2,7 @@
 
 > **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.
 
-**11 library files** across 11 modules
+**12 library files** across 12 modules
 
 ## Juggle_cli_common.py (1 files)
 
@@ -43,6 +43,10 @@
 ## Juggle_hooks.py (1 files)
 
 - `src/juggle_hooks.py` — is_active, get_db, get_classification_candidates, auto_approve_blocked_agents, handle_user_prompt_submit, handle_stop, …
+
+## Juggle_settings.py (1 files)
+
+- `src/juggle_settings.py` — get_settings, get, get_nested
 
 ## Juggle_tmux.py (1 files)
 

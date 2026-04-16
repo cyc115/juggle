@@ -9,16 +9,15 @@ from pathlib import Path
 
 SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(SRC_DIR))
-from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR, DB_PATH as _DEFAULT_DB_PATH
+from juggle_db import DB_PATH as _DEFAULT_DB_PATH  # noqa: E402
+from juggle_settings import get_settings as _get_settings  # noqa: E402
 
 DB_PATH = Path(os.environ["_JUGGLE_TEST_DB"]) if "_JUGGLE_TEST_DB" in os.environ else _DEFAULT_DB_PATH
 
-JUGGLE_IDLE_THRESHOLD_SECS = int(os.environ.get("JUGGLE_IDLE_THRESHOLD_SECS", "30"))
+# Env var already folded into get_settings(); keep constant for importers (juggle_cmd_agents etc.)
+JUGGLE_IDLE_THRESHOLD_SECS: int = _get_settings()["tmux"]["agent_idle_detection_secs"]
 
-JUGGLE_CONFIG_PATH = Path(os.environ.get(
-    "_JUGGLE_CONFIG_PATH",
-    str(Path.home() / ".juggle" / "config.json"),
-))
+JUGGLE_CONFIG_PATH = Path(_get_settings()["paths"]["config_dir"]) / "config.json"
 
 
 def _get_hindsight_client():

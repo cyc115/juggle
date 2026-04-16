@@ -11,17 +11,27 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from juggle_settings import get_settings as _get_settings
+
 _log = logging.getLogger(__name__)
 
-JUGGLE_CONFIG_DIR = Path.home() / ".juggle"
-JUGGLE_CONFIG_PATH = JUGGLE_CONFIG_DIR / "config.json"
-JUGGLE_LOG_DIR = JUGGLE_CONFIG_DIR / "logs"
+def _hs() -> dict:
+    """Shortcut: return the hindsight settings section."""
+    return _get_settings()["hindsight"]
 
-# Defaults (overridden by config.json)
-DEFAULT_API_URL = "http://localhost:18888"
-DEFAULT_API_KEY = "juggle"
-DEFAULT_BANK = "juggle"
-DEFAULT_TIMEOUT = 10  # seconds
+def _paths() -> dict:
+    """Shortcut: return the paths settings section."""
+    return _get_settings()["paths"]
+
+# Kept as module-level constants for backward compat (used as __init__ defaults below)
+DEFAULT_API_URL: str = _hs()["api_url"]
+DEFAULT_API_KEY: str = _hs()["api_key"]
+DEFAULT_BANK: str = _hs()["bank"]
+DEFAULT_TIMEOUT: int = _hs()["timeout_secs"]
+
+JUGGLE_CONFIG_DIR = Path(_paths()["config_dir"])
+JUGGLE_CONFIG_PATH = JUGGLE_CONFIG_DIR / "config.json"
+JUGGLE_LOG_DIR = Path(_paths()["digest_log_dir"])
 
 
 class HindsightError(Exception):
@@ -45,23 +55,20 @@ class HindsightClient:
 
     @classmethod
     def from_config(cls, config_path: str | None = None) -> "HindsightClient | None":
-        """Load client from config file. Returns None if disabled or missing."""
-        path = Path(config_path) if config_path else JUGGLE_CONFIG_PATH
-        if not path.exists():
+        """Load client from unified settings. config_path kept for backward compat but ignored.
+
+        Settings are loaded from ~/.juggle/config.json (or _JUGGLE_CONFIG_PATH env var)
+        via get_settings(), which already handles all override precedence.
+        """
+        hs = _hs()
+        if not hs.get("enabled", False):
             return None
-        try:
-            config = json.loads(path.read_text())
-            hs = config.get("hindsight", {})
-            if not hs.get("enabled", False):
-                return None
-            return cls(
-                api_url=hs.get("api_url", DEFAULT_API_URL),
-                api_key=hs.get("api_key", DEFAULT_API_KEY),
-                bank=hs.get("bank", DEFAULT_BANK),
-                timeout=hs.get("timeout", DEFAULT_TIMEOUT),
-            )
-        except (json.JSONDecodeError, KeyError):
-            return None
+        return cls(
+            api_url=hs.get("api_url", DEFAULT_API_URL),
+            api_key=hs.get("api_key", DEFAULT_API_KEY),
+            bank=hs.get("bank", DEFAULT_BANK),
+            timeout=hs.get("timeout_secs", DEFAULT_TIMEOUT),
+        )
 
     def _request(self, method: str, path: str, body: dict | None = None, timeout: int | None = None) -> dict:
         """Make HTTP request to Hindsight API. Returns parsed JSON or empty dict."""
@@ -160,7 +167,7 @@ class HindsightClient:
             "POST",
             f"/v1/default/banks/{self.bank}/reflect",
             body,
-            timeout=min(timeout, 60),
+            timeout=min(timeout, _hs()["reflect_timeout_secs"]),
         )
         return result.get("text", "")
 

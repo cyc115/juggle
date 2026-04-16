@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | javascript
 
-> 0 routes | 0 models | 0 components | 11 lib files | 8 env vars | 0 middleware | 0% test coverage
-> **Token savings:** this file is ~800 tokens. Without it, AI exploration would cost ~7,700 tokens. **Saves ~6,900 tokens per conversation.**
-> **Last scanned:** 2026-04-15 17:04 — re-run after significant changes
+> 0 routes | 0 models | 0 components | 12 lib files | 8 env vars | 0 middleware | 0% test coverage
+> **Token savings:** this file is ~900 tokens. Without it, AI exploration would cost ~8,100 tokens. **Saves ~7,200 tokens per conversation.**
+> **Last scanned:** 2026-04-16 02:11 — re-run after significant changes
 
 ---
 
@@ -60,6 +60,10 @@
   - function handle_user_prompt_submit: (data) -> None
   - function handle_stop: (data) -> None
   - _...4 more_
+- `src/juggle_settings.py`
+  - function get_settings: () -> dict
+  - function get: (key, default)
+  - function get_nested: (section, key, default)
 - `src/juggle_tmux.py` — class JuggleTmuxManager
 
 ---
@@ -69,10 +73,10 @@
 ## Environment Variables
 
 - `_JUGGLE_TEST_DB` **required** — src/juggle_cli_common.py
-- `CLAUDE_PLUGIN_DATA` **required** — src/juggle_hooks.py
-- `JUGGLE_IDLE_THRESHOLD_SECS` **required** — src/juggle_cli_common.py
-- `JUGGLE_MAX_BACKGROUND_AGENTS` **required** — src/juggle_db.py
-- `JUGGLE_MAX_THREADS` **required** — src/juggle_db.py
+- `CLAUDE_PLUGIN_DATA` **required** — src/juggle_settings.py
+- `JUGGLE_IDLE_THRESHOLD_SECS` **required** — src/juggle_settings.py
+- `JUGGLE_MAX_BACKGROUND_AGENTS` **required** — src/juggle_settings.py
+- `JUGGLE_MAX_THREADS` **required** — src/juggle_settings.py
 - `JUGGLE_TMUX_MOCK_KILL` **required** — src/juggle_tmux.py
 - `JUGGLE_TMUX_MOCK_PANE` **required** — src/juggle_tmux.py
 - `JUGGLE_TMUX_MOCK_SEND` **required** — src/juggle_tmux.py

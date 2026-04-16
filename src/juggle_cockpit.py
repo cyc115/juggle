@@ -17,6 +17,7 @@ import time
 from juggle_db import JuggleDB
 from juggle_db import _thread_age_seconds  # private import — acceptable for v1
 from juggle_context import get_thread_state
+from juggle_settings import get_settings as _get_settings
 
 # ---------------------------------------------------------------------------
 # ANSI constants
@@ -29,7 +30,7 @@ YELLOW = "\033[33m"
 GREEN = "\033[32m"
 WHITE = "\033[97m"
 
-REFRESH_INTERVAL = 1.0
+REFRESH_INTERVAL: float = _get_settings()["cockpit"]["refresh_interval_secs"]
 
 # Priority tiers (lower = higher priority)
 TIER_BLOCKER = 0
@@ -132,9 +133,10 @@ def column_widths(total_cols: int) -> tuple[int, int, int]:
 
     Content rows use shared borders: │ col1 │ col2 │ col3 │ = 4 border chars.
     """
+    ratios = _get_settings()["cockpit"]["column_ratios"]  # [topics, actions, agents]
     usable = total_cols - 4  # 4 │ borders (shared)
-    w_topics = int(usable * 0.30)
-    w_agents = int(usable * 0.30)
+    w_topics = int(usable * ratios[0])
+    w_agents = int(usable * ratios[2])
     w_actions = usable - w_topics - w_agents  # absorbs rounding
     return w_topics, w_actions, w_agents
 
@@ -375,7 +377,6 @@ def render_actions_column(
     # Review nudge: done + result + not current → group by label
     review_labels = []
     for thread in visible:
-        tid = thread["id"]
         status = thread.get("status") or "active"
         agent_result = thread.get("agent_result") or ""
         if (status == "done" and agent_result
@@ -394,7 +395,7 @@ def render_actions_column(
         if not oq:
             continue
         age = _thread_age_seconds(thread.get("last_active"))
-        if age is not None and age > 2 * 3600:
+        if age is not None and age > _get_settings()["cockpit"]["idle_open_question_threshold_secs"]:
             idle_oq_labels.append((thread.get("label") or "?", age))
 
     if idle_oq_labels:
@@ -409,7 +410,7 @@ def render_actions_column(
         if not blocker_text:
             continue
         age = _thread_age_seconds(thread.get("last_active"))
-        if age is not None and age > 4 * 3600:
+        if age is not None and age > _get_settings()["cockpit"]["stale_blocker_threshold_secs"]:
             stale_labels.append((thread.get("label") or "?", age))
 
     if stale_labels:
@@ -417,7 +418,7 @@ def render_actions_column(
             nudge = f"🔴 [{lb}] blocker unaddressed {_fmt_duration(age)}"
             nudges.append(f"{RED}{truncate(nudge, content_w)}{RESET}")
 
-    rows.extend(nudges[:3])
+    rows.extend(nudges[:_get_settings()["cockpit"]["max_nudge_lines"]])
 
     # 3. Open questions
     for thread in visible:

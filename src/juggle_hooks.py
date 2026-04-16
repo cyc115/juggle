@@ -8,7 +8,6 @@ Events: UserPromptSubmit, Stop, SessionStart, PostToolUse
 
 import json
 import logging
-import os
 import re
 import subprocess
 import sys
@@ -18,10 +17,11 @@ from pathlib import Path
 # Add the directory containing this file to sys.path so we can import siblings.
 sys.path.insert(0, str(Path(__file__).parent))
 
-from juggle_db import JuggleDB, DEFAULT_DATA_DIR
+from juggle_db import JuggleDB
 from juggle_context import build_context_string
+from juggle_settings import get_settings as _get_settings
 
-_DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA", DEFAULT_DATA_DIR))
+_DATA_DIR = Path(_get_settings()["paths"]["data_dir"])
 DB_PATH = _DATA_DIR / "juggle.db"
 
 logging.basicConfig(

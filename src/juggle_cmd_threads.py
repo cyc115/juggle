@@ -14,6 +14,7 @@ from juggle_cli_common import (
 )
 from juggle_context import get_thread_state
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
+from juggle_settings import get_settings as _get_settings
 
 
 def _get_version():
@@ -263,9 +264,10 @@ def cmd_update_summary(args):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
     summary = args.summary
-    # Truncate at word boundary if over 250 chars
-    if len(summary) > 250:
-        summary = summary[:250].rsplit(' ', 1)[0]
+    # Truncate at word boundary if over configured max chars
+    _max_chars = _get_settings()["summary_max_chars"]
+    if len(summary) > _max_chars:
+        summary = summary[:_max_chars].rsplit(' ', 1)[0]
     db.update_thread(thread_uuid, summary=summary)
     updated = db.get_thread(thread_uuid)
     label = (updated.get("label") if updated else None) or args.thread_id
