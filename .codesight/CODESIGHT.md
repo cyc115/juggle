@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | javascript
 
-> 0 routes | 0 models | 0 components | 13 lib files | 7 env vars | 0 middleware | 0% test coverage
-> **Token savings:** this file is ~1,000 tokens. Without it, AI exploration would cost ~8,900 tokens. **Saves ~7,900 tokens per conversation.**
-> **Last scanned:** 2026-04-18 04:49 — re-run after significant changes
+> 0 routes | 0 models | 0 components | 14 lib files | 7 env vars | 0 middleware | 0% test coverage
+> **Token savings:** this file is ~1,100 tokens. Without it, AI exploration would cost ~9,300 tokens. **Saves ~8,300 tokens per conversation.**
+> **Last scanned:** 2026-04-18 04:50 — re-run after significant changes
 
 ---
 
@@ -55,6 +55,14 @@
   - function column_widths: (total_cols) -> tuple[int, int, int]
   - function make_header_row: (titles, widths) -> str
   - _...7 more_
+- `src/juggle_cockpit_model.py`
+  - function format_age: (secs) -> str
+  - function priority_tier: (agent_result, status, last_active_age_secs, is_current, reviewed) -> int
+  - function snapshot: (db) -> CockpitState
+  - class Topic
+  - class Action
+  - class Agent
+  - _...2 more_
 - `src/juggle_context.py`
   - function build_context_string: (db_path) -> str
   - function get_thread_state: (db, thread, current_thread_id) -> str
@@ -96,7 +104,7 @@
 # Test Coverage
 
 > **0%** of routes and models are covered by tests
-> 14 test files found
+> 15 test files found
 
 ---
 

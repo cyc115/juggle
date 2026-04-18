@@ -2,7 +2,7 @@
 
 > **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.
 
-**13 library files** across 13 modules
+**14 library files** across 14 modules
 
 ## Juggle_cli_common.py (1 files)
 
@@ -23,6 +23,10 @@
 ## Juggle_cmd_threads.py (1 files)
 
 - `src/juggle_cmd_threads.py` — cmd_start, cmd_stop, cmd_create_thread, cmd_switch_thread, cmd_update_meta, cmd_update_summary, …
+
+## Juggle_cockpit_model.py (1 files)
+
+- `src/juggle_cockpit_model.py` — format_age, priority_tier, snapshot, Topic, Action, Agent, …
 
 ## Juggle_cockpit.py (1 files)
 

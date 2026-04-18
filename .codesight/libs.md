@@ -45,6 +45,14 @@
   - function column_widths: (total_cols) -> tuple[int, int, int]
   - function make_header_row: (titles, widths) -> str
   - _...7 more_
+- `src/juggle_cockpit_model.py`
+  - function format_age: (secs) -> str
+  - function priority_tier: (agent_result, status, last_active_age_secs, is_current, reviewed) -> int
+  - function snapshot: (db) -> CockpitState
+  - class Topic
+  - class Action
+  - class Agent
+  - _...2 more_
 - `src/juggle_context.py`
   - function build_context_string: (db_path) -> str
   - function get_thread_state: (db, thread, current_thread_id) -> str
