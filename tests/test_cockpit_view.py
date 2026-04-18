@@ -1,0 +1,320 @@
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from collections import namedtuple
+import pytest
+import time as _time
+
+from rich.console import Console
+from rich.layout import Layout
+from rich.panel import Panel
+
+from juggle_cockpit_view import pick_breakpoint, build_layout, render_topics, render_actions, render_agents, render_notifications, render_into
+from juggle_cockpit_model import Topic, Action, Agent, Notification, CockpitState
+
+Size = namedtuple("Size", ["width", "height"])
+
+# ---------------------------------------------------------------------------
+# pick_breakpoint
+# ---------------------------------------------------------------------------
+
+def test_pick_breakpoint_narrow():
+    assert pick_breakpoint(Size(79, 40)) == "narrow"
+
+def test_pick_breakpoint_medium_low():
+    assert pick_breakpoint(Size(80, 40)) == "medium"
+
+def test_pick_breakpoint_medium_high():
+    assert pick_breakpoint(Size(119, 40)) == "medium"
+
+def test_pick_breakpoint_wide():
+    assert pick_breakpoint(Size(120, 40)) == "wide"
+
+def test_pick_breakpoint_very_wide():
+    assert pick_breakpoint(Size(220, 50)) == "wide"
+
+
+# ---------------------------------------------------------------------------
+# build_layout
+# ---------------------------------------------------------------------------
+
+def test_build_layout_wide_returns_layout():
+    layout = build_layout("wide")
+    assert isinstance(layout, Layout)
+
+def test_build_layout_wide_has_topics():
+    layout = build_layout("wide")
+    assert layout["topics"] is not None
+
+def test_build_layout_wide_has_actions():
+    layout = build_layout("wide")
+    assert layout["actions"] is not None
+
+def test_build_layout_wide_has_agents():
+    layout = build_layout("wide")
+    assert layout["agents"] is not None
+
+def test_build_layout_wide_has_notifications():
+    layout = build_layout("wide")
+    assert layout["notifications"] is not None
+
+def test_build_layout_medium_returns_layout():
+    layout = build_layout("medium")
+    assert isinstance(layout, Layout)
+
+def test_build_layout_medium_has_topics_strip():
+    layout = build_layout("medium")
+    assert layout["topics_strip"] is not None
+
+def test_build_layout_narrow_returns_layout():
+    layout = build_layout("narrow")
+    assert isinstance(layout, Layout)
+
+def test_build_layout_narrow_has_all_sections():
+    layout = build_layout("narrow")
+    assert layout["actions"] is not None
+    assert layout["agents"] is not None
+    assert layout["notifications"] is not None
+
+
+# ---------------------------------------------------------------------------
+# render_topics
+# ---------------------------------------------------------------------------
+
+def _make_topics():
+    return [
+        Topic(id="t1", label="K", status="current",  age_secs=60,   is_current=True),
+        Topic(id="t2", label="J", status="running",  age_secs=3600, is_current=False),
+        Topic(id="t3", label="G", status="paused",   age_secs=7200, is_current=False),
+        Topic(id="t4", label="E", status="done",     age_secs=9000, is_current=False),
+    ]
+
+def test_render_topics_wide_returns_panel():
+    panel = render_topics(_make_topics(), "wide")
+    assert isinstance(panel, Panel)
+
+def test_render_topics_wide_contains_label():
+    c = Console(record=True, width=140)
+    panel = render_topics(_make_topics(), "wide")
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "[K]" in text
+
+def test_render_topics_wide_contains_glyph():
+    c = Console(record=True, width=140)
+    panel = render_topics(_make_topics(), "wide")
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "👉" in text
+
+def test_render_topics_strip_medium():
+    result = render_topics(_make_topics(), "medium")
+    assert isinstance(result, Panel)
+
+def test_render_topics_strip_contains_glyphs():
+    c = Console(record=True, width=100)
+    result = render_topics(_make_topics(), "medium")
+    with c:
+        c.print(result)
+    text = c.export_text()
+    assert "K" in text
+    assert "J" in text
+
+
+# ---------------------------------------------------------------------------
+# render_actions
+# ---------------------------------------------------------------------------
+
+def _make_actions():
+    return [
+        Action(id="a1", topic_id="K", text="approve plan v3",      tier=2, age_secs=3600),
+        Action(id="a2", topic_id="B", text="BLOCKER: missing token", tier=0, age_secs=7200),
+        Action(id="a3", topic_id="I", text="survey results ready",  tier=1, age_secs=1800),
+    ]
+
+def test_render_actions_returns_panel():
+    panel = render_actions(_make_actions())
+    assert isinstance(panel, Panel)
+
+def test_render_actions_contains_text():
+    c = Console(record=True, width=120)
+    panel = render_actions(_make_actions())
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "approve plan v3" in text
+
+def test_render_actions_dict_leak_regression():
+    """Action text must appear verbatim — never as a dict repr."""
+    action_with_plain_text = Action(
+        id="oq:thread-001:0",
+        topic_id="K",
+        text="should we use sqlite or postgres?",
+        tier=2,
+        age_secs=60,
+    )
+    c = Console(record=True, width=120)
+    panel = render_actions([action_with_plain_text])
+    with c:
+        c.print(panel)
+    output = c.export_text()
+    assert "should we use sqlite or postgres?" in output
+    assert "{'id':" not in output
+    assert "{'text':" not in output
+
+def test_render_actions_empty():
+    c = Console(record=True, width=120)
+    panel = render_actions([])
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "no actions" in text.lower() or panel is not None
+
+def test_render_actions_tier_glyph_present():
+    c = Console(record=True, width=120)
+    panel = render_actions(_make_actions())
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "⚠️" in text or "❓" in text
+
+
+# ---------------------------------------------------------------------------
+# render_agents
+# ---------------------------------------------------------------------------
+
+def _make_agents():
+    return [
+        Agent(id_short="abcd1234", role="coder",      status="busy",  topic_id="K", age_secs=720),
+        Agent(id_short="ef567890", role="planner",    status="stale", topic_id="J", age_secs=10800),
+        Agent(id_short="12345678", role="researcher", status="idle",  topic_id=None, age_secs=300),
+    ]
+
+def test_render_agents_returns_panel():
+    panel = render_agents(_make_agents())
+    assert isinstance(panel, Panel)
+
+def test_render_agents_busy_present():
+    c = Console(record=True, width=100)
+    panel = render_agents(_make_agents())
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "coder" in text
+    assert "🟢" in text
+
+def test_render_agents_stale_present():
+    c = Console(record=True, width=100)
+    panel = render_agents(_make_agents())
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "🟡" in text
+
+def test_render_agents_idle_present():
+    c = Console(record=True, width=100)
+    panel = render_agents(_make_agents())
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "⚫" in text
+
+def test_render_agents_empty():
+    panel = render_agents([])
+    assert isinstance(panel, Panel)
+    c = Console(record=True, width=100)
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "no agents" in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# render_notifications
+# ---------------------------------------------------------------------------
+
+def test_render_notifications_empty():
+    panel = render_notifications([])
+    assert isinstance(panel, Panel)
+    c = Console(record=True, width=120)
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "no notifications" in text.lower()
+
+def test_render_notifications_one():
+    notifs = [Notification(text="plan v3 ready", kind="complete", age_secs=30)]
+    c = Console(record=True, width=120)
+    panel = render_notifications(notifs)
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "plan v3 ready" in text
+
+def test_render_notifications_glyph():
+    notifs = [Notification(text="plan v3 ready", kind="complete", age_secs=30)]
+    c = Console(record=True, width=120)
+    panel = render_notifications(notifs)
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "⚡" in text
+
+def test_render_notifications_multiple_newest_first():
+    notifs = [
+        Notification(text="first notification",  kind="info",     age_secs=600),
+        Notification(text="second notification", kind="complete", age_secs=30),
+    ]
+    c = Console(record=True, width=120)
+    panel = render_notifications(notifs)
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "first notification" in text
+    assert "second notification" in text
+
+
+# ---------------------------------------------------------------------------
+# render_into
+# ---------------------------------------------------------------------------
+
+def _make_full_state():
+    return CockpitState(
+        topics=[
+            Topic(id="t1", label="K", status="current", age_secs=60, is_current=True,  title="cockpit refactor"),
+            Topic(id="t2", label="J", status="running", age_secs=3600, is_current=False, title="talkback"),
+        ],
+        actions=[
+            Action(id="a1", topic_id="K", text="approve plan v3", tier=2, age_secs=300),
+        ],
+        agents=[
+            Agent(id_short="abcd1234", role="coder", status="busy", topic_id="K", age_secs=720),
+        ],
+        notifications=[
+            Notification(text="plan v3 ready", kind="complete", age_secs=30),
+        ],
+        fetched_at=_time.time(),
+    )
+
+def test_render_into_wide_no_exception():
+    layout = build_layout("wide")
+    state = _make_full_state()
+    render_into(layout, state, "wide")
+
+def test_render_into_medium_no_exception():
+    layout = build_layout("medium")
+    state = _make_full_state()
+    render_into(layout, state, "medium")
+
+def test_render_into_narrow_no_exception():
+    layout = build_layout("narrow")
+    state = _make_full_state()
+    render_into(layout, state, "narrow")
+
+def test_render_into_wide_actions_panel_updated():
+    layout = build_layout("wide")
+    state = _make_full_state()
+    render_into(layout, state, "wide")
+    assert layout["actions"].renderable is not None

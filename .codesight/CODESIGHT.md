@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | javascript
 
-> 0 routes | 0 models | 0 components | 14 lib files | 7 env vars | 0 middleware | 0% test coverage
-> **Token savings:** this file is ~1,100 tokens. Without it, AI exploration would cost ~9,300 tokens. **Saves ~8,300 tokens per conversation.**
-> **Last scanned:** 2026-04-18 04:50 — re-run after significant changes
+> 0 routes | 0 models | 0 components | 15 lib files | 7 env vars | 0 middleware | 0% test coverage
+> **Token savings:** this file is ~1,200 tokens. Without it, AI exploration would cost ~9,800 tokens. **Saves ~8,600 tokens per conversation.**
+> **Last scanned:** 2026-04-18 04:54 — re-run after significant changes
 
 ---
 
@@ -63,6 +63,14 @@
   - class Action
   - class Agent
   - _...2 more_
+- `src/juggle_cockpit_view.py`
+  - function pick_breakpoint: (size) -> str
+  - function build_layout: (bp) -> Layout
+  - function render_topics: (topics, bp) -> Panel
+  - function render_actions: (actions) -> Panel
+  - function render_agents: (agents) -> Panel
+  - function render_notifications: (notifications) -> Panel
+  - _...1 more_
 - `src/juggle_context.py`
   - function build_context_string: (db_path) -> str
   - function get_thread_state: (db, thread, current_thread_id) -> str
@@ -104,7 +112,7 @@
 # Test Coverage
 
 > **0%** of routes and models are covered by tests
-> 15 test files found
+> 16 test files found
 
 ---
 

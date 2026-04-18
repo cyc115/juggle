@@ -2,7 +2,7 @@
 
 > **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.
 
-**14 library files** across 14 modules
+**15 library files** across 15 modules
 
 ## Juggle_cli_common.py (1 files)
 
@@ -27,6 +27,10 @@
 ## Juggle_cockpit_model.py (1 files)
 
 - `src/juggle_cockpit_model.py` — format_age, priority_tier, snapshot, Topic, Action, Agent, …
+
+## Juggle_cockpit_view.py (1 files)
+
+- `src/juggle_cockpit_view.py` — pick_breakpoint, build_layout, render_topics, render_actions, render_agents, render_notifications, …
 
 ## Juggle_cockpit.py (1 files)
 

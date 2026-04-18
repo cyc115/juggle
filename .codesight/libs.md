@@ -53,6 +53,14 @@
   - class Action
   - class Agent
   - _...2 more_
+- `src/juggle_cockpit_view.py`
+  - function pick_breakpoint: (size) -> str
+  - function build_layout: (bp) -> Layout
+  - function render_topics: (topics, bp) -> Panel
+  - function render_actions: (actions) -> Panel
+  - function render_agents: (agents) -> Panel
+  - function render_notifications: (notifications) -> Panel
+  - _...1 more_
 - `src/juggle_context.py`
   - function build_context_string: (db_path) -> str
   - function get_thread_state: (db, thread, current_thread_id) -> str
