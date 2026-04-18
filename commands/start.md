@@ -76,6 +76,19 @@ Explore codebase. Gather context.
 Build. Edit. Refactor. Fix bugs.
 **Route**: Two-phase background dispatch — plan, then implement after approval. Main thread: plan bullets + final status only.
 
+### Topic Creation Rule
+
+Topics (threads) are created **only** when the orchestrator dispatches persistent work via:
+- `juggle_cli.py get-agent` to reserve a background worker
+- `send-task` to enqueue the work
+
+**Do NOT create topics for:**
+- Ad-hoc Bash `run_in_background` experiments
+- One-shot tool calls (WebFetch, Grep, etc.)
+- Conversational exchanges without orchestrator dispatch
+
+**Why:** Topics represent orchestrator-managed work with persistent state. Ad-hoc exploration pollutes the thread list and confuses cockpit visibility.
+
 ---
 
 ## Orchestrator Rules
