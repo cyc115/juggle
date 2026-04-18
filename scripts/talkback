@@ -19,10 +19,11 @@ _current_event: threading.Event | None = None  # set → stop
 
 
 _device: int | str | None = None  # set at startup via --device
+_last_device: int | str | None = None
 
 
-def _play_audio(audio: np.ndarray, samplerate: int = 24000) -> None:
-    """Play audio array, respecting cancellation via a threading.Event."""
+def _try_play(audio: np.ndarray, samplerate: int, device: int | str | None) -> None:
+    """Attempt to play audio on the given device; raises on failure."""
     global _current_event
     with _playback_lock:
         if _current_event is not None:
@@ -49,21 +50,45 @@ def _play_audio(audio: np.ndarray, samplerate: int = 24000) -> None:
         pos += frames
 
     pos = 0
-    try:
-        stream = sd.OutputStream(
-            samplerate=samplerate,
-            channels=1,
-            dtype="float32",
-            device=_device,
-            callback=_callback,
-            finished_callback=finished.set,
-        )
-        stream.start()
-        finished.wait()
-        stream.stop()
-        stream.close()
-    except Exception:
-        pass
+    stream = sd.OutputStream(
+        samplerate=samplerate,
+        channels=1,
+        dtype="float32",
+        device=device,
+        callback=_callback,
+        finished_callback=finished.set,
+    )
+    stream.start()
+    finished.wait()
+    stream.stop()
+    stream.close()
+
+
+def _play_audio(audio: np.ndarray, samplerate: int = 24000) -> None:
+    """Play audio array with device fallback chain, respecting cancellation."""
+    global _last_device
+
+    # Build deduplicated fallback chain preserving order; treat all None as one slot
+    raw_chain = [_last_device, _device, None, "MacBook Pro Speakers"]
+    seen_none = False
+    chain: list[int | str | None] = []
+    for dev in raw_chain:
+        if dev is None:
+            if not seen_none:
+                seen_none = True
+                chain.append(None)
+        elif dev not in chain:
+            chain.append(dev)
+
+    for dev in chain:
+        try:
+            _try_play(audio, samplerate, dev)
+            _last_device = dev
+            return
+        except Exception as e:
+            print(f"[talkback] device {dev!r} failed ({e}), trying next...", file=sys.stderr)
+
+    print("[talkback] ERROR: all audio devices failed", file=sys.stderr)
 
 
 def cancel_playback() -> None:
