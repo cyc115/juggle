@@ -1,5 +1,13 @@
 # Libraries
 
+- `scripts/consolidate_dbs.py`
+  - function get_tables: (db_path) -> List[str]
+  - function get_schema: (db_path, table) -> str
+  - function normalize_schema: (schema) -> str
+  - function get_primary_key: (db_path, table) -> str
+  - function get_existing_ids: (db_path, table, pk_col) -> set
+  - function get_thread_labels: (db_path) -> Dict[str, str]
+  - _...3 more_
 - `src/juggle_cli.py` — function main: ()
 - `src/juggle_cli_common.py` — function get_db: ()
 - `src/juggle_cmd_agents.py`

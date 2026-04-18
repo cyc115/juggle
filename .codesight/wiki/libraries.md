@@ -2,7 +2,7 @@
 
 > **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.
 
-**12 library files** across 12 modules
+**13 library files** across 13 modules
 
 ## Juggle_cli_common.py (1 files)
 
@@ -51,6 +51,10 @@
 ## Juggle_tmux.py (1 files)
 
 - `src/juggle_tmux.py` — JuggleTmuxManager
+
+## Scripts (1 files)
+
+- `scripts/consolidate_dbs.py` — get_tables, get_schema, normalize_schema, get_primary_key, get_existing_ids, get_thread_labels, …
 
 ---
 _Back to [overview.md](./overview.md)_

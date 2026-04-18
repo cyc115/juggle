@@ -136,9 +136,6 @@ def get_settings() -> dict:
         settings["max_agents"] = int(os.environ["JUGGLE_MAX_BACKGROUND_AGENTS"])
     if "JUGGLE_IDLE_THRESHOLD_SECS" in os.environ:
         settings["tmux"]["agent_idle_detection_secs"] = int(os.environ["JUGGLE_IDLE_THRESHOLD_SECS"])
-    if "CLAUDE_PLUGIN_DATA" in os.environ:
-        settings["paths"]["data_dir"] = os.environ["CLAUDE_PLUGIN_DATA"]
-
     # Expand ~ in all path values
     for key in ("data_dir", "config_dir", "digest_log_dir"):
         settings["paths"][key] = str(Path(settings["paths"][key]).expanduser())

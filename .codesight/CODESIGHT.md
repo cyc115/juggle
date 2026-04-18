@@ -2,14 +2,22 @@
 
 > **Stack:** raw-http | none | unknown | javascript
 
-> 0 routes | 0 models | 0 components | 12 lib files | 8 env vars | 0 middleware | 0% test coverage
-> **Token savings:** this file is ~900 tokens. Without it, AI exploration would cost ~8,300 tokens. **Saves ~7,500 tokens per conversation.**
-> **Last scanned:** 2026-04-16 07:57 — re-run after significant changes
+> 0 routes | 0 models | 0 components | 13 lib files | 7 env vars | 0 middleware | 0% test coverage
+> **Token savings:** this file is ~1,000 tokens. Without it, AI exploration would cost ~8,600 tokens. **Saves ~7,600 tokens per conversation.**
+> **Last scanned:** 2026-04-18 03:45 — re-run after significant changes
 
 ---
 
 # Libraries
 
+- `scripts/consolidate_dbs.py`
+  - function get_tables: (db_path) -> List[str]
+  - function get_schema: (db_path, table) -> str
+  - function normalize_schema: (schema) -> str
+  - function get_primary_key: (db_path, table) -> str
+  - function get_existing_ids: (db_path, table, pk_col) -> set
+  - function get_thread_labels: (db_path) -> Dict[str, str]
+  - _...3 more_
 - `src/juggle_cli.py` — function main: ()
 - `src/juggle_cli_common.py` — function get_db: ()
 - `src/juggle_cmd_agents.py`
@@ -73,7 +81,6 @@
 ## Environment Variables
 
 - `_JUGGLE_TEST_DB` **required** — src/juggle_cli_common.py
-- `CLAUDE_PLUGIN_DATA` **required** — src/juggle_settings.py
 - `JUGGLE_IDLE_THRESHOLD_SECS` **required** — src/juggle_settings.py
 - `JUGGLE_MAX_BACKGROUND_AGENTS` **required** — src/juggle_settings.py
 - `JUGGLE_MAX_THREADS` **required** — src/juggle_settings.py
