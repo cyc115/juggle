@@ -207,27 +207,9 @@ def cmd_get_agent(args):
     thread = db.get_thread(thread_uuid)
     mgr = JuggleTmuxManager()
 
-    # Purge dead panes and 24h-stale idle agents before pool-full check.
-    now_ts = datetime.now(timezone.utc)
-    for a in db.get_all_agents():
-        if a["status"] != "idle":
-            continue
-        if not mgr.verify_pane(a["pane_id"]):
-            print(f"[juggle] Dead pane detected ({a['pane_id']}), removing agent {a['id'][:8]}.", file=sys.stderr)
-            db.delete_agent(a["id"])
-            continue
-        last_active = a.get("last_active") or ""
-        if last_active:
-            try:
-                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                if (now_ts - dt).total_seconds() > _AGENT_TTL_SECS:
-                    print(f"[juggle] Agent {a['id'][:8]} idle >24h, decommissioning.", file=sys.stderr)
-                    mgr.decommission_agent(db, a["id"])
-                    continue
-            except (ValueError, TypeError):
-                pass
+    # Purge stale agents
+    from juggle_tmux import reap_stale_agents
+    reap_stale_agents(db, mgr)
 
     all_agents = db.get_all_agents()
     if len(all_agents) >= MAX_BACKGROUND_AGENTS:

@@ -62,4 +62,4 @@
   - function get_settings: () -> dict
   - function get: (key, default)
   - function get_nested: (section, key, default)
-- `src/juggle_tmux.py` — class JuggleTmuxManager
+- `src/juggle_tmux.py` — function reap_stale_agents: (db, mgr), class JuggleTmuxManager

@@ -50,7 +50,7 @@
 
 ## Juggle_tmux.py (1 files)
 
-- `src/juggle_tmux.py` — JuggleTmuxManager
+- `src/juggle_tmux.py` — reap_stale_agents, JuggleTmuxManager
 
 ## Scripts (1 files)
 

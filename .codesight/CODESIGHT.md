@@ -4,7 +4,7 @@
 
 > 0 routes | 0 models | 0 components | 13 lib files | 7 env vars | 0 middleware | 0% test coverage
 > **Token savings:** this file is ~1,000 tokens. Without it, AI exploration would cost ~8,600 tokens. **Saves ~7,600 tokens per conversation.**
-> **Last scanned:** 2026-04-18 03:45 — re-run after significant changes
+> **Last scanned:** 2026-04-18 03:46 — re-run after significant changes
 
 ---
 
@@ -72,7 +72,7 @@
   - function get_settings: () -> dict
   - function get: (key, default)
   - function get_nested: (section, key, default)
-- `src/juggle_tmux.py` — class JuggleTmuxManager
+- `src/juggle_tmux.py` — function reap_stale_agents: (db, mgr), class JuggleTmuxManager
 
 ---
 

@@ -171,3 +171,43 @@ class JuggleTmuxManager:
         if agent:
             self.kill_pane(agent["pane_id"])
             db.delete_agent(agent_id)
+
+
+def reap_stale_agents(db, mgr):
+    """Reap agents idle longer than agent_idle_ttl_secs.
+
+    Skips busy agents and agents assigned to the current thread.
+    Returns count of agents reaped.
+    """
+    from datetime import datetime, timezone
+    from juggle_settings import get_settings
+
+    settings = get_settings()
+    ttl_secs = settings["agent_idle_ttl_secs"]
+    current_thread = db.get_current_thread()
+
+    now_ts = datetime.now(timezone.utc)
+    reaped = 0
+
+    for a in db.get_all_agents():
+        if a["status"] != "idle" or a["assigned_thread"] == current_thread:
+            continue
+
+        if not mgr.verify_pane(a["pane_id"]):
+            db.delete_agent(a["id"])
+            reaped += 1
+            continue
+
+        last_active = a.get("last_active") or ""
+        if last_active:
+            try:
+                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if (now_ts - dt).total_seconds() > ttl_secs:
+                    mgr.decommission_agent(db, a["id"])
+                    reaped += 1
+            except (ValueError, TypeError):
+                pass
+
+    return reaped
