@@ -34,7 +34,7 @@
 
 ## Juggle_cockpit.py (1 files)
 
-- `src/juggle_cockpit.py` — tick, strip_ansi, display_width, truncate, pad_cell, column_widths, …
+- `src/juggle_cockpit.py` — tick, run
 
 ## Juggle_context.py (1 files)
 

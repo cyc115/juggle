@@ -37,14 +37,7 @@
   - function cmd_update_meta: (args)
   - function cmd_update_summary: (args)
   - _...10 more_
-- `src/juggle_cockpit.py`
-  - function tick: (db, size, prev_layout, prev_bp)
-  - function strip_ansi: (s) -> str
-  - function display_width: (s) -> int
-  - function truncate: (s, max_w) -> str
-  - function pad_cell: (s, width) -> str
-  - function column_widths: (total_cols) -> tuple[int, int, int]
-  - _...8 more_
+- `src/juggle_cockpit.py` — function tick: (db, size, prev_layout, prev_bp), function run: (db_path) -> None
 - `src/juggle_cockpit_model.py`
   - function format_age: (secs) -> str
   - function priority_tier: (agent_result, status, last_active_age_secs, is_current, reviewed) -> int
