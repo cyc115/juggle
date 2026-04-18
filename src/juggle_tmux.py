@@ -49,7 +49,10 @@ class JuggleTmuxManager:
             "-t", self._first_window(),
             "-v", "-P", "-F", "#{pane_id}",
         )
-        return result.stdout.strip()
+        pane_id = result.stdout.strip()
+        if not pane_id:
+            raise RuntimeError(f"spawn_pane failed: tmux split-window returned no pane_id. stderr={result.stderr!r}")
+        return pane_id
 
     def start_claude_in_pane(self, pane_id: str, model: str | None = None) -> None:
         """Send the 'claude' command to a pane.
@@ -86,20 +89,24 @@ class JuggleTmuxManager:
         For existing agents: sends synchronously.
         No-op if JUGGLE_TMUX_MOCK_SEND=1.
         """
+        if not pane_id or not pane_id.strip():
+            raise ValueError(f"send_task called with empty pane_id — aborting to avoid pasting to wrong tmux session")
         if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
             return
         tmp = f"/tmp/juggle_task_{uuid.uuid4().hex[:8]}.txt"
         Path(tmp).write_text(prompt)
+        buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
 
         if is_new:
             # Background subprocess: survives parent exit, handles delays
             script = (
                 f"sleep 5; "
-                f"tmux load-buffer -b juggle '{tmp}'; "
-                f"tmux paste-buffer -b juggle -t '{pane_id}'; "
+                f"tmux load-buffer -b {buf_name} '{tmp}'; "
+                f"tmux paste-buffer -b {buf_name} -t '{pane_id}'; "
                 f"tmux send-keys -t '{pane_id}' C-m; "
                 f"sleep 10; "
                 f"tmux send-keys -t '{pane_id}' C-m; "
+                f"tmux delete-buffer -b {buf_name}; "
                 f"rm -f '{tmp}'"
             )
             subprocess.Popen(
@@ -110,10 +117,11 @@ class JuggleTmuxManager:
             )
         else:
             try:
-                self._run_tmux("load-buffer", "-b", "juggle", tmp)
-                self._run_tmux("paste-buffer", "-b", "juggle", "-t", pane_id)
+                self._run_tmux("load-buffer", "-b", buf_name, tmp)
+                self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
                 time.sleep(1)  # let Claude Code process pasted input
                 self._run_tmux("send-keys", "-t", pane_id, "C-m")
+                self._run_tmux("delete-buffer", "-b", buf_name)
                 # Retry Enter after 5s in case first was swallowed
                 subprocess.Popen(
                     ["bash", "-c", f"sleep 5; tmux send-keys -t '{pane_id}' C-m"],
