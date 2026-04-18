@@ -104,6 +104,15 @@ def test_tick_rebuilds_layout_when_bp_changes():
     assert layout_wide is not layout_medium
 
 
+def test_run_uses_rich_live():
+    """run() must use Rich Live, not raw sys.stdout writes."""
+    import inspect
+    import juggle_cockpit
+    src = inspect.getsource(juggle_cockpit.run)
+    assert "Live" in src
+    assert "sys.stdout.write" not in src
+
+
 def test_snapshot_to_render_pipeline():
     """Full pipeline: DB → snapshot → render_into → no exception."""
     conn = _make_in_memory_db()

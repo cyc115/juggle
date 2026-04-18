@@ -613,15 +613,13 @@ def _make_cockpit_db(db_path: str | None = None) -> JuggleDB:
 
 
 def run(db_path: str | None = None) -> None:
-    """Start the cockpit refresh loop."""
+    """Start the cockpit refresh loop using Rich Live."""
+    from rich.live import Live
+    from rich.console import Console
+
     db = _make_cockpit_db(db_path)
     if not db.is_active():
         print("Juggle inactive. Run /juggle:start first.")
-        sys.exit(1)
-
-    cols, rows = shutil.get_terminal_size()
-    if cols < 80:
-        print("Terminal too narrow (need 80+ cols).")
         sys.exit(1)
 
     try:
@@ -630,18 +628,22 @@ def run(db_path: str | None = None) -> None:
     except Exception:
         _cockpit_mgr = None
 
-    while True:
-        try:
-            cols, rows = shutil.get_terminal_size()
-            if _cockpit_mgr is not None:
-                _throttled_reaper(db, _cockpit_mgr)
-            frame = render_frame(cols, rows, db=db)
-            sys.stdout.write("\033[H\033[J" + frame)
-            sys.stdout.flush()
-        except Exception as e:
-            sys.stdout.write(f"\033[H\033[J{RED}[error] {e}{RESET}\n")
-            sys.stdout.flush()
-        time.sleep(REFRESH_INTERVAL)
+    layout = None
+    bp = None
+    console = Console()
+
+    with Live(console=console, screen=True, refresh_per_second=1) as live:
+        while True:
+            try:
+                size = console.size
+                if _cockpit_mgr is not None:
+                    _throttled_reaper(db, _cockpit_mgr)
+                layout, bp = tick(db, size, layout, bp)
+                live.update(layout)
+            except Exception as e:
+                from rich.text import Text
+                live.update(Text(f"[error] {e}", style="red"))
+            time.sleep(REFRESH_INTERVAL)
 
 
 if __name__ == "__main__":
