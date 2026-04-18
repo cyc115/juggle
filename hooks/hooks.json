@@ -61,6 +61,15 @@
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -93,6 +102,15 @@
       },
       {
         "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
         "hooks": [
           {
             "type": "command",
