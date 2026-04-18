@@ -24,7 +24,7 @@ DEFAULTS: dict = {
     # Limits & Thresholds
     "max_threads": 10,
     "max_agents": 20,
-    "agent_idle_ttl_secs": 86400,
+    "agent_idle_ttl_secs": 43200,
     "message_history_token_budget": 1500,
     "context_injection_char_limit": 8000,
     "context_teaser_chars": 80,
