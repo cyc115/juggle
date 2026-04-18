@@ -52,10 +52,14 @@ class JuggleTmuxManager:
         return result.stdout.strip()
 
     def start_claude_in_pane(self, pane_id: str, model: str | None = None) -> None:
-        """Send the 'claude' command to a pane."""
+        """Send the 'claude' command to a pane.
+
+        Prefixes with env -u CLAUDE_PLUGIN_DATA to prevent DB fragmentation.
+        """
         cmd = _get_settings()["agent"]["claude_launch_command"]
         if model:
             cmd += f" --model {model}"
+        cmd = f"env -u CLAUDE_PLUGIN_DATA {cmd}"
         self._run_tmux("send-keys", "-t", pane_id, cmd, "Enter")
 
     def verify_pane(self, pane_id: str) -> bool:
