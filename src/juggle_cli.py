@@ -304,6 +304,15 @@ def main():
 
     args = parser.parse_args()
 
+    # Reap stale agents on every CLI invocation
+    try:
+        from juggle_tmux import reap_stale_agents, JuggleTmuxManager
+        _reap_db = get_db()
+        _reap_mgr = JuggleTmuxManager()
+        reap_stale_agents(_reap_db, _reap_mgr)
+    except Exception:
+        pass  # Non-fatal; reaper can be skipped
+
     try:
         args.func(args)
     except Exception as e:

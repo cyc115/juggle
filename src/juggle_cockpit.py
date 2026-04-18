@@ -19,6 +19,18 @@ from juggle_db import _thread_age_seconds  # private import — acceptable for v
 from juggle_context import get_thread_state
 from juggle_settings import get_settings as _get_settings
 
+_last_reap_time = 0
+
+
+def _throttled_reaper(db, mgr, throttle_secs=60):
+    """Reap agents, throttled to once per throttle_secs."""
+    global _last_reap_time
+    now = time.time()
+    if now - _last_reap_time >= throttle_secs:
+        from juggle_tmux import reap_stale_agents
+        reap_stale_agents(db, mgr)
+        _last_reap_time = now
+
 # ---------------------------------------------------------------------------
 # ANSI constants
 # ---------------------------------------------------------------------------
@@ -589,9 +601,17 @@ def run(db_path: str | None = None) -> None:
         print("Terminal too narrow (need 80+ cols).")
         sys.exit(1)
 
+    try:
+        from juggle_tmux import JuggleTmuxManager
+        _cockpit_mgr = JuggleTmuxManager()
+    except Exception:
+        _cockpit_mgr = None
+
     while True:
         try:
             cols, rows = shutil.get_terminal_size()
+            if _cockpit_mgr is not None:
+                _throttled_reaper(db, _cockpit_mgr)
             frame = render_frame(cols, rows, db=db)
             sys.stdout.write("\033[H\033[J" + frame)
             sys.stdout.flush()
