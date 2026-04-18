@@ -312,6 +312,31 @@ def handle_pre_tool_use(data: dict) -> None:
                 }
             }
             print(json.dumps(output))
+        # Track pending AskUserQuestion decisions
+        if tool_name == "AskUserQuestion":
+            try:
+                db = get_db()
+                thread_id = db.get_current_thread()
+                if thread_id:
+                    tool_use_id = data.get("tool_use_id", "")
+                    questions = data.get("tool_input", {}).get("questions", [])
+
+                    thread = db.get_thread(thread_id)
+                    current = thread.get("open_questions") or []
+                    if isinstance(current, str):
+                        current = json.loads(current)
+
+                    for i, q in enumerate(questions):
+                        current.append({
+                            "id": f"{tool_use_id}:{i}",
+                            "text": q.get("question", ""),
+                            "source": "askuser",
+                        })
+
+                    db.update_thread(thread_id, open_questions=current)
+            except Exception as exc:
+                logging.warning("AskUserQuestion PreToolUse handler error: %s", exc)
+
     except Exception as exc:
         logging.error("PreToolUse handler error: %s", exc, exc_info=True)
 
@@ -381,6 +406,25 @@ def handle_post_tool_use(data: dict) -> None:
             current = db.get_current_thread()
             db.add_notification(thread_id or current or "", warning, severity="warning")
             logging.warning("JUGGLE ACTIVE leaked into sub-agent prompt for thread %s", thread_id)
+        # Clear pending decisions after AskUserQuestion completes
+        if tool_name == "AskUserQuestion":
+            try:
+                db = get_db()
+                thread_id = db.get_current_thread()
+                if thread_id:
+                    tool_use_id = data.get("tool_use_id", "")
+
+                    thread = db.get_thread(thread_id)
+                    open_questions = thread.get("open_questions") or []
+                    if isinstance(open_questions, str):
+                        open_questions = json.loads(open_questions)
+
+                    open_questions = [q for q in open_questions if not q.get("id", "").startswith(tool_use_id)]
+
+                    db.update_thread(thread_id, open_questions=open_questions)
+            except Exception as exc:
+                logging.warning("AskUserQuestion PostToolUse handler error: %s", exc)
+
     except Exception as exc:
         logging.error("PostToolUse handler error: %s", exc, exc_info=True)
 
