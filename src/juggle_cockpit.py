@@ -22,6 +22,29 @@ from juggle_settings import get_settings as _get_settings
 _last_reap_time = 0
 
 
+# ---------------------------------------------------------------------------
+# Rich-based tick — model/view layer (Tasks 13-14)
+# ---------------------------------------------------------------------------
+
+def tick(db, size, prev_layout, prev_bp):
+    """One cockpit tick: snapshot DB → pick breakpoint → render into layout.
+
+    Returns (layout, bp). Reuses prev_layout when breakpoint is unchanged.
+    """
+    from juggle_cockpit_model import snapshot as _snapshot
+    from juggle_cockpit_view import pick_breakpoint as _pick_bp, build_layout as _build_layout, render_into as _render_into
+
+    bp = _pick_bp(size)
+    if prev_layout is None or prev_bp != bp:
+        layout = _build_layout(bp)
+    else:
+        layout = prev_layout
+
+    state = _snapshot(db)
+    _render_into(layout, state, bp)
+    return layout, bp
+
+
 def _throttled_reaper(db, mgr, throttle_secs=60):
     """Reap agents, throttled to once per throttle_secs."""
     global _last_reap_time

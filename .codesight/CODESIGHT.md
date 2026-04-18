@@ -3,8 +3,8 @@
 > **Stack:** raw-http | none | unknown | javascript
 
 > 0 routes | 0 models | 0 components | 15 lib files | 7 env vars | 0 middleware | 0% test coverage
-> **Token savings:** this file is ~1,200 tokens. Without it, AI exploration would cost ~9,800 tokens. **Saves ~8,600 tokens per conversation.**
-> **Last scanned:** 2026-04-18 04:54 — re-run after significant changes
+> **Token savings:** this file is ~1,200 tokens. Without it, AI exploration would cost ~9,900 tokens. **Saves ~8,800 tokens per conversation.**
+> **Last scanned:** 2026-04-18 04:55 — re-run after significant changes
 
 ---
 
@@ -48,13 +48,13 @@
   - function cmd_update_summary: (args)
   - _...10 more_
 - `src/juggle_cockpit.py`
+  - function tick: (db, size, prev_layout, prev_bp)
   - function strip_ansi: (s) -> str
   - function display_width: (s) -> int
   - function truncate: (s, max_w) -> str
   - function pad_cell: (s, width) -> str
   - function column_widths: (total_cols) -> tuple[int, int, int]
-  - function make_header_row: (titles, widths) -> str
-  - _...7 more_
+  - _...8 more_
 - `src/juggle_cockpit_model.py`
   - function format_age: (secs) -> str
   - function priority_tier: (agent_result, status, last_active_age_secs, is_current, reviewed) -> int
@@ -112,7 +112,7 @@
 # Test Coverage
 
 > **0%** of routes and models are covered by tests
-> 16 test files found
+> 17 test files found
 
 ---
 
