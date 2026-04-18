@@ -9,3 +9,4 @@
 - `JUGGLE_TMUX_MOCK_KILL` **required** — src/juggle_tmux.py
 - `JUGGLE_TMUX_MOCK_PANE` **required** — src/juggle_tmux.py
 - `JUGGLE_TMUX_MOCK_SEND` **required** — src/juggle_tmux.py
+- `UPDATE_SNAPSHOTS` **required** — tests/test_cockpit_snapshots.py

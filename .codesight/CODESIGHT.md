@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | javascript
 
-> 0 routes | 0 models | 0 components | 15 lib files | 7 env vars | 0 middleware | 0% test coverage
-> **Token savings:** this file is ~1,100 tokens. Without it, AI exploration would cost ~9,900 tokens. **Saves ~8,800 tokens per conversation.**
-> **Last scanned:** 2026-04-18 04:57 — re-run after significant changes
+> 0 routes | 0 models | 0 components | 15 lib files | 8 env vars | 0 middleware | 0% test coverage
+> **Token savings:** this file is ~1,100 tokens. Without it, AI exploration would cost ~10,100 tokens. **Saves ~9,000 tokens per conversation.**
+> **Last scanned:** 2026-04-18 04:58 — re-run after significant changes
 
 ---
 
@@ -99,13 +99,14 @@
 - `JUGGLE_TMUX_MOCK_KILL` **required** — src/juggle_tmux.py
 - `JUGGLE_TMUX_MOCK_PANE` **required** — src/juggle_tmux.py
 - `JUGGLE_TMUX_MOCK_SEND` **required** — src/juggle_tmux.py
+- `UPDATE_SNAPSHOTS` **required** — tests/test_cockpit_snapshots.py
 
 ---
 
 # Test Coverage
 
 > **0%** of routes and models are covered by tests
-> 17 test files found
+> 18 test files found
 
 ---
 

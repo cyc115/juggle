@@ -6,7 +6,7 @@
 
 ## Scale
 
-15 library files · 7 environment variables
+15 library files · 8 environment variables
 
 **Libraries:** 15 files — see [libraries.md](./libraries.md)
 
@@ -19,6 +19,7 @@
 - `JUGGLE_TMUX_MOCK_KILL` — `src/juggle_tmux.py`
 - `JUGGLE_TMUX_MOCK_PANE` — `src/juggle_tmux.py`
 - `JUGGLE_TMUX_MOCK_SEND` — `src/juggle_tmux.py`
+- `UPDATE_SNAPSHOTS` — `tests/test_cockpit_snapshots.py`
 
 ---
 _Back to [index.md](./index.md) · Generated 2026-04-18_
