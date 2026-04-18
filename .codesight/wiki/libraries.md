@@ -10,7 +10,7 @@
 
 ## Juggle_cli.py (1 files)
 
-- `src/juggle_cli.py` — main
+- `src/juggle_cli.py` — cmd_record_pending_decision, cmd_clear_pending_decision, main
 
 ## Juggle_cmd_agents.py (1 files)
 

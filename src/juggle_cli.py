@@ -66,6 +66,59 @@ from juggle_cmd_context import (
 )
 
 
+def cmd_record_pending_decision(args):
+    """Record pending user decisions in current thread's open_questions."""
+    import json
+    db = get_db()
+
+    thread = db.get_current_thread()
+    if not thread:
+        return
+
+    thread_obj = db.get_thread(thread)
+
+    try:
+        questions = json.loads(args.questions_json)
+    except json.JSONDecodeError as e:
+        print(f"Error: invalid JSON in --questions-json: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    open_questions = thread_obj.get("open_questions") or []
+    if isinstance(open_questions, str):
+        open_questions = json.loads(open_questions)
+
+    for i, q in enumerate(questions):
+        if "q" not in q:
+            print(f"Error: question {i} missing 'q' field", file=sys.stderr)
+            sys.exit(1)
+        open_questions.append({
+            "id": f"{args.tool_use_id}:{i}",
+            "text": q["q"],
+            "source": "askuser",
+        })
+
+    db.update_thread(thread, open_questions=open_questions)
+
+
+def cmd_clear_pending_decision(args):
+    """Clear pending decisions by tool_use_id prefix."""
+    import json
+    db = get_db()
+
+    thread = db.get_current_thread()
+    if not thread:
+        return
+
+    thread_obj = db.get_thread(thread)
+    open_questions = thread_obj.get("open_questions") or []
+    if isinstance(open_questions, str):
+        open_questions = json.loads(open_questions)
+
+    open_questions = [q for q in open_questions if not q.get("id", "").startswith(args.tool_use_id)]
+
+    db.update_thread(thread, open_questions=open_questions)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Juggle CLI - multi-topic conversation orchestrator"
@@ -179,6 +232,11 @@ def main():
         default=None,
         metavar="TEXT",
         help="Explicit retain text (key decisions, personal details, non-obvious learnings)",
+    )
+    p_complete.add_argument(
+        "--open-questions",
+        default=None,
+        help="JSON array of pending questions from planner",
     )
     p_complete.set_defaults(func=cmd_complete_agent)
 
@@ -301,6 +359,17 @@ def main():
     # next-action
     p_next = subparsers.add_parser("next-action", help="Switch to highest-priority action item")
     p_next.set_defaults(func=cmd_next_action)
+
+    # record-pending-decision
+    record_parser = subparsers.add_parser("record-pending-decision", help="Record pending user decisions")
+    record_parser.add_argument("--tool-use-id", required=True)
+    record_parser.add_argument("--questions-json", required=True)
+    record_parser.set_defaults(func=cmd_record_pending_decision)
+
+    # clear-pending-decision
+    clear_parser = subparsers.add_parser("clear-pending-decision", help="Clear pending decisions by tool_use_id")
+    clear_parser.add_argument("--tool-use-id", required=True)
+    clear_parser.set_defaults(func=cmd_clear_pending_decision)
 
     args = parser.parse_args()
 

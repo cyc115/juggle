@@ -18,7 +18,10 @@
   - function get_existing_ids: (db_path, table, pk_col) -> set
   - function get_thread_labels: (db_path) -> Dict[str, str]
   - _...3 more_
-- `src/juggle_cli.py` — function main: ()
+- `src/juggle_cli.py`
+  - function cmd_record_pending_decision: (args)
+  - function cmd_clear_pending_decision: (args)
+  - function main: ()
 - `src/juggle_cli_common.py` — function get_db: ()
 - `src/juggle_cmd_agents.py`
   - function cmd_set_agent: (args)

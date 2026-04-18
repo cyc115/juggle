@@ -6,6 +6,7 @@ import shutil
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -91,6 +92,31 @@ def cmd_complete_agent(args):
             "Warning: no --retain provided. Pass --retain to preserve useful context.",
             file=sys.stderr,
         )
+
+    open_questions_arg = getattr(args, "open_questions", None)
+    if open_questions_arg:
+        try:
+            questions = json.loads(open_questions_arg)
+        except json.JSONDecodeError as e:
+            print(f"Error: invalid JSON in --open-questions: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        for i, q in enumerate(questions):
+            if "q" not in q:
+                print(f"Error: question {i} missing 'q' field", file=sys.stderr)
+                sys.exit(1)
+
+        thread_obj = db.get_thread(thread_uuid)
+        existing = thread_obj.get("open_questions") or []
+        if isinstance(existing, str):
+            existing = json.loads(existing)
+
+        existing.extend([
+            {"id": f"planner:{uuid.uuid4()}", "text": q["q"], "source": "planner"}
+            for q in questions
+        ])
+
+        db.update_thread(thread_uuid, open_questions=existing)
 
     print(f"Thread {label} agent completed.")
 
