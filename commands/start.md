@@ -109,6 +109,37 @@ Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When i
 
 ---
 
+## Category 3: Major Project — Superpowers Workflow Split
+
+**Rule:** Spec & brainstorm happen in main thread. Plan & implement happen in background agents to save main-thread context.
+
+**Flow:**
+
+1. **Spec/Brainstorm (main thread)**
+   - User invokes superpowers:brainstorming skill
+   - Output: `/projects/<project>/specs/YYYY-MM-DD-<name>.md`
+
+2. **Plan (background planner agent)**
+   - Orchestrator dispatches planner agent with spec path
+   - Agent invokes superpowers:writing-plans skill
+   - Agent does NOT block for user decisions; batches them in `--open-questions` flag on `complete-agent`
+   - Output: `/projects/<project>/plan/YYYY-MM-DD-<name>.md` + pending questions in open_questions
+
+3. **Plan Review (main thread)**
+   - Orchestrator opens plan file for user review
+   - User answers batched questions via AskUserQuestion
+   - Orchestrator re-dispatches planner for revisions until closed
+
+4. **Implement (background coder agent)**
+   - After plan approval, orchestrator dispatches coder agent
+   - Agent invokes superpowers:executing-plans skill
+   - Coder executes tasks, commits frequently, reports result via `complete-agent`
+   - Cockpit renders progress; user can inspect commits anytime
+
+**Enforcement:** Prompt-based. Avoid doing spec, plan, and implement in a single agent to keep main-thread context lean.
+
+---
+
 ## Implementation Protocol (Category 3)
 
 Agents return: files changed + plan bullets. No intermediate output.
