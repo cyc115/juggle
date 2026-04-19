@@ -95,6 +95,11 @@ Topics (threads) are created **only** when the orchestrator dispatches persisten
 
 Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When in doubt: dispatch an agent.
 
+**Implementation Gate (STRICT):**
+- **Clear fix** (editing a file, applying a proposed change, adding a rule): dispatch immediately. NEVER ask "Want me to apply this?", "Shall I implement this?", "Should I apply this?" — just do it.
+- **Genuine design decision** (architecture trade-off, behavior change with no obvious answer): surface via AskUserQuestion UI.
+- Catch yourself before writing "Want me to" or "Shall I" — if you can classify it as a clear fix, that phrase means you're about to violate the gate.
+
 **Parallel decomposition** — for complex tasks:
 - Break into independent components before dispatching
 - Identify which components have no dependency on each other → those run in parallel
@@ -294,6 +299,12 @@ Agent completion/failure: agents call `complete-agent` or `fail-agent` + `releas
 
 ## Topic Detection (every message)
 
+- **Label lookup**: message is a bare label (1–3 chars, e.g. `BZ`, `bz`, `d`) → run status lookup:
+  1. `switch-thread <label>`
+  2. `list-actions` — show action items for that thread if any
+  3. If no actions: show recent notifications via `get-messages <id> --limit 5`
+  4. `list-agents` filtered to that thread — show agent status + age
+  Present as compact status card. No implementation, no new thread.
 - **Continuation**: same topic → proceed.
 - **Clear shift**: different subject → call `create-thread` immediately. Announce: `"New topic — thread [X]: '[detected topic]'."` No confirmation needed.
 - **Switching back**: user references prior thread → switch without asking.
