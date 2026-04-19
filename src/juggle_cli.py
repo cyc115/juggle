@@ -31,8 +31,6 @@ from juggle_cmd_threads import (
     cmd_get_archive_candidates,
     cmd_archive_thread,
     cmd_unarchive_thread,
-    cmd_generate_title,
-    cmd_backfill_titles,
     cmd_set_summarized_count,
     cmd_get_stale_threads,
     cmd_get_messages,
@@ -288,15 +286,6 @@ def main():
     # list-agents
     p_list_agents = subparsers.add_parser("list-agents", help="List all tmux agents")
     p_list_agents.set_defaults(func=cmd_list_agents)
-
-    # generate-title
-    p_gen_title = subparsers.add_parser("generate-title", help="Generate short title for a thread")
-    p_gen_title.add_argument("thread_id", help="Thread ID or label")
-    p_gen_title.set_defaults(func=cmd_generate_title)
-
-    # backfill-titles
-    p_backfill = subparsers.add_parser("backfill-titles", help="Generate titles for all untitled threads")
-    p_backfill.set_defaults(func=cmd_backfill_titles)
 
     # get-agent
     p_get_agent = subparsers.add_parser("get-agent", help="Get best idle agent (or spawn new)")

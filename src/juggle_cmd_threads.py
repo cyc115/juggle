@@ -357,7 +357,7 @@ def _cleanup_orphaned_threads(db) -> None:
     with db._connect() as conn:
         orphans = conn.execute(
             """
-            SELECT t.id, t.user_label, t.label, t.topic FROM threads t
+            SELECT t.id, t.user_label, t.topic FROM threads t
             WHERE t.status = 'running'
             AND NOT EXISTS (
                 SELECT 1 FROM agents a WHERE a.assigned_thread = t.id AND a.status = 'busy'
@@ -431,31 +431,6 @@ def cmd_unarchive_thread(args):
     thread = db.get_thread(thread_uuid)
     label = (thread.get("user_label") or thread.get("label")) if thread else thread_uuid
     print(f"Thread {label} unarchived.")
-
-
-def cmd_generate_title(args):
-    db = get_db()
-    thread_uuid = _resolve_thread(db, args.thread_id)
-    thread = db.get_thread(thread_uuid)
-    if not thread:
-        print(f"Error: Thread {args.thread_id} not found.")
-        sys.exit(1)
-    title = _generate_title_for_thread(db, thread_uuid, thread["topic"])
-    print(title)
-
-
-def cmd_backfill_titles(_):
-    db = get_db()
-    threads = db.get_all_threads()
-    missing = [t for t in threads if not t.get("title")]
-    if not missing:
-        print("All threads have titles.")
-        return
-    for t in missing:
-        label = t.get("user_label") or t.get("label") or t["id"][:8]
-        print(f"Generating title for thread {label}...")
-        _generate_title_for_thread(db, t["id"], t["topic"])
-    print(f"Backfilled {len(missing)} threads.")
 
 
 def cmd_set_summarized_count(args):
