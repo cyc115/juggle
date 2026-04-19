@@ -71,7 +71,7 @@ def cmd_start(_):
         thread_uuid = db.create_thread("General", session_id="")
         db.set_current_thread(thread_uuid)
         thread = db.get_thread(thread_uuid)
-        label = thread["label"] if thread else thread_uuid
+        label = (thread.get("user_label") or thread.get("label")) if thread else thread_uuid
         print(f"Juggle v{ver} started. Topic {label} created.")
     else:
         # Auto-switch to most recently active non-archived thread
@@ -91,7 +91,7 @@ def cmd_stop(_):
     if threads:
         print("Topics:")
         for t in threads:
-            label = t.get("label") or t["id"][:8]
+            label = t.get("user_label") or t.get("label") or t["id"][:8]
             print(f"  [{label}] {t['topic']} — {t['status']}")
     else:
         print("No topics.")
@@ -108,7 +108,7 @@ def cmd_create_thread(args):
     thread_uuid = db.create_thread(args.topic, session_id="", domain=domain)
     db.set_current_thread(thread_uuid)
     thread = db.get_thread(thread_uuid)
-    label = thread["label"] if thread else thread_uuid
+    label = (thread.get("user_label") or thread.get("label")) if thread else thread_uuid
     domain_str = f" [domain={domain}]" if domain else ""
     print(f"Created Topic {label}: {args.topic}.{domain_str} Now in Topic {label}.")
     # Title generation is cosmetic — run in background so create-thread returns immediately.
@@ -142,7 +142,7 @@ def _render_briefing(thread: dict, memories: list, db) -> str:
     lines = []
 
     # ── Header ──────────────────────────────────────────────────────────────
-    label = thread.get("label") or thread["id"][:8]
+    label = thread.get("user_label") or thread.get("label") or thread["id"][:8]
     title = thread.get("title") or thread.get("topic") or "Untitled"
     status = thread.get("status", "active")
     last_active_str = _humanize_dt(thread.get("last_active") or "")
@@ -299,7 +299,7 @@ def cmd_update_meta(args):
         open_questions = [q for q in open_questions if q != args.resolve_question]
         db.update_thread(thread_uuid, open_questions=open_questions)
 
-    label = thread.get("label") or args.thread_id
+    label = thread.get("user_label") or thread.get("label") or args.thread_id
     print(f"Updated metadata for Thread {label}.")
 
 
@@ -316,7 +316,7 @@ def cmd_update_summary(args):
         summary = summary[:_max_chars].rsplit(' ', 1)[0]
     db.update_thread(thread_uuid, summary=summary)
     updated = db.get_thread(thread_uuid)
-    label = (updated.get("label") if updated else None) or args.thread_id
+    label = (updated.get("user_label") or updated.get("label") if updated else None) or args.thread_id
     print(f"Summary updated for Thread {label}.")
 
 
@@ -392,7 +392,7 @@ def cmd_get_archive_candidates(_):
         print("No archive candidates.")
         return
     for t in candidates:
-        label = t.get("label") or t["id"][:8]
+        label = t.get("user_label") or t.get("label") or t["id"][:8]
         title = t.get("title") or t["topic"]
         status = t["status"]
         last_active = t.get("last_active") or ""
@@ -406,7 +406,7 @@ def cmd_archive_thread(args):
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
-    label = thread.get("label") or args.thread_id
+    label = thread.get("user_label") or thread.get("label") or args.thread_id
     db.archive_thread(thread_uuid)
 
     # Decommission agents still assigned to this thread
@@ -427,7 +427,9 @@ def cmd_archive_thread(args):
 def cmd_unarchive_thread(args):
     db = get_db()
     thread_uuid = _resolve_thread(db, args.thread_id)
-    label = db.unarchive_thread(thread_uuid)
+    db.unarchive_thread(thread_uuid)
+    thread = db.get_thread(thread_uuid)
+    label = (thread.get("user_label") or thread.get("label")) if thread else thread_uuid
     print(f"Thread {label} unarchived.")
 
 
@@ -450,7 +452,7 @@ def cmd_backfill_titles(_):
         print("All threads have titles.")
         return
     for t in missing:
-        label = t.get("label") or t["id"][:8]
+        label = t.get("user_label") or t.get("label") or t["id"][:8]
         print(f"Generating title for thread {label}...")
         _generate_title_for_thread(db, t["id"], t["topic"])
     print(f"Backfilled {len(missing)} threads.")
@@ -464,7 +466,7 @@ def cmd_set_summarized_count(args):
         sys.exit(1)
     db.update_thread(thread_uuid, summarized_msg_count=args.count)
     updated = db.get_thread(thread_uuid)
-    label = (updated.get("label") if updated else None) or args.thread_id
+    label = (updated.get("user_label") or updated.get("label") if updated else None) or args.thread_id
     print(f"Summarized count set to {args.count} for Thread {label}.")
 
 
@@ -475,7 +477,7 @@ def cmd_get_stale_threads(args):
         print("No stale threads.")
         return
     for t in stale:
-        label = t.get("label") or t["id"][:8]
+        label = t.get("user_label") or t.get("label") or t["id"][:8]
         print(f"{label} {t['topic']} (delta={t['delta']})")
 
 
