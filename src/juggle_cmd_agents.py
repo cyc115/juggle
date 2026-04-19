@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Juggle CLI — Agent pool management commands."""
+"""Juggle CLI — Agent pool management commands.
+
+Agent completion protocol (embed in all dispatched prompts):
+  When finished, call EXACTLY ONE of:
+  1. Success:  juggle complete-agent <hex6> "<result>"
+  2. Action needed: juggle request-action <hex6> "<what>" --type manual_step --priority high
+  3. Failure:  juggle fail-agent <hex6> "<error>"
+"""
 
 import json
 import shutil
