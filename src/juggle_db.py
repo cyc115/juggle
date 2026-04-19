@@ -21,7 +21,6 @@ DB_PATH = DEFAULT_DATA_DIR / "juggle.db"
 CREATE_THREADS = """
 CREATE TABLE IF NOT EXISTS threads (
   id              TEXT PRIMARY KEY,
-  label           TEXT,
   session_id      TEXT NOT NULL DEFAULT '',
   topic           TEXT NOT NULL,
   status          TEXT NOT NULL DEFAULT 'active',
@@ -155,17 +154,6 @@ def _next_excel_label(used: set) -> str:
             if label not in used:
                 return label
     raise ValueError("All 702 user labels in use. Archive threads first.")
-
-
-def _assign_label(conn: sqlite3.Connection) -> str:
-    """Return first letter A–Z not currently held by any non-archived thread."""
-    used = {row["label"] for row in conn.execute(
-        "SELECT label FROM threads WHERE label IS NOT NULL"
-    ).fetchall()}
-    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-        if letter not in used:
-            return letter
-    raise ValueError("All 26 labels in use. Archive a thread first.")
 
 
 def _thread_age_seconds(last_active: str | None) -> float | None:
@@ -408,6 +396,30 @@ class JuggleDB:
         except sqlite3.OperationalError as e:
             _log.warning("Migration 15 (settings seed) skipped: %s", e)
 
+        # Migration 16: backfill user_label for legacy threads, then drop label column
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        if "label" in cols:
+            try:
+                # Step 1: backfill user_label for any threads still missing one
+                used = {row["user_label"] for row in conn.execute(
+                    "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
+                ).fetchall()}
+                missing = conn.execute(
+                    "SELECT id FROM threads WHERE user_label IS NULL"
+                ).fetchall()
+                for row in missing:
+                    ul = _next_excel_label(used)
+                    conn.execute(
+                        "UPDATE threads SET user_label = ? WHERE id = ?",
+                        (ul, row["id"]),
+                    )
+                    used.add(ul)
+                # Step 2: drop the now-redundant label column
+                conn.execute("ALTER TABLE threads DROP COLUMN label")
+                _log.info("Migration 16: backfilled %d threads, dropped label column", len(missing))
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 16 skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -494,8 +506,6 @@ class JuggleDB:
                         "No immediate candidates — close or archive a thread manually."
                     )
             new_id = str(uuid.uuid4())
-            label = _assign_label(conn)
-            # Excel-style user label (base-26, never reassigned)
             used_labels = {row["user_label"] for row in conn.execute(
                 "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
             ).fetchall()}
@@ -505,13 +515,13 @@ class JuggleDB:
             conn.execute(
                 """
                 INSERT INTO threads
-                  (id, label, user_label, session_id, topic, status,
+                  (id, user_label, session_id, topic, status,
                    summary, key_decisions, open_questions,
                    last_user_intent, agent_task_id, agent_result,
                    show_in_list, summarized_msg_count, domain, created_at, last_active, last_active_at)
-                VALUES (?, ?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?, ?)
                 """,
-                (new_id, label, user_label, session_id, topic, domain, now_iso, now_iso, now_min),
+                (new_id, user_label, session_id, topic, domain, now_iso, now_iso, now_min),
             )
             conn.commit()
             return new_id
@@ -534,15 +544,6 @@ class JuggleDB:
             ).fetchone()
         return dict(row) if row else None
 
-    def get_thread_by_label(self, label: str) -> dict | None:
-        """Look up a thread by its display label (e.g. 'A'). Returns None if not found."""
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM threads WHERE label = ?", (label.upper(),)
-            ).fetchone()
-            if row is None:
-                return None
-            return dict(row)
 
     def get_all_threads(self) -> list[dict]:
         with self._connect() as conn:
@@ -954,32 +955,28 @@ class JuggleDB:
     # ------------------------------------------------------------------
 
     def archive_thread(self, thread_id: str):
-        """Set status='archived', label=NULL, show_in_list=0.
-
-        Preserves user_label for historical reference; clears legacy label field.
-        """
+        """Set status='archived', show_in_list=0. Preserves user_label."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             conn.execute(
-                "UPDATE threads SET status = 'archived', label = NULL, "
+                "UPDATE threads SET status = 'archived', "
                 "show_in_list = 0, last_active_at = ? WHERE id = ?",
                 (now, thread_id),
             )
             conn.commit()
 
     def unarchive_thread(self, thread_id: str) -> str:
-        """Unarchive: status=active, show_in_list=1, user_label preserved, legacy label restored."""
+        """Unarchive: status=active, show_in_list=1, user_label preserved."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
-            # Assign a new legacy label (recycled from archive pool)
-            label = _assign_label(conn)
             conn.execute(
                 "UPDATE threads SET status = 'active', show_in_list = 1, "
-                "label = ?, last_active_at = ? WHERE id = ?",
-                (label, now, thread_id),
+                "last_active_at = ? WHERE id = ?",
+                (now, thread_id),
             )
             conn.commit()
-        return label
+        thread = self.get_thread(thread_id)
+        return thread.get("user_label") or thread_id[:8] if thread else thread_id[:8]
 
     # ------------------------------------------------------------------
     # Agent pool operations

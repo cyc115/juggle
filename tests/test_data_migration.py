@@ -19,12 +19,12 @@ def _insert_raw(db, **cols):
     tid = cols.get("id") or str(uuid.uuid4())
     with db._connect() as conn:
         conn.execute(
-            "INSERT INTO threads (id, label, session_id, topic, status, "
+            "INSERT INTO threads (id, session_id, topic, status, "
             "summary, key_decisions, open_questions, last_user_intent, "
             "agent_task_id, agent_result, show_in_list, summarized_msg_count, "
             "created_at, last_active) VALUES "
-            "(?, ?, '', ?, ?, '', '[]', ?, '', NULL, ?, 1, 0, ?, ?)",
-            (tid, cols.get("label"), cols.get("topic", "t"),
+            "(?, '', ?, ?, '', '[]', ?, '', NULL, ?, 1, 0, ?, ?)",
+            (tid, cols.get("topic", "t"),
              cols["status"], json.dumps(cols.get("open_questions", [])),
              cols.get("agent_result"), now, now),
         )

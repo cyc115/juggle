@@ -66,7 +66,7 @@ def test_show_topics_empty(started_db):
     threads = db.get_all_threads()
     assert len(threads) == 1
     assert threads[0]["id"] == general_tid
-    assert threads[0]["label"] == "A"
+    assert threads[0]["user_label"] == "A"
 
 
 def test_create_thread(started_db):
@@ -79,7 +79,7 @@ def test_create_thread(started_db):
     assert len(tid) > 1
     thread = db.get_thread(tid)
     assert thread is not None
-    assert thread["label"] == "B"
+    assert thread["user_label"] == "B"
 
 
 def test_switch_thread(started_db):
@@ -307,7 +307,7 @@ def test_unarchive_thread_cli(started_db):
     assert t is not None
     assert t["status"] == "active"
     assert t["show_in_list"] == 1
-    assert t["label"] is not None
+    assert t["user_label"] is not None
 
 
 def test_unarchive_thread_cli_by_uuid(started_db):

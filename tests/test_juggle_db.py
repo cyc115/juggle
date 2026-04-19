@@ -46,11 +46,11 @@ def test_create_thread_returns_a(db):
 
 
 def test_create_thread_sequential(db):
-    """Sequential threads get sequential labels A, B."""
+    """Sequential threads get sequential user_labels A, B."""
     a = db.create_thread("Topic A", session_id="s1")
     b = db.create_thread("Topic B", session_id="s1")
-    assert db.get_thread(a)["label"] == "A"
-    assert db.get_thread(b)["label"] == "B"
+    assert db.get_thread(a)["user_label"] == "A"
+    assert db.get_thread(b)["user_label"] == "B"
 
 
 def test_create_thread_max_10(db):
@@ -536,28 +536,29 @@ def test_create_thread_returns_uuid(db):
     assert re.match(r"^[0-9a-f-]{36}$", tid), f"Expected UUID, got: {tid}"
 
 
-def test_create_thread_first_label_is_a(db):
-    """First thread created gets label 'A'."""
+def test_create_thread_first_user_label_is_a(db):
+    """First thread created gets user_label 'A'."""
     tid = db.create_thread("My topic", session_id="s1")
     thread = db.get_thread(tid)
     assert thread is not None
-    assert thread["label"] == "A"
+    assert thread["user_label"] == "A"
 
 
-def test_create_thread_second_label_is_b(db):
-    """Second thread gets label 'B'."""
+def test_create_thread_second_user_label_is_b(db):
+    """Second thread gets user_label 'B'."""
     db.create_thread("First", session_id="s1")
     tid2 = db.create_thread("Second", session_id="s1")
     thread = db.get_thread(tid2)
-    assert thread["label"] == "B"
+    assert thread["user_label"] == "B"
 
 
-def test_schema_has_id_and_label(db):
-    """threads table has 'id' and 'label' columns, not 'thread_id'."""
+def test_schema_has_id_and_user_label_not_label(db):
+    """threads table has 'id' and 'user_label'; 'label' and 'thread_id' are absent."""
     with db._connect() as conn:
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
     assert "id" in cols
-    assert "label" in cols
+    assert "user_label" in cols
+    assert "label" not in cols
     assert "thread_id" not in cols
 
 
@@ -621,7 +622,6 @@ def test_migration_preserves_existing_threads(tmp_path):
     thread = db.get_thread("A")
     assert thread is not None
     assert thread["id"] == "A"
-    assert thread["label"] == "A"
     assert thread["topic"] == "Legacy Topic"
 
 
@@ -630,57 +630,43 @@ def test_migration_preserves_existing_threads(tmp_path):
 # ------------------------------------------------------------------
 
 def test_get_thread_by_uuid(db):
-    """get_thread() accepts UUID and returns dict with 'id' and 'label'."""
+    """get_thread() accepts UUID and returns dict with 'id' and 'user_label'."""
     tid = db.create_thread("My topic", session_id="s1")
     thread = db.get_thread(tid)
     assert thread is not None
     assert thread["id"] == tid
-    assert thread["label"] == "A"
+    assert thread["user_label"] == "A"
     assert thread["topic"] == "My topic"
 
 
-def test_get_thread_by_label(db):
-    """get_thread_by_label('A') returns the thread with label 'A'."""
-    tid = db.create_thread("My topic", session_id="s1")
-    thread = db.get_thread_by_label("A")
-    assert thread is not None
-    assert thread["id"] == tid
-    assert thread["label"] == "A"
-
-
-def test_get_thread_by_label_missing(db):
-    """get_thread_by_label returns None for unknown label."""
-    assert db.get_thread_by_label("Z") is None
-
-
-def test_get_all_threads_includes_id_and_label(db):
-    """get_all_threads() returns dicts with both 'id' and 'label'."""
+def test_get_all_threads_includes_id_and_user_label(db):
+    """get_all_threads() returns dicts with both 'id' and 'user_label'."""
     tid = db.create_thread("Topic A", session_id="s1")
     threads = db.get_all_threads()
     assert len(threads) == 1
     assert threads[0]["id"] == tid
-    assert threads[0]["label"] == "A"
+    assert threads[0]["user_label"] == "A"
 
 
-def test_archive_thread_clears_label(db):
-    """archive_thread sets label=NULL in addition to status='archived'."""
+def test_archive_thread_preserves_user_label(db):
+    """archive_thread sets status='archived' and preserves user_label."""
     tid = db.create_thread("Topic A", session_id="s1")
     db.archive_thread(tid)
     thread = db.get_thread(tid)
     assert thread["status"] == "archived"
-    assert thread["label"] is None
+    assert thread["user_label"] == "A"
     assert thread["show_in_list"] == 0
 
 
-def test_label_recycled_after_archive(db):
-    """Archiving thread A allows label 'A' to be reassigned."""
+def test_user_label_not_recycled_after_archive(db):
+    """user_label is permanent — archiving thread A does not free 'A' for reuse."""
     tid_a = db.create_thread("First", session_id="s1")
-    assert db.get_thread(tid_a)["label"] == "A"
+    assert db.get_thread(tid_a)["user_label"] == "A"
 
     db.archive_thread(tid_a)
 
     tid_b = db.create_thread("Second", session_id="s1")
-    assert db.get_thread(tid_b)["label"] == "A"  # 'A' recycled
+    assert db.get_thread(tid_b)["user_label"] == "B"  # B, not A
 
 
 # ------------------------------------------------------------------
@@ -707,42 +693,28 @@ def test_unarchive_thread_sets_status_active(db):
     assert t["status"] == "active"
 
 
-def test_unarchive_thread_assigns_label(db):
-    """unarchive_thread assigns a non-null label."""
-    tid = db.create_thread("Topic A", session_id="s1")
-    db.archive_thread(tid)
-    label = db.unarchive_thread(tid)
-    t = db.get_thread(tid)
-    assert t is not None
-    assert t["label"] is not None
-    assert t["label"] == label
-    assert len(label) == 1
-    assert label.isalpha()
-
-
-def test_unarchive_thread_returns_label(db):
-    """unarchive_thread return value matches stored label."""
+def test_unarchive_thread_returns_user_label(db):
+    """unarchive_thread return value is the thread's user_label."""
     tid = db.create_thread("Topic A", session_id="s1")
     db.archive_thread(tid)
     returned_label = db.unarchive_thread(tid)
     t = db.get_thread(tid)
-    assert t["label"] == returned_label
+    assert returned_label == t["user_label"]
 
 
 def test_unarchive_thread_full_cycle(db):
     """create → archive → unarchive produces expected state."""
     tid = db.create_thread("Topic A", session_id="s1")
-    assert db.get_thread(tid)["label"] == "A"
+    assert db.get_thread(tid)["user_label"] == "A"
 
     db.archive_thread(tid)
     t = db.get_thread(tid)
     assert t["status"] == "archived"
-    assert t["label"] is None
+    assert t["user_label"] == "A"  # preserved
     assert t["show_in_list"] == 0
 
-    label = db.unarchive_thread(tid)
+    db.unarchive_thread(tid)
     t = db.get_thread(tid)
     assert t["status"] == "active"
     assert t["show_in_list"] == 1
-    assert t["label"] == label
-    assert label is not None
+    assert t["user_label"] == "A"  # still preserved

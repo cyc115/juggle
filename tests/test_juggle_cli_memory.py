@@ -119,7 +119,7 @@ def test_recall_if_cold_first_time(env):
     db_path = env["_JUGGLE_TEST_DB"]
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE threads SET memory_loaded = 0, memory_context = '' WHERE label = ?",
+            "UPDATE threads SET memory_loaded = 0, memory_context = '' WHERE user_label = ?",
             (label.upper(),),
         )
         conn.commit()
