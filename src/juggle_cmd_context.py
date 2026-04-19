@@ -71,6 +71,20 @@ def cmd_recall_if_cold(args):
         print(result)
     else:
         db.update_thread(thread_uuid, memory_loaded=1)
+        print("[recall: no results found]")
+
+
+def cmd_recall_bg(args):
+    """Fire recall as a detached background process. Returns immediately."""
+    import subprocess
+    subprocess.Popen(
+        [sys.executable, str(Path(__file__).parent / "juggle_cli.py"),
+         "recall", args.thread_id, args.query],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print(f"Reflect started in background for {args.thread_id}.")
 
 
 def cmd_retain(args):

@@ -23,9 +23,11 @@ allowed-tools: Bash, Agent, Edit, Write
 2. Load target topic:
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py switch-thread <id>
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall-bg <id> "<topic label or summary as query>"
    ```
    On "Thread not found":
    `"Topic [X] doesn't exist. Use /juggle:show-topics."`
+   Note: `recall-bg` fires reflect async (up to 60s). Context will be available in subsequent turns.
 
 3. Present loaded context:
    ```

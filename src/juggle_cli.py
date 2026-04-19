@@ -57,6 +57,7 @@ from juggle_cmd_context import (
     cmd_get_context,
     cmd_init_db,
     cmd_recall,
+    cmd_recall_bg,
     cmd_recall_if_cold,
     cmd_retain,
     cmd_grep_vault,
@@ -333,6 +334,12 @@ def main():
     p_recall.add_argument("thread_id", help="Thread ID or label")
     p_recall.add_argument("query", help="Query to recall memories for")
     p_recall.set_defaults(func=cmd_recall)
+
+    # recall-bg
+    p_recall_bg = subparsers.add_parser("recall-bg", help="Fire reflect async, return immediately")
+    p_recall_bg.add_argument("thread_id")
+    p_recall_bg.add_argument("query")
+    p_recall_bg.set_defaults(func=cmd_recall_bg)
 
     # recall-if-cold
     p_recall_cold = subparsers.add_parser("recall-if-cold", help="Recall only if thread is cold")
