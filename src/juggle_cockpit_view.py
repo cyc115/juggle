@@ -20,6 +20,7 @@ TOPIC_STATUS_GLYPHS: dict[str, str] = {
     "running":    "🏃",
     "paused":     "⏸️",
     "done":       "✅",
+    "closed":     "✓",
     "failed":     "❌",
     "archived":   "🗄️",
     "active":     "🔵",
@@ -94,20 +95,24 @@ def build_layout(bp: str) -> Layout:
     """
     notif_ratio = get_nested("cockpit", "notification_ratio")
     col_ratios = get_nested("cockpit", "column_ratios") or [0.30, 0.40, 0.30]
+    # col_ratios = [topics, actions, agents] — three visible columns
+    t_ratio = int(col_ratios[0] * 100)
+    a_ratio = int(col_ratios[1] * 100)
+    ag_ratio = int(col_ratios[2] * 100)
 
     if bp == "wide":
         root = Layout(name="root")
         root.split_row(
-            Layout(name="topics", ratio=int(col_ratios[0] * 100)),
-            Layout(name="right", ratio=int(col_ratios[1] * 100)),
+            Layout(name="topics", ratio=t_ratio),
+            Layout(name="right", ratio=a_ratio + ag_ratio),
         )
         root["right"].split_column(
             Layout(name="upper", ratio=70),
             Layout(name="notifications", ratio=notif_ratio),
         )
         root["right"]["upper"].split_row(
-            Layout(name="actions", ratio=50),
-            Layout(name="agents", ratio=50),
+            Layout(name="actions", ratio=a_ratio),
+            Layout(name="agents", ratio=ag_ratio),
         )
         return root
 
@@ -156,7 +161,7 @@ def render_topics(topics: list[Topic], bp: str) -> Panel:
             label_str = f"[{t.label}]"
             if t.is_current:
                 style = Style(bold=True, color="white")
-            elif t.status in ("done", "archived"):
+            elif t.status in ("done", "closed", "archived"):
                 style = Style(dim=True)
             else:
                 style = Style()
