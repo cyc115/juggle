@@ -548,6 +548,49 @@ class JuggleDB:
             conn.commit()
 
     # ------------------------------------------------------------------
+    # Thread state machine
+    # ------------------------------------------------------------------
+
+    _VALID_STATES = {"active", "running", "closed", "archived"}
+
+    def set_thread_status(self, thread_id: str, status: str) -> None:
+        """Transition a thread to a new state ({'active','running','closed','archived'}).
+
+        Updates last_active_at to now (UTC, minute precision).
+        Raises ValueError for any other status value.
+        """
+        if status not in self._VALID_STATES:
+            raise ValueError(
+                f"invalid status {status!r}; must be one of {sorted(self._VALID_STATES)}"
+            )
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE threads SET status = ?, last_active_at = ? WHERE id = ?",
+                (status, now, thread_id),
+            )
+            conn.commit()
+
+    def touch_last_active(self, thread_id: str) -> None:
+        """Update last_active_at to now without changing status."""
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE threads SET last_active_at = ? WHERE id = ?",
+                (now, thread_id),
+            )
+            conn.commit()
+
+    def get_threads_by_status(self, status: str) -> list[dict]:
+        """Return all threads matching the given status. Order: last_active_at DESC."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM threads WHERE status = ? ORDER BY last_active_at DESC",
+                (status,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
     # Message operations
     # ------------------------------------------------------------------
 
@@ -815,24 +858,30 @@ class JuggleDB:
     # ------------------------------------------------------------------
 
     def archive_thread(self, thread_id: str):
-        """Set status='archived', label=NULL, show_in_list=0 for the given thread."""
+        """Set status='archived', show_in_list=0. Preserves user_label for historical reference."""
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             conn.execute(
-                "UPDATE threads SET status = 'archived', label = NULL, show_in_list = 0 WHERE id = ?",
-                (thread_id,),
+                "UPDATE threads SET status = 'archived', show_in_list = 0, last_active_at = ? "
+                "WHERE id = ?",
+                (now, thread_id),
             )
             conn.commit()
 
     def unarchive_thread(self, thread_id: str) -> str:
-        """Unarchive a thread: restore show_in_list=1, set status=active, assign a new label."""
+        """Unarchive: status=active, show_in_list=1, user_label preserved."""
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
-            label = _assign_label(conn)
             conn.execute(
-                "UPDATE threads SET status = 'active', show_in_list = 1, label = ? WHERE id = ?",
-                (label, thread_id),
+                "UPDATE threads SET status = 'active', show_in_list = 1, last_active_at = ? "
+                "WHERE id = ?",
+                (now, thread_id),
             )
             conn.commit()
-        return label
+            row = conn.execute(
+                "SELECT user_label, label FROM threads WHERE id = ?", (thread_id,)
+            ).fetchone()
+        return (row["user_label"] or row["label"]) if row else ""
 
     # ------------------------------------------------------------------
     # Agent pool operations
