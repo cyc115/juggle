@@ -31,18 +31,55 @@ def get_db():
     return JuggleDB(str(DB_PATH))
 
 
-def _resolve_thread(db, label_or_id: str) -> str:
-    """Accept label (e.g. 'A') or UUID. Return UUID.
+def _resolve_thread(db, thread_id_input: str) -> str:
+    """Resolve user-label or hex-prefix/full UUID to thread UUID.
 
-    Raises SystemExit(1) if the label is not found.
+    Accepts:
+      - 1-2 letter user label (A..Z, AA..ZZ) — case-insensitive
+      - Full 36-char UUID
+      - 6+ char hex prefix
     """
-    if len(label_or_id) == 1 and label_or_id.isalpha():
-        thread = db.get_thread_by_label(label_or_id.upper())
-        if not thread:
-            print(f"Error: No active thread with label '{label_or_id.upper()}'.")
+    s = (thread_id_input or "").strip()
+    if not s:
+        print("Error: empty thread id")
+        sys.exit(1)
+
+    # User-label path (1-2 uppercase letters)
+    if 1 <= len(s) <= 2 and s.isalpha():
+        t = db.get_thread_by_user_label(s.upper())
+        if t:
+            return t["id"]
+        # Fallback to legacy single-letter label lookup for transitional safety
+        t = db.get_thread_by_label(s.upper())
+        if t:
+            return t["id"]
+        print(f"Error: no thread with label {s.upper()}")
+        sys.exit(1)
+
+    # Full UUID
+    if len(s) == 36 and s.count("-") == 4:
+        t = db.get_thread(s)
+        if t:
+            return s
+        print(f"Error: no thread with id {s}")
+        sys.exit(1)
+
+    # Hex prefix (6+ chars, all hex digits)
+    if all(c in "0123456789abcdef-" for c in s.lower()) and len(s) >= 6:
+        with db._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM threads WHERE id LIKE ?", (s.lower() + "%",)
+            ).fetchall()
+        if len(rows) == 1:
+            return rows[0]["id"]
+        if len(rows) > 1:
+            print(f"Error: ambiguous prefix {s}; matches {len(rows)} threads")
             sys.exit(1)
-        return thread["id"]
-    return label_or_id  # already a UUID
+        print(f"Error: no thread matching prefix {s}")
+        sys.exit(1)
+
+    print(f"Error: unrecognised thread id format: {s!r}")
+    sys.exit(1)
 
 
 def _humanize_dt(iso_str: str) -> str:

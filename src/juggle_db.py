@@ -513,6 +513,14 @@ class JuggleDB:
                 return None
             return dict(row)
 
+    def get_thread_by_user_label(self, label: str) -> dict | None:
+        """Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM threads WHERE user_label = ?", (label.upper(),)
+            ).fetchone()
+        return dict(row) if row else None
+
     def get_thread_by_label(self, label: str) -> dict | None:
         """Look up a thread by its display label (e.g. 'A'). Returns None if not found."""
         with self._connect() as conn:
