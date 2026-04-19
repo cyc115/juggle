@@ -133,158 +133,172 @@ def _age_secs(last_active: str | None) -> int:
         return 0
 
 
+_ARCHIVED_DISPLAY_LIMIT = 10  # spec: most-recent N, default 10
+
+
 def snapshot(db) -> CockpitState:
     """Read DB state into a frozen CockpitState. Only function that touches DB."""
+    import json as _json
+    from datetime import datetime, timezone, timedelta
+
     conn = db._connect()
 
-    # --- Session: current thread id ---
+    # --- Session ---
     row = conn.execute(
         "SELECT value FROM session WHERE key = 'current_thread'"
     ).fetchone()
     current_thread_id: str | None = row[0] if row else None
 
-    # --- Threads → Topics + Actions ---
-    thread_rows = conn.execute(
-        """
-        SELECT id, label, status, last_active, open_questions,
-               agent_result, show_in_list, reviewed, title, topic
-        FROM threads
-        WHERE show_in_list = 1 AND status != 'archived'
-        ORDER BY created_at
-        """
-    ).fetchall()
+    row = conn.execute(
+        "SELECT value FROM session WHERE key = 'session_id'"
+    ).fetchone()
+    session_id = row[0] if row else ""
+
+    # TTL for closed threads
+    try:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = 'thread_auto_archive_ttl_secs'"
+        ).fetchone()
+        ttl_secs = int(row[0]) if row else 86400
+    except Exception:
+        ttl_secs = 86400
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
+    cutoff_s = cutoff.strftime("%Y-%m-%d %H:%M")
 
     topics: list[Topic] = []
-    actions: list[Action] = []
 
-    for row in thread_rows:
-        tid = row[0]
-        label = row[1] or "?"
-        status = row[2] or "active"
-        last_active = row[3]
-        open_questions_raw = row[4] or "[]"
-        agent_result = row[5]
-        reviewed = bool(row[7])
-        title = row[8] or row[9] or "?"
+    def _make_topic(r) -> Topic:
+        # support both sqlite3.Row and dict
+        def _get(key, default=None):
+            try:
+                return r[key] if r[key] is not None else default
+            except (IndexError, KeyError):
+                return default
 
-        age = _age_secs(last_active)
-        is_current = (tid == current_thread_id)
-
-        topics.append(Topic(
+        tid = _get("id", "?")
+        label = _get("user_label") or _get("label") or (tid[:6] if tid else "?")
+        title = _get("title") or _get("topic") or "?"
+        status = _get("status") or "active"
+        age = _age_secs(_get("last_active_at") or _get("last_active"))
+        return Topic(
             id=tid,
             label=label,
             status=status,
             age_secs=age,
-            is_current=is_current,
+            is_current=(tid == current_thread_id),
             title=title,
+        )
+
+    # 1. Active
+    for r in conn.execute(
+        "SELECT * FROM threads WHERE status = 'active' ORDER BY last_active_at DESC"
+    ).fetchall():
+        topics.append(_make_topic(r))
+
+    # 2. Running
+    for r in conn.execute(
+        "SELECT * FROM threads WHERE status = 'running' ORDER BY last_active_at DESC"
+    ).fetchall():
+        topics.append(_make_topic(r))
+
+    # 3. Closed within TTL
+    for r in conn.execute(
+        "SELECT * FROM threads WHERE status = 'closed' "
+        "AND last_active_at >= ? ORDER BY last_active_at DESC",
+        (cutoff_s,),
+    ).fetchall():
+        topics.append(_make_topic(r))
+
+    # 4. Archived, most recent N
+    for r in conn.execute(
+        "SELECT * FROM threads WHERE status = 'archived' "
+        "ORDER BY last_active_at DESC LIMIT ?",
+        (_ARCHIVED_DISPLAY_LIMIT,),
+    ).fetchall():
+        topics.append(_make_topic(r))
+
+    # --- Actions ← action_items table ---
+    _PRIO_TIER = {"high": 0, "normal": 1, "low": 2}
+    action_rows = conn.execute(
+        """
+        SELECT id, thread_id, message, type, priority, created_at
+        FROM action_items
+        WHERE dismissed_at IS NULL
+        ORDER BY
+          CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+          created_at DESC
+        """
+    ).fetchall()
+
+    actions: list[Action] = []
+    for r in action_rows:
+        topic_label = ""
+        if r["thread_id"]:
+            t_row = conn.execute(
+                "SELECT user_label, label, id FROM threads WHERE id = ?",
+                (r["thread_id"],),
+            ).fetchone()
+            if t_row:
+                topic_label = t_row["user_label"] or t_row["label"] or (t_row["id"] or "")[:6]
+        actions.append(Action(
+            id=f"ai:{r['id']}",
+            topic_id=topic_label,
+            text=r["message"],
+            tier=_PRIO_TIER.get(r["priority"], 1),
+            age_secs=_age_secs(r["created_at"]),
         ))
 
-        # BLOCKER action
-        result_str = agent_result or ""
-        if result_str.startswith("⚠️ BLOCKER:"):
-            blocker_text = result_str[len("⚠️ BLOCKER:"):].strip()
-            actions.append(Action(
-                id=f"blocker:{tid}",
-                topic_id=label,
-                text=blocker_text,
-                tier=TIER_BLOCKER,
-                age_secs=age,
-            ))
-
-        # REVIEW nudge
-        if status == "done" and result_str and not is_current and not reviewed:
-            actions.append(Action(
-                id=f"review:{tid}",
-                topic_id=label,
-                text="agent finished — results ready",
-                tier=TIER_REVIEW,
-                age_secs=age,
-            ))
-
-        # Open questions
-        try:
-            oq_list = json.loads(open_questions_raw)
-        except (json.JSONDecodeError, TypeError):
-            oq_list = []
-
-        for i, oq in enumerate(oq_list):
-            # oq may be a str or a dict — extract text robustly (fixes dict-repr leak)
-            if isinstance(oq, dict):
-                oq_text = oq.get("text") or oq.get("question") or str(oq)
-            else:
-                oq_text = str(oq)
-            actions.append(Action(
-                id=f"oq:{tid}:{i}",
-                topic_id=label,
-                text=oq_text,
-                tier=TIER_REVIEW + 1,  # tier 2 = open question
-                age_secs=age,
-            ))
-
-    # Sort actions: tier asc, age desc
-    actions.sort(key=lambda a: (a.tier, -a.age_secs))
-
-    # --- Agents ---
+    # --- Agents (unchanged) ---
     agent_rows = conn.execute(
         """
         SELECT id, role, assigned_thread, status, last_active
-        FROM agents
-        ORDER BY created_at
+        FROM agents ORDER BY created_at
         """
     ).fetchall()
 
     agents: list[Agent] = []
-    for row in agent_rows:
-        a_id = row[0] or ""
-        role = row[1] or "unknown"
-        assigned_thread = row[2]
-        a_status_raw = row[3] or "idle"
-        a_last_active = row[4]
-
+    for r in agent_rows:
+        a_id = r["id"] or ""
+        role = r["role"] or "unknown"
+        a_status_raw = r["status"] or "idle"
         if a_status_raw == "busy":
             display_status = "busy"
         elif a_status_raw == "decommission_pending":
             display_status = "stale"
         else:
             display_status = "idle"
-
-        # Resolve thread label from UUID
-        topic_label: str | None = None
-        if assigned_thread:
-            for t_row in thread_rows:
-                if t_row[0] == assigned_thread:
-                    topic_label = t_row[1]
-                    break
-
+        topic_label_a: str | None = None
+        if r["assigned_thread"]:
+            tr = conn.execute(
+                "SELECT user_label, label FROM threads WHERE id = ?",
+                (r["assigned_thread"],),
+            ).fetchone()
+            if tr:
+                topic_label_a = tr["user_label"] or tr["label"]
         agents.append(Agent(
             id_short=a_id[:8],
             role=role,
             status=display_status,
-            topic_id=topic_label,
-            age_secs=_age_secs(a_last_active),
+            topic_id=topic_label_a,
+            age_secs=_age_secs(r["last_active"]),
         ))
 
-    # --- Notifications (non-action severity, newest first, max 8) ---
-    notif_rows = conn.execute(
-        """
-        SELECT n.message, n.severity, n.created_at
-        FROM notifications n
-        WHERE n.severity != 'action'
-        ORDER BY n.id DESC
-        LIMIT 8
-        """
-    ).fetchall()
-
-    notifications: list[Notification] = []
-    for row in notif_rows:
-        msg = row[0] or ""
-        severity = row[1] or "info"
-        n_age = _age_secs(row[2])
-        notifications.append(Notification(
-            text=msg,
-            kind=severity,
-            age_secs=n_age,
-        ))
+    # --- Notifications ← notifications_v2 for current session ---
+    try:
+        notif_rows = conn.execute(
+            """
+            SELECT message, created_at FROM notifications_v2
+            WHERE session_id = ? ORDER BY id DESC LIMIT 20
+            """,
+            (session_id,),
+        ).fetchall()
+        notifications: list[Notification] = [
+            Notification(text=r["message"], kind="info", age_secs=_age_secs(r["created_at"]))
+            for r in notif_rows
+        ]
+    except Exception:
+        notifications = []
 
     return CockpitState(
         topics=topics,
