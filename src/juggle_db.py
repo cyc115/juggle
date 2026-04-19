@@ -941,30 +941,32 @@ class JuggleDB:
     # ------------------------------------------------------------------
 
     def archive_thread(self, thread_id: str):
-        """Set status='archived', show_in_list=0. Preserves user_label for historical reference."""
+        """Set status='archived', label=NULL, show_in_list=0.
+
+        Preserves user_label for historical reference; clears legacy label field.
+        """
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             conn.execute(
-                "UPDATE threads SET status = 'archived', show_in_list = 0, last_active_at = ? "
-                "WHERE id = ?",
+                "UPDATE threads SET status = 'archived', label = NULL, "
+                "show_in_list = 0, last_active_at = ? WHERE id = ?",
                 (now, thread_id),
             )
             conn.commit()
 
     def unarchive_thread(self, thread_id: str) -> str:
-        """Unarchive: status=active, show_in_list=1, user_label preserved."""
+        """Unarchive: status=active, show_in_list=1, user_label preserved, legacy label restored."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
+            # Assign a new legacy label (recycled from archive pool)
+            label = _assign_label(conn)
             conn.execute(
-                "UPDATE threads SET status = 'active', show_in_list = 1, last_active_at = ? "
-                "WHERE id = ?",
-                (now, thread_id),
+                "UPDATE threads SET status = 'active', show_in_list = 1, "
+                "label = ?, last_active_at = ? WHERE id = ?",
+                (label, now, thread_id),
             )
             conn.commit()
-            row = conn.execute(
-                "SELECT user_label, label FROM threads WHERE id = ?", (thread_id,)
-            ).fetchone()
-        return (row["user_label"] or row["label"]) if row else ""
+        return label
 
     # ------------------------------------------------------------------
     # Agent pool operations

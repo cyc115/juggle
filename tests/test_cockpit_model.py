@@ -148,7 +148,8 @@ def _make_in_memory_db():
     conn.row_factory = sqlite3.Row
     conn.executescript("""
         CREATE TABLE threads (
-          id TEXT PRIMARY KEY, label TEXT, session_id TEXT NOT NULL DEFAULT '',
+          id TEXT PRIMARY KEY, label TEXT, user_label TEXT,
+          session_id TEXT NOT NULL DEFAULT '',
           topic TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',
           summary TEXT DEFAULT '', key_decisions TEXT DEFAULT '[]',
           open_questions TEXT DEFAULT '[]', last_user_intent TEXT DEFAULT '',
@@ -156,7 +157,8 @@ def _make_in_memory_db():
           show_in_list INTEGER NOT NULL DEFAULT 1,
           summarized_msg_count INTEGER NOT NULL DEFAULT 0,
           title TEXT DEFAULT '', reviewed INTEGER DEFAULT 0,
-          created_at TEXT NOT NULL, last_active TEXT NOT NULL
+          created_at TEXT NOT NULL, last_active TEXT NOT NULL,
+          last_active_at TEXT
         );
         CREATE TABLE agents (
           id TEXT PRIMARY KEY, role TEXT NOT NULL, pane_id TEXT NOT NULL,
@@ -170,15 +172,33 @@ def _make_in_memory_db():
           delivered INTEGER DEFAULT 0, severity TEXT DEFAULT 'action',
           created_at TEXT NOT NULL
         );
+        CREATE TABLE notifications_v2 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          thread_id TEXT, message TEXT NOT NULL,
+          created_at TEXT NOT NULL, session_id TEXT NOT NULL
+        );
+        CREATE TABLE action_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          thread_id TEXT, message TEXT NOT NULL,
+          type TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'normal',
+          created_at TEXT NOT NULL, dismissed_at TEXT
+        );
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO settings(key, value) VALUES('thread_auto_archive_ttl_secs', '86400');
         CREATE TABLE session (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         INSERT INTO session(key, value) VALUES('active', '1');
         INSERT INTO session(key, value) VALUES('current_thread', 'thread-001');
+        INSERT INTO session(key, value) VALUES('session_id', 'test-session-001');
     """)
     now = datetime.now(timezone.utc).isoformat()
+    now_min = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     conn.execute(
-        "INSERT INTO threads VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("thread-001", "K", "", "cockpit UI refactor", "active",
-         "", "[]", '[]', "", None, None, 1, 0, "cockpit", 0, now, now)
+        "INSERT INTO threads(id, label, user_label, session_id, topic, status, summary, "
+        "key_decisions, open_questions, last_user_intent, agent_task_id, agent_result, "
+        "show_in_list, summarized_msg_count, title, reviewed, created_at, last_active, last_active_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("thread-001", "K", "K", "", "cockpit UI refactor", "active",
+         "", "[]", "[]", "", None, None, 1, 0, "cockpit", 0, now, now, now_min)
     )
     conn.execute(
         "INSERT INTO agents VALUES(?,?,?,?,?,?,?,?)",
@@ -188,6 +208,10 @@ def _make_in_memory_db():
     conn.execute(
         "INSERT INTO notifications(thread_id, message, delivered, severity, created_at) VALUES(?,?,?,?,?)",
         ("thread-001", "plan v3 ready", 0, "info", now)
+    )
+    conn.execute(
+        "INSERT INTO notifications_v2(thread_id, message, created_at, session_id) VALUES(?,?,?,?)",
+        ("thread-001", "plan v3 ready", now_min, "test-session-001")
     )
     conn.commit()
     return conn

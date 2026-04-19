@@ -23,7 +23,7 @@ JUGGLE_CONFIG_PATH = Path(_get_settings()["paths"]["config_dir"]) / "config.json
 def _get_hindsight_client():
     """Return HindsightClient or None if disabled/unconfigured."""
     from juggle_hindsight import HindsightClient
-    return HindsightClient.from_config(str(JUGGLE_CONFIG_PATH))
+    return HindsightClient.from_config()
 
 
 def get_db():

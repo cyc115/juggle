@@ -119,6 +119,21 @@ def cmd_create_thread(args):
         args=(get_db(), thread_uuid, args.topic),
         daemon=True,
     ).start()
+    # Auto-recall: load memory context in background; joined so process doesn't exit first.
+    def _auto_recall():
+        from juggle_cli_common import _get_hindsight_client
+        client = _get_hindsight_client()
+        if client is None:
+            return
+        db2 = get_db()
+        result = client.reflect(args.topic)
+        if result:
+            db2.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
+        else:
+            db2.update_thread(thread_uuid, memory_loaded=1)
+    t = threading.Thread(target=_auto_recall, daemon=False)
+    t.start()
+    t.join(timeout=10)
 
 
 def _render_briefing(thread: dict, memories: list, db) -> str:

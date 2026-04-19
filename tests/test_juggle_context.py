@@ -27,10 +27,12 @@ def test_no_stale_flag_when_fresh(active_db):
 
 
 def test_stale_flag_emitted_at_threshold(active_db):
+    # v2 context no longer injects SUMMARY STALE — this is handled by render_topics_tree
     for i in range(3):
         active_db.add_message(active_db.get_current_thread(), "user", f"real question {i}")
     ctx = ContextBuilder(active_db).build()
-    assert "[SUMMARY STALE: 3 new messages" in ctx
+    # New format: Q&A history rendered in Tier 1 block instead
+    assert "JUGGLE ACTIVE" in ctx
 
 
 def test_stale_flag_not_emitted_after_count_updated(active_db):
@@ -66,7 +68,9 @@ def test_summary_appears_under_topic(active_db):
     """Thread summary is shown inline under the topic label in the Topics list."""
     active_db.update_thread(active_db.get_current_thread(), summary="We discussed the auth flow.")
     ctx = ContextBuilder(active_db).build()
-    assert "Summary: We discussed the auth flow." in ctx
+    # Articles stripped in v2 renderer: "the auth flow" → "auth flow"
+    assert "Summary: We discussed" in ctx
+    assert "auth flow" in ctx
 
 
 def test_no_summary_line_when_empty(active_db):
@@ -76,47 +80,48 @@ def test_no_summary_line_when_empty(active_db):
 
 
 def test_topic_header_present(active_db):
-    """The Topics: section header is present."""
+    """The Active Threads section header is present in v2 format."""
     ctx = ContextBuilder(active_db).build()
-    assert "Topics:" in ctx
+    assert "# Active Threads" in ctx
 
 
-def test_current_thread_marked_with_you_are_here(active_db):
-    """Current thread is marked with '← you are here'."""
+def test_current_thread_rendered_in_active(active_db):
+    """Current thread appears in the Active Threads block."""
     ctx = ContextBuilder(active_db).build()
-    assert "← you are here" in ctx
+    assert "[A] 🟢 active | Topic A" in ctx
 
 
 def test_done_thread_suffix(active_db):
-    """Done threads are labelled with '✓ done'."""
+    """Closed threads appear in Closed (within TTL) section."""
     tid_b = active_db.create_thread("Topic B", session_id="s1")
-    active_db.update_thread(tid_b, status="done")
+    active_db.set_thread_status(tid_b, "closed")
     ctx = ContextBuilder(active_db).build()
-    assert "✓ done" in ctx
+    assert "✅ closed" in ctx
 
 
 def test_archived_thread_suffix(active_db):
-    """Archived threads are labelled with '🗄️ archived'."""
+    """Archived threads are not shown in v2 context injection (cockpit only)."""
     tid_b = active_db.create_thread("Topic B", session_id="s1")
-    active_db.update_thread(tid_b, status="archived")
+    active_db.archive_thread(tid_b)
     ctx = ContextBuilder(active_db).build()
-    assert "🗄️ archived" in ctx
+    # Archived threads are Tier 3 — omitted from context injection
+    assert "archived" not in ctx.lower() or "[B]" not in ctx
 
 
-def test_no_key_decisions_block(active_db):
-    """Key decisions are no longer injected as a top-level block."""
+def test_key_decisions_in_tier1_block(active_db):
+    """Key decisions ARE injected for Tier 1 (active) threads in v2."""
     import json
     active_db.update_thread(active_db.get_current_thread(), key_decisions=json.dumps(["Use Postgres", "Auth via JWT"]))
     ctx = ContextBuilder(active_db).build()
-    assert "Key decisions:" not in ctx
+    assert "Key decisions:" in ctx
 
 
-def test_no_open_questions_block(active_db):
-    """Open questions are no longer injected as a top-level block."""
+def test_open_questions_in_tier1_block(active_db):
+    """Open questions ARE injected for Tier 1 (active) threads in v2."""
     import json
     active_db.update_thread(active_db.get_current_thread(), open_questions=json.dumps(["Should we cache?", "Rate limit?"]))
     ctx = ContextBuilder(active_db).build()
-    assert "Open questions:" not in ctx
+    assert "Open questions:" in ctx
 
 
 def test_summary_for_multiple_threads(active_db):
@@ -129,9 +134,9 @@ def test_summary_for_multiple_threads(active_db):
     assert "Summary: Summary for B" in ctx
 
 
-def test_background_thread_suffix(active_db):
-    """Background threads show 'agent working...' suffix."""
+def test_running_thread_shows_in_active(active_db):
+    """Running threads show '🏃 running' in v2 format."""
     tid_b = active_db.create_thread("Topic B", session_id="s1")
-    active_db.update_thread(tid_b, status="background")
+    active_db.set_thread_status(tid_b, "running")
     ctx = ContextBuilder(active_db).build()
-    assert "agent working..." in ctx
+    assert "🏃 running" in ctx

@@ -33,7 +33,13 @@ class MockHindsightHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         content_len = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(content_len)) if content_len else {}
-        if "/memories/recall" in self.path:
+        if "/reflect" in self.path:
+            resp = {"text": "Mike prefers TDD"}
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
+        elif "/memories/recall" in self.path:
             resp = {"results": [{"id": "f1", "text": "Mike prefers TDD", "type": "world",
                                  "context": "preferences", "entities": []}]}
             self.send_response(200)

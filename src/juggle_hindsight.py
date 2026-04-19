@@ -55,12 +55,22 @@ class HindsightClient:
 
     @classmethod
     def from_config(cls, config_path: str | None = None) -> "HindsightClient | None":
-        """Load client from unified settings. config_path kept for backward compat but ignored.
+        """Load client from config. If config_path provided and exists, reads it directly.
 
-        Settings are loaded from ~/.juggle/config.json (or _JUGGLE_CONFIG_PATH env var)
-        via get_settings(), which already handles all override precedence.
+        Falls back to get_settings() (reads _JUGGLE_CONFIG_PATH or ~/.juggle/config.json).
         """
-        hs = _hs()
+        if config_path:
+            import json as _json
+            p = Path(config_path)
+            if not p.exists():
+                return None
+            try:
+                raw = _json.loads(p.read_text())
+            except (OSError, _json.JSONDecodeError):
+                return None
+            hs = raw.get("hindsight", {})
+        else:
+            hs = _hs()
         if not hs.get("enabled", False):
             return None
         return cls(

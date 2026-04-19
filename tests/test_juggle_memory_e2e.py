@@ -37,7 +37,14 @@ class StatefulMockHandler(BaseHTTPRequestHandler):
         content_len = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(content_len)) if content_len else {}
 
-        if "/memories/recall" in self.path:
+        if "/reflect" in self.path:
+            text = " | ".join(StatefulMockHandler.retained) if StatefulMockHandler.retained else ""
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"text": text}).encode())
+
+        elif "/memories/recall" in self.path:
             results = [{"id": f"f{i}", "text": c, "type": "world",
                         "context": "", "entities": []}
                        for i, c in enumerate(StatefulMockHandler.retained)]
