@@ -136,38 +136,6 @@ def test_get_message_count(db):
     assert db.get_message_count(tid) == 1
 
 
-def test_add_shared(db):
-    db.create_thread("My topic", session_id="s1")
-    db.add_shared("decision", "Use JWT", source_thread="A")
-    shared = db.get_shared_context()
-    assert len(shared) == 1
-    assert shared[0]["context_type"] == "decision"
-    assert shared[0]["content"] == "Use JWT"
-    assert shared[0]["source_thread"] == "A"
-
-
-def test_add_shared_no_source(db):
-    db.add_shared("fact", "Python 3.11")
-    shared = db.get_shared_context()
-    assert shared[0]["source_thread"] is None
-
-
-def test_notifications(db):
-    db.create_thread("My topic", session_id="s1")
-    db.add_notification("A", "Agent done")
-    pending = db.get_pending_notifications()
-    assert len(pending) == 1
-    assert pending[0]["message"] == "Agent done"
-
-    db.mark_notifications_delivered([pending[0]["id"]])
-    assert db.get_pending_notifications() == []
-
-
-def test_mark_notifications_empty_list(db):
-    # Should not raise
-    db.mark_notifications_delivered([])
-
-
 def test_summarized_msg_count_default_zero(db):
     tid = db.create_thread("Topic A", session_id="s1")
     thread = db.get_thread(tid)

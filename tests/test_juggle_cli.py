@@ -126,16 +126,6 @@ def test_close_thread(started_db):
     assert t["status"] == "closed"
 
 
-def test_add_shared(started_db):
-    db_path, general_tid = started_db
-    sys.path.insert(0, SRC_DIR)
-    from juggle_db import JuggleDB
-    db = JuggleDB(str(db_path))
-    db.add_shared("decision", "Use JWT", source_thread=general_tid)
-    shared = db.get_shared_context()
-    assert len(shared) == 1
-
-
 def test_set_and_check_agent(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
@@ -154,12 +144,9 @@ def test_complete_agent(started_db):
     db = JuggleDB(str(db_path))
     db.update_thread(general_tid, agent_task_id="task_abc", status="background")
     db.update_thread(general_tid, agent_result="Done", status="done")
-    db.add_notification(general_tid, "Topic A complete")
     t = db.get_thread(general_tid)
     assert t is not None
     assert t["status"] == "done"
-    pending = db.get_pending_notifications()
-    assert len(pending) == 1
 
 
 def test_fail_agent(started_db):

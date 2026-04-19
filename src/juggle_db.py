@@ -49,16 +49,6 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 """
 
-CREATE_SHARED_CONTEXT = """
-CREATE TABLE IF NOT EXISTS shared_context (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  context_type    TEXT NOT NULL,
-  content         TEXT NOT NULL,
-  source_thread   TEXT,
-  created_at      TEXT NOT NULL
-);
-"""
-
 CREATE_NOTIFICATIONS = """
 CREATE TABLE IF NOT EXISTS notifications (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,7 +189,6 @@ class JuggleDB:
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute(CREATE_THREADS)
             conn.execute(CREATE_MESSAGES)
-            conn.execute(CREATE_SHARED_CONTEXT)
             conn.execute(CREATE_NOTIFICATIONS)
             conn.execute(CREATE_SESSION)
             conn.execute(CREATE_AGENTS)
@@ -688,72 +677,9 @@ class JuggleDB:
     # Shared context
     # ------------------------------------------------------------------
 
-    def add_shared(
-        self,
-        context_type: str,
-        content: str,
-        source_thread: str | None = None,
-    ):
-        now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO shared_context (context_type, content, source_thread, created_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (context_type, content, source_thread, now),
-            )
-            conn.commit()
-
-    def get_shared_context(self) -> list[dict]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM shared_context ORDER BY id"
-            ).fetchall()
-            return [dict(row) for row in rows]
-
     # ------------------------------------------------------------------
     # Notifications
     # ------------------------------------------------------------------
-
-    def add_notification(self, thread_id: str, message: str, severity: str = "action"):
-        now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO notifications (thread_id, message, delivered, severity, created_at)
-                VALUES (?, ?, 0, ?, ?)
-                """,
-                (thread_id, message, severity, now),
-            )
-            conn.commit()
-
-    def get_pending_notifications(self) -> list[dict]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM notifications WHERE delivered = 0 ORDER BY id"
-            ).fetchall()
-            return [dict(row) for row in rows]
-
-    def mark_notifications_delivered(self, ids: list[int]):
-        if not ids:
-            return
-        placeholders = ", ".join("?" * len(ids))
-        with self._connect() as conn:
-            conn.execute(
-                f"UPDATE notifications SET delivered = 1 WHERE id IN ({placeholders})",
-                ids,
-            )
-            conn.commit()
-
-    def increment_delivery_attempts(self) -> None:
-        """Increment delivery_attempts for all pending (undelivered) notifications."""
-        with self._connect() as conn:
-            conn.execute(
-                "UPDATE notifications SET delivery_attempts = COALESCE(delivery_attempts, 0) + 1 "
-                "WHERE delivered = 0"
-            )
-            conn.commit()
 
     def get_last_exchange(self, thread_id: str) -> dict:
         """Return the last user message and last assistant message for a thread.

@@ -19,34 +19,6 @@ from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
 from juggle_settings import get_settings as _get_settings
 
 
-def cmd_get_shared_context(args):
-    db = get_db()
-    rows = db.get_shared_context()
-
-    if args.type:
-        rows = [r for r in rows if r["context_type"] == args.type]
-    if args.thread:
-        rows = [r for r in rows if r.get("source_thread") == args.thread]
-    if args.limit:
-        rows = rows[-args.limit:]
-
-    if args.plain:
-        if not rows:
-            print("(no shared context)")
-            return
-        for r in rows:
-            src = f" (Thread {r['source_thread']})" if r.get("source_thread") else ""
-            print(f"[{r['context_type']}]{src} {r['content']}")
-    else:
-        print(json.dumps(rows, indent=2))
-
-
-def cmd_add_shared(args):
-    db = get_db()
-    db.add_shared(args.type, args.content, source_thread=args.thread)
-    print(f"Added [{args.type}]: {args.content}")
-
-
 def cmd_get_context(_):
     sys.path.insert(0, str(SRC_DIR))
     from juggle_context import build_context_string
