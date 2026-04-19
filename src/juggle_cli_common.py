@@ -49,10 +49,6 @@ def _resolve_thread(db, thread_id_input: str) -> str:
         t = db.get_thread_by_user_label(s.upper())
         if t:
             return t["id"]
-        # Fallback to legacy single-letter label lookup for transitional safety
-        t = db.get_thread_by_label(s.upper())
-        if t:
-            return t["id"]
         print(f"Error: no thread with label {s.upper()}")
         sys.exit(1)
 
