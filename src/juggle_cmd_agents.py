@@ -58,6 +58,12 @@ def cmd_complete_agent(args):
         srow = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
     session_id = srow["value"] if srow else ""
 
+    # Snapshot pre-existing open action items to dismiss after close
+    items_to_dismiss = [
+        item["id"] for item in db.get_open_action_items()
+        if item.get("thread_id") == thread_uuid
+    ]
+
     # 1. Convert any open_questions to action_items
     oq_raw = thread.get("open_questions") or "[]"
     try:
@@ -129,6 +135,10 @@ def cmd_complete_agent(args):
     if agent:
         db.update_agent(agent["id"], status="idle", assigned_thread=None)
 
+    # Auto-dismiss pre-existing action items (not ones just created from open_questions)
+    for item_id in items_to_dismiss:
+        db.dismiss_action_item(item_id)
+
     label = thread.get("user_label") or thread.get("label") or args.thread_id
     print(f"Agent complete for Topic {label} → closed. Notification logged.")
 
@@ -187,6 +197,12 @@ def cmd_fail_agent(args):
               f"(max_retries={max_retries}). Error: {args.error}")
         return
 
+    # Snapshot pre-existing open action items before adding failure item
+    items_to_dismiss = [
+        item["id"] for item in db.get_open_action_items()
+        if item.get("thread_id") == thread_uuid
+    ]
+
     # Persistent
     db.add_action_item(
         thread_id=thread_uuid,
@@ -199,6 +215,10 @@ def cmd_fail_agent(args):
     agent = db.get_agent_by_thread(thread_uuid)
     if agent:
         db.update_agent(agent["id"], status="idle", assigned_thread=None)
+
+    # Auto-dismiss pre-existing action items (not the failure item just created)
+    for item_id in items_to_dismiss:
+        db.dismiss_action_item(item_id)
 
     print(f"Persistent failure on Topic {label}; action_item created and thread → closed.")
 
