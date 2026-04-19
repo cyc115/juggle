@@ -115,6 +115,16 @@ Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When i
 - Dispatch a research agent if more context is needed; tell user: `"Open question on Y — researching before I bring this to you."`
 - Present to user only after forming an educated suggestion or recommendation
 
+**Devil's Advocate action items** — when devil's advocate is run (in main thread or via agent) and surfaces design decisions:
+- For each 🔴 design decision requiring user input: call `request-action` with tier 2 (open question), even if the discussion happened in the main thread
+- For each 🟡 auto-resolved item: no action item needed — resolve inline and note resolution in thread summary
+- This applies whether DA was triggered by the orchestrator, a planner agent, or user-invoked skill
+
+Example:
+```bash
+python3 juggle_cli.py request-action <thread_id> "DA finding: <decision description>" --tier 2
+```
+
 ---
 
 ## Category 3: Major Project — Superpowers Workflow Split
