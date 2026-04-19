@@ -427,31 +427,49 @@ def cmd_release_agent(args):
     db = get_db()
     agent = db.get_agent(args.agent_id)
     if agent is None:
+        # Fallback: treat arg as thread label/id and find its assigned agent
+        try:
+            thread_uuid = _resolve_thread(db, args.agent_id)
+            agent = db.get_agent_by_thread(thread_uuid)
+        except SystemExit:
+            agent = None
+    if agent is None:
         return  # no-op for unknown agent
 
     if agent["status"] == "decommission_pending":
         sys.path.insert(0, str(SRC_DIR))
         from juggle_tmux import JuggleTmuxManager
-        JuggleTmuxManager().decommission_agent(db, args.agent_id)
-        print(f"Agent {args.agent_id[:8]} decommissioned.")
+        JuggleTmuxManager().decommission_agent(db, agent["id"])
+        print(f"Agent {agent['id'][:8]} decommissioned.")
         return
 
     assigned = agent.get("assigned_thread")
+
+    # Guard: block release if thread is still active unless --force
+    if not getattr(args, "force", False) and assigned:
+        thread = db.get_thread(assigned)
+        if thread and thread["status"] not in ("closed", "failed", "archived"):
+            label = thread.get("user_label") or assigned[:8]
+            print(f"Error: Thread {label} is still active ({thread['status']}). "
+                  f"Call complete-agent or fail-agent first. Use --force to override (operator only).")
+            sys.exit(1)
+
     now = datetime.now(timezone.utc).isoformat()
+    agent_id = agent["id"]
     if assigned:
         context = json.loads(agent.get("context_threads") or "[]")
         if assigned not in context:
             context.append(assigned)
         context = context[-10:]
         db.update_agent(
-            args.agent_id,
+            agent_id,
             status="idle",
             assigned_thread=None,
             context_threads=context,
             last_active=now,
         )
     else:
-        db.update_agent(args.agent_id, status="idle", last_active=now)
+        db.update_agent(agent_id, status="idle", last_active=now)
 
     # Reconcile: if the agent's thread is still "background", it was released
     # without completing — mark the thread as failed so it doesn't appear stuck.
@@ -467,7 +485,7 @@ def cmd_release_agent(args):
                 f"[Topic {label} failed] Agent released without completing.",
                 session_id=session_id)
 
-    print(f"Agent {args.agent_id[:8]} released.")
+    print(f"Agent {agent_id[:8]} released.")
 
 
 def cmd_decommission_agent(args):

@@ -528,7 +528,7 @@ def test_release_agent_marks_idle(started_db):
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
         agent_id = r.stdout.strip().split()[0]
-        result = run_cli(["release-agent", agent_id], db_path)
+        result = run_cli(["release-agent", agent_id, "--force"], db_path)
     assert result.returncode == 0
 
     db = JuggleDB(str(db_path))
@@ -546,7 +546,7 @@ def test_release_agent_adds_context_thread(started_db):
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
         agent_id = r.stdout.strip().split()[0]
-        run_cli(["release-agent", agent_id], db_path)
+        run_cli(["release-agent", agent_id, "--force"], db_path)
 
     db = JuggleDB(str(db_path))
     agent = db.get_agent(agent_id)

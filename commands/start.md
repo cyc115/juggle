@@ -282,7 +282,7 @@ On completion:
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<1-line result>"
 EOF
 
-# 3. Send to agent (appends release-agent automatically)
+# 3. Send to agent
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> "$TASK_FILE"
 ```
 
@@ -294,7 +294,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> "$TASK_FILE
 | Cat 3 phase 1: plan | `--role planner` |
 | Cat 3 phase 2: implement | `--role coder` |
 
-Agent completion/failure: agents call `complete-agent` or `fail-agent` + `release-agent` themselves (see CLI Quick Reference).
+Agent completion/failure: agents call `complete-agent` or `fail-agent` (these handle agent release automatically — do not call `release-agent` from agent prompts).
 
 ---
 

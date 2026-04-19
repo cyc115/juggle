@@ -286,7 +286,9 @@ def main():
 
     # release-agent
     p_release = subparsers.add_parser("release-agent", help="Return agent to idle pool")
-    p_release.add_argument("agent_id", help="Agent UUID")
+    p_release.add_argument("agent_id", help="Agent UUID or thread label")
+    p_release.add_argument("--force", action="store_true",
+                           help="Force release even if thread is still active (operator use only)")
     p_release.set_defaults(func=cmd_release_agent)
 
     # decommission-agent
