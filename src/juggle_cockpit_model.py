@@ -202,6 +202,12 @@ def snapshot(db) -> CockpitState:
     ).fetchall():
         topics.append(_make_topic(r))
 
+    # 2b. Background
+    for r in conn.execute(
+        "SELECT * FROM threads WHERE status = 'background' ORDER BY last_active_at DESC"
+    ).fetchall():
+        topics.append(_make_topic(r))
+
     # 3. Closed within TTL
     for r in conn.execute(
         "SELECT * FROM threads WHERE status = 'closed' "
