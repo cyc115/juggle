@@ -474,6 +474,27 @@ def render_topics_tree(db: JuggleDB, memories: "dict | None" = None) -> str:
     return "\n".join(output_lines)
 
 
+def _auto_archive_closed_threads(db: JuggleDB) -> int:
+    """Archive any closed thread whose last_active_at exceeds the TTL.
+
+    Returns count of threads archived.
+    """
+    from datetime import datetime, timezone, timedelta
+    ttl_secs = int(db.get_setting("thread_auto_archive_ttl_secs", default="86400") or "86400")
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
+    archived = 0
+    for t in db.get_threads_by_status("closed"):
+        la = t.get("last_active_at") or t.get("last_active") or ""
+        try:
+            dt = datetime.strptime(la[:16], "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if dt < cutoff:
+            db.archive_thread(t["id"])  # preserves user_label
+            archived += 1
+    return archived
+
+
 def build_startup_output(db: JuggleDB) -> str:
     """Full enriched startup string: topics tree + per-thread Hindsight recalls.
 
@@ -482,6 +503,7 @@ def build_startup_output(db: JuggleDB) -> str:
     # Lazy import to avoid circular dependency (juggle_context ← juggle_cmd_threads)
     from juggle_cmd_threads import _cleanup_orphaned_threads
     _cleanup_orphaned_threads(db)
+    _auto_archive_closed_threads(db)
 
     threads = db.get_all_threads()
     active = [
