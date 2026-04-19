@@ -404,8 +404,8 @@ def render_topics_tree(db: JuggleDB) -> str:
         output_lines.append(header)
 
         summary = (t.get("summary") or "").strip()
-        summary_text = summary if summary else "no summary yet"
-        output_lines.append(f"{vert}├── Summary: {summary_text}")
+        if summary:
+            output_lines.append(f"{vert}├── Summary: {summary}")
 
         key_decisions_raw = t.get("key_decisions") or "[]"
         if isinstance(key_decisions_raw, str):
