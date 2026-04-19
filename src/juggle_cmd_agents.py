@@ -244,7 +244,7 @@ def cmd_list_actions(_):
         if it.get("thread_id"):
             t = db.get_thread(it["thread_id"])
             if t:
-                lbl = t.get("user_label") or t.get("label") or it["thread_id"][:6]
+                lbl = t.get("user_label") or it["thread_id"][:6]
                 thread_suffix = f" (thread [{lbl}])"
         print(f"⚡ [{it['id']}] {it['priority'].upper():6} {it['message']}{thread_suffix}")
 
@@ -253,7 +253,7 @@ def cmd_check_agents(_):
     db = get_db()
     threads = db.get_all_threads()
     background = [
-        {"thread_id": t.get("user_label") or t.get("label") or t["id"][:8], "task_id": t.get("agent_task_id", ""), "topic": t["topic"]}
+        {"thread_id": t.get("user_label") or t["id"][:8], "task_id": t.get("agent_task_id", ""), "topic": t["topic"]}
         for t in threads
         if t["status"] == "background"
     ]
@@ -323,7 +323,7 @@ def cmd_list_agents(_):
         if a.get("assigned_thread"):
             t = db.get_thread(a["assigned_thread"])
             if t:
-                lbl = t.get("user_label") or t.get("label") or ""
+                lbl = t.get("user_label") or ""
                 ttl = t.get("title") or " ".join(t["topic"].split()[:5])
                 full = f"{lbl}: {ttl}" if lbl else ttl
                 topic_str = full[:35]
