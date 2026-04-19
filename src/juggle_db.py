@@ -108,6 +108,54 @@ _INITIAL_DOMAIN_PATHS: list[tuple[str, str]] = [
     (p, d) for p, d in _get_settings()["domains"]["initial_domain_paths"]
 ]
 
+CREATE_NOTIFICATIONS_V2 = """
+CREATE TABLE IF NOT EXISTS notifications_v2 (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id       TEXT,
+  message         TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  session_id      TEXT NOT NULL,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE SET NULL
+);
+"""
+
+CREATE_ACTION_ITEMS = """
+CREATE TABLE IF NOT EXISTS action_items (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id       TEXT,
+  message         TEXT NOT NULL,
+  type            TEXT NOT NULL,
+  priority        TEXT NOT NULL DEFAULT 'normal',
+  created_at      TEXT NOT NULL,
+  dismissed_at    TEXT,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE SET NULL
+);
+"""
+
+CREATE_SETTINGS = """
+CREATE TABLE IF NOT EXISTS settings (
+  key             TEXT PRIMARY KEY,
+  value           TEXT NOT NULL
+);
+"""
+
+
+def _next_excel_label(used: set) -> str:
+    """Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ."""
+    import string
+    letters = string.ascii_uppercase
+    # Single letter
+    for c in letters:
+        if c not in used:
+            return c
+    # Two letters AA..ZZ
+    for c1 in letters:
+        for c2 in letters:
+            label = c1 + c2
+            if label not in used:
+                return label
+    raise ValueError("All 702 user labels in use. Archive threads first.")
+
 
 def _assign_label(conn: sqlite3.Connection) -> str:
     """Return first letter A–Z not currently held by any non-archived thread."""
@@ -169,6 +217,25 @@ class JuggleDB:
             conn.execute(CREATE_AGENTS)
             conn.execute(CREATE_DOMAINS)
             conn.execute(CREATE_DOMAIN_PATHS)
+            conn.execute(CREATE_NOTIFICATIONS_V2)
+            conn.execute(CREATE_ACTION_ITEMS)
+            conn.execute(CREATE_SETTINGS)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_notifications_v2_session "
+                "ON notifications_v2(session_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_notifications_v2_thread "
+                "ON notifications_v2(thread_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_action_items_open "
+                "ON action_items(dismissed_at) WHERE dismissed_at IS NULL"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_action_items_thread "
+                "ON action_items(thread_id)"
+            )
             self._migrate(conn)
             conn.commit()
 
@@ -315,6 +382,32 @@ class JuggleDB:
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 13 skipped: %s", e)
 
+        # Migration 14: add user_label + last_active_at to threads
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        if "user_label" not in cols:
+            try:
+                conn.execute("ALTER TABLE threads ADD COLUMN user_label TEXT")
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_threads_user_label "
+                    "ON threads(user_label) WHERE user_label IS NOT NULL"
+                )
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 14 (user_label) skipped: %s", e)
+        if "last_active_at" not in cols:
+            try:
+                conn.execute("ALTER TABLE threads ADD COLUMN last_active_at TEXT")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 14 (last_active_at) skipped: %s", e)
+
+        # Migration 15: seed thread_auto_archive_ttl_secs setting
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value) VALUES "
+                "('thread_auto_archive_ttl_secs', '86400')"
+            )
+        except sqlite3.OperationalError as e:
+            _log.warning("Migration 15 (settings seed) skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -355,6 +448,20 @@ class JuggleDB:
             self._set_session_key(conn, "current_thread", thread_id)
             conn.commit()
 
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        """Return a value from the settings table, or default if not found."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row else default
+
+    def _set_session_key_external(self, key: str, value: str):
+        """Public helper to write a session key (for tests)."""
+        with self._connect() as conn:
+            self._set_session_key(conn, key, value)
+            conn.commit()
+
     # ------------------------------------------------------------------
     # Thread operations
     # ------------------------------------------------------------------
@@ -375,17 +482,23 @@ class JuggleDB:
                 )
             new_id = str(uuid.uuid4())
             label = _assign_label(conn)
-            now = datetime.now(timezone.utc).isoformat()
+            # Excel-style user label (base-26, never reassigned)
+            used_labels = {row["user_label"] for row in conn.execute(
+                "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
+            ).fetchall()}
+            user_label = _next_excel_label(used_labels)
+            now_iso = datetime.now(timezone.utc).isoformat()
+            now_min = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
             conn.execute(
                 """
                 INSERT INTO threads
-                  (id, label, session_id, topic, status,
+                  (id, label, user_label, session_id, topic, status,
                    summary, key_decisions, open_questions,
                    last_user_intent, agent_task_id, agent_result,
-                   show_in_list, summarized_msg_count, domain, created_at, last_active)
-                VALUES (?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?)
+                   show_in_list, summarized_msg_count, domain, created_at, last_active, last_active_at)
+                VALUES (?, ?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?, ?)
                 """,
-                (new_id, label, session_id, topic, domain, now, now),
+                (new_id, label, user_label, session_id, topic, domain, now_iso, now_iso, now_min),
             )
             conn.commit()
             return new_id
