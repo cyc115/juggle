@@ -22,4 +22,4 @@
 - `UPDATE_SNAPSHOTS` — `tests/test_cockpit_snapshots.py`
 
 ---
-_Back to [index.md](./index.md) · Generated 2026-04-18_
+_Back to [index.md](./index.md) · Generated 2026-04-19_

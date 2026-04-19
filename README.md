@@ -87,6 +87,71 @@ Emoji indicators shown in `show-topics` (priority: current > background > done >
 | 🗄️ | Stale (idle >48h) — distinct from `status=archived` threads which are hidden entirely |
 | 💤 | Idle >30 minutes (`last_active` older than 30m, `status=active`) |
 
+## State Management
+
+Each thread moves through four states. See [docs/topic-lifecycle.md](docs/topic-lifecycle.md) for full details.
+
+### Thread States
+
+| State | Meaning |
+|-------|---------|
+| `active` | Orchestrator focus; user engaged |
+| `running` | Background agent(s) dispatched; work in progress |
+| `closed` | Work finished; visible for 24 h then auto-archived |
+| `archived` | Hidden from active work; accessible by label to reopen |
+
+### State Diagram
+
+```
+create-thread          dispatch-agent
+      │                      │
+      ▼                      ▼
+  ┌────────┐  dispatch  ┌─────────┐
+  │ active │ ─────────▶ │ running │ ◀── hook retry (transient fail)
+  │  🟢    │ ◀───────── │   🏃    │
+  └────────┘  focus      └─────────┘
+      │                      │
+      │ close-thread          │ complete-agent
+      │ (explicit)            │
+      ▼                      ▼
+  ┌────────────────────────────┐
+  │          closed ✅          │
+  └────────────────────────────┘
+                │
+                │ auto-archive (last_active_at + 24 h TTL)
+                ▼
+  ┌────────────────────────────┐
+  │         archived 🗄        │
+  └────────────────────────────┘
+```
+
+`archive-thread` skips directly to `archived` from any state. `unarchive-thread` restores to `active`.
+
+### Thread IDs
+
+Threads have two identifiers:
+
+- **User label** (`A`–`ZZ`, Excel-style base-26) — shown in the cockpit, used in CLI commands. Never reassigned; archived threads keep their label permanently.
+- **Internal ID** (6-char hex, e.g. `a3f2bc`) — DB primary key, used in agent prompts and logs.
+
+CLI commands accept either form: `switch-thread A` and `switch-thread a3f2bc` resolve to the same thread.
+
+### Completion Routing
+
+Agents signal outcomes via three explicit commands (not string heuristics):
+
+| Command | Effect |
+|---------|--------|
+| `complete-agent <id> "<result>"` | Thread → `closed`; creates a session-scoped notification (informational, auto-cleared next session) |
+| `request-action <id> "<what to do>"` | Creates a persistent `action_item` (survives sessions until dismissed with `ack-action`) |
+| `fail-agent <id> "<error>"` | Hook classifies failure: transient → auto-retry (thread stays `running`); persistent → `action_item` with `priority=high` |
+
+### Auto-Archive
+
+- **Explicit close** (`close-thread`): thread enters `closed` immediately; auto-archives after 24 h idle.
+- **Agent-completed close** (`complete-agent`): same TTL applies from `last_active_at`.
+- TTL default: 24 h. Override via `settings["thread_auto_archive_ttl_secs"]`.
+
 ## Limits
 
 | Limit | Default | Env var override |
