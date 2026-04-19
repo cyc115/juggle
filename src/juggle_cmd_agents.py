@@ -274,65 +274,42 @@ def cmd_spawn_agent(args):
     print(f"{agent['id']} {agent['pane_id']}")
 
 
-def cmd_list_agents(_):
+def cmd_list_agents(args):
     db = get_db()
     agents = db.get_all_agents()
     if not agents:
         print("No agents.")
         return
 
-    sys.path.insert(0, str(SRC_DIR))
-    from juggle_tmux import JuggleTmuxManager
-    mgr = JuggleTmuxManager()
-
-    STATUS_EMOJI = {
-        "idle": "💤",
-        "busy": "🟢",
-        "decommission_pending": "⚠️",
-    }
     now = datetime.now(timezone.utc)
-    idle_count = sum(1 for a in agents if a["status"] == "idle")
-    term_width = shutil.get_terminal_size(fallback=(100, 24)).columns
-    sep = "─" * min(term_width, 100)
 
-    print(f"Agents ({len(agents)} total, {idle_count} idle)")
-    print(sep)
-    for a in agents:
-        emoji = STATUS_EMOJI.get(a["status"], "❓")
-        idle_hint = ""
-        if a["status"] == "busy":
-            last_used = mgr.get_pane_last_used(a["pane_id"])
-            if last_used and (time.time() - last_used) > JUGGLE_IDLE_THRESHOLD_SECS:
-                emoji = "⏸️"
-                idle_hint = " waiting?"
-        short_id = a["id"][:8]
-        role = a["role"]
-        pane = a["pane_id"]
-        last_active = a.get("last_active") or ""
-        age = "-"
-        if last_active:
-            try:
-                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                secs = int((now - dt).total_seconds())
-                age = f"{secs}s" if secs < 60 else (f"{secs // 60}m" if secs < 3600 else f"{secs // 3600}h")
-            except (ValueError, TypeError):
-                pass
-        topic_str = "-"
+    def _agent_age(last_active: str) -> str:
+        if not last_active:
+            return "-"
+        try:
+            dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            secs = int((now - dt).total_seconds())
+            return f"{secs}s" if secs < 60 else (f"{secs // 60}m" if secs < 3600 else f"{secs // 3600}h")
+        except (ValueError, TypeError):
+            return "-"
+
+    def _agent_topic_label(a) -> str:
         if a.get("assigned_thread"):
             t = db.get_thread(a["assigned_thread"])
             if t:
-                lbl = t.get("user_label") or ""
-                ttl = t.get("title") or " ".join(t["topic"].split()[:5])
-                full = f"{lbl}: {ttl}" if lbl else ttl
-                topic_str = full[:35]
-        domain_str = a.get("domain") or "-"
-        print(
-            f"{emoji} [{short_id}]  {role:<12}  pane={pane:<6}  "
-            f"domain={domain_str:<10}  topic={topic_str:<35}  age={age}{idle_hint}"
-        )
-    print(sep)
+                return t.get("user_label") or t["id"][:6]
+        return "-"
+
+    for a in agents:
+        short_id = a["id"][:8]
+        role = a.get("role") or "-"
+        status = a.get("status") or "-"
+        pane = a.get("pane_id") or "-"
+        topic_lbl = _agent_topic_label(a)
+        age = _agent_age(a.get("last_active") or "")
+        print(f"{short_id} {role:<8} {status:<5} {pane} [{topic_lbl}] {age}")
 
 
 def cmd_get_agent(args):

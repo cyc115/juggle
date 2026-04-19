@@ -375,14 +375,45 @@ def _cleanup_orphaned_threads(db) -> None:
 
 
 def cmd_show_topics(_):
-    from juggle_context import render_topics_tree
+    from datetime import datetime, timezone
+    from juggle_cli_common import _extract_decision_prompt
     db = get_db()
     _cleanup_orphaned_threads(db)
-    threads = db.get_all_threads()
+    threads = [t for t in db.get_all_threads() if t.get("status") != "archived"]
     if not threads:
         print("No topics.")
         return
-    print(render_topics_tree(db))
+    now = datetime.now(timezone.utc)
+    for t in threads:
+        lbl = t.get("user_label") or t["id"][:6]
+        status = t.get("status") or "active"
+        title = (t.get("title") or t.get("topic") or "")[:30]
+        last_active = t.get("last_active_at") or t.get("last_active") or ""
+        age = "-"
+        if last_active:
+            try:
+                dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                secs = int((now - dt).total_seconds())
+                age = f"{secs}s" if secs < 60 else (f"{secs // 60}m" if secs < 3600 else f"{secs // 3600}h")
+            except (ValueError, TypeError):
+                pass
+        line = f"[{lbl}] {status:<8} {title:<30} {age}"
+        # Detect waiting thread (last assistant message ends with "?")
+        with db._connect() as conn:
+            asst = conn.execute(
+                "SELECT content FROM messages WHERE thread_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+                (t["id"],),
+            ).fetchone()
+            usr = conn.execute(
+                "SELECT content FROM messages WHERE thread_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1",
+                (t["id"],),
+            ).fetchone()
+        if asst and asst["content"].rstrip().endswith("?"):
+            prompt = _extract_decision_prompt(asst["content"], usr["content"] if usr else None)
+            line += f"  {prompt}"
+        print(line)
 
 
 def cmd_get_archive_candidates(_):
