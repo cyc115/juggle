@@ -403,7 +403,7 @@ class JuggleDB:
         try:
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES "
-                "('thread_auto_archive_ttl_secs', '86400')"
+                "('thread_auto_archive_ttl_secs', '3600')"
             )
         except sqlite3.OperationalError as e:
             _log.warning("Migration 15 (settings seed) skipped: %s", e)

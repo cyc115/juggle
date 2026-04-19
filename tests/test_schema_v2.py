@@ -48,7 +48,7 @@ def test_thread_auto_archive_ttl_setting_seeded(db):
             "SELECT value FROM settings WHERE key = 'thread_auto_archive_ttl_secs'"
         ).fetchone()
     assert row is not None
-    assert row["value"] == "86400"
+    assert row["value"] == "3600"
 
 
 def test_action_items_open_index_filters_dismissed(db):

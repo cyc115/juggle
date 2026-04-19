@@ -159,9 +159,9 @@ def snapshot(db) -> CockpitState:
         row = conn.execute(
             "SELECT value FROM settings WHERE key = 'thread_auto_archive_ttl_secs'"
         ).fetchone()
-        ttl_secs = int(row[0]) if row else 86400
+        ttl_secs = int(row[0]) if row else 3600
     except Exception:
-        ttl_secs = 86400
+        ttl_secs = 3600
 
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
     cutoff_s = cutoff.strftime("%Y-%m-%d %H:%M")

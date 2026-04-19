@@ -155,7 +155,7 @@ def _build(db: JuggleDB) -> str:
             parts.append("")
 
     # --- Threads: Tier 2 (closed within TTL) ---
-    ttl_secs = int(db.get_setting("thread_auto_archive_ttl_secs", default="86400") or "86400")
+    ttl_secs = int(db.get_setting("thread_auto_archive_ttl_secs", default="3600") or "3600")
     closed = db.get_threads_by_status("closed")
     tier2 = []
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
@@ -480,7 +480,7 @@ def _auto_archive_closed_threads(db: JuggleDB) -> int:
     Returns count of threads archived.
     """
     from datetime import datetime, timezone, timedelta
-    ttl_secs = int(db.get_setting("thread_auto_archive_ttl_secs", default="86400") or "86400")
+    ttl_secs = int(db.get_setting("thread_auto_archive_ttl_secs", default="3600") or "3600")
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
     archived = 0
     for t in db.get_threads_by_status("closed"):
