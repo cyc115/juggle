@@ -1,7 +1,7 @@
 {
   "name": "juggle",
   "description": "Multi-topic conversation orchestrator. Manage parallel conversation threads within a single Claude Code session \u2014 discuss one topic while background agents research or build for others.",
-  "version": "1.13.1",
+  "version": "1.14.1",
   "author": {
     "name": "Mike Chen"
   },
