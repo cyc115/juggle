@@ -2,7 +2,6 @@
 """Juggle Context - builds additionalContext for UserPromptSubmit hook."""
 
 import re
-import threading
 
 from juggle_cli_common import _humanize_dt, _extract_decision_prompt, _last_sentences
 from juggle_db import JuggleDB, _is_junk_message, _thread_age_seconds
@@ -338,12 +337,8 @@ def _recall_for_thread(topic: str) -> list:
         return []
 
 
-def render_topics_tree(db: JuggleDB, memories: "dict | None" = None) -> str:
-    """Render the topics tree as a string.
-
-    memories: optional map of thread_id → list of recall snippet strings (🧠 lines).
-    Returns 'No topics.' if no visible threads.
-    """
+def render_topics_tree(db: JuggleDB) -> str:
+    """Render the topics tree as a string. Returns 'No topics.' if no visible threads."""
     import json as _json
 
     threads = db.get_all_threads()
@@ -423,12 +418,6 @@ def render_topics_tree(db: JuggleDB, memories: "dict | None" = None) -> str:
         for decision in key_decisions:
             output_lines.append(f"{vert}├── ✅ {decision}")
 
-        # 🧠 Hindsight memories — injected after decisions, before open questions
-        if memories:
-            for snippet in memories.get(tid, []):
-                if snippet.strip():
-                    output_lines.append(f"{vert}├── 🧠 {snippet.strip()}")
-
         open_questions_raw = t.get("open_questions") or "[]"
         if isinstance(open_questions_raw, str):
             try:
@@ -503,29 +492,10 @@ def build_startup_output(db: JuggleDB) -> str:
     if not active:
         return "Juggle active. No open topics."
 
-    # Parallel Hindsight recall — 2s timeout, failures silently swallowed
-    memories: dict = {}
-    lock = threading.Lock()
-
-    def _fetch(t: dict) -> None:
-        snippets = _recall_for_thread(t["topic"])
-        if snippets:
-            with lock:
-                memories[t["id"]] = snippets
-
-    recall_threads = [
-        threading.Thread(target=_fetch, args=(t,), daemon=True)
-        for t in active
-    ]
-    for rt in recall_threads:
-        rt.start()
-    for rt in recall_threads:
-        rt.join(timeout=_get_settings()["hindsight"]["recall_join_timeout_secs"])
-
     n = len(active)
     ver = _get_juggle_version()
     header = f"Juggle v{ver} active. Resuming {n} open topic{'s' if n != 1 else ''}:\n"
-    return header + render_topics_tree(db, memories=memories)
+    return header + render_topics_tree(db)
 
 
 if __name__ == "__main__":
