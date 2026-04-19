@@ -452,18 +452,7 @@ def render_topics_tree(db: JuggleDB, memories: "dict | None" = None) -> str:
                 exchange.get("last_user"),
             )
             output_lines.append(f"{vert}└── {decision}")
-        else:
-            exchanges = db.get_recent_exchanges(tid, n=2)
-            exchange_labels = ["Last:", "Prior:"]
-            for ex_idx, exchange in enumerate(exchanges):
-                ex_label = exchange_labels[ex_idx] if ex_idx < len(exchange_labels) else "     "
-                user_text = _last_sentences(exchange.get("user") or "")
-                asst_text = _last_sentences(exchange.get("assistant") or "")
-                user_display = f'"{user_text}"' if user_text else "(none)"
-                asst_display = f'"{asst_text}"' if asst_text else "(none)"
-                connector = "└──" if ex_idx == len(exchanges) - 1 else "├──"
-                output_lines.append(f"{vert}{connector} {ex_label} Q: {user_display}")
-                output_lines.append(f"{vert}         A: {asst_display}")
+
 
         if not is_last:
             output_lines.append("│")
