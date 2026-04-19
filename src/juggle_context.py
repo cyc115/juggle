@@ -280,7 +280,7 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
 
     # Archived: last_active > archive threshold
     age = _thread_age_seconds(last_active)
-    if age is not None and age > _get_settings()["cockpit"]["thread_archive_threshold_secs"]:
+    if age is not None and age > _get_settings()["thread_archive_threshold_secs"]:
         return "🗄️"
 
     # For waiting / idle detection we need the last assistant message
@@ -300,7 +300,7 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
             return "⏸️"
 
     # Idle: last assistant message exists (no "?") AND last_active > idle threshold
-    if assistant_row and age is not None and age > _get_settings()["cockpit"]["thread_idle_threshold_secs"]:
+    if assistant_row and age is not None and age > _get_settings()["thread_idle_threshold_secs"]:
         return "💤"
 
     return ""

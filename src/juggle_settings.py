@@ -29,19 +29,14 @@ DEFAULTS: dict = {
     "context_injection_char_limit": 8000,
     "context_teaser_chars": 80,
     "stale_summary_message_threshold": 3,
-    "notification_max_delivery_attempts": 3,
     "summary_max_chars": 250,
+    "thread_idle_threshold_secs": 1800,
+    "thread_archive_threshold_secs": 172800,
 
     # Cockpit Display
     "cockpit": {
         "refresh_interval_secs": 1.0,
         "column_ratios": [0.30, 0.40, 0.30],
-        "max_nudge_lines": 3,
-        "max_notification_rows": 4,
-        "idle_open_question_threshold_secs": 7200,
-        "stale_blocker_threshold_secs": 14400,
-        "thread_idle_threshold_secs": 1800,
-        "thread_archive_threshold_secs": 172800,
         "notification_ratio": 30,
     },
 
@@ -67,7 +62,6 @@ DEFAULTS: dict = {
         "api_key": "juggle",
         "bank": "juggle",
         "timeout_secs": 10,
-        "recall_join_timeout_secs": 10,
         "reflect_timeout_secs": 60,
     },
 
@@ -90,9 +84,6 @@ DEFAULTS: dict = {
     "talkback": {
         "enabled": False,
         "port": 18787,
-        "voice": "af_heart",
-        "speed": 1.0,
-        "max_speak_chars": 200,
     },
 }
 

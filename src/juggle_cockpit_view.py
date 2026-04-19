@@ -93,12 +93,13 @@ def build_layout(bp: str) -> Layout:
         └── notifications (ratio=30)
     """
     notif_ratio = get_nested("cockpit", "notification_ratio")
+    col_ratios = get_nested("cockpit", "column_ratios") or [0.30, 0.40, 0.30]
 
     if bp == "wide":
         root = Layout(name="root")
         root.split_row(
-            Layout(name="topics", ratio=30),
-            Layout(name="right", ratio=70),
+            Layout(name="topics", ratio=int(col_ratios[0] * 100)),
+            Layout(name="right", ratio=int(col_ratios[1] * 100)),
         )
         root["right"].split_column(
             Layout(name="upper", ratio=70),

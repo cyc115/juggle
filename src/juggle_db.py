@@ -1093,7 +1093,7 @@ class JuggleDB:
                 continue
 
             age = _thread_age_seconds(t.get("last_active") or "")
-            if age is not None and age > _get_settings()["cockpit"]["thread_archive_threshold_secs"] and status not in ("background", "waiting"):
+            if age is not None and age > _get_settings()["thread_archive_threshold_secs"] and status not in ("background", "waiting"):
                 candidates.append(t)
 
         return candidates
