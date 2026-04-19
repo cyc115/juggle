@@ -42,6 +42,7 @@ DEFAULTS: dict = {
         "stale_blocker_threshold_secs": 14400,
         "thread_idle_threshold_secs": 1800,
         "thread_archive_threshold_secs": 172800,
+        "notification_ratio": 30,
     },
 
     # Paths

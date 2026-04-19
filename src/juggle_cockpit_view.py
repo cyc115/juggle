@@ -10,6 +10,7 @@ from rich.style import Style
 from juggle_cockpit_model import (
     Topic, Action, Agent, Notification, CockpitState, format_age
 )
+from juggle_settings import get_nested
 
 # ---------------------------------------------------------------------------
 # Glyph tables
@@ -91,6 +92,8 @@ def build_layout(bp: str) -> Layout:
         ├── topics_strip  (size=3)
         └── notifications (ratio=30)
     """
+    notif_ratio = get_nested("cockpit", "notification_ratio")
+
     if bp == "wide":
         root = Layout(name="root")
         root.split_row(
@@ -99,7 +102,7 @@ def build_layout(bp: str) -> Layout:
         )
         root["right"].split_column(
             Layout(name="upper", ratio=70),
-            Layout(name="notifications", ratio=30),
+            Layout(name="notifications", ratio=notif_ratio),
         )
         root["right"]["upper"].split_row(
             Layout(name="actions", ratio=50),
@@ -112,7 +115,7 @@ def build_layout(bp: str) -> Layout:
         root.split_column(
             Layout(name="upper", ratio=60),
             Layout(name="topics_strip", size=3),
-            Layout(name="notifications", ratio=20),
+            Layout(name="notifications", ratio=notif_ratio),
         )
         root["upper"].split_row(
             Layout(name="actions", ratio=60),
@@ -126,7 +129,7 @@ def build_layout(bp: str) -> Layout:
             Layout(name="actions", ratio=40),
             Layout(name="agents", ratio=30),
             Layout(name="topics_strip", size=3),
-            Layout(name="notifications", ratio=30),
+            Layout(name="notifications", ratio=notif_ratio),
         )
         return root
 
@@ -143,6 +146,7 @@ def render_topics(topics: list[Topic], bp: str) -> Panel:
     """
     if bp == "wide":
         table = Table.grid(padding=(0, 1))
+        table.add_column("age",   no_wrap=True)
         table.add_column("glyph", no_wrap=True)
         table.add_column("label", no_wrap=True)
         table.add_column("title", no_wrap=False, overflow="fold")
@@ -156,6 +160,7 @@ def render_topics(topics: list[Topic], bp: str) -> Panel:
             else:
                 style = Style()
             table.add_row(
+                Text(format_age(t.age_secs), style=Style(dim=True)),
                 Text(glyph),
                 Text(label_str, style=style),
                 Text(t.title or t.label, style=style),
@@ -185,6 +190,7 @@ def render_actions(actions: list[Action]) -> Panel:
         return Panel(table, title="Action Items", border_style="dim")
 
     table = Table.grid(padding=(0, 1))
+    table.add_column("age",   no_wrap=True)
     table.add_column("glyph", no_wrap=True)
     table.add_column("topic", no_wrap=True)
     table.add_column("text", no_wrap=False, overflow="fold")
@@ -204,6 +210,7 @@ def render_actions(actions: list[Action]) -> Panel:
             topic_style = Style(dim=True)
 
         table.add_row(
+            Text(format_age(action.age_secs), style=Style(dim=True)),
             Text(glyph),
             Text(topic_str, style=topic_style),
             Text(action.text, style=text_style),  # action.text is always a str field
@@ -263,6 +270,7 @@ def render_notifications(notifications: list[Notification]) -> Panel:
         return Panel(table, title="Notifications", border_style="dim")
 
     table = Table.grid(padding=(0, 1))
+    table.add_column("age",   no_wrap=True)
     table.add_column("glyph", no_wrap=True)
     table.add_column("text",  no_wrap=False, overflow="fold")
 
@@ -279,6 +287,7 @@ def render_notifications(notifications: list[Notification]) -> Panel:
             text_style = Style()
 
         table.add_row(
+            Text(format_age(notif.age_secs), style=Style(dim=True)),
             Text(glyph),
             Text(notif.text, style=text_style),
         )
