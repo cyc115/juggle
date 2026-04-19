@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Juggle Context - builds additionalContext for UserPromptSubmit hook."""
 
+import re
 import threading
 
 from juggle_cli_common import _humanize_dt, _extract_decision_prompt, _last_sentences
@@ -13,144 +14,179 @@ _CHAR_LIMIT: int = _get_settings()["context_injection_char_limit"]
 # Max chars for a non-current thread's summary teaser
 _TEASER_CHARS: int = _get_settings()["context_teaser_chars"]
 
+# --------------------------------------------------------------------------
+# Tier-based renderer helpers
+# --------------------------------------------------------------------------
+
+_STATE_EMOJI = {
+    "active":   "🟢",
+    "running":  "🏃",
+    "closed":   "✅",
+    "archived": "🗄",
+}
+
+_ARTICLE_RE = re.compile(r"\b(a|an|the)\b ", flags=re.IGNORECASE)
+
+
+def _strip_articles(text: str) -> str:
+    if not text:
+        return ""
+    return _ARTICLE_RE.sub("", text).strip()
+
+
+def _minute_ts(ts: str | None) -> str:
+    """Normalise a timestamp to YYYY-MM-DD HH:MM (strip seconds)."""
+    if not ts:
+        return ""
+    s = ts.replace("T", " ").replace("Z", "")
+    m = re.match(r"(\d{4}-\d{2}-\d{2}[ ]\d{2}:\d{2})", s)
+    return m.group(1) if m else ""
+
+
+def _current_session_id(db) -> str:
+    with db._connect() as conn:
+        row = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+    return row["value"] if row else ""
+
+
+def _render_tier1(t: dict, db) -> list[str]:
+    """Full-detail Tier 1 block (active, running)."""
+    import json as _json
+    label = t.get("user_label") or t.get("label") or t["id"][:6]
+    state = t.get("status") or "active"
+    emoji = _STATE_EMOJI.get(state, "🟢")
+    title = t.get("title") or t.get("topic") or "(untitled)"
+    lines = [f"[{label}] {emoji} {state} | {_strip_articles(title)}"]
+
+    summary = _strip_articles((t.get("summary") or "").strip())
+    if summary:
+        lines.append(f"Summary: {summary}")
+
+    # Open questions
+    oq_raw = t.get("open_questions") or "[]"
+    try:
+        oq = _json.loads(oq_raw) if isinstance(oq_raw, str) else (oq_raw or [])
+    except (_json.JSONDecodeError, ValueError):
+        oq = []
+    if oq:
+        lines.append("Open questions:")
+        for q in oq:
+            text = q.get("text") if isinstance(q, dict) else str(q)
+            lines.append(f"  - {_strip_articles(text)}")
+    else:
+        lines.append("Open questions: None.")
+
+    # Q&A history — last 2 non-junk exchanges
+    try:
+        exchanges = db.get_recent_exchanges(t["id"], n=2)
+        exchanges = [e for e in exchanges if e.get("user") or e.get("assistant")]
+        if exchanges:
+            lines.append("Q&A history:")
+            for ex in exchanges:
+                u = _strip_articles((ex.get("user") or "").strip().split("\n")[0])[:120]
+                a = _strip_articles((ex.get("assistant") or "").strip().split("\n")[0])[:120]
+                if u or a:
+                    lines.append(f"  - Q: {u} A: {a}")
+    except Exception:
+        pass
+
+    # Key decisions
+    kd_raw = t.get("key_decisions") or "[]"
+    try:
+        kd = _json.loads(kd_raw) if isinstance(kd_raw, str) else (kd_raw or [])
+    except (_json.JSONDecodeError, ValueError):
+        kd = []
+    if kd:
+        lines.append("Key decisions:")
+        for d in kd:
+            # Trim seconds off any HH:MM:SS leading timestamp
+            d_clean = re.sub(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):\d{2}", r"\1", str(d))
+            lines.append(f"  - {_strip_articles(d_clean)}")
+
+    return lines
+
+
+def _render_tier2(t: dict) -> str:
+    label = t.get("user_label") or t.get("label") or t["id"][:6]
+    title = _strip_articles(t.get("title") or t.get("topic") or "")
+    return f"[{label}] ✅ closed  | {title}"
+
 
 def _build(db: JuggleDB) -> str:
     if not db.is_active():
         return ""
 
+    from datetime import datetime, timezone, timedelta
+
     parts: list[str] = []
     parts.append("--- JUGGLE ACTIVE (do not forward to sub-agents) ---")
     parts.append("RULE: Every Agent call MUST use run_in_background=true. No foreground agents ever.")
 
-    # ------------------------------------------------------------------
-    # ACTION REQUIRED — completed agent notifications (top of block)
-    # ------------------------------------------------------------------
-    notifications = db.get_pending_notifications()
-    # Auto-clear notifications shown too many times without acknowledgement
-    _max_attempts = _get_settings()["notification_max_delivery_attempts"]
-    stale_ids = [n["id"] for n in notifications if (n.get("delivery_attempts") or 0) >= _max_attempts]
-    if stale_ids:
-        db.mark_notifications_delivered(stale_ids)
-    notifications = [n for n in notifications if n["id"] not in stale_ids]
-    completion_notifs = [n for n in notifications if "completed" in n["message"] or "results ready" in n["message"]]
-    other_notifs = [n for n in notifications if n not in completion_notifs]
+    session_id = _current_session_id(db)
 
-    if completion_notifs:
+    # --- Action items (always injected while open) ---
+    action_items = db.get_open_action_items()
+    if action_items:
         parts.append("")
-        parts.append("⚠️ ACTION REQUIRED — Tell user about completed agents BEFORE doing anything else:")
-        for n in completion_notifs:
-            attempts = n.get("delivery_attempts") or 0
-            if attempts >= 3:
-                parts.append(f"  🚨 UNACKNOWLEDGED (attempt {attempts}): {n['message']}")
-            else:
-                parts.append(f"  → {n['message']}")
-        parts.append("After announcing completions to user, proceed with their request.")
+        parts.append("# Action Items")
+        for it in action_items:
+            thread_suffix = ""
+            if it.get("thread_id"):
+                t = db.get_thread(it["thread_id"])
+                if t:
+                    lbl = t.get("user_label") or t.get("label") or it["thread_id"][:6]
+                    thread_suffix = f" (thread: [{lbl}])"
+            pri = (it.get("priority") or "normal").upper()
+            parts.append(f"⚡ [{it['id']}] {pri:6} {_strip_articles(it['message'])}{thread_suffix}")
 
-    current_thread = db.get_current_thread()
-    all_threads = [t for t in db.get_all_threads()
-                   if t.get("status") != "archived" and t.get("show_in_list", 1) != 0]
-    thread = None
-
-    # ------------------------------------------------------------------
-    # Current topic line
-    # ------------------------------------------------------------------
-    if current_thread:
-        thread = db.get_thread(current_thread)
-        if thread:
-            display_label = thread.get("label") or current_thread[:8]
-            parts.append(
-                f"Current topic: [{display_label}] {thread['topic']}"
-            )
-
-    # ------------------------------------------------------------------
-    # Topics table
-    # Current thread: full summary + key decisions
-    # Other threads: 1-line teaser (first 80 chars of summary)
-    # ------------------------------------------------------------------
-    if all_threads:
-        parts.append("")
-        parts.append("Topics:")
-        for t in all_threads:
-            tid = t["id"]
-            label = t.get("label") or tid[:8]
-            topic = t["topic"]
-            status = t["status"]
-
-            if tid == current_thread:
-                suffix = " ← you are here"
-            elif status == "background":
-                suffix = " 🏃\u200d♂️ agent working..."
-            elif status == "done":
-                suffix = " ✓ done"
-            elif status == "failed":
-                suffix = " ✗ failed"
-            elif status == "archived":
-                suffix = " 🗄️ archived"
-            else:
-                suffix = ""
-
-            parts.append(f"  [{label}] {topic}{suffix}")
-
-            summary = t.get("summary", "").strip()
-            if summary:
-                if tid == current_thread:
-                    # Full summary for the current thread
-                    parts.append(f"    Summary: {summary}")
-                else:
-                    # 1-line teaser for non-current threads
-                    teaser = summary[:_TEASER_CHARS]
-                    if len(summary) > _TEASER_CHARS:
-                        teaser = teaser.rstrip() + "…"
-                    parts.append(f"    Summary: {teaser}")
-
-    # ------------------------------------------------------------------
-    # Stale summary flag
-    # ------------------------------------------------------------------
-    if current_thread and thread:
-        msg_count = db.get_message_count(current_thread, exclude_junk=True)
-        summarized_count = thread.get("summarized_msg_count") or 0
-        delta = msg_count - summarized_count
-        if delta >= 3:
-            parts.append(
-                f"[SUMMARY STALE: {delta} new messages — summarize after responding]"
-            )
-
-    # ------------------------------------------------------------------
-    # Shared project context (decisions + facts only)
-    # ------------------------------------------------------------------
-    shared = [
-        s for s in db.get_shared_context()
-        if s["context_type"] in ("decision", "fact")
+    # --- Threads: Tier 1 (active + running) ---
+    tier1 = [
+        t for t in db.get_threads_by_status("active")
+        if t.get("show_in_list", 1) != 0
+    ] + [
+        t for t in db.get_threads_by_status("running")
+        if t.get("show_in_list", 1) != 0
     ]
-    if shared:
+    if tier1:
         parts.append("")
-        parts.append("Shared project context:")
-        for s in shared:
-            src = f" (from Thread {s['source_thread']})" if s.get("source_thread") else ""
-            parts.append(
-                f"  [{s['context_type']}] {s['content']}{src}"
-            )
+        parts.append("# Active Threads")
+        for t in tier1:
+            parts.extend(_render_tier1(t, db))
+            parts.append("")
 
-    # ------------------------------------------------------------------
-    # Pending notifications (non-completion only; completions shown at top)
-    # ------------------------------------------------------------------
-    if other_notifs:
+    # --- Threads: Tier 2 (closed within TTL) ---
+    ttl_secs = int(db.get_setting("thread_auto_archive_ttl_secs", default="86400") or "86400")
+    closed = db.get_threads_by_status("closed")
+    tier2 = []
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
+    for t in closed:
+        la = t.get("last_active_at") or t.get("last_active") or ""
+        try:
+            dt = datetime.strptime(la[:16], "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if dt >= cutoff:
+            tier2.append(t)
+    if tier2:
+        parts.append("# Closed (within TTL)")
+        for t in tier2:
+            parts.append(_render_tier2(t))
         parts.append("")
-        parts.append("Pending notifications:")
-        for n in other_notifs:
-            parts.append(
-                f"  \u26a1 {n['message']}"
-            )
+
+    # --- Notifications (current session only) ---
+    notifs = db.get_notifications_for_session(session_id)
+    if notifs:
+        parts.append("# Notifications (this session)")
+        for n in notifs:
+            parts.append(f"✓ {_strip_articles(n['message'])}")
+        parts.append("")
 
     parts.append("--- END JUGGLE ---")
+    out = "\n".join(parts)
 
-    result = "\n".join(parts)
-
-    # Enforce character cap; trim from the middle (keep header + footer)
-    if len(result) > _CHAR_LIMIT:
-        result = _trim_to_limit(result, _CHAR_LIMIT)
-
-    return result
+    if len(out) > _CHAR_LIMIT:
+        out = _trim_to_limit(out, _CHAR_LIMIT)
+    return out
 
 
 def _trim_to_limit(text: str, limit: int) -> str:
