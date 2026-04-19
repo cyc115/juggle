@@ -537,10 +537,13 @@ class JuggleDB:
             return dict(row)
 
     def get_thread_by_user_label(self, label: str) -> dict | None:
-        """Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive."""
+        """Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers UUID ids over legacy non-UUID ids."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM threads WHERE user_label = ?", (label.upper(),)
+                "SELECT * FROM threads WHERE user_label = ? ORDER BY "
+                "CASE WHEN length(id) = 36 AND id LIKE '%-%-%-%-%' THEN 0 ELSE 1 END, "
+                "last_active_at DESC LIMIT 1",
+                (label.upper(),)
             ).fetchone()
         return dict(row) if row else None
 
