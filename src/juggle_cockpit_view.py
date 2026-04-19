@@ -20,7 +20,7 @@ TOPIC_STATUS_GLYPHS: dict[str, str] = {
     "running":    "🏃",
     "paused":     "⏸️",
     "done":       "✅",
-    "closed":     "✓",
+    "closed":     "🔒",
     "failed":     "❌",
     "archived":   "🗄️",
     "active":     "🔵",
