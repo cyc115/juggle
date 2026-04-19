@@ -1141,7 +1141,7 @@ class JuggleDB:
             if tid == current_thread or status == "archived":
                 continue
 
-            if status in ("done", "failed"):
+            if status in ("done", "failed", "closed"):
                 candidates.append(t)
                 continue
 
