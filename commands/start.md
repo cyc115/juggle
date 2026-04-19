@@ -33,9 +33,11 @@ All commands: `python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <cmd> [args]`
 | `get-agent <thread_id> --role <role> [--model <model>]` | Get idle agent (spawns if needed). Roles: `researcher`, `planner`, `coder`. Models: `sonnet` (default), `haiku`, `opus` |
 | `send-task <agent_id> <prompt_file>` | Send task file to agent pane |
 | `complete-agent <thread_id> "<result>"` | Mark agent task done + notify |
-| `fail-agent <thread_id> "<error>"` | Mark agent task failed |
+| `fail-agent <id> "<error>"` | Unrecoverable failure → HIGH action item + close thread |
+| `fail-agent <id> "<error>" --recovery-dispatched` | Recovery in progress → notify + dismiss old actions, thread stays running |
 | `release-agent <agent_id>` | Return agent to idle pool |
 | `list-agents` | Show all agents with status |
+| `notify <thread_id> "<msg>"` | Surface mid-task status to cockpit notifications |
 | `update-summary <id> "<text>"` | Update thread summary |
 | `get-messages <id> --plain --limit N` | Read thread messages |
 | `get-archive-candidates` | List archivable threads |

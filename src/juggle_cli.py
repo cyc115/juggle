@@ -50,11 +50,10 @@ from juggle_cmd_agents import (
     cmd_request_action,
     cmd_ack_action,
     cmd_list_actions,
+    cmd_notify,
 )
 
 from juggle_cmd_context import (
-    cmd_get_shared_context,
-    cmd_add_shared,
     cmd_get_context,
     cmd_init_db,
     cmd_recall,
@@ -199,25 +198,6 @@ def main():
     p_unarchive.add_argument("thread_id", help="Thread ID to unarchive (label or UUID)")
     p_unarchive.set_defaults(func=cmd_unarchive_thread)
 
-    # get-shared-context
-    p_get_shared = subparsers.add_parser("get-shared-context", help="Read shared context entries")
-    p_get_shared.add_argument("--type", dest="type", default=None, metavar="TYPE",
-                              help="Filter by type: decision, fact, note")
-    p_get_shared.add_argument("--thread", dest="thread", default=None, metavar="THREAD_ID",
-                              help="Filter by source thread")
-    p_get_shared.add_argument("--limit", dest="limit", type=int, default=0, metavar="N",
-                              help="Return at most N most-recent entries")
-    p_get_shared.add_argument("--plain", dest="plain", action="store_true",
-                              help="Plain text output for prompt inclusion (default: JSON)")
-    p_get_shared.set_defaults(func=cmd_get_shared_context)
-
-    # add-shared
-    p_shared = subparsers.add_parser("add-shared", help="Add to shared context")
-    p_shared.add_argument("--type", dest="type", required=True, metavar="TYPE")
-    p_shared.add_argument("--content", dest="content", required=True, metavar="TEXT")
-    p_shared.add_argument("--thread", dest="thread", default=None, metavar="SOURCE_THREAD")
-    p_shared.set_defaults(func=cmd_add_shared)
-
     # set-agent
     p_set_agent = subparsers.add_parser("set-agent", help="Set agent task for a thread")
     p_set_agent.add_argument("thread_id", help="Thread ID")
@@ -251,6 +231,8 @@ def main():
                         help="Override auto-classification (transient/persistent)")
     p_fail.add_argument("--max-retries", dest="max_retries", type=int, default=0,
                         help="Retry budget for transient failures (orchestrator uses)")
+    p_fail.add_argument("--recovery-dispatched", action="store_true", default=False,
+                        help="Orchestrator dispatched a recovery agent — notify only, no action item")
     p_fail.set_defaults(func=cmd_fail_agent)
 
     # request-action
@@ -262,6 +244,12 @@ def main():
     p_req.add_argument("--priority", dest="priority", default="normal",
                        choices=["low", "normal", "high"])
     p_req.set_defaults(func=cmd_request_action)
+
+    # notify
+    p_notify = subparsers.add_parser("notify", help="Surface a notification in the cockpit")
+    p_notify.add_argument("thread_id", help="Thread ID or label")
+    p_notify.add_argument("message", help="Notification text")
+    p_notify.set_defaults(func=cmd_notify)
 
     # ack-action
     p_ack = subparsers.add_parser("ack-action", help="Dismiss an action item")

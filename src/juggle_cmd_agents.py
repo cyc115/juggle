@@ -197,30 +197,45 @@ def cmd_fail_agent(args):
               f"(max_retries={max_retries}). Error: {args.error}")
         return
 
-    # Snapshot pre-existing open action items before adding failure item
-    items_to_dismiss = [
-        item["id"] for item in db.get_open_action_items()
-        if item.get("thread_id") == thread_uuid
-    ]
+    # Fetch session_id for notifications
+    with db._connect() as conn:
+        srow = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+    session_id = srow["value"] if srow else ""
 
-    # Persistent
-    db.add_action_item(
-        thread_id=thread_uuid,
-        message=f"agent failure: {args.error}",
-        type_="failure",
-        priority="high",
-    )
-    db.set_thread_status(thread_uuid, "closed")
+    # Dismiss pre-existing action items for this thread
+    open_items = db.get_open_action_items()
+    for item in open_items:
+        if item.get("thread_id") == thread_uuid:
+            db.dismiss_action_item(item["id"])
 
+    # Release assigned agent
     agent = db.get_agent_by_thread(thread_uuid)
     if agent:
         db.update_agent(agent["id"], status="idle", assigned_thread=None)
 
-    # Auto-dismiss pre-existing action items (not the failure item just created)
-    for item_id in items_to_dismiss:
-        db.dismiss_action_item(item_id)
-
-    print(f"Persistent failure on Topic {label}; action_item created and thread → closed.")
+    recovery = getattr(args, "recovery_dispatched", False)
+    if recovery:
+        db.add_notification_v2(
+            thread_id=thread_uuid,
+            message=f"⟳ [{label}] Recovery dispatched — {args.error}",
+            session_id=session_id,
+        )
+        db.set_thread_status(thread_uuid, "running")
+        print(f"Recovery dispatched for Topic {label}; notification logged, thread stays running.")
+    else:
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"⚠️ Agent failure — {args.error}. No recovery possible.",
+            type_="failure",
+            priority="high",
+        )
+        db.add_notification_v2(
+            thread_id=thread_uuid,
+            message=f"✗ [{label}] Unrecoverable — {args.error}",
+            session_id=session_id,
+        )
+        db.set_thread_status(thread_uuid, "closed")
+        print(f"Unrecoverable failure on Topic {label}; HIGH action item created, thread → closed.")
 
 
 def cmd_request_action(args):
@@ -281,6 +296,24 @@ def cmd_list_actions(_):
                 lbl = t.get("user_label") or it["thread_id"][:6]
                 thread_suffix = f" (thread [{lbl}])"
         print(f"⚡ [{it['id']}] {it['priority'].upper():6} {it['message']}{thread_suffix}")
+
+
+def cmd_notify(args):
+    """Insert a notifications_v2 row for the given thread."""
+    import juggle_cli_common as _common
+    db = _common.get_db()
+    thread_uuid = _common._resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
+    if not thread:
+        print(f"Error: Thread {args.thread_id} not found.")
+        sys.exit(1)
+    with db._connect() as conn:
+        srow = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+    session_id = srow["value"] if srow else ""
+    db.add_notification_v2(thread_id=thread_uuid, message=args.message, session_id=session_id)
+    db.touch_last_active(thread_uuid)
+    label = thread.get("user_label") or thread_uuid[:6]
+    print(f"Notification logged for Topic {label}.")
 
 
 def cmd_check_agents(_):
@@ -427,8 +460,12 @@ def cmd_release_agent(args):
         if thread and thread["status"] == "background":
             label = thread.get("user_label") or thread.get("label") or assigned[:8]
             db.update_thread(assigned, status="failed")
-            db.add_notification(assigned,
-                f"[Topic {label} failed] Agent released without completing.", severity="error")
+            with db._connect() as conn:
+                row = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+            session_id = row["value"] if row else ""
+            db.add_notification_v2(assigned,
+                f"[Topic {label} failed] Agent released without completing.",
+                session_id=session_id)
 
     print(f"Agent {args.agent_id[:8]} released.")
 
