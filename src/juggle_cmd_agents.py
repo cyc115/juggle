@@ -107,6 +107,11 @@ def cmd_complete_agent(args):
     # 4. Transition thread to closed
     db.set_thread_status(thread_uuid, "closed")
 
+    # Resolve agent before step 5 (needed for role check below)
+    agent = db.get_agent_by_thread(thread_uuid)
+    if agent:
+        db.update_agent(agent["id"], status="idle", assigned_thread=None)
+
     # 5. Create notification row (informational, session TTL)
     title = thread.get("title") or thread.get("topic") or "thread"
     db.add_notification_v2(
@@ -115,7 +120,16 @@ def cmd_complete_agent(args):
         session_id=session_id,
     )
 
-    # 6. Optional retain text → Hindsight
+    # 6a. Researcher completions → action item for review
+    if agent and agent.get("role") == "researcher":
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"Review: {args.result_summary}",
+            type_="review",
+            priority="normal",
+        )
+
+    # 6b. Optional retain text → Hindsight
     retain_text = getattr(args, "retain_text", None)
     if retain_text:
         def _do_retain(text, topic):
@@ -130,10 +144,6 @@ def cmd_complete_agent(args):
             args=(retain_text, thread.get("topic", "")),
             daemon=True,
         ).start()
-
-    agent = db.get_agent_by_thread(thread_uuid)
-    if agent:
-        db.update_agent(agent["id"], status="idle", assigned_thread=None)
 
     # Auto-dismiss pre-existing action items (not ones just created from open_questions)
     for item_id in items_to_dismiss:

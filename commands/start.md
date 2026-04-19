@@ -32,7 +32,7 @@ All commands: `python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <cmd> [args]`
 | `archive-thread <id>` | Archive thread |
 | `get-agent <thread_id> --role <role> [--model <model>]` | Get idle agent (spawns if needed). Roles: `researcher`, `planner`, `coder`. Models: `sonnet` (default), `haiku`, `opus` |
 | `send-task <agent_id> <prompt_file>` | Send task file to agent pane |
-| `complete-agent <thread_id> "<result>"` | Mark agent task done + notify |
+| `complete-agent <thread_id> "<result>"` | Mark agent task done + notify. Researcher role → auto-creates review action item (do NOT call `request-action` separately) |
 | `fail-agent <id> "<error>"` | Unrecoverable failure → HIGH action item + close thread |
 | `fail-agent <id> "<error>" --recovery-dispatched` | Recovery in progress → notify + dismiss old actions, thread stays running |
 | `release-agent <agent_id>` | Return agent to idle pool |
@@ -73,6 +73,7 @@ Examples: "write plan to plan directory", "check if file X exists"
 ### Category 2: Research / Investigation
 Explore codebase. Gather context.
 **Route**: Background research agent. Main thread: result summary only.
+Researcher agents always call `complete-agent` — the system auto-creates a review action item. Do not call `request-action` manually for research outputs.
 
 ### Category 3: Implementation / Changes
 Build. Edit. Refactor. Fix bugs.
