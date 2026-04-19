@@ -390,7 +390,7 @@ def render_topics_tree(db: JuggleDB) -> str:
         vert = "    " if is_last else "│   "
 
         tid = t["id"]
-        label = t.get("label") or tid[:8]
+        label = t.get("user_label") or t.get("label") or tid[:8]
         topic = t["topic"]
         title = t.get("title") or topic
         last_active = _humanize_dt(t.get("last_active") or "")
