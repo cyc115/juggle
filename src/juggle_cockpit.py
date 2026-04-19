@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
+# /// script
+# dependencies = [
+#   "rich",
+# ]
+# ///
 """Juggle Cockpit — three-column live terminal dashboard.
 
 Display-only. Never writes to DB. Never calls subprocess.
 
-Run:  python3 src/juggle_cockpit.py
+Run:  uv run src/juggle_cockpit.py
 Exit: Ctrl-C
 """
 
@@ -11,6 +16,7 @@ import shutil
 import signal
 import sys
 import time
+
 
 from juggle_db import JuggleDB
 from juggle_settings import get_settings as _get_settings
