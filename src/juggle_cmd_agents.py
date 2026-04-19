@@ -38,7 +38,7 @@ def cmd_set_agent(args):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
     db.update_thread(thread_uuid, agent_task_id=args.task_id, status="background")
-    label = thread.get("label") or args.thread_id
+    label = thread.get("user_label") or thread.get("label") or args.thread_id
     print(f"Thread {label} agent task set: {args.task_id}")
 
 
@@ -253,7 +253,7 @@ def cmd_check_agents(_):
     db = get_db()
     threads = db.get_all_threads()
     background = [
-        {"thread_id": t.get("label") or t["id"][:8], "task_id": t.get("agent_task_id", ""), "topic": t["topic"]}
+        {"thread_id": t.get("user_label") or t.get("label") or t["id"][:8], "task_id": t.get("agent_task_id", ""), "topic": t["topic"]}
         for t in threads
         if t["status"] == "background"
     ]
@@ -323,7 +323,7 @@ def cmd_list_agents(_):
         if a.get("assigned_thread"):
             t = db.get_thread(a["assigned_thread"])
             if t:
-                lbl = t.get("label") or ""
+                lbl = t.get("user_label") or t.get("label") or ""
                 ttl = t.get("title") or " ".join(t["topic"].split()[:5])
                 full = f"{lbl}: {ttl}" if lbl else ttl
                 topic_str = full[:35]
@@ -414,7 +414,7 @@ def cmd_release_agent(args):
     if assigned:
         thread = db.get_thread(assigned)
         if thread and thread["status"] == "background":
-            label = thread.get("label") or assigned[:8]
+            label = thread.get("user_label") or thread.get("label") or assigned[:8]
             db.update_thread(assigned, status="failed")
             db.add_notification(assigned,
                 f"[Topic {label} failed] Agent released without completing.", severity="error")
