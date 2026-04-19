@@ -48,6 +48,12 @@ def get_db() -> JuggleDB:
     return JuggleDB(str(DB_PATH))
 
 
+def _get_session_id(db) -> str:
+    with db._connect() as conn:
+        row = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+    return row["value"] if row else ""
+
+
 _FINANCE_KEYWORDS = re.compile(
     r"\$|dollar|account|routing|payment|tax|irs|refund|balance|transfer|invest|fund|\bira\b|hsa|401k|income|wage|salary|credit|debit",
     re.IGNORECASE,
@@ -172,10 +178,6 @@ def handle_user_prompt_submit(data: dict) -> None:
     auto_approve_blocked_agents()
 
     try:
-        # Increment delivery attempts for pending notifications before building context
-        db = get_db()
-        db.increment_delivery_attempts()
-
         context = build_context_string()
         if context:
             output = {
@@ -250,18 +252,14 @@ def handle_stop(data: dict) -> None:
 
                 # Violation: orchestrator asked for permission instead of acting
                 if any(re.search(p, last_msg, re.IGNORECASE) for p in _PERMISSION_ASKING_PATTERNS):
-                    db.add_notification(
+                    db.add_notification_v2(
                         thread_id,
                         "⚠️ ORCHESTRATOR: You asked for permission instead of acting. "
                         "Clear fixes → dispatch immediately. Only gate on genuine design "
                         "decisions via AskUserQuestion.",
-                        severity="warning",
+                        session_id=_get_session_id(db),
                     )
                     logging.warning("Stop: permission-asking detected in thread %s", thread_id)
-
-        pending = db.get_pending_notifications()
-        ids = [n["id"] for n in pending]
-        db.mark_notifications_delivered(ids)
     except Exception as exc:
         logging.error("Stop handler error: %s", exc, exc_info=True)
 
@@ -335,6 +333,15 @@ def handle_pre_tool_use(data: dict) -> None:
                         })
 
                     db.update_thread(thread_id, open_questions=current)
+
+                    # Create cockpit action item for this decision
+                    question_text = " / ".join(q.get("question", "") for q in questions)
+                    db.add_action_item(
+                        thread_id=thread_id,
+                        message=f"[tuid:{tool_use_id}] Decision needed: {question_text}",
+                        type_="decision",
+                        priority="normal",
+                    )
             except Exception as exc:
                 logging.warning("AskUserQuestion PreToolUse handler error: %s", exc)
 
@@ -367,6 +374,33 @@ def handle_post_tool_use(data: dict) -> None:
                 }
             }
             print(json.dumps(output))
+            sys.exit(0)
+
+        # Clear pending decisions after AskUserQuestion completes
+        if tool_name == "AskUserQuestion":
+            try:
+                db = get_db()
+                thread_id = db.get_current_thread()
+                if thread_id:
+                    tool_use_id = data.get("tool_use_id", "")
+
+                    thread = db.get_thread(thread_id)
+                    open_questions = thread.get("open_questions") or []
+                    if isinstance(open_questions, str):
+                        open_questions = json.loads(open_questions)
+
+                    open_questions = [q for q in open_questions if not q.get("id", "").startswith(tool_use_id)]
+
+                    db.update_thread(thread_id, open_questions=open_questions)
+
+                    # Dismiss cockpit action item for this decision
+                    prefix = f"[tuid:{tool_use_id}]"
+                    open_items = db.get_open_action_items()
+                    for item in open_items:
+                        if item.get("message", "").startswith(prefix):
+                            db.dismiss_action_item(item["id"])
+            except Exception as exc:
+                logging.warning("AskUserQuestion PostToolUse handler error: %s", exc)
             sys.exit(0)
 
         if tool_name != "Agent":
@@ -405,26 +439,8 @@ def handle_post_tool_use(data: dict) -> None:
                 f"Strip JUGGLE blocks before dispatching agents."
             )
             current = db.get_current_thread()
-            db.add_notification(thread_id or current or "", warning, severity="warning")
+            db.add_notification_v2(thread_id or current or "", warning, session_id=_get_session_id(db))
             logging.warning("JUGGLE ACTIVE leaked into sub-agent prompt for thread %s", thread_id)
-        # Clear pending decisions after AskUserQuestion completes
-        if tool_name == "AskUserQuestion":
-            try:
-                db = get_db()
-                thread_id = db.get_current_thread()
-                if thread_id:
-                    tool_use_id = data.get("tool_use_id", "")
-
-                    thread = db.get_thread(thread_id)
-                    open_questions = thread.get("open_questions") or []
-                    if isinstance(open_questions, str):
-                        open_questions = json.loads(open_questions)
-
-                    open_questions = [q for q in open_questions if not q.get("id", "").startswith(tool_use_id)]
-
-                    db.update_thread(thread_id, open_questions=open_questions)
-            except Exception as exc:
-                logging.warning("AskUserQuestion PostToolUse handler error: %s", exc)
 
     except Exception as exc:
         logging.error("PostToolUse handler error: %s", exc, exc_info=True)
