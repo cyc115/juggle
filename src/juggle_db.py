@@ -1133,6 +1133,14 @@ class JuggleDB:
                 return m["domain"]
         return None
 
+    def get_agent_by_thread(self, thread_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agents WHERE assigned_thread = ? AND status = 'busy' LIMIT 1",
+                (thread_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
     def get_archive_candidates(self) -> list[dict]:
         """Return threads that are candidates for archiving.
 

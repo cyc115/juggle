@@ -125,6 +125,10 @@ def cmd_complete_agent(args):
             daemon=True,
         ).start()
 
+    agent = db.get_agent_by_thread(thread_uuid)
+    if agent:
+        db.update_agent(agent["id"], status="idle", assigned_thread=None)
+
     label = thread.get("user_label") or thread.get("label") or args.thread_id
     print(f"Agent complete for Topic {label} → closed. Notification logged.")
 
@@ -191,6 +195,11 @@ def cmd_fail_agent(args):
         priority="high",
     )
     db.set_thread_status(thread_uuid, "closed")
+
+    agent = db.get_agent_by_thread(thread_uuid)
+    if agent:
+        db.update_agent(agent["id"], status="idle", assigned_thread=None)
+
     print(f"Persistent failure on Topic {label}; action_item created and thread → closed.")
 
 
@@ -219,6 +228,11 @@ def cmd_request_action(args):
         priority=priority,
     )
     db.touch_last_active(thread_uuid)
+
+    agent = db.get_agent_by_thread(thread_uuid)
+    if agent:
+        db.update_agent(agent["id"], status="idle", assigned_thread=None)
+
     label = thread.get("user_label") or thread.get("label") or args.thread_id
     print(f"Action item #{aid} logged for Topic {label} (priority={priority}).")
 
@@ -441,8 +455,7 @@ def cmd_send_task(args):
         is_new = False
 
     prompt = prompt_path.read_text()
-    release_line = f"\npython3 {SRC_DIR}/juggle_cli.py release-agent {args.agent_id}"
-    full_prompt = prompt.rstrip() + release_line
+    full_prompt = prompt.rstrip()
 
     now = datetime.now(timezone.utc).isoformat()
     db.update_agent(args.agent_id, last_active=now)
