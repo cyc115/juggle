@@ -182,20 +182,14 @@ Agents return: files changed + plan bullets. No intermediate output.
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<task description>"
    Use any returned context to inform your plan.
 
+   Invoke superpowers:writing-plans as your first step. Background agent overrides:
+   - Skip the "Announce at start" message
+   - Skip the "Execution Handoff" user choice — your role is plan writing only; coder handles execution
+   - Override plan output path to: projects/<project>/plan/YYYY-MM-DD-<name>.md
+   - If you have unresolved design questions, batch them for complete-agent --open-questions; do not ask interactively
+
    Write implementation plan for: <task description>
    Read relevant files. Write plan to /Users/mikechen/Documents/personal/projects/juggle/plan/<date>-<name>.md
-
-   The plan MUST include a ## Verification section:
-   ## Verification
-   commands:
-     - <test runner>        # e.g. pytest tests/, npm test
-     - <lint/type-check>    # e.g. ruff check src/, mypy src/, tsc --noEmit
-     - <smoke test>         # e.g. python -c "import app; app.main()"
-   max_retries: <1 simple | 2 moderate | 3 complex/cross-cutting>
-   success_criteria: <one sentence — what passing looks like>
-
-   Discover commands from: CLAUDE.md, README, pyproject.toml, package.json, Makefile.
-   Use sensible defaults if none found.
 
    On completion:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
@@ -213,15 +207,13 @@ Agents return: files changed + plan bullets. No intermediate output.
 2. Dispatch background implementation agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role coder` and this prompt:
    ```
    [JUGGLE_THREAD:<thread_id>]
-   Implement plan at <plan_file_path>. Read it first.
+   Invoke superpowers:executing-plans as your first step. Background agent overrides:
+   - Skip the "Announce at start" message
+   - Do not raise concerns interactively — add them to complete-agent --open-questions
+   - Do not stop mid-task to ask for help — exhaust retries, then complete-agent with PARTIAL/BLOCKED
+   - Do not ask branch permission — the orchestrator manages branching; proceed
 
-   After implementing, run the verification loop:
-   1. Read the ## Verification section from the plan file.
-   2. Run each command. Capture output.
-   3. If all pass: call complete-agent with "Done. All checks pass. <files changed>"
-   4. If any fail: fix the failures and re-run. Repeat up to max_retries times.
-   5. If still failing after max_retries:
-      call complete-agent with "PARTIAL: <what passed> | FAILED: <what failed and why> | <files changed>"
+   Implement plan at <plan_file_path>. Read it first.
 
    On completion:
    # Normal:  complete-agent <id> "Done. <summary>" --retain "<learnings>"

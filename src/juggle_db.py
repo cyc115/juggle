@@ -1002,6 +1002,8 @@ class JuggleDB:
         def _score(agent: dict) -> tuple:
             context = json.loads(agent.get("context_threads") or "[]")
             s = 0
+            if agent.get("assigned_thread") == thread_id:
+                s += 3
             if thread_id in context:
                 s += 2
             if role and agent["role"] == role:
