@@ -81,8 +81,6 @@ def cmd_start(_):
             db.set_current_thread(most_recent["id"])
         from juggle_context import build_startup_output
         print(build_startup_output(db))
-    print("- `/juggle:show-topics` — all open topics")
-    print("- `/juggle:resume-topic <id>` — switch topic")
 
 
 def cmd_stop(_):

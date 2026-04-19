@@ -446,8 +446,6 @@ def render_topics_tree(db: JuggleDB) -> str:
         if not is_last:
             output_lines.append("│")
 
-    output_lines.append("")
-    output_lines.append('Use "/juggle:resume-topic <id>" to switch topics, or just keep talking.')
 
     return "\n".join(output_lines)
 
