@@ -236,11 +236,11 @@ def snapshot(db) -> CockpitState:
         topic_label = ""
         if r["thread_id"]:
             t_row = conn.execute(
-                "SELECT user_label, label, id FROM threads WHERE id = ?",
+                "SELECT user_label, id FROM threads WHERE id = ?",
                 (r["thread_id"],),
             ).fetchone()
             if t_row:
-                topic_label = t_row["user_label"] or t_row["label"] or (t_row["id"] or "")[:6]
+                topic_label = t_row["user_label"] or (t_row["id"] or "")[:6]
         actions.append(Action(
             id=f"ai:{r['id']}",
             topic_id=topic_label,
@@ -271,11 +271,11 @@ def snapshot(db) -> CockpitState:
         topic_label_a: str | None = None
         if r["assigned_thread"]:
             tr = conn.execute(
-                "SELECT user_label, label FROM threads WHERE id = ?",
+                "SELECT user_label, id FROM threads WHERE id = ?",
                 (r["assigned_thread"],),
             ).fetchone()
             if tr:
-                topic_label_a = tr["user_label"] or tr["label"]
+                topic_label_a = tr["user_label"] or (tr["id"] or "")[:6]
         agents.append(Agent(
             id_short=a_id[:8],
             role=role,
