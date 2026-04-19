@@ -1,4 +1,7 @@
 """Tests for Task 7 auto-archive hook."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from datetime import datetime, timezone, timedelta
 import pytest
 from juggle_db import JuggleDB
