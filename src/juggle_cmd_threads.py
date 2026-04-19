@@ -308,14 +308,15 @@ def cmd_update_summary(args):
 
 
 def cmd_close_thread(args):
-    db = get_db()
-    thread_uuid = _resolve_thread(db, args.thread_id)
+    import juggle_cli_common as _common
+    db = _common.get_db()
+    thread_uuid = _common._resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
-    label = thread.get("label") or args.thread_id
-    db.update_thread(thread_uuid, status="done")
+    label = thread.get("user_label") or thread.get("label") or args.thread_id
+    db.set_thread_status(thread_uuid, "closed")
     print(f"Thread {label} ({thread['topic']}) closed.")
 
 
@@ -339,29 +340,25 @@ def _sort_key_for_topic(thread: dict, current_id: str, db) -> tuple:
 
 
 def _cleanup_orphaned_threads(db) -> None:
-    """Mark background threads with no busy agent as failed."""
+    """Find 'running' threads with no busy agent; convert each to closed + action_item."""
     with db._connect() as conn:
         orphans = conn.execute(
             """
-            SELECT t.id, t.label FROM threads t
-            WHERE t.status = 'background'
+            SELECT t.id, t.user_label, t.label, t.topic FROM threads t
+            WHERE t.status = 'running'
             AND NOT EXISTS (
                 SELECT 1 FROM agents a WHERE a.assigned_thread = t.id AND a.status = 'busy'
             )
             """
         ).fetchall()
-        for t in orphans:
-            label = t["label"] or t["id"][:8]
-            conn.execute(
-                "UPDATE threads SET status = 'failed' WHERE id = ?",
-                (t["id"],),
-            )
-        conn.commit()
-    for t in orphans:
-        label = t["label"] or t["id"][:8]
-        db.add_notification(t["id"],
-            f"[Topic {label} failed] No agent assigned — orphaned thread cleaned up.",
-            severity="error")
+    for o in orphans:
+        db.add_action_item(
+            thread_id=o["id"],
+            message=f"orphaned running thread ({o['topic']}) — no busy agent. Review.",
+            type_="failure",
+            priority="high",
+        )
+        db.set_thread_status(o["id"], "closed")
 
 
 def cmd_show_topics(_):

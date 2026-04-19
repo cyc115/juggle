@@ -48,6 +48,9 @@ from juggle_cmd_agents import (
     cmd_release_agent,
     cmd_decommission_agent,
     cmd_send_task,
+    cmd_request_action,
+    cmd_ack_action,
+    cmd_list_actions,
 )
 
 from juggle_cmd_context import (
@@ -242,9 +245,33 @@ def main():
 
     # fail-agent
     p_fail = subparsers.add_parser("fail-agent", help="Mark agent task as failed")
-    p_fail.add_argument("thread_id", help="Thread ID")
+    p_fail.add_argument("thread_id", help="Thread ID or label")
     p_fail.add_argument("error", help="Error description")
+    p_fail.add_argument("--type", dest="failure_type",
+                        choices=["transient", "persistent"], default=None,
+                        help="Override auto-classification (transient/persistent)")
+    p_fail.add_argument("--max-retries", dest="max_retries", type=int, default=0,
+                        help="Retry budget for transient failures (orchestrator uses)")
     p_fail.set_defaults(func=cmd_fail_agent)
+
+    # request-action
+    p_req = subparsers.add_parser("request-action", help="Create a persistent action item")
+    p_req.add_argument("thread_id", help="Thread ID or label")
+    p_req.add_argument("message", help="Action required text")
+    p_req.add_argument("--type", dest="type", default="manual_step",
+                       choices=["question", "manual_step", "decision", "failure"])
+    p_req.add_argument("--priority", dest="priority", default="normal",
+                       choices=["low", "normal", "high"])
+    p_req.set_defaults(func=cmd_request_action)
+
+    # ack-action
+    p_ack = subparsers.add_parser("ack-action", help="Dismiss an action item")
+    p_ack.add_argument("action_id", help="Action item integer id")
+    p_ack.set_defaults(func=cmd_ack_action)
+
+    # list-actions
+    p_list_actions = subparsers.add_parser("list-actions", help="List open action items")
+    p_list_actions.set_defaults(func=cmd_list_actions)
 
     # check-agents
     p_check = subparsers.add_parser("check-agents", help="List background agents as JSON")

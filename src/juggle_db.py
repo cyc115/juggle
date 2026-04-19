@@ -854,6 +854,81 @@ class JuggleDB:
         return stale
 
     # ------------------------------------------------------------------
+    # Notifications v2 (session-scoped, spec schema)
+    # ------------------------------------------------------------------
+
+    def add_notification_v2(self, thread_id, message: str, session_id: str) -> int:
+        """Insert a notifications_v2 row. Returns new id."""
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO notifications_v2 (thread_id, message, created_at, session_id) "
+                "VALUES (?, ?, ?, ?)",
+                (thread_id, message, now, session_id),
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def get_notifications_for_session(self, session_id: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, thread_id, message, created_at, session_id "
+                "FROM notifications_v2 WHERE session_id = ? ORDER BY id DESC",
+                (session_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def clear_notifications_v2_for_other_sessions(self, current_session_id: str) -> int:
+        """Delete notifications_v2 whose session_id != current. Returns rows deleted."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM notifications_v2 WHERE session_id != ?",
+                (current_session_id,),
+            )
+            conn.commit()
+            return cur.rowcount
+
+    # ------------------------------------------------------------------
+    # Action items
+    # ------------------------------------------------------------------
+
+    def add_action_item(self, thread_id, message: str,
+                        type_: str, priority: str = "normal") -> int:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO action_items (thread_id, message, type, priority, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (thread_id, message, type_, priority, now),
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def get_open_action_items(self) -> list[dict]:
+        """Open action items ordered by (priority: high > normal > low), then created_at DESC."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, thread_id, message, type, priority, created_at, dismissed_at
+                FROM action_items
+                WHERE dismissed_at IS NULL
+                ORDER BY
+                  CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+                  created_at DESC
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def dismiss_action_item(self, action_id: int) -> None:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE action_items SET dismissed_at = ? WHERE id = ?",
+                (now, action_id),
+            )
+            conn.commit()
+
+    # ------------------------------------------------------------------
     # Archive operations
     # ------------------------------------------------------------------
 
