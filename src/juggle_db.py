@@ -476,10 +476,23 @@ class JuggleDB:
             rows = conn.execute("SELECT id, status FROM threads").fetchall()
             active_count = sum(1 for row in rows if row["status"] != "archived")
             if active_count >= MAX_THREADS:
-                raise ValueError(
-                    f"Maximum of {MAX_THREADS} threads already exist. "
-                    "Archive or complete a thread before creating a new one."
-                )
+                candidates = self.get_archive_candidates()
+                if candidates:
+                    cmds = ", ".join(
+                        f"[{t.get('user_label') or t.get('label')}] "
+                        f"{(t.get('title') or t.get('topic') or '')[:40]}"
+                        f" → archive-thread {t.get('user_label') or t.get('label')}"
+                        for t in candidates[:5]
+                    )
+                    raise ValueError(
+                        f"Maximum of {MAX_THREADS} threads already exist. "
+                        f"Archivable: {cmds}"
+                    )
+                else:
+                    raise ValueError(
+                        f"Maximum of {MAX_THREADS} threads already exist. "
+                        "No immediate candidates — close or archive a thread manually."
+                    )
             new_id = str(uuid.uuid4())
             label = _assign_label(conn)
             # Excel-style user label (base-26, never reassigned)
