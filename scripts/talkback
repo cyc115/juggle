@@ -18,8 +18,24 @@ _playback_lock = threading.Lock()
 _current_event: threading.Event | None = None  # set → stop
 
 
-_device: int | str | None = None  # set at startup via --device
 _last_device: int | str | None = None
+
+_HEADPHONE_KEYWORDS = ["WH-", "WF-", "AirPods", "Headphones", "Headset", "Buds", "PL focus"]
+_FALLBACK_DEVICE = "MacBook Pro Speakers"
+
+
+def _pick_device() -> str | None:
+    """Return the name of the first connected headphone output, or the MacBook speakers."""
+    try:
+        devices = sd.query_devices()
+        for d in devices:
+            if d["max_output_channels"] > 0:
+                for kw in _HEADPHONE_KEYWORDS:
+                    if kw.lower() in d["name"].lower():
+                        return d["name"]
+    except Exception:
+        pass
+    return _FALLBACK_DEVICE
 
 
 def _try_play(audio: np.ndarray, samplerate: int, device: int | str | None) -> None:
@@ -69,7 +85,7 @@ def _play_audio(audio: np.ndarray, samplerate: int = 24000) -> None:
     global _last_device
 
     # Build deduplicated fallback chain preserving order; treat all None as one slot
-    raw_chain = [_last_device, _device, None, "MacBook Pro Speakers"]
+    raw_chain = [_last_device, _pick_device(), "MacBook Pro Speakers"]
     seen_none = False
     chain: list[int | str | None] = []
     for dev in raw_chain:
@@ -141,7 +157,7 @@ def speak(text: str, voice: str = "af_heart", speed: float = 1.0) -> None:
 # HTTP server (Flask)
 # ---------------------------------------------------------------------------
 
-def run_server(port: int, voice: str, speed: float, device: int | str | None = None) -> None:
+def run_server(port: int, voice: str, speed: float) -> None:
     from flask import Flask, request, jsonify
 
     app = Flask(__name__)
@@ -170,12 +186,9 @@ def run_server(port: int, voice: str, speed: float, device: int | str | None = N
         t.start()
         return jsonify({"status": "speaking"})
 
-    global _device
-    _device = device
     print(f"[talkback] Loading Kokoro model...")
     _get_pipeline()
-    dev_label = f"device={device}" if device is not None else "system default"
-    print(f"[talkback] Listening on http://localhost:{port} ({dev_label})")
+    print(f"[talkback] Listening on http://localhost:{port} (auto device)")
     app.run(host="127.0.0.1", port=port, threaded=True)
 
 
@@ -190,8 +203,6 @@ def main():
                         help="Start HTTP server on PORT (default: 18787)")
     parser.add_argument("--speed", type=float, default=1.0, help="Speech speed (default: 1.0)")
     parser.add_argument("--voice", type=str, default="af_heart", help="Voice ID (default: af_heart)")
-    parser.add_argument("--device", type=str, default=None, metavar="DEVICE",
-                        help="Output device name or index (default: system default). Use --list-devices to see options.")
     parser.add_argument("--list-devices", action="store_true", help="List available audio output devices and exit")
     args = parser.parse_args()
 
@@ -199,15 +210,8 @@ def main():
         print(sd.query_devices())
         sys.exit(0)
 
-    device: int | str | None = None
-    if args.device is not None:
-        try:
-            device = int(args.device)
-        except ValueError:
-            device = args.device
-
     if args.listen is not None:
-        run_server(port=args.listen, voice=args.voice, speed=args.speed, device=device)
+        run_server(port=args.listen, voice=args.voice, speed=args.speed)
     elif args.text:
         speak(args.text, voice=args.voice, speed=args.speed)
     else:
