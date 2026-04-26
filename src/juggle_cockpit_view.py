@@ -71,27 +71,27 @@ def build_layout(bp: str) -> Layout:
 
     Wide (>=120):
         root (horizontal)
-        ├── topics   (ratio=30, full height)
-        └── right    (ratio=70, vertical)
-            ├── upper (ratio=70, horizontal)
-            │   ├── actions (ratio=50)
-            │   └── agents  (ratio=50)
-            └── notifications (ratio=30)
+        ├── topics   (ratio=t_ratio, full height)
+        └── right    (ratio=a_ratio+ag_ratio, vertical)
+            ├── upper (ratio=100-notif_ratio, horizontal)
+            │   ├── actions (ratio=a_ratio)
+            │   └── agents  (ratio=ag_ratio)
+            └── notifications (ratio=notif_ratio)
 
     Medium (80-119):
         root (vertical)
-        ├── upper (ratio=60, horizontal)
+        ├── upper (ratio=100-notif_ratio, horizontal)
         │   ├── actions (ratio=60)
         │   └── agents  (ratio=40)
         ├── topics_strip (size=3)
-        └── notifications (ratio=20)
+        └── notifications (ratio=notif_ratio)
 
     Narrow (<80):
         root (vertical)
-        ├── actions       (ratio=40)
-        ├── agents        (ratio=30)
+        ├── actions       (ratio=int((100-notif_ratio)*4/7))
+        ├── agents        (ratio=(100-notif_ratio)-actions_ratio)
         ├── topics_strip  (size=3)
-        └── notifications (ratio=30)
+        └── notifications (ratio=notif_ratio)
     """
     notif_ratio = get_nested("cockpit", "notification_ratio")
     col_ratios = get_nested("cockpit", "column_ratios") or [0.30, 0.40, 0.30]
@@ -99,6 +99,7 @@ def build_layout(bp: str) -> Layout:
     t_ratio = int(col_ratios[0] * 100)
     a_ratio = int(col_ratios[1] * 100)
     ag_ratio = int(col_ratios[2] * 100)
+    upper_ratio = 100 - notif_ratio
 
     if bp == "wide":
         root = Layout(name="root")
@@ -107,7 +108,7 @@ def build_layout(bp: str) -> Layout:
             Layout(name="right", ratio=a_ratio + ag_ratio),
         )
         root["right"].split_column(
-            Layout(name="upper", ratio=70),
+            Layout(name="upper", ratio=upper_ratio),
             Layout(name="notifications", ratio=notif_ratio),
         )
         root["right"]["upper"].split_row(
@@ -119,7 +120,7 @@ def build_layout(bp: str) -> Layout:
     elif bp == "medium":
         root = Layout(name="root")
         root.split_column(
-            Layout(name="upper", ratio=60),
+            Layout(name="upper", ratio=upper_ratio),
             Layout(name="topics_strip", size=3),
             Layout(name="notifications", ratio=notif_ratio),
         )
@@ -130,10 +131,12 @@ def build_layout(bp: str) -> Layout:
         return root
 
     else:  # narrow
+        actions_ratio = int(upper_ratio * 4 / 7)
+        agents_ratio = upper_ratio - actions_ratio
         root = Layout(name="root")
         root.split_column(
-            Layout(name="actions", ratio=40),
-            Layout(name="agents", ratio=30),
+            Layout(name="actions", ratio=actions_ratio),
+            Layout(name="agents", ratio=agents_ratio),
             Layout(name="topics_strip", size=3),
             Layout(name="notifications", ratio=notif_ratio),
         )
