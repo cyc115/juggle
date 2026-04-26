@@ -121,7 +121,8 @@ def cmd_complete_agent(args):
     )
 
     # 6a. Researcher completions → action item for review
-    if agent and agent.get("role") == "researcher":
+    role = (agent.get("role") if agent else None) or getattr(args, "role", None)
+    if role == "researcher":
         db.add_action_item(
             thread_id=thread_uuid,
             message=f"Review: {args.result_summary}",

@@ -221,6 +221,13 @@ def main():
         default=None,
         help="JSON array of pending questions from planner",
     )
+    p_complete.add_argument(
+        "--role",
+        dest="role",
+        default=None,
+        choices=["researcher", "coder", "planner"],
+        help="Agent role override (used when agent was not registered via get-agent)",
+    )
     p_complete.set_defaults(func=cmd_complete_agent)
 
     # fail-agent
