@@ -66,7 +66,7 @@ def pick_breakpoint(size) -> str:
 # Layout builder
 # ---------------------------------------------------------------------------
 
-def build_layout(bp: str) -> Layout:
+def build_layout(bp: str, topics_count: int = 0) -> Layout:
     """Build a Rich Layout tree for the given breakpoint.
 
     Wide (>=120):
@@ -83,14 +83,14 @@ def build_layout(bp: str) -> Layout:
         ├── upper (ratio=100-notif_ratio, horizontal)
         │   ├── actions (ratio=60)
         │   └── agents  (ratio=40)
-        ├── topics_strip (size=3)
+        ├── topics_strip (size=topics_count+2, min 3)
         └── notifications (ratio=notif_ratio)
 
     Narrow (<80):
         root (vertical)
         ├── actions       (ratio=int((100-notif_ratio)*4/7))
         ├── agents        (ratio=(100-notif_ratio)-actions_ratio)
-        ├── topics_strip  (size=3)
+        ├── topics_strip  (size=topics_count+2, min 3)
         └── notifications (ratio=notif_ratio)
     """
     notif_ratio = get_nested("cockpit", "notification_ratio")
@@ -100,6 +100,7 @@ def build_layout(bp: str) -> Layout:
     a_ratio = int(col_ratios[1] * 100)
     ag_ratio = int(col_ratios[2] * 100)
     upper_ratio = 100 - notif_ratio
+    strip_size = max(3, topics_count + 2)
 
     if bp == "wide":
         root = Layout(name="root")
@@ -121,7 +122,7 @@ def build_layout(bp: str) -> Layout:
         root = Layout(name="root")
         root.split_column(
             Layout(name="upper", ratio=upper_ratio),
-            Layout(name="topics_strip", size=3),
+            Layout(name="topics_strip", size=strip_size),
             Layout(name="notifications", ratio=notif_ratio),
         )
         root["upper"].split_row(
@@ -137,7 +138,7 @@ def build_layout(bp: str) -> Layout:
         root.split_column(
             Layout(name="actions", ratio=actions_ratio),
             Layout(name="agents", ratio=agents_ratio),
-            Layout(name="topics_strip", size=3),
+            Layout(name="topics_strip", size=strip_size),
             Layout(name="notifications", ratio=notif_ratio),
         )
         return root
@@ -177,13 +178,26 @@ def render_topics(topics: list[Topic], bp: str) -> Panel:
         return Panel(table, title="Topics", border_style="dim")
 
     else:
-        # Strip mode for medium and narrow
-        parts = []
+        # Vertical list for medium and narrow — one row per topic
+        table = Table.grid(padding=(0, 1))
+        table.add_column("glyph", no_wrap=True)
+        table.add_column("label", no_wrap=True)
+        table.add_column("title", no_wrap=False, overflow="fold")
         for t in topics:
             glyph = TOPIC_STATUS_GLYPHS.get(t.status, "•")
-            parts.append(f"{glyph}{t.label}")
-        strip_text = Text("  ".join(parts))
-        return Panel(strip_text, title="Topics", border_style="dim", height=3)
+            label_str = f"[{t.label}]"
+            if t.is_current:
+                style = Style(bold=True, color="white")
+            elif t.status in ("done", "closed", "archived"):
+                style = Style(dim=True)
+            else:
+                style = Style()
+            table.add_row(
+                Text(glyph),
+                Text(label_str, style=style),
+                Text(t.title or t.label, style=style),
+            )
+        return Panel(table, title="Topics", border_style="dim")
 
 
 def render_actions(actions: list[Action]) -> Panel:
