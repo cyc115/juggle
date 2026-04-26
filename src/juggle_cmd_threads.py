@@ -330,7 +330,9 @@ def cmd_close_thread(args):
         sys.exit(1)
     label = thread.get("user_label") or thread.get("label") or args.thread_id
     db.set_thread_status(thread_uuid, "closed")
-    print(f"Thread {label} ({thread['topic']}) closed.")
+    dismissed = db.dismiss_action_items_for_thread(thread_uuid)
+    suffix = f" ({dismissed} action item{'s' if dismissed != 1 else ''} closed)" if dismissed else ""
+    print(f"Thread {label} ({thread['topic']}) closed.{suffix}")
 
 
 def _sort_key_for_topic(thread: dict, current_id: str, db) -> tuple:

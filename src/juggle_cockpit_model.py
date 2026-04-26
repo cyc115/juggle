@@ -294,13 +294,19 @@ def snapshot(db) -> CockpitState:
     try:
         notif_rows = conn.execute(
             """
-            SELECT message, created_at FROM notifications_v2
-            WHERE session_id = ? ORDER BY id DESC LIMIT 20
+            SELECT n.message, n.created_at, t.user_label
+            FROM notifications_v2 n
+            LEFT JOIN threads t ON t.id = n.thread_id
+            WHERE n.session_id = ? ORDER BY n.id DESC LIMIT 20
             """,
             (session_id,),
         ).fetchall()
         notifications: list[Notification] = [
-            Notification(text=r["message"], kind="info", age_secs=_age_secs(r["created_at"]))
+            Notification(
+                text=f"[{r['user_label']}] {r['message']}" if r["user_label"] else r["message"],
+                kind="info",
+                age_secs=_age_secs(r["created_at"]),
+            )
             for r in notif_rows
         ]
     except Exception:

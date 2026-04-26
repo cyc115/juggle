@@ -879,6 +879,17 @@ class JuggleDB:
             )
             conn.commit()
 
+    def dismiss_action_items_for_thread(self, thread_id: str) -> int:
+        """Dismiss all open action items for thread_id. Returns count dismissed."""
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE action_items SET dismissed_at = ? WHERE thread_id = ? AND dismissed_at IS NULL",
+                (now, thread_id),
+            )
+            conn.commit()
+            return cursor.rowcount
+
     # ------------------------------------------------------------------
     # Archive operations
     # ------------------------------------------------------------------
