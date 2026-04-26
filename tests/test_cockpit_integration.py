@@ -101,7 +101,7 @@ def test_tick_returns_tuple():
     conn = _make_in_memory_db()
     db = _FakeDB(conn)
     size = Size(140, 40)
-    layout, bp = tick(db, size, None, None)
+    layout, bp, topics_count = tick(db, size, None, None)
     assert isinstance(layout, Layout)
     assert bp in ("wide", "medium", "narrow")
 
@@ -110,8 +110,8 @@ def test_tick_reuses_layout_when_bp_unchanged():
     conn = _make_in_memory_db()
     db = _FakeDB(conn)
     size = Size(140, 40)
-    layout1, bp1 = tick(db, size, None, None)
-    layout2, bp2 = tick(db, size, layout1, bp1)
+    layout1, bp1, tc1 = tick(db, size, None, None)
+    layout2, bp2, tc2 = tick(db, size, layout1, bp1, tc1)
     assert layout1 is layout2  # same object reused
     assert bp1 == bp2
 
@@ -119,8 +119,8 @@ def test_tick_reuses_layout_when_bp_unchanged():
 def test_tick_rebuilds_layout_when_bp_changes():
     conn = _make_in_memory_db()
     db = _FakeDB(conn)
-    layout_wide, bp_wide = tick(db, Size(140, 40), None, None)
-    layout_medium, bp_medium = tick(db, Size(90, 40), layout_wide, bp_wide)
+    layout_wide, bp_wide, tc_wide = tick(db, Size(140, 40), None, None)
+    layout_medium, bp_medium, tc_medium = tick(db, Size(90, 40), layout_wide, bp_wide, tc_wide)
     assert bp_wide == "wide"
     assert bp_medium == "medium"
     assert layout_wide is not layout_medium

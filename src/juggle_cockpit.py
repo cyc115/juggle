@@ -30,23 +30,25 @@ _last_reap_time = 0
 # Rich-based tick — model/view layer (Tasks 13-14)
 # ---------------------------------------------------------------------------
 
-def tick(db, size, prev_layout, prev_bp):
+def tick(db, size, prev_layout, prev_bp, prev_topics_count=0):
     """One cockpit tick: snapshot DB → pick breakpoint → render into layout.
 
-    Returns (layout, bp). Reuses prev_layout when breakpoint is unchanged.
+    Returns (layout, bp, topics_count). Reuses prev_layout when breakpoint
+    and topic count are both unchanged.
     """
     from juggle_cockpit_model import snapshot as _snapshot
     from juggle_cockpit_view import pick_breakpoint as _pick_bp, build_layout as _build_layout, render_into as _render_into
 
     bp = _pick_bp(size)
-    if prev_layout is None or prev_bp != bp:
-        layout = _build_layout(bp)
+    state = _snapshot(db)
+    topics_count = len(state.topics) if state is not None else 0
+    if prev_layout is None or prev_bp != bp or prev_topics_count != topics_count:
+        layout = _build_layout(bp, topics_count)
     else:
         layout = prev_layout
 
-    state = _snapshot(db)
     _render_into(layout, state, bp)
-    return layout, bp
+    return layout, bp, topics_count
 
 
 def _throttled_reaper(db, mgr, throttle_secs=60):
@@ -98,6 +100,7 @@ def run(db_path: str | None = None) -> None:
 
     layout = None
     bp = None
+    topics_count = 0
     console = Console()
 
     with Live(console=console, screen=True, refresh_per_second=1) as live:
@@ -106,7 +109,7 @@ def run(db_path: str | None = None) -> None:
                 size = console.size
                 if _cockpit_mgr is not None:
                     _throttled_reaper(db, _cockpit_mgr)
-                layout, bp = tick(db, size, layout, bp)
+                layout, bp, topics_count = tick(db, size, layout, bp, topics_count)
                 live.update(layout)
             except Exception as e:
                 from rich.text import Text
