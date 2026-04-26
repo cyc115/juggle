@@ -8,50 +8,54 @@ allowed-tools: Read, Glob, Grep, Bash, Agent, Edit, Write
 ## Activation
 
 Run:
+
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py start
 ```
 
 Auto-create Topic A from first substantive message:
+
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<topic label>"
 ```
 
----
+______________________________________________________________________
 
 ## CLI Quick Reference
 
 All commands: `python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <cmd> [args]`
 
-| Command | Usage |
-|---------|-------|
-| `create-thread <label>` | New topic thread |
-| `switch-thread <id>` | Switch active topic |
-| `show-topics` | List all threads |
-| `close-thread <id>` | Mark thread done |
-| `archive-thread <id>` | Archive thread |
-| `get-agent <thread_id> --role <role> [--model <model>]` | Get idle agent (spawns if needed). Roles: `researcher`, `planner`, `coder`. Models: `sonnet` (default), `haiku`, `opus` |
-| `send-task <agent_id> <prompt_file>` | Send task file to agent pane |
-| `complete-agent <thread_id> "<result>"` | Mark agent task done + notify. Researcher role → auto-creates review action item (do NOT call `request-action` separately) |
-| `fail-agent <id> "<error>"` | Unrecoverable failure → HIGH action item + close thread |
-| `fail-agent <id> "<error>" --recovery-dispatched` | Recovery in progress → notify + dismiss old actions, thread stays running |
-| `release-agent <agent_id>` | Return agent to idle pool |
-| `list-agents` | Show all agents with status |
-| `notify <thread_id> "<msg>"` | Surface mid-task status to cockpit notifications |
-| `update-summary <id> "<text>"` | Update thread summary |
-| `get-messages <id> --plain --limit N` | Read thread messages |
-| `get-archive-candidates` | List archivable threads |
+| Command                                                 | Usage                                                                                                                      |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `create-thread <label>`                                 | New topic thread                                                                                                           |
+| `switch-thread <id>`                                    | Switch active topic                                                                                                        |
+| `show-topics`                                           | List all threads                                                                                                           |
+| `close-thread <id>`                                     | Mark thread done                                                                                                           |
+| `archive-thread <id>`                                   | Archive thread                                                                                                             |
+| `get-agent <thread_id> --role <role> [--model <model>]` | Get idle agent (spawns if needed). Roles: `researcher`, `planner`, `coder`. Models: `sonnet` (default), `haiku`, `opus`    |
+| `send-task <agent_id> <prompt_file>`                    | Send task file to agent pane                                                                                               |
+| `complete-agent <thread_id> "<result>"`                 | Mark agent task done + notify. Researcher role → auto-creates review action item (do NOT call `request-action` separately) |
+| `fail-agent <id> "<error>"`                             | Unrecoverable failure → HIGH action item + close thread                                                                    |
+| `fail-agent <id> "<error>" --recovery-dispatched`       | Recovery in progress → notify + dismiss old actions, thread stays running                                                  |
+| `release-agent <agent_id>`                              | Return agent to idle pool                                                                                                  |
+| `list-agents`                                           | Show all agents with status                                                                                                |
+| `notify <thread_id> "<msg>"`                            | Surface mid-task status to cockpit notifications                                                                           |
+| `update-summary <id> "<text>"`                          | Update thread summary                                                                                                      |
+| `get-messages <id> --plain --limit N`                   | Read thread messages                                                                                                       |
+| `get-archive-candidates`                                | List archivable threads                                                                                                    |
 
 **Do NOT use:** `spawn-agent` directly — always use `get-agent` (handles pool reuse).
 
----
+______________________________________________________________________
 
 ## Task Classification (every message)
 
 Classify before responding. Never do inline implementation. Always use agents.
 
 ### Category 0: Feature Discussion
+
 User proposes a new feature or idea.
+
 - Start with clarifying questions (simple design) or invoke brainstorming skill (unclear/needs fleshing out)
 - All discussion stays in main thread — not delegated
 - Once requirements are clear: dispatch researcher to research and draft design doc
@@ -59,51 +63,59 @@ User proposes a new feature or idea.
 - After subagent completes: open the written file for user to review inline
 
 ### Category 1: Conversation / Question
+
 Simple questions. Short answers.
 **Route**: Answer directly. No agent.
 
 Examples: "what does this file do?", "show me my topics"
 
 ### Category 1.5: Simple File Operation
+
 Write/read/check a file.
 **Route**: Background agent. Returns: path + result only.
 
 Examples: "write plan to plan directory", "check if file X exists"
 
 ### Category 2: Research / Investigation
+
 Explore codebase. Gather context.
 **Route**: Background research agent. Main thread: result summary only.
 Researcher agents always call `complete-agent` — the system auto-creates a review action item. Do not call `request-action` manually for research outputs.
 
 ### Category 3: Implementation / Changes
+
 Build. Edit. Refactor. Fix bugs.
 **Route**: Two-phase background dispatch — plan, then implement after approval. Main thread: plan bullets + final status only.
 
 ### Topic Creation Rule
 
 Topics (threads) are created **only** when the orchestrator dispatches persistent work via:
+
 - `juggle_cli.py get-agent` to reserve a background worker
 - `send-task` to enqueue the work
 
 **Do NOT create topics for:**
+
 - Ad-hoc Bash `run_in_background` experiments
 - One-shot tool calls (WebFetch, Grep, etc.)
 - Conversational exchanges without orchestrator dispatch
 
 **Why:** Topics represent orchestrator-managed work with persistent state. Ad-hoc exploration pollutes the thread list and confuses cockpit visibility.
 
----
+______________________________________________________________________
 
 ## Orchestrator Rules
 
 Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When in doubt: dispatch an agent.
 
 **Implementation Gate (STRICT):**
+
 - **Clear fix** (editing a file, applying a proposed change, adding a rule): dispatch immediately. NEVER ask "Want me to apply this?", "Shall I implement this?", "Should I apply this?" — just do it.
 - **Genuine design decision** (architecture trade-off, behavior change with no obvious answer): surface via AskUserQuestion UI.
 - Catch yourself before writing "Want me to" or "Shall I" — if you can classify it as a clear fix, that phrase means you're about to violate the gate.
 
 **Parallel decomposition** — for complex tasks:
+
 - Break into independent components before dispatching
 - Identify which components have no dependency on each other → those run in parallel
 - Dispatch all independent agents in a single response; do not wait between them
@@ -111,21 +123,35 @@ Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When i
 - Delegate all file reads, writes, and complex execution to sub-agents
 
 **Proactive problem solving** — when an agent surfaces a blocker or open question:
+
 - Do not relay it to the user bare — attempt to solve it first
 - Dispatch a research agent if more context is needed; tell user: `"Open question on Y — researching before I bring this to you."`
 - Present to user only after forming an educated suggestion or recommendation
 
 **Devil's Advocate action items** — when devil's advocate is run (in main thread or via agent) and surfaces design decisions:
+
 - For each 🔴 design decision requiring user input: call `request-action` with tier 2 (open question), even if the discussion happened in the main thread
 - For each 🟡 auto-resolved item: no action item needed — resolve inline and note resolution in thread summary
 - This applies whether DA was triggered by the orchestrator, a planner agent, or user-invoked skill
 
 Example:
+
 ```bash
 python3 juggle_cli.py request-action <thread_id> "DA finding: <decision description>" --tier 2
 ```
 
----
+**Code Review Protocol (mandatory):**
+
+- Code reviews MUST be dispatched as a background Agent with `subagent_type: superpowers:code-reviewer` — NEVER run inline in the main thread
+- Dispatch pattern:
+  ```python
+  Agent(subagent_type="superpowers:code-reviewer", run_in_background=True, prompt="...")
+  ```
+- Include in the prompt: what was implemented, BASE_SHA, HEAD_SHA, plan/requirements, and (for lifeos PRs) the mandatory lifeos-mike-infra compatibility checks
+- After dispatching: tell the user `"Code review running in background — [Topic X] running. What else?"` and continue
+- When review completes: surface findings by severity (Critical → Important → Minor), then ask if a coder should fix the issues
+
+______________________________________________________________________
 
 ## Category 3: Major Project — Superpowers Workflow Split
 
@@ -134,21 +160,25 @@ python3 juggle_cli.py request-action <thread_id> "DA finding: <decision descript
 **Flow:**
 
 1. **Spec/Brainstorm (main thread)**
+
    - User invokes superpowers:brainstorming skill
    - Output: `/projects/<project>/specs/YYYY-MM-DD-<name>.md`
 
-2. **Plan (background planner agent)**
+1. **Plan (background planner agent)**
+
    - Orchestrator dispatches planner agent with spec path
    - Agent invokes superpowers:writing-plans skill
    - Agent does NOT block for user decisions; batches them in `--open-questions` flag on `complete-agent`
    - Output: `/projects/<project>/plan/YYYY-MM-DD-<name>.md` + pending questions in open_questions
 
-3. **Plan Review (main thread)**
+1. **Plan Review (main thread)**
+
    - Orchestrator opens plan file for user review
    - User answers batched questions via AskUserQuestion
    - Orchestrator re-dispatches planner for revisions until closed
 
-4. **Implement (background coder agent)**
+1. **Implement (background coder agent)**
+
    - After plan approval, orchestrator dispatches coder agent
    - Agent invokes superpowers:executing-plans skill
    - Coder executes tasks, commits frequently, reports result via `complete-agent`
@@ -156,25 +186,51 @@ python3 juggle_cli.py request-action <thread_id> "DA finding: <decision descript
 
 **Enforcement:** Prompt-based. Avoid doing spec, plan, and implement in a single agent to keep main-thread context lean.
 
----
+______________________________________________________________________
 
 ## Implementation Protocol (Category 3)
 
 Agents return: files changed + plan bullets. No intermediate output.
 
+### Sequential-Fix Tasks (deployment, infra, multi-step pipelines)
+
+Some Category 3 tasks are **sequential-fix workflows** — the agent runs a command, it fails, diagnoses the failure, applies a fix, and repeats until the whole pipeline succeeds. Each step is knowable only after the previous one runs. These tasks should NOT be planned first and NOT re-dispatched after each failure. Instead, dispatch a single coder with full autonomy to fix-loop end-to-end, sending `notify` calls as milestones land.
+
+**Signals this is a sequential-fix task:**
+
+- Involves deploying to remote infrastructure (EC2, Kubernetes, cloud)
+- Involves iterative command → diagnose → fix cycles (terraform apply, SCP, docker build)
+- The "plan" is just "make it work" and the steps depend on what errors come back
+
+**Dispatch pattern for sequential-fix tasks:** Skip Phase 1 (no plan). Go straight to a coder with this template addition:
+
+```
+SEQUENTIAL-FIX MODE:
+- Run the pipeline end-to-end from the start.
+- When a step fails: diagnose the root cause, apply the fix, and retry — do NOT stop and report.
+- Only escalate (BLOCKER) if you need user input that cannot be inferred: credentials you don't have, an irreversible destructive action, or an architectural decision.
+- Send notify at each milestone (every significant step completed or recovered):
+  python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py notify <thread_id> "milestone: <what just happened>"
+  Examples: "terraform applied — EC2 at 54.1.2.3", "SCP key path fixed — retrying", "docker build running on EC2"
+- Keep going until the pipeline is fully done or you hit a genuine BLOCKER.
+```
+
 ### Phase 1 — Plan (background)
 
 1. Say:
+
    ```
    Implementation task. Planning in background...
    ```
 
-2. Create topic thread:
+1. Create topic thread:
+
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<task label>"
    ```
 
-3. Dispatch background planning agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role planner` and this prompt:
+1. Dispatch background planning agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role planner` and this prompt:
+
    ```
    [JUGGLE_THREAD:<thread_id>]
    # Memory Context
@@ -195,16 +251,18 @@ Agents return: files changed + plan bullets. No intermediate output.
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
    ```
 
-4. **Dispatch immediately.** If plan has no open design decisions → dispatch Phase 2 without asking. For genuine design decisions (architecture, behavior trade-offs) → surface via AskUserQuestion UI, then dispatch once resolved. Never ask "should I proceed?" as plain text.
+1. **Dispatch immediately.** If plan has no open design decisions → dispatch Phase 2 without asking. For genuine design decisions (architecture, behavior trade-offs) → surface via AskUserQuestion UI, then dispatch once resolved. Never ask "should I proceed?" as plain text.
 
 ### Phase 2 — Implement (background)
 
 1. Say:
+
    ```
    Implementing in background. Topic [X] running — what else?
    ```
 
-2. Dispatch background implementation agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role coder` and this prompt:
+1. Dispatch background implementation agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role coder` and this prompt:
+
    ```
    [JUGGLE_THREAD:<thread_id>]
    Invoke superpowers:executing-plans as your first step. Background agent overrides:
@@ -224,19 +282,20 @@ Agents return: files changed + plan bullets. No intermediate output.
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>" --retain "<key decisions, non-obvious learnings, personal/work details>"
    ```
 
-3. On completion, notify immediately — don't wait for next pause:
+1. On completion, notify immediately — don't wait for next pause:
+
    - If result is clean "Done": `[Topic X done] <task label> — all checks pass.`
    - If result starts with `⚠️ BLOCKER:`: attempt to solve proactively before surfacing to user; dispatch researcher if needed; tell user: `"[Topic X done] <summary>. Open question on Y — researching before I bring this to you."` Then present recommendation + options.
    - If result starts with "PARTIAL": `[Topic X] ⚠️ <task label> — <what failed>.` Attempt unambiguous fix; otherwise present root cause + options.
    - **Principle**: never surface a bare blocker — always do the prep work first.
 
----
+______________________________________________________________________
 
 ## Research Protocol (Category 2)
 
 1. Say: `"Researching in background..."`
-2. Create topic thread.
-3. Dispatch background research agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role researcher` and this prompt:
+1. Create topic thread.
+1. Dispatch background research agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role researcher` and this prompt:
    ```
    [JUGGLE_THREAD:<thread_id>]
    # Memory Context
@@ -251,13 +310,14 @@ Agents return: files changed + plan bullets. No intermediate output.
    # Skip: routine findings derivable from code or git.
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings summary>" --retain "<non-obvious findings, personal details>"
    ```
-4. On complete: short bulleted summary only. No raw exploration output.
+1. On complete: short bulleted summary only. No raw exploration output.
 
----
+______________________________________________________________________
 
 ## Tmux Agent Dispatch Format
 
 **Pre-Dispatch Checklist** — verify before every agent dispatch:
+
 ```
 □ Thread ID resolved (use label or UUID)
 □ Role selected: researcher (Cat 2), planner (Cat 3 phase 1), coder (Cat 3 phase 2)
@@ -268,6 +328,7 @@ Agents return: files changed + plan bullets. No intermediate output.
 ```
 
 **Dispatch pattern**:
+
 ```bash
 # 1. Get best idle agent (spawns if needed)
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role coder
@@ -290,39 +351,40 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> "$TASK_FILE
 ```
 
 **Role selection**:
-| Task | Role |
-|---|---|
-| Cat 1.5: simple file op | (no --role; any idle agent) |
-| Cat 2: research | `--role researcher` |
-| Cat 3 phase 1: plan | `--role planner` |
-| Cat 3 phase 2: implement | `--role coder` |
+
+| Task                     | Role                        |
+| ------------------------ | --------------------------- |
+| Cat 1.5: simple file op  | (no --role; any idle agent) |
+| Cat 2: research          | `--role researcher`         |
+| Cat 3 phase 1: plan      | `--role planner`            |
+| Cat 3 phase 2: implement | `--role coder`              |
 
 Agent completion/failure: agents call `complete-agent` or `fail-agent` (these handle agent release automatically — do not call `release-agent` from agent prompts).
 
----
+______________________________________________________________________
 
 ## Topic Detection (every message)
 
 - **Label lookup**: message is a bare label (1–3 chars, e.g. `BZ`, `bz`, `d`) → run status lookup:
   1. `switch-thread <label>`
-  2. `list-actions` — show action items for that thread if any
-  3. If no actions: show recent notifications via `get-messages <id> --limit 5`
-  4. `list-agents` filtered to that thread — show agent status + age
-  Present as compact status card. No implementation, no new thread.
+  1. `list-actions` — show action items for that thread if any
+  1. If no actions: show recent notifications via `get-messages <id> --limit 5`
+  1. `list-agents` filtered to that thread — show agent status + age
+     Present as compact status card. No implementation, no new thread.
 - **Continuation**: same topic → proceed.
 - **Clear shift**: different subject → call `create-thread` immediately. Announce: `"New topic — thread [X]: '[detected topic]'."` No confirmation needed.
 - **Switching back**: user references prior thread → switch without asking.
 - **Bias toward continuation**: asides stay in current thread.
 
----
+______________________________________________________________________
 
 ## Topic Switching
 
 1. `update-summary` on current thread
-2. `switch-thread` to target
-3. Present: summary, key decisions, open questions.
+1. `switch-thread` to target
+1. Present: summary, key decisions, open questions.
 
----
+______________________________________________________________________
 
 ## Limits
 
@@ -330,4 +392,3 @@ Agent completion/failure: agents call `complete-agent` or `fail-agent` (these ha
 - Max `JUGGLE_MAX_BACKGROUND_AGENTS` agents in pool (default: 20)
 - Agents persist until: explicit decommission, or assigned thread is archived
 - L2 agents (inside tmux panes) may use any tools. Juggle does not track L3.
-
