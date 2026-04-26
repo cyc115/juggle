@@ -123,6 +123,68 @@ def test_render_topics_strip_contains_glyphs():
     assert "J" in text
 
 
+def test_render_topics_medium_shows_title():
+    """Medium strip must include topic title text, not just label."""
+    topics = [
+        Topic(id="t1", label="EM", status="current", age_secs=60,  is_current=True,  title="email migration"),
+        Topic(id="t2", label="EL", status="running", age_secs=600, is_current=False, title="elastic log"),
+    ]
+    c = Console(record=True, width=100)
+    panel = render_topics(topics, "medium")
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "email migration" in text
+    assert "elastic log" in text
+
+
+def test_render_topics_narrow_shows_title():
+    """Narrow strip must include topic title text, not just label."""
+    topics = [
+        Topic(id="t1", label="DZ", status="current", age_secs=60,  is_current=True,  title="deploy zone"),
+        Topic(id="t2", label="RX", status="paused",  age_secs=900, is_current=False, title="refactor xunit"),
+    ]
+    c = Console(record=True, width=70)
+    panel = render_topics(topics, "narrow")
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "deploy zone" in text
+    assert "refactor xunit" in text
+
+
+def test_render_topics_medium_one_topic_per_line():
+    """Each topic must occupy its own line — not merged into one horizontal bar."""
+    topics = [
+        Topic(id="t1", label="AA", status="current", age_secs=60,   is_current=True,  title="alpha"),
+        Topic(id="t2", label="BB", status="running", age_secs=3600, is_current=False, title="beta"),
+        Topic(id="t3", label="CC", status="paused",  age_secs=7200, is_current=False, title="gamma"),
+    ]
+    c = Console(record=True, width=100)
+    panel = render_topics(topics, "medium")
+    with c:
+        c.print(panel)
+    lines = [l for l in c.export_text().splitlines() if l.strip()]
+    # At least one line per topic must contain the label
+    label_lines = [l for l in lines if "[AA]" in l or "[BB]" in l or "[CC]" in l]
+    assert len(label_lines) >= 3, f"Expected ≥3 label lines, got {len(label_lines)}: {lines}"
+
+
+def test_build_layout_medium_strip_height_scales_with_topics():
+    """topics_strip size must grow when topics_count increases."""
+    layout3 = build_layout("medium", topics_count=3)
+    layout6 = build_layout("medium", topics_count=6)
+
+    def _strip_size(layout):
+        # Walk children to find topics_strip
+        for child in layout._children:
+            if child.name == "topics_strip":
+                return child.size
+        raise AssertionError("topics_strip not found")
+
+    assert _strip_size(layout6) > _strip_size(layout3)
+
+
 # ---------------------------------------------------------------------------
 # render_actions
 # ---------------------------------------------------------------------------
