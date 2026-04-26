@@ -108,6 +108,12 @@ ______________________________________________________________________
 
 Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When in doubt: dispatch an agent.
 
+> **NEVER use the Agent tool to dispatch work.** Always use `get-agent` + `send-task`. The Agent tool bypasses juggle's DB registration — the agent gets no role, `complete-agent` role checks fail silently, and researcher review action items are never created. The agent is also invisible to cockpit monitoring. This is not recoverable. No exceptions.
+
+**Response prefix (REQUIRED):**
+
+Every orchestrator response to the user must begin with the active topic label in brackets, e.g. `[EN]`. If multiple topics are active simultaneously or no topic is active, omit the prefix. This lets the user reply `EN: yes` or `EN: do it` to unambiguously target a specific thread when multiple topics are in flight.
+
 **Implementation Gate (STRICT):**
 
 - **Clear fix** (editing a file, applying a proposed change, adding a rule): dispatch immediately. NEVER ask "Want me to apply this?", "Shall I implement this?", "Should I apply this?" — just do it.
