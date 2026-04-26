@@ -12,10 +12,14 @@ Run:  uv run src/juggle_cockpit.py
 Exit: Ctrl-C
 """
 
+import select
 import shutil
 import signal
 import sys
+import termios
+import threading
 import time
+import tty
 
 
 from juggle_db import JuggleDB
@@ -25,16 +29,104 @@ REFRESH_INTERVAL: float = _get_settings()["cockpit"]["refresh_interval_secs"]
 
 _last_reap_time = 0
 
+# ---------------------------------------------------------------------------
+# Scroll state — keyboard-driven viewport offsets per pane
+# ---------------------------------------------------------------------------
+
+_SCROLL_PANES = ("actions", "agents", "notifications")
+
+
+class _ScrollState:
+    """Thread-safe per-pane scroll offsets + active pane, driven by keyboard.
+
+    Key bindings (when cockpit is in focus):
+      ↑ / k    scroll active pane up
+      ↓ / j    scroll active pane down
+      Tab      cycle active pane
+    """
+
+    def __init__(self):
+        self._offsets: dict[str, int] = {p: 0 for p in _SCROLL_PANES}
+        self._active: str = "notifications"
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True, name="cockpit-keys")
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def snapshot(self) -> tuple[dict[str, int], str]:
+        """Return (offsets_copy, active_pane) atomically."""
+        with self._lock:
+            return dict(self._offsets), self._active
+
+    def clamp(self, pane: str, max_offset: int) -> None:
+        """Clamp pane offset to [0, max_offset]."""
+        with self._lock:
+            self._offsets[pane] = min(self._offsets[pane], max(0, max_offset))
+
+    def _adjust(self, delta: int) -> None:
+        with self._lock:
+            pane = self._active
+            self._offsets[pane] = max(0, self._offsets[pane] + delta)
+
+    def _cycle(self) -> None:
+        with self._lock:
+            idx = _SCROLL_PANES.index(self._active)
+            self._active = _SCROLL_PANES[(idx + 1) % len(_SCROLL_PANES)]
+
+    def _run(self) -> None:
+        if not sys.stdin.isatty():
+            return
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            # setcbreak: character-at-a-time, but keeps ISIG so Ctrl-C still works
+            tty.setcbreak(fd)
+            while not self._stop.is_set():
+                ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+                if not ready:
+                    continue
+                ch = sys.stdin.read(1)
+                if ch == "\x1b":
+                    # Read the rest of the escape sequence (non-blocking)
+                    r2, _, _ = select.select([sys.stdin], [], [], 0.05)
+                    seq = sys.stdin.read(2) if r2 else ""
+                    if seq == "[A":    # up arrow
+                        self._adjust(-1)
+                    elif seq == "[B":  # down arrow
+                        self._adjust(+1)
+                elif ch in ("k", "K"):
+                    self._adjust(-1)
+                elif ch in ("j", "J"):
+                    self._adjust(+1)
+                elif ch == "\t":
+                    self._cycle()
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
 
 # ---------------------------------------------------------------------------
 # Rich-based tick — model/view layer (Tasks 13-14)
 # ---------------------------------------------------------------------------
 
-def tick(db, size, prev_layout, prev_bp, prev_topics_count=0):
+def tick(
+    db,
+    size,
+    prev_layout,
+    prev_bp,
+    prev_topics_count=0,
+    scroll_offsets=None,
+    active_pane=None,
+):
     """One cockpit tick: snapshot DB → pick breakpoint → render into layout.
 
     Returns (layout, bp, topics_count). Reuses prev_layout when breakpoint
     and topic count are both unchanged.
+    scroll_offsets and active_pane are forwarded to render_into.
     """
     from juggle_cockpit_model import snapshot as _snapshot
     from juggle_cockpit_view import pick_breakpoint as _pick_bp, build_layout as _build_layout, render_into as _render_into
@@ -47,7 +139,7 @@ def tick(db, size, prev_layout, prev_bp, prev_topics_count=0):
     else:
         layout = prev_layout
 
-    _render_into(layout, state, bp)
+    _render_into(layout, state, bp, scroll_offsets=scroll_offsets, active_pane=active_pane)
     return layout, bp, topics_count
 
 
@@ -101,20 +193,29 @@ def run(db_path: str | None = None) -> None:
     layout = None
     bp = None
     topics_count = 0
+    scroll = _ScrollState()
+    scroll.start()
     console = Console()
 
-    with Live(console=console, screen=True, refresh_per_second=1) as live:
-        while True:
-            try:
-                size = console.size
-                if _cockpit_mgr is not None:
-                    _throttled_reaper(db, _cockpit_mgr)
-                layout, bp, topics_count = tick(db, size, layout, bp, topics_count)
-                live.update(layout)
-            except Exception as e:
-                from rich.text import Text
-                live.update(Text(f"[error] {e}", style="red"))
-            time.sleep(REFRESH_INTERVAL)
+    try:
+        with Live(console=console, screen=True, refresh_per_second=1) as live:
+            while True:
+                try:
+                    size = console.size
+                    if _cockpit_mgr is not None:
+                        _throttled_reaper(db, _cockpit_mgr)
+                    offsets, active = scroll.snapshot()
+                    layout, bp, topics_count = tick(
+                        db, size, layout, bp, topics_count,
+                        scroll_offsets=offsets, active_pane=active,
+                    )
+                    live.update(layout)
+                except Exception as e:
+                    from rich.text import Text
+                    live.update(Text(f"[error] {e}", style="red"))
+                time.sleep(REFRESH_INTERVAL)
+    finally:
+        scroll.stop()
 
 
 if __name__ == "__main__":

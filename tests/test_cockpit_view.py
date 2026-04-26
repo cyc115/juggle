@@ -380,3 +380,135 @@ def test_render_into_wide_actions_panel_updated():
     state = _make_full_state()
     render_into(layout, state, "wide")
     assert layout["actions"].renderable is not None
+
+
+# ---------------------------------------------------------------------------
+# Scroll: render_actions
+# ---------------------------------------------------------------------------
+
+def test_render_actions_scroll_hides_first_item():
+    """With scroll_offset=1, first action must not appear in output."""
+    actions = _make_actions()
+    c = Console(record=True, width=120)
+    panel = render_actions(actions, scroll_offset=1)
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "approve plan v3" not in text       # first item hidden
+    assert "BLOCKER: missing token" in text    # second item visible
+
+
+def test_render_actions_scroll_title_shows_offset():
+    """Title must include ↑N indicator when offset > 0."""
+    panel = render_actions(_make_actions(), scroll_offset=2)
+    # Panel title is stored in the renderable title attribute
+    assert "↑2" in str(panel.title)
+
+
+def test_render_actions_scroll_offset_zero_no_indicator():
+    """No ↑ indicator when at top."""
+    panel = render_actions(_make_actions(), scroll_offset=0)
+    assert "↑" not in str(panel.title)
+
+
+def test_render_actions_active_border():
+    """Active pane must use bright_blue border."""
+    panel_active = render_actions(_make_actions(), active=True)
+    panel_inactive = render_actions(_make_actions(), active=False)
+    assert panel_active.border_style != panel_inactive.border_style
+
+
+def test_render_actions_scroll_past_end_no_error():
+    """Offset beyond list length must not raise — just shows empty table."""
+    actions = _make_actions()
+    panel = render_actions(actions, scroll_offset=len(actions) + 5)
+    assert isinstance(panel, Panel)
+
+
+# ---------------------------------------------------------------------------
+# Scroll: render_agents
+# ---------------------------------------------------------------------------
+
+def test_render_agents_scroll_hides_first():
+    """With scroll_offset=1, first sorted agent is hidden."""
+    # busy agent (abcd1234) sorts first; offset=1 hides it
+    agents = _make_agents()
+    c = Console(record=True, width=100)
+    panel = render_agents(agents, scroll_offset=1)
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "abcd1234" not in text   # first after sort
+    assert "ef567890" in text       # second
+
+
+def test_render_agents_scroll_title_shows_offset():
+    panel = render_agents(_make_agents(), scroll_offset=1)
+    assert "↑1" in str(panel.title)
+
+
+def test_render_agents_active_border():
+    panel_active = render_agents(_make_agents(), active=True)
+    panel_inactive = render_agents(_make_agents(), active=False)
+    assert panel_active.border_style != panel_inactive.border_style
+
+
+# ---------------------------------------------------------------------------
+# Scroll: render_notifications
+# ---------------------------------------------------------------------------
+
+def test_render_notifications_scroll_hides_first():
+    notifs = [
+        Notification(text="first notif",  kind="info",     age_secs=600),
+        Notification(text="second notif", kind="complete", age_secs=30),
+    ]
+    c = Console(record=True, width=120)
+    panel = render_notifications(notifs, scroll_offset=1)
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "first notif" not in text
+    assert "second notif" in text
+
+
+def test_render_notifications_scroll_title():
+    notifs = [
+        Notification(text="a", kind="info", age_secs=10),
+        Notification(text="b", kind="info", age_secs=20),
+    ]
+    panel = render_notifications(notifs, scroll_offset=1)
+    assert "↑1" in str(panel.title)
+
+
+def test_render_notifications_active_border():
+    notifs = [Notification(text="x", kind="info", age_secs=5)]
+    panel_active = render_notifications(notifs, active=True)
+    panel_inactive = render_notifications(notifs, active=False)
+    assert panel_active.border_style != panel_inactive.border_style
+
+
+# ---------------------------------------------------------------------------
+# Scroll: render_into with scroll_offsets
+# ---------------------------------------------------------------------------
+
+def test_render_into_passes_scroll_offsets():
+    """render_into with scroll_offsets must hide first action row."""
+    layout = build_layout("wide")
+    state = _make_full_state()
+    # First action is "approve plan v3" — offset=1 should hide it
+    render_into(layout, state, "wide", scroll_offsets={"actions": 1})
+    c = Console(record=True, width=160)
+    with c:
+        c.print(layout["actions"].renderable)
+    text = c.export_text()
+    assert "approve plan v3" not in text
+
+
+def test_render_into_active_pane_highlights_border():
+    """Active pane panel must have a different border than inactive panes."""
+    layout = build_layout("wide")
+    state = _make_full_state()
+    render_into(layout, state, "wide", active_pane="agents")
+    agents_panel = layout["agents"].renderable
+    actions_panel = layout["actions"].renderable
+    assert agents_panel.border_style != actions_panel.border_style

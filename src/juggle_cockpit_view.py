@@ -200,25 +200,40 @@ def render_topics(topics: list[Topic], bp: str) -> Panel:
         return Panel(table, title="Topics", border_style="dim")
 
 
-def render_actions(actions: list[Action]) -> Panel:
+def _scroll_title(base: str, offset: int) -> str:
+    return f"{base} [↑{offset}]" if offset > 0 else base
+
+
+def _pane_border(active: bool) -> str:
+    return "bright_blue" if active else "dim"
+
+
+def render_actions(
+    actions: list[Action],
+    scroll_offset: int = 0,
+    active: bool = False,
+) -> Panel:
     """Render actions panel.
 
     Actions are expected pre-sorted (tier asc, age desc) from snapshot().
     Reads action.text (typed str field) — dict-repr leak structurally impossible.
+    scroll_offset skips that many rows from the top; active highlights the border.
     """
+    border = _pane_border(active)
     if not actions:
         table = Table.grid()
         table.add_column()
         table.add_row(Text("no actions", style=Style(dim=True, color="green")))
-        return Panel(table, title="Action Items", border_style="dim")
+        return Panel(table, title="Action Items", border_style=border)
 
+    visible = actions[scroll_offset:]
     table = Table.grid(padding=(0, 1))
     table.add_column("age",   no_wrap=True)
     table.add_column("glyph", no_wrap=True)
     table.add_column("topic", no_wrap=True)
     table.add_column("text", no_wrap=False, overflow="fold")
 
-    for action in actions:
+    for action in visible:
         glyph = ACTION_TIER_GLYPHS.get(action.tier, "•")
         topic_str = f"[{action.topic_id}]"
 
@@ -239,16 +254,23 @@ def render_actions(actions: list[Action]) -> Panel:
             Text(action.text, style=text_style),  # action.text is always a str field
         )
 
-    return Panel(table, title="Action Items", border_style="dim")
+    return Panel(table, title=_scroll_title("Action Items", scroll_offset), border_style=border)
 
 
-def render_agents(agents: list[Agent]) -> Panel:
-    """Render agents panel. Single-line per agent: glyph + [label] + id_short + role + age."""
+def render_agents(
+    agents: list[Agent],
+    scroll_offset: int = 0,
+    active: bool = False,
+) -> Panel:
+    """Render agents panel. Single-line per agent: glyph + [label] + id_short + role + age.
+    scroll_offset skips that many rows from the top; active highlights the border.
+    """
+    border = _pane_border(active)
     if not agents:
         table = Table.grid()
         table.add_column()
         table.add_row(Text("no agents", style=Style(dim=True)))
-        return Panel(table, title="Agents", border_style="dim")
+        return Panel(table, title="Agents", border_style=border)
 
     table = Table.grid(padding=(0, 1))
     table.add_column("glyph", no_wrap=True)
@@ -257,11 +279,12 @@ def render_agents(agents: list[Agent]) -> Panel:
     table.add_column("role",  no_wrap=True)
     table.add_column("age",   no_wrap=True)
 
-    # Sort: busy first, stale second, idle last
+    # Sort: busy first, stale second, idle last; then slice for scroll
     _sort_order = {"busy": 0, "stale": 1, "idle": 2}
     sorted_agents = sorted(agents, key=lambda a: (_sort_order.get(a.status, 3), a.id_short))
+    visible = sorted_agents[scroll_offset:]
 
-    for agent in sorted_agents:
+    for agent in visible:
         glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
         topic_str = f"[{agent.topic_id}]" if agent.topic_id else " — "
         age_str = format_age(agent.age_secs)
@@ -281,23 +304,31 @@ def render_agents(agents: list[Agent]) -> Panel:
             Text(age_str, style=row_style),
         )
 
-    return Panel(table, title="Agents", border_style="dim")
+    return Panel(table, title=_scroll_title("Agents", scroll_offset), border_style=border)
 
 
-def render_notifications(notifications: list[Notification]) -> Panel:
-    """Render notifications panel. Input is expected newest-first (from snapshot)."""
+def render_notifications(
+    notifications: list[Notification],
+    scroll_offset: int = 0,
+    active: bool = False,
+) -> Panel:
+    """Render notifications panel. Input is expected newest-first (from snapshot).
+    scroll_offset skips that many rows from the top; active highlights the border.
+    """
+    border = _pane_border(active)
     if not notifications:
         table = Table.grid()
         table.add_column()
         table.add_row(Text("no notifications", style=Style(dim=True)))
-        return Panel(table, title="Notifications", border_style="dim")
+        return Panel(table, title="Notifications", border_style=border)
 
+    visible = notifications[scroll_offset:]
     table = Table.grid(padding=(0, 1))
     table.add_column("age",   no_wrap=True)
     table.add_column("glyph", no_wrap=True)
     table.add_column("text",  no_wrap=False, overflow="fold")
 
-    for notif in notifications:
+    for notif in visible:
         glyph = NOTIF_KIND_GLYPHS.get(notif.kind, "ℹ️")
 
         if notif.kind in ("error", "failed"):
@@ -315,14 +346,29 @@ def render_notifications(notifications: list[Notification]) -> Panel:
             Text(notif.text, style=text_style),
         )
 
-    return Panel(table, title="Notifications", border_style="dim")
+    return Panel(table, title=_scroll_title("Notifications", scroll_offset), border_style=border)
 
 
-def render_into(layout: Layout, state: CockpitState | None, bp: str) -> None:
+def render_into(
+    layout: Layout,
+    state: CockpitState | None,
+    bp: str,
+    scroll_offsets: dict[str, int] | None = None,
+    active_pane: str | None = None,
+) -> None:
     """Populate layout panels from state. Mutates layout in place.
 
     If state is None (DB error on first tick), renders placeholder panels.
+    scroll_offsets maps pane name → row offset; active_pane highlights one border.
     """
+    offsets = scroll_offsets or {}
+
+    def _offset(pane: str) -> int:
+        return offsets.get(pane, 0)
+
+    def _active(pane: str) -> bool:
+        return active_pane == pane
+
     if state is None:
         _placeholder = Panel(Text("loading…", style=Style(dim=True)))
         if bp == "wide":
@@ -338,9 +384,9 @@ def render_into(layout: Layout, state: CockpitState | None, bp: str) -> None:
         return
 
     topics_panel  = render_topics(state.topics, bp)
-    actions_panel = render_actions(state.actions)
-    agents_panel  = render_agents(state.agents)
-    notifs_panel  = render_notifications(state.notifications)
+    actions_panel = render_actions(state.actions, _offset("actions"), _active("actions"))
+    agents_panel  = render_agents(state.agents, _offset("agents"), _active("agents"))
+    notifs_panel  = render_notifications(state.notifications, _offset("notifications"), _active("notifications"))
 
     if bp == "wide":
         layout["topics"].update(topics_panel)
