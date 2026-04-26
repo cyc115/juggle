@@ -198,7 +198,7 @@ def run(db_path: str | None = None) -> None:
     console = Console()
 
     try:
-        with Live(console=console, screen=True, refresh_per_second=1) as live:
+        with Live(console=console, screen=True, refresh_per_second=10) as live:
             while True:
                 try:
                     size = console.size
