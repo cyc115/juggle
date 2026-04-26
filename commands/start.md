@@ -19,6 +19,19 @@ Auto-create Topic A from first substantive message:
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<topic label>"
 ```
 
+**Arm completion monitor** — immediately after `start`, launch the polling script via Monitor:
+
+```
+Monitor: ${CLAUDE_PLUGIN_ROOT}/scripts/juggle-agent-monitor
+```
+
+Each line the script emits signals one completed agent. When a line fires:
+
+- `[LABEL] researcher: <title>` → surface as: `"Review ready — [LABEL]: <title>"`
+- `[LABEL] coder: <title>` or `[LABEL] planner: <title>` → surface as: `"[LABEL] done — <title>"`
+
+Then retrieve the thread's notifications/result and present it to the user as you normally would for a completed agent.
+
 ______________________________________________________________________
 
 ## CLI Quick Reference

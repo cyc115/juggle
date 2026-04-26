@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""juggle-agent-monitor — streams agent completions to stdout for Monitor tool.
+
+Each line printed is one completed agent: [LABEL] role: title
+Role is 'researcher' when a review action item exists; 'coder' otherwise.
+"""
+
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from juggle_settings import get_settings
+
+
+def _db_path() -> Path:
+    return Path(get_settings()["paths"]["data_dir"]) / "juggle.db"
+
+
+def _role_for_thread(conn: sqlite3.Connection, thread_id: str) -> str:
+    row = conn.execute(
+        "SELECT id FROM action_items WHERE thread_id = ? AND type = 'review' "
+        "ORDER BY id DESC LIMIT 1",
+        (thread_id,),
+    ).fetchone()
+    return "researcher" if row else "coder"
+
+
+def _poll_once(conn: sqlite3.Connection, last_seen_id: int) -> tuple[list[str], int]:
+    """Query new completion notifications. Returns (output_lines, new_last_seen_id)."""
+    rows = conn.execute(
+        """
+        SELECT n.id, n.thread_id, t.user_label, t.title
+        FROM notifications_v2 n
+        JOIN threads t ON n.thread_id = t.id
+        WHERE n.id > ? AND t.status = 'closed'
+        ORDER BY n.id
+        """,
+        (last_seen_id,),
+    ).fetchall()
+
+    lines = []
+    for row in rows:
+        role = _role_for_thread(conn, row["thread_id"])
+        label = row["user_label"] or "?"
+        title = row["title"] or "?"
+        lines.append(f"[{label}] {role}: {title}")
+        last_seen_id = row["id"]
+    return lines, last_seen_id
+
+
+def _init_cursor(db_path: Path) -> int:
+    """Return current max notifications_v2 id so we don't replay history."""
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT MAX(id) AS m FROM notifications_v2").fetchone()
+        conn.close()
+        return row["m"] if row and row["m"] is not None else 0
+    except sqlite3.OperationalError:
+        return 0
+
+
+def main() -> None:
+    db_path = _db_path()
+    last_seen_id = _init_cursor(db_path)
+
+    while True:
+        try:
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            lines, last_seen_id = _poll_once(conn, last_seen_id)
+            conn.close()
+            for line in lines:
+                print(line, flush=True)
+        except sqlite3.OperationalError:
+            pass  # DB locked — retry next tick
+
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    main()
