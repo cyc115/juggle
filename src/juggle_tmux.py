@@ -184,7 +184,8 @@ class JuggleTmuxManager:
 def reap_stale_agents(db, mgr):
     """Reap agents idle longer than agent_idle_ttl_secs.
 
-    Skips busy agents and agents assigned to the current thread.
+    Always reaps agents whose tmux pane no longer exists, regardless of status.
+    Skips busy (live-pane) agents and agents assigned to the current thread.
     Returns count of agents reaped.
     """
     from datetime import datetime, timezone
@@ -198,12 +199,13 @@ def reap_stale_agents(db, mgr):
     reaped = 0
 
     for a in db.get_all_agents():
-        if a["status"] != "idle" or a["assigned_thread"] == current_thread:
-            continue
-
+        # Always reap agents whose pane no longer exists, regardless of status
         if not mgr.verify_pane(a["pane_id"]):
             db.delete_agent(a["id"])
             reaped += 1
+            continue
+
+        if a["status"] != "idle" or a["assigned_thread"] == current_thread:
             continue
 
         last_active = a.get("last_active") or ""

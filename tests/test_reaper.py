@@ -61,8 +61,8 @@ def test_reaper_preserves_recent_agents():
     mock_mgr.decommission_agent.assert_not_called()
 
 
-def test_reaper_skips_busy_agents():
-    """Reaper should never reap agents marked busy."""
+def test_reaper_skips_busy_agents_with_live_pane():
+    """Reaper should not reap busy agents whose pane still exists."""
     from juggle_tmux import reap_stale_agents
 
     mock_db = mock.MagicMock()
@@ -78,10 +78,38 @@ def test_reaper_skips_busy_agents():
 
     mock_db.get_all_agents.return_value = [busy_agent]
     mock_db.get_current_thread.return_value = "current-thread"
+    mock_mgr.verify_pane.return_value = True
 
     reaped = reap_stale_agents(mock_db, mock_mgr)
 
     assert reaped == 0
+    mock_mgr.decommission_agent.assert_not_called()
+    mock_db.delete_agent.assert_not_called()
+
+
+def test_reaper_removes_busy_agent_with_dead_pane():
+    """Busy agent whose pane no longer exists should be reaped immediately."""
+    from juggle_tmux import reap_stale_agents
+
+    mock_db = mock.MagicMock()
+    mock_mgr = mock.MagicMock()
+
+    zombie_agent = {
+        "id": "zombie-agent",
+        "status": "busy",
+        "assigned_thread": "other-thread",
+        "pane_id": "pane-dead-busy",
+        "last_active": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    }
+
+    mock_db.get_all_agents.return_value = [zombie_agent]
+    mock_db.get_current_thread.return_value = "current-thread"
+    mock_mgr.verify_pane.return_value = False
+
+    reaped = reap_stale_agents(mock_db, mock_mgr)
+
+    assert reaped == 1
+    mock_db.delete_agent.assert_called_once_with("zombie-agent")
     mock_mgr.decommission_agent.assert_not_called()
 
 
@@ -102,6 +130,7 @@ def test_reaper_skips_current_thread_agent():
 
     mock_db.get_all_agents.return_value = [current_agent]
     mock_db.get_current_thread.return_value = "current-thread"
+    mock_mgr.verify_pane.return_value = True
 
     reaped = reap_stale_agents(mock_db, mock_mgr)
 
