@@ -44,8 +44,8 @@ def _make_state():
 
 
 def _render_to_text(bp: str, width: int) -> str:
-    layout = build_layout(bp)
     state = _make_state()
+    layout = build_layout(bp, topics_count=len(state.topics))
     render_into(layout, state, bp)
     c = Console(record=True, width=width, no_color=True)
     with c:
