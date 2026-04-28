@@ -27,8 +27,10 @@ def _role_for_thread(conn: sqlite3.Connection, thread_id: str) -> str:
     return "researcher" if row else "coder"
 
 
-def _poll_once(conn: sqlite3.Connection, last_seen_id: int) -> tuple[list[str], int]:
-    """Query new completion notifications. Returns (output_lines, new_last_seen_id)."""
+def _poll_once(
+    conn: sqlite3.Connection, last_seen_id: int
+) -> tuple[list[tuple[str, str]], int]:
+    """Query new completions. Returns ([(thread_id, output_line)], new_last_seen_id)."""
     rows = conn.execute(
         """
         SELECT n.id, n.thread_id, t.user_label, t.title
@@ -40,14 +42,14 @@ def _poll_once(conn: sqlite3.Connection, last_seen_id: int) -> tuple[list[str], 
         (last_seen_id,),
     ).fetchall()
 
-    lines = []
+    results = []
     for row in rows:
         role = _role_for_thread(conn, row["thread_id"])
         label = row["user_label"] or "?"
         title = row["title"] or "?"
-        lines.append(f"[{label}] {role}: {title}")
+        results.append((row["thread_id"], f"[{label}] {role}: {title}"))
         last_seen_id = row["id"]
-    return lines, last_seen_id
+    return results, last_seen_id
 
 
 def _init_cursor(db_path: Path) -> int:
@@ -65,15 +67,18 @@ def _init_cursor(db_path: Path) -> int:
 def main() -> None:
     db_path = _db_path()
     last_seen_id = _init_cursor(db_path)
+    emitted: set[str] = set()  # deduplicate by thread_id
 
     while True:
         try:
             conn = sqlite3.connect(str(db_path))
             conn.row_factory = sqlite3.Row
-            lines, last_seen_id = _poll_once(conn, last_seen_id)
+            results, last_seen_id = _poll_once(conn, last_seen_id)
             conn.close()
-            for line in lines:
-                print(line, flush=True)
+            for thread_id, line in results:
+                if thread_id not in emitted:
+                    emitted.add(thread_id)
+                    print(line, flush=True)
         except sqlite3.OperationalError:
             pass  # DB locked — retry next tick
 
