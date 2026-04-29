@@ -15,4 +15,7 @@ services:
       - HINDSIGHT_API_LLM_MODEL=${HINDSIGHT_LLM_MODEL:-@preset/hidsight-routing}
       - HINDSIGHT_API_TENANT_API_KEY=juggle
       - HINDSIGHT_API_TENANT_KEY_MAP=juggle:juggle
+      - HINDSIGHT_API_RERANKER_PROVIDER=litellm-sdk
+      - HINDSIGHT_API_RERANKER_LITELLM_SDK_MODEL=voyage/rerank-2.5
+      - HINDSIGHT_API_RERANKER_LITELLM_SDK_API_KEY=${VOYAGE_API_KEY}
     mem_limit: 4g

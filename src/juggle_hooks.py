@@ -269,7 +269,11 @@ def handle_stop(data: dict) -> None:
 def handle_session_start(data: dict) -> None:
     """Inject restoration context on resume or compact."""
     if not is_active():
-        sys.exit(0)
+        db = get_db()
+        if db.get_threads_by_status("open"):
+            db.set_active(True)
+        else:
+            sys.exit(0)
 
     try:
         reason = data.get("reason", "")

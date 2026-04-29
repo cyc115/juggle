@@ -8,6 +8,7 @@
 import argparse
 import sys
 import threading
+import time
 import numpy as np
 import sounddevice as sd
 
@@ -18,9 +19,7 @@ _playback_lock = threading.Lock()
 _current_event: threading.Event | None = None  # set → stop
 
 
-_last_device: int | str | None = None
-
-_HEADPHONE_KEYWORDS = ["WH-", "WF-", "AirPods", "Headphones", "Headset", "Buds", "PL focus"]
+_HEADPHONE_KEYWORDS = ["WH-", "WF-", "AirPods", "Headphones", "Headset", "Buds", "PLT", "PL focus"]
 _FALLBACK_DEVICE = "MacBook Pro Speakers"
 
 
@@ -66,40 +65,53 @@ def _try_play(audio: np.ndarray, samplerate: int, device: int | str | None) -> N
         pos += frames
 
     pos = 0
-    stream = sd.OutputStream(
-        samplerate=samplerate,
-        channels=1,
-        dtype="float32",
-        device=device,
-        callback=_callback,
-        finished_callback=finished.set,
-    )
-    stream.start()
+    _MAX_RETRIES = 3
+    _RETRY_DELAY = 0.5
+    for attempt in range(_MAX_RETRIES):
+        stream = None
+        try:
+            stream = sd.OutputStream(
+                samplerate=samplerate,
+                channels=1,
+                dtype="float32",
+                device=device,
+                callback=_callback,
+                finished_callback=finished.set,
+            )
+            stream.start()
+            break
+        except Exception as e:
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            err = str(e)
+            if ("-9986" in err or "Internal PortAudio error" in err) and attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAY)
+                continue
+            raise
+    if attempt > 0:
+        print(f"[talkback] device {device!r} recovered after {attempt + 1} attempt(s)", file=sys.stderr)
     finished.wait()
     stream.stop()
     stream.close()
 
 
 def _play_audio(audio: np.ndarray, samplerate: int = 24000) -> None:
-    """Play audio array with device fallback chain, respecting cancellation."""
-    global _last_device
+    """Play audio array with device fallback chain, respecting cancellation.
 
-    # Build deduplicated fallback chain preserving order; treat all None as one slot
-    raw_chain = [_last_device, _pick_device(), "MacBook Pro Speakers"]
-    seen_none = False
-    chain: list[int | str | None] = []
-    for dev in raw_chain:
-        if dev is None:
-            if not seen_none:
-                seen_none = True
-                chain.append(None)
-        elif dev not in chain:
-            chain.append(dev)
+    Re-detects the best output device on every call so headphone/device switches
+    take effect immediately without stale state.
+    """
+    primary = _pick_device()
+    chain: list[str | None] = [primary]
+    if primary != _FALLBACK_DEVICE:
+        chain.append(_FALLBACK_DEVICE)
 
     for dev in chain:
         try:
             _try_play(audio, samplerate, dev)
-            _last_device = dev
             return
         except Exception as e:
             print(f"[talkback] device {dev!r} failed ({e}), trying next...", file=sys.stderr)
