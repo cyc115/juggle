@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Juggle">
+  <title>Juggle</title>
+  <!-- Motion arcs (juggling trajectories) -->
+  <g fill="none" stroke-linecap="round" stroke-dasharray="3 7" opacity="0.45">
+    <path d="M 56 196 C 80 56, 128 56, 152 196" stroke="#F97316" stroke-width="3"/>
+    <path d="M 104 196 C 128 24, 176 24, 200 196" stroke="#8B5CF6" stroke-width="3"/>
+    <path d="M 56 196 C 96 84, 160 84, 200 196" stroke="#06B6D4" stroke-width="3"/>
+  </g>
+
+  <!-- Three balls (one per topic / thread) -->
+  <circle cx="104" cy="80" r="22" fill="#F97316"/>
+  <circle cx="152" cy="44" r="22" fill="#8B5CF6"/>
+  <circle cx="200" cy="92" r="22" fill="#06B6D4"/>
+
+  <!-- Soft highlights -->
+  <circle cx="98" cy="74" r="6" fill="#ffffff" opacity="0.4"/>
+  <circle cx="146" cy="38" r="6" fill="#ffffff" opacity="0.4"/>
+  <circle cx="194" cy="86" r="6" fill="#ffffff" opacity="0.4"/>
+
+  <!-- Catch points (juggler's hands) -->
+  <circle cx="56" cy="196" r="5" fill="#94A3B8"/>
+  <circle cx="200" cy="196" r="5" fill="#94A3B8"/>
+</svg>
