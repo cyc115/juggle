@@ -43,7 +43,7 @@ def test_poll_detects_researcher_completion(db):
 
     thread = db.get_thread(tid)
     label = thread["user_label"]
-    assert lines == [f"[{label}] researcher: smoke test researcher action item"]
+    assert [line for _, line in lines] == [f"[{label}] researcher: smoke test researcher action item"]
     assert new_id == nid
 
 
@@ -60,7 +60,7 @@ def test_poll_detects_coder_completion(db):
 
     thread = db.get_thread(tid)
     label = thread["user_label"]
-    assert lines == [f"[{label}] coder: deploy feature X"]
+    assert [line for _, line in lines] == [f"[{label}] coder: deploy feature X"]
     assert new_id == nid
 
 
