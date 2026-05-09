@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Juggle CLI Common - shared constants, DB access, and utility functions."""
 
+import logging
 import os
 import subprocess
 import sys
@@ -138,26 +139,67 @@ def _extract_decision_prompt(last_assistant: str | None, last_user: str | None) 
 
 
 def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
-    """Generate a 5-10 word title for a thread via claude -p. Stores result in DB.
-
-    Falls back to first 5 words of topic if claude is unavailable or returns garbage.
-    Returns the title string.
-    """
+    """Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words."""
+    from juggle_settings import get_settings
+    cfg = get_settings().get("title_gen", {})
     fallback = " ".join(topic.split()[:5])
     prompt = (
         f'Give a 5-10 word title for this task: "{topic}". '
         f'Reply with the title only. No punctuation. No quotes. No explanation.'
     )
+    timeout = cfg.get("timeout_secs", 10)
+
+    def _valid(text: str) -> bool:
+        return bool(text) and len(text.split()) <= 15
+
+    # Tier 1: OpenRouter (free tier, zero cost). Key lives in ~/.juggle/.env as OPENROUTER_KEY.
+    api_key = os.environ.get("OPENROUTER_KEY", "")
+    if cfg.get("openrouter_enabled", True) and api_key:
+        try:
+            import urllib.request
+            import json as _json
+            body = _json.dumps({
+                "model": cfg.get("openrouter_model", "meta-llama/llama-3.1-8b-instruct:free"),
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 30,
+            }).encode()
+            req = urllib.request.Request(
+                "https://openrouter.ai/api/v1/chat/completions",
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = _json.loads(resp.read())
+            title = data["choices"][0]["message"]["content"].strip()
+            if _valid(title):
+                logging.info("title_gen: tier1 openrouter -> %r", title)
+                db.update_thread(thread_uuid, title=title)
+                return title
+        except Exception as e:
+            logging.warning("title_gen: tier1 openrouter failed, falling to haiku: %s", e)
+
+    # Tier 2: claude -p --model haiku (~20x cheaper than Sonnet for this task)
     try:
+        haiku = cfg.get("haiku_model", "claude-haiku-4-5-20251001")
         result = subprocess.run(
-            ["claude", "-p", prompt],
-            capture_output=True, text=True, timeout=20
+            ["claude", "-p", prompt, "--model", haiku],
+            capture_output=True, text=True, timeout=timeout
         )
-        title = result.stdout.strip()
-        # Sanity check: non-empty and not excessively long
-        if not title or len(title.split()) > 15:
-            title = fallback
-    except Exception:
-        title = fallback
-    db.update_thread(thread_uuid, title=title)
-    return title
+        if result.returncode == 0:
+            title = result.stdout.strip()
+            if _valid(title):
+                logging.info("title_gen: tier2 haiku -> %r", title)
+                db.update_thread(thread_uuid, title=title)
+                return title
+        else:
+            logging.warning("title_gen: tier2 haiku returncode=%d, falling to 5-words", result.returncode)
+    except Exception as e:
+        logging.warning("title_gen: tier2 haiku failed, falling to 5-words: %s", e)
+
+    # Tier 3: first 5 words — unconditional, always succeeds
+    logging.info("title_gen: tier3 fallback -> %r", fallback)
+    db.update_thread(thread_uuid, title=fallback)
+    return fallback
