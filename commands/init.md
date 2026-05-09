@@ -93,7 +93,46 @@ for i in 1 2 3; do
 done
 ```
 
-### 4. Report
+### 4. Set Up Shell Alias
+
+Detect the user's shell and add `nvim-juggle` alias to the appropriate rc file:
+
+```bash
+SHELL_RC=""
+case "$SHELL" in
+  */zsh)  SHELL_RC="$HOME/.zshrc" ;;
+  */bash) SHELL_RC="$HOME/.bashrc" ;;
+esac
+```
+
+If fish is detected (`~/.config/fish/config.fish` exists), also add a fish alias:
+```bash
+[ -f "$HOME/.config/fish/config.fish" ] && FISH_CFG="$HOME/.config/fish/config.fish"
+```
+
+Check if alias already exists before adding:
+
+```bash
+# zsh/bash
+if [ -n "$SHELL_RC" ] && ! grep -q "nvim-juggle" "$SHELL_RC" 2>/dev/null; then
+  echo "" >> "$SHELL_RC"
+  echo "# juggle nvim server" >> "$SHELL_RC"
+  echo "alias nvim-juggle='nvim --listen /tmp/juggle-nvim.sock'" >> "$SHELL_RC"
+  echo "Added nvim-juggle alias to $SHELL_RC"
+fi
+
+# fish
+if [ -n "$FISH_CFG" ] && ! grep -q "nvim-juggle" "$FISH_CFG" 2>/dev/null; then
+  echo "" >> "$FISH_CFG"
+  echo "# juggle nvim server" >> "$FISH_CFG"
+  echo "alias nvim-juggle='nvim --listen /tmp/juggle-nvim.sock'" >> "$FISH_CFG"
+  echo "Added nvim-juggle alias to $FISH_CFG"
+fi
+```
+
+Tell the user: `nvim-juggle` starts nvim as a server on `/tmp/juggle-nvim.sock`. Use it instead of `nvim` when you want `juggle:open` to target that session. Run `source <rc-file>` or open a new terminal to activate.
+
+### 5. Report
 
 ```
 Juggle initialized.
