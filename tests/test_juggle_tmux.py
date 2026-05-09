@@ -62,7 +62,7 @@ def test_spawn_pane_returns_pane_id(mgr):
 def test_start_claude_sets_juggle_is_agent(mgr):
     """Agent panes must be launched with JUGGLE_IS_AGENT=1 so PreToolUse hooks can skip blocking."""
     sent_commands = []
-    def capture_send_keys(*args, **kwargs):
+    def capture_send_keys(*args, **_):
         # args = (["tmux", "send-keys", "-t", pane_id, cmd, "Enter"],)
         if args and "send-keys" in args[0]:
             sent_commands.append(args[0][-2])  # cmd is second-to-last arg
