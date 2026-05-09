@@ -6,11 +6,14 @@ Usage: python juggle_cli.py <command> [args]
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(SRC_DIR))
+
+NVIM_SOCKET = "/tmp/juggle-nvim.sock"
 
 # Re-export commonly used symbols for backward compatibility with tests
 from juggle_cli_common import (  # noqa: F401
@@ -119,6 +122,16 @@ def cmd_clear_pending_decision(args):
     open_questions = [q for q in open_questions if not q.get("id", "").startswith(args.tool_use_id)]
 
     db.update_thread(thread, open_questions=open_questions)
+
+
+def cmd_open_in_editor(args):
+    if not os.path.exists(NVIM_SOCKET):
+        print(
+            f"No nvim server at {NVIM_SOCKET}. Start nvim with: nvim --listen {NVIM_SOCKET}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    subprocess.run(["nvim", "--server", NVIM_SOCKET, "--remote", args.file], check=True)
 
 
 def main():
@@ -391,6 +404,11 @@ def main():
     clear_parser = subparsers.add_parser("clear-pending-decision", help="Clear pending decisions by tool_use_id")
     clear_parser.add_argument("--tool-use-id", required=True)
     clear_parser.set_defaults(func=cmd_clear_pending_decision)
+
+    # open-in-editor
+    p_open = subparsers.add_parser("open-in-editor", help="Open file in nvim server")
+    p_open.add_argument("file", help="Path to file to open")
+    p_open.set_defaults(func=cmd_open_in_editor)
 
     args = parser.parse_args()
 

@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -651,3 +651,35 @@ def test_archive_thread_marks_busy_agents_pending(started_db):
     agent = JuggleDB(str(db_path)).get_agent(agent_id)
     assert agent is not None
     assert agent["status"] == "decommission_pending"
+
+
+# ---------------------------------------------------------------------------
+# open-in-editor tests
+# ---------------------------------------------------------------------------
+
+def test_open_in_editor_no_socket(tmp_path, capsys):
+    """Exits 1 with clear error when socket doesn't exist."""
+    from juggle_cli import main
+    socket_path = str(tmp_path / "missing.sock")
+    with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.md"]):
+        with patch("juggle_cli.NVIM_SOCKET", socket_path):
+            with pytest.raises(SystemExit) as exc:
+                main()
+    assert exc.value.code == 1
+    assert "nvim --listen" in capsys.readouterr().err
+
+
+def test_open_in_editor_calls_nvim(tmp_path):
+    """Calls nvim --server --remote when socket exists."""
+    from juggle_cli import main
+    sock = tmp_path / "nvim.sock"
+    sock.touch()
+    with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.md"]):
+        with patch("juggle_cli.NVIM_SOCKET", str(sock)):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                main()
+    mock_run.assert_called_once_with(
+        ["nvim", "--server", str(sock), "--remote", "/some/file.md"],
+        check=True,
+    )
