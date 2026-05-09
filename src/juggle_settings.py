@@ -85,6 +85,15 @@ DEFAULTS: dict = {
         "enabled": False,
         "port": 18787,
     },
+
+    # Title Generation
+    "title_gen": {
+        "openrouter_enabled": True,
+        "openrouter_model": "meta-llama/llama-3.1-8b-instruct:free",
+        "openrouter_api_key": "",
+        "haiku_model": "claude-haiku-4-5-20251001",
+        "timeout_secs": 10,
+    },
 }
 
 
