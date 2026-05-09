@@ -45,16 +45,27 @@ python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "
 ```
 
 **Q2: OpenRouter API Key**
-Ask user to paste their OpenRouter API key.
-Validate with:
+
+Explain to the user:
+> Hindsight uses OpenRouter to run a small LLM for memory summarization. Usage is minimal (~$0.40/month on the recommended model). Your key will be stored only in `~/.juggle/.env` (chmod 600) — never in config files.
+>
+> Get a key at https://openrouter.ai/keys (free account, no credit card required to start).
+
+Ask the user to paste their OpenRouter API key. Then validate:
 ```bash
 curl -sf -H "Authorization: Bearer <key>" https://openrouter.ai/api/v1/models | head -c 100
 ```
+
+If validation fails, tell the user and ask them to re-enter the key. Retry up to 3 times before giving up with a clear error.
+
+Confirm: "Key validated. Will be stored securely in `~/.juggle/.env`."
 
 **Q3: LLM Model**
 Options:
 - "(Recommended) moonshotai/kimi-k2.5 (~$0.40/month)"
 - "Custom — I'll provide a model ID"
+
+If Custom: ask the user to paste the OpenRouter model ID (e.g. `anthropic/claude-haiku-4-5`). No validation needed.
 
 ### 3. Bootstrap
 
