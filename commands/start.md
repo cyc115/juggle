@@ -123,6 +123,8 @@ ______________________________________________________________________
 
 Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When in doubt: dispatch an agent.
 
+**File opens (REQUIRED):** Always open files for user review with `/juggle:open <path>` — never `open -a neovide`, never inline Read. This sends the file to the persistent nvim server at `/tmp/juggle-nvim.sock`.
+
 > **NEVER use the Agent tool to dispatch work.** Always use `get-agent` + `send-task`. The Agent tool bypasses juggle's DB registration — the agent gets no role, `complete-agent` role checks fail silently, and researcher review action items are never created. The agent is also invisible to cockpit monitoring. This is not recoverable. No exceptions.
 
 **Response prefix (REQUIRED):**
