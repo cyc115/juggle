@@ -154,7 +154,8 @@ def cmd_open_in_editor(args):
         )
         sys.exit(1)
     try:
-        subprocess.run(["nvim", "--server", NVIM_SOCKET, "--remote", args.file], check=True)
+        abs_file = os.path.abspath(args.file)
+        subprocess.run(["nvim", "--server", NVIM_SOCKET, "--remote", abs_file], check=True)
     except subprocess.CalledProcessError as e:
         print(f"nvim exited with code {e.returncode}", file=sys.stderr)
         sys.exit(e.returncode)
