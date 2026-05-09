@@ -38,24 +38,26 @@ ______________________________________________________________________
 
 All commands: `python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <cmd> [args]`
 
-| Command                                                 | Usage                                                                                                                      |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `create-thread <label>`                                 | New topic thread                                                                                                           |
-| `switch-thread <id>`                                    | Switch active topic                                                                                                        |
-| `show-topics`                                           | List all threads                                                                                                           |
-| `close-thread <id>`                                     | Mark thread done                                                                                                           |
-| `archive-thread <id>`                                   | Archive thread                                                                                                             |
-| `get-agent <thread_id> --role <role> [--model <model>]` | Get idle agent (spawns if needed). Roles: `researcher`, `planner`, `coder`. Models: `sonnet` (default), `haiku`, `opus`    |
-| `send-task <agent_id> <prompt_file>`                    | Send task file to agent pane                                                                                               |
-| `complete-agent <thread_id> "<result>"`                 | Mark agent task done + notify. Researcher role → auto-creates review action item (do NOT call `request-action` separately) |
-| `fail-agent <id> "<error>"`                             | Unrecoverable failure → HIGH action item + close thread                                                                    |
-| `fail-agent <id> "<error>" --recovery-dispatched`       | Recovery in progress → notify + dismiss old actions, thread stays running                                                  |
-| `release-agent <agent_id>`                              | Return agent to idle pool                                                                                                  |
-| `list-agents`                                           | Show all agents with status                                                                                                |
-| `notify <thread_id> "<msg>"`                            | Surface mid-task status to cockpit notifications                                                                           |
-| `update-summary <id> "<text>"`                          | Update thread summary                                                                                                      |
-| `get-messages <id> --plain --limit N`                   | Read thread messages                                                                                                       |
-| `get-archive-candidates`                                | List archivable threads                                                                                                    |
+| Command | Exact signature | Notes |
+| ------- | --------------- | ----- |
+| `create-thread` | `create-thread <label> [--domain DOMAIN]` | New topic thread |
+| `switch-thread` | `switch-thread <thread_id>` | Switch active topic |
+| `show-topics` | `show-topics` | List all threads |
+| `close-thread` | `close-thread <thread_id>` | Mark thread done |
+| `archive-thread` | `archive-thread <thread_id>` | Archive thread |
+| `get-agent` | `get-agent <thread_id> [--role {researcher,planner,coder}] [--model MODEL]` | Get/spawn idle agent |
+| `send-task` | `send-task <agent_id> <prompt_file>` | Send task file to agent pane |
+| `complete-agent` | `complete-agent <thread_id> "<result>" [--retain TEXT] [--open-questions JSON] [--role {researcher,planner,coder}]` | Mark done + notify. Researcher → auto action item |
+| `fail-agent` | `fail-agent <thread_id> "<error>" [--type {transient,persistent}] [--recovery-dispatched]` | `--recovery-dispatched`: notify only, thread stays open |
+| `release-agent` | `release-agent <agent_id> [--force]` | Return agent to idle pool |
+| `list-agents` | `list-agents` | Show all agents with status |
+| `notify` | `notify <thread_id> "<msg>"` | Surface mid-task status to cockpit |
+| `update-summary` | `update-summary <thread_id> "<text>"` | Update thread summary |
+| `get-messages` | `get-messages <thread_id> [--plain] [--limit N]` | Read thread messages |
+| `get-archive-candidates` | `get-archive-candidates` | List archivable threads |
+| `request-action` | `request-action <thread_id> "<msg>" [--type {question,manual_step,decision,failure}] [--priority {low,normal,high}]` | Log action item. No `--tier` flag. |
+| `ack-action` | `ack-action <action_id>` | Dismiss action item |
+| `list-actions` | `list-actions` | Show open action items |
 
 **Do NOT use:** `spawn-agent` directly — always use `get-agent` (handles pool reuse).
 
