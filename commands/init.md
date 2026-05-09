@@ -28,7 +28,7 @@ Options:
 - "(Recommended) Yes — set up persistent memory for Juggle agents"
 - "No — skip memory, agents run without recall/retain"
 
-If No → write `~/.juggle/config.json` with `{"hindsight": {"enabled": false}}` and stop.
+If No → write `~/.juggle/config.json` with all defaults (hindsight.enabled = false) and stop. Use the full config template from Step 3.
 
 **Q2: OpenRouter API Key**
 Ask user to paste their OpenRouter API key.
@@ -55,15 +55,58 @@ HINDSIGHT_LLM_MODEL=<user's model choice>
 ENVEOF
 chmod 600 ~/.juggle/.env
 
-# Write config.json
+# Write config.json with all defaults
+# Set hindsight.enabled=true if user chose Yes, false if No
 cat > ~/.juggle/config.json << 'CFGEOF'
 {
+  "max_threads": 10,
+  "max_agents": 20,
+  "agent_idle_ttl_secs": 43200,
+  "message_history_token_budget": 1500,
+  "context_injection_char_limit": 8000,
+  "context_teaser_chars": 80,
+  "stale_summary_message_threshold": 3,
+  "summary_max_chars": 250,
+  "thread_idle_threshold_secs": 1800,
+  "thread_archive_threshold_secs": 172800,
+  "cockpit": {
+    "refresh_interval_secs": 1.0,
+    "column_ratios": [0.30, 0.40, 0.30],
+    "notification_ratio": 30
+  },
+  "paths": {
+    "data_dir": "~/.claude/juggle",
+    "config_dir": "~/.juggle",
+    "digest_log_dir": "~/.juggle/logs"
+  },
+  "tmux": {
+    "session_name": "juggle",
+    "session_width": 220,
+    "session_height": 50,
+    "agent_idle_detection_secs": 30
+  },
   "hindsight": {
     "enabled": true,
     "api_url": "http://localhost:18888",
     "api_key": "juggle",
     "bank": "juggle",
-    "llm_model": "<user's model choice>"
+    "timeout_secs": 10,
+    "reflect_timeout_secs": 60
+  },
+  "domains": {
+    "initial_domains": ["juggle", "vault", "work"],
+    "initial_domain_paths": [
+      ["/github/juggle", "juggle"],
+      ["/Documents/personal", "vault"],
+      ["/work/", "work"]
+    ]
+  },
+  "agent": {
+    "claude_launch_command": "claude --dangerously-skip-permissions"
+  },
+  "talkback": {
+    "enabled": false,
+    "port": 18787
   }
 }
 CFGEOF
