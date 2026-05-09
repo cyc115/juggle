@@ -9,6 +9,21 @@ Interactive setup for Juggle plugin configuration.
 
 ## Steps
 
+### 0. Check for Existing Installation
+
+Before anything else, check what already exists:
+
+```bash
+ENV_EXISTS=0; CONFIG_EXISTS=0
+[ -f "$HOME/.juggle/.env" ] && ENV_EXISTS=1
+[ -f "$HOME/.juggle/config.json" ] && CONFIG_EXISTS=1
+echo "env=$ENV_EXISTS config=$CONFIG_EXISTS"
+```
+
+- If **both exist**: tell the user "Juggle already configured. Re-running will preserve your `.env` and `config.json` — only missing pieces will be added." Proceed but skip any write steps for files that already exist (see guards in steps 2–3).
+- If **neither exists**: fresh install, proceed normally.
+- If **partially configured**: note which files exist and which will be created.
+
 ### 1. Check Prerequisites
 
 ```bash
@@ -28,11 +43,13 @@ Options:
 - "(Recommended) Yes — set up persistent memory for Juggle agents"
 - "No — skip memory, agents run without recall/retain"
 
-If No → run the config-write snippet below with `HINDSIGHT_ENABLED=0`, then stop:
+If No → run the config-write snippet below with `HINDSIGHT_ENABLED=0`, then stop.
+**Skip if `~/.juggle/config.json` already exists** — tell the user their existing config was preserved:
 
 ```bash
-PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=0 \
-python3 - << 'PYEOF'
+if [ ! -f "$HOME/.juggle/config.json" ]; then
+  PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=0 \
+  python3 - << 'PYEOF'
 import os, json, sys, copy
 sys.path.insert(0, os.environ["PLUGIN_SRC"])
 from juggle_settings import DEFAULTS
@@ -41,12 +58,17 @@ cfg["hindsight"]["enabled"] = os.environ.get("HINDSIGHT_ENABLED") == "1"
 with open(os.environ["CONFIG_OUT"], "w") as f:
     json.dump(cfg, f, indent=2)
 PYEOF
-python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
+  python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
+else
+  echo "config.json already exists — skipping (preserved existing)"
+fi
 ```
 
 **Q2: OpenRouter API Key**
 
-Explain to the user:
+**Skip if `~/.juggle/.env` already exists** — tell the user "`.env` already exists, skipping key setup." and proceed to Q3 (model selection is still skipped if `.env` exists).
+
+If `.env` does not exist, explain to the user:
 > Hindsight uses OpenRouter to run a small LLM for memory summarization. Usage is minimal (~$0.40/month on the recommended model). Your key will be stored only in `~/.juggle/.env` (chmod 600) — never in config files.
 >
 > Get a key at https://openrouter.ai/keys (free account, no credit card required to start).
@@ -61,6 +83,10 @@ If validation fails, tell the user and ask them to re-enter the key. Retry up to
 Confirm: "Key validated. Will be stored securely in `~/.juggle/.env`."
 
 **Q3: LLM Model**
+
+**Skip if `~/.juggle/.env` already exists** — model is already configured there.
+
+If `.env` does not exist:
 Options:
 - "(Recommended) moonshotai/kimi-k2.5 (~$0.40/month)"
 - "Custom — I'll provide a model ID"
@@ -70,19 +96,26 @@ If Custom: ask the user to paste the OpenRouter model ID (e.g. `anthropic/claude
 ### 3. Bootstrap
 
 ```bash
-# Create directories
+# Create directories (always safe — idempotent)
 mkdir -p ~/.juggle/memory/pg0 ~/.juggle/logs
 
-# Write .env (KEY=VALUE format — no "export" prefix; juggle_cli.py loads this automatically)
-cat > ~/.juggle/.env << 'ENVEOF'
+# Write .env only if it doesn't already exist
+# (KEY=VALUE format — no "export" prefix; juggle_cli.py loads this automatically)
+if [ ! -f "$HOME/.juggle/.env" ]; then
+  cat > ~/.juggle/.env << 'ENVEOF'
 OPENROUTER_KEY=<user's key>
 HINDSIGHT_LLM_MODEL=<user's model choice>
 ENVEOF
-chmod 600 ~/.juggle/.env
+  chmod 600 ~/.juggle/.env
+  echo ".env written"
+else
+  echo ".env already exists — skipping (preserved existing)"
+fi
 
-# Write config.json from DEFAULTS in juggle_settings.py
-PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=1 \
-python3 - << 'PYEOF'
+# Write config.json only if it doesn't already exist
+if [ ! -f "$HOME/.juggle/config.json" ]; then
+  PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=1 \
+  python3 - << 'PYEOF'
 import os, json, sys, copy
 sys.path.insert(0, os.environ["PLUGIN_SRC"])
 from juggle_settings import DEFAULTS
@@ -91,7 +124,10 @@ cfg["hindsight"]["enabled"] = os.environ.get("HINDSIGHT_ENABLED") == "1"
 with open(os.environ["CONFIG_OUT"], "w") as f:
     json.dump(cfg, f, indent=2)
 PYEOF
-python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
+  python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
+else
+  echo "config.json already exists — skipping (preserved existing)"
+fi
 
 # Start service
 docker compose --env-file ~/.juggle/.env -f ${CLAUDE_PLUGIN_ROOT}/docker/docker-compose.yml up -d
