@@ -196,10 +196,38 @@ class JuggleTmuxManager:
             db.delete_agent(agent_id)
 
 
+def _pane_has_juggle_agent_env(pane_id: str) -> bool:
+    """Return True if any child process of the pane has JUGGLE_IS_AGENT=1."""
+    import subprocess as _sp
+    try:
+        pane_pid = _sp.run(
+            ["tmux", "display-message", "-t", pane_id, "-p", "#{pane_pid}"],
+            capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        if not pane_pid:
+            return False
+        children = _sp.run(
+            ["pgrep", "-P", pane_pid],
+            capture_output=True, text=True, timeout=3,
+        ).stdout.strip().splitlines()
+        for child in children:
+            env_out = _sp.run(
+                ["ps", "eww", "-p", child],
+                capture_output=True, text=True, timeout=3,
+            ).stdout
+            if "JUGGLE_IS_AGENT=1" in env_out:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def reap_stale_agents(db, mgr):
     """Reap agents idle longer than agent_idle_ttl_secs.
 
     Always reaps agents whose tmux pane no longer exists, regardless of status.
+    Also kills unowned panes (JUGGLE_IS_AGENT=1 but no DB record) to handle
+    DB-reset/migration scenarios where pane state outlives DB state.
     Skips busy (live-pane) agents and agents assigned to the current thread.
     Returns count of agents reaped.
     """
@@ -213,6 +241,7 @@ def reap_stale_agents(db, mgr):
     now_ts = datetime.now(timezone.utc)
     reaped = 0
 
+    # DB→tmux: reap DB entries whose panes are gone or past TTL.
     for a in db.get_all_agents():
         # Always reap agents whose pane no longer exists, regardless of status
         if not mgr.verify_pane(a["pane_id"]):
@@ -234,5 +263,23 @@ def reap_stale_agents(db, mgr):
                     reaped += 1
             except (ValueError, TypeError):
                 pass
+
+    # tmux→DB: kill panes tagged JUGGLE_IS_AGENT=1 with no DB record.
+    # Handles DB-reset/migration scenarios where panes outlive their DB entries.
+    known_pane_ids = {a["pane_id"] for a in db.get_all_agents()}
+    try:
+        import subprocess as _sp
+        result = _sp.run(
+            ["tmux", "list-panes", "-t", mgr.session_name, "-a", "-F", "#{pane_id}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for pane_id in result.stdout.strip().splitlines():
+            if pane_id in known_pane_ids:
+                continue
+            if _pane_has_juggle_agent_env(pane_id):
+                mgr.kill_pane(pane_id)
+                reaped += 1
+    except Exception:
+        pass
 
     return reaped
