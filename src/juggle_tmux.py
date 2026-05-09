@@ -62,7 +62,7 @@ class JuggleTmuxManager:
         cmd = _get_settings()["agent"]["claude_launch_command"]
         if model:
             cmd += f" --model {model}"
-        cmd = f"env -u CLAUDE_PLUGIN_DATA {cmd}"
+        cmd = f"env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1 {cmd}"
         self._run_tmux("send-keys", "-t", pane_id, cmd, "Enter")
 
     def verify_pane(self, pane_id: str) -> bool:

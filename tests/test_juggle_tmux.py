@@ -59,6 +59,26 @@ def test_spawn_pane_returns_pane_id(mgr):
     assert pane_id == "%5"
 
 
+def test_start_claude_sets_juggle_is_agent(mgr):
+    """Agent panes must be launched with JUGGLE_IS_AGENT=1 so PreToolUse hooks can skip blocking."""
+    sent_commands = []
+    def capture_send_keys(*args, **kwargs):
+        # args = (["tmux", "send-keys", "-t", pane_id, cmd, "Enter"],)
+        if args and "send-keys" in args[0]:
+            sent_commands.append(args[0][-2])  # cmd is second-to-last arg
+        m = MagicMock()
+        m.returncode = 0
+        m.stdout = ""
+        return m
+
+    with patch("subprocess.run", side_effect=capture_send_keys):
+        mgr.start_claude_in_pane("%5")
+
+    assert sent_commands, "send-keys was never called"
+    cmd = sent_commands[0]
+    assert "JUGGLE_IS_AGENT=1" in cmd, f"Expected JUGGLE_IS_AGENT=1 in launch cmd, got: {cmd!r}"
+
+
 def test_verify_pane_true_when_present(mgr):
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = _ok(stdout="%1\n%3\n%5\n")
