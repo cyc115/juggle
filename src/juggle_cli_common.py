@@ -194,6 +194,8 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
                 logging.info("title_gen: tier2 haiku -> %r", title)
                 db.update_thread(thread_uuid, title=title)
                 return title
+            else:
+                logging.warning("title_gen: tier2 haiku output invalid (%d words), falling to 5-words", len(title.split()))
         else:
             logging.warning("title_gen: tier2 haiku returncode=%d, falling to 5-words", result.returncode)
     except Exception as e:

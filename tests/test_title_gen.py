@@ -23,11 +23,11 @@ def test_title_gen_defaults_present():
 # ---------------------------------------------------------------------------
 
 def _cfg(**overrides) -> dict:
+    """Return a full get_settings()-shaped dict. No openrouter_api_key — key lives in env only."""
     base = {
         "title_gen": {
             "openrouter_enabled": True,
             "openrouter_model": "meta-llama/llama-3.1-8b-instruct:free",
-            "openrouter_api_key": "",
             "haiku_model": "claude-haiku-4-5-20251001",
             "timeout_secs": 5,
         }
@@ -188,6 +188,20 @@ def test_tier2_file_not_found_falls_to_tier3(monkeypatch):
             title = _generate_title_for_thread(db, "uuid-1", "alpha beta gamma delta epsilon eta")
 
     assert title == "alpha beta gamma delta epsilon"
+
+
+def test_tier2_overlong_output_falls_to_tier3(monkeypatch):
+    from juggle_cli_common import _generate_title_for_thread
+    db = _db()
+    monkeypatch.delenv("OPENROUTER_KEY", raising=False)
+    long_output = " ".join(f"w{i}" for i in range(16))  # 16 words — exceeds _valid() limit
+    mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=long_output))
+
+    with patch("juggle_settings.get_settings", return_value=_cfg()):
+        with patch("subprocess.run", mock_run):
+            title = _generate_title_for_thread(db, "uuid-1", "one two three four five six")
+
+    assert title == "one two three four five"
 
 
 # ---------------------------------------------------------------------------
