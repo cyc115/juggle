@@ -1,4 +1,5 @@
 """Tests for juggle_hooks.py Stop handler and classification helpers."""
+import json
 import sys
 from pathlib import Path
 import pytest
@@ -64,6 +65,78 @@ def test_stop_handler_missing_field_is_noop(active_db, monkeypatch):
 
     messages = active_db.get_messages(active_db.get_current_thread(), token_budget=9999)
     assert not any(m["role"] == "assistant" for m in messages)
+
+
+# ---------------------------------------------------------------------------
+# handle_pre_tool_use tests
+# ---------------------------------------------------------------------------
+
+def _reload_hooks(monkeypatch, active_db):
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
+    import importlib
+    import juggle_hooks
+    importlib.reload(juggle_hooks)
+    return juggle_hooks
+
+
+def test_pre_tool_use_blocks_edit_in_orchestrator(active_db, monkeypatch, capsys):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use({"tool_name": "Edit", "session_id": "deadbeef1234"})
+
+    assert exc_info.value.code == 2
+    stderr = capsys.readouterr().err
+    payload = json.loads(stderr)
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "Edit" in payload["systemMessage"]
+
+
+def test_pre_tool_use_blocks_write_in_orchestrator(active_db, monkeypatch):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use({"tool_name": "Write", "session_id": "abc"})
+
+    assert exc_info.value.code == 2
+
+
+def test_pre_tool_use_allows_edit_in_agent_session(active_db, monkeypatch):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use({"tool_name": "Edit", "session_id": "agentpane"})
+
+    assert exc_info.value.code == 0
+
+
+def test_pre_tool_use_allows_when_juggle_inactive(tmp_path, monkeypatch):
+    db = JuggleDB(str(tmp_path / "juggle.db"))
+    db.init_db()
+    db.set_active(False)
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+    import importlib
+    import juggle_hooks
+    importlib.reload(juggle_hooks)
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use({"tool_name": "Edit", "session_id": "xyz"})
+
+    assert exc_info.value.code == 0
+
+
+def test_pre_tool_use_allows_non_blocked_tool(active_db, monkeypatch):  # no capsys — exit 0, no output
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use({"tool_name": "Bash", "session_id": "xyz"})
+
+    assert exc_info.value.code == 0
 
 
 # ---------------------------------------------------------------------------

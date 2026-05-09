@@ -296,7 +296,16 @@ def handle_session_start(data: dict) -> None:
 
 
 def handle_pre_tool_use(data: dict) -> None:
-    """Hard-block Edit/Write/NotebookEdit in the orchestrator main thread."""
+    """Hard-block Edit/Write/NotebookEdit in the orchestrator main thread.
+
+    Agent sessions bypass via JUGGLE_IS_AGENT=1 (set by start_claude_in_pane).
+    Trust model: JUGGLE_IS_AGENT is an anti-accidental-edit guard, not a hard
+    security boundary — see juggle_tmux.py for details.
+    """
+    # Agent panes are explicitly tagged — let them write freely.
+    if os.environ.get("JUGGLE_IS_AGENT"):
+        sys.exit(0)
+
     if not is_active():
         sys.exit(0)
 
@@ -304,17 +313,18 @@ def handle_pre_tool_use(data: dict) -> None:
         tool_name = data.get("tool_name", "")
         BLOCKED_TOOLS = {"Edit", "Write", "NotebookEdit"}
         if tool_name in BLOCKED_TOOLS:
+            session_id = data.get("session_id", "")[:8]
+            msg = (
+                f"🚫 {tool_name} blocked in juggle orchestrator session [{session_id}]. "
+                "File edits must go through an agent. Use get-agent + send-task to dispatch."
+            )
+            logging.info("PreToolUse: blocked %s in orchestrator session %s", tool_name, session_id)
             output = {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "decision": "block",
-                    "reason": (
-                        f"Orchestrator cannot use {tool_name} directly. "
-                        "Dispatch to a tmux agent instead."
-                    ),
-                }
+                "hookSpecificOutput": {"permissionDecision": "deny"},
+                "systemMessage": msg,
             }
-            print(json.dumps(output))
+            print(json.dumps(output), file=sys.stderr)
+            sys.exit(2)
         # Track pending AskUserQuestion decisions
         if tool_name == "AskUserQuestion":
             try:
