@@ -28,7 +28,21 @@ Options:
 - "(Recommended) Yes — set up persistent memory for Juggle agents"
 - "No — skip memory, agents run without recall/retain"
 
-If No → write `~/.juggle/config.json` using the same Python snippet from Step 3 with `hindsight.enabled = False`, then stop.
+If No → run the config-write snippet below with `HINDSIGHT_ENABLED=0`, then stop:
+
+```bash
+PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=0 \
+python3 - << 'PYEOF'
+import os, json, sys, copy
+sys.path.insert(0, os.environ["PLUGIN_SRC"])
+from juggle_settings import DEFAULTS
+cfg = copy.deepcopy(DEFAULTS)
+cfg["hindsight"]["enabled"] = os.environ.get("HINDSIGHT_ENABLED") == "1"
+with open(os.environ["CONFIG_OUT"], "w") as f:
+    json.dump(cfg, f, indent=2)
+PYEOF
+python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
+```
 
 **Q2: OpenRouter API Key**
 Ask user to paste their OpenRouter API key.
@@ -56,17 +70,17 @@ ENVEOF
 chmod 600 ~/.juggle/.env
 
 # Write config.json from DEFAULTS in juggle_settings.py
-# Set hindsight.enabled=true if user chose Yes, false if No
-python3 - << PYEOF
-import json, sys
-sys.path.insert(0, "${CLAUDE_PLUGIN_ROOT}/src")
+PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=1 \
+python3 - << 'PYEOF'
+import os, json, sys, copy
+sys.path.insert(0, os.environ["PLUGIN_SRC"])
 from juggle_settings import DEFAULTS
-import copy
 cfg = copy.deepcopy(DEFAULTS)
-cfg["hindsight"]["enabled"] = <true_or_false>  # replace with bool based on user choice
-with open("${HOME}/.juggle/config.json", "w") as f:
+cfg["hindsight"]["enabled"] = os.environ.get("HINDSIGHT_ENABLED") == "1"
+with open(os.environ["CONFIG_OUT"], "w") as f:
     json.dump(cfg, f, indent=2)
 PYEOF
+python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
 
 # Start service
 docker compose --env-file ~/.juggle/.env -f ${CLAUDE_PLUGIN_ROOT}/docker/docker-compose.yml up -d
