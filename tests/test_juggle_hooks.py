@@ -6,7 +6,42 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from juggle_db import JuggleDB
-from juggle_hooks import get_classification_candidates
+from juggle_hooks import get_classification_candidates, _bash_write_pattern
+
+
+@pytest.mark.parametrize("cmd,expected_match", [
+    ("sed -i 's/foo/bar/' file.py", True),
+    ("sed --in-place 's/x/y/' f.txt", True),
+    ("git add src/", True),
+    ("git commit -m 'fix'", True),
+    ("git push origin main", True),
+    ("git reset --hard HEAD~1", True),
+    ("rm -rf /tmp/old", True),
+    ("rm file.txt", True),
+    ("patch -p1 < changes.patch", True),
+    ("tee output.log", True),
+    ("mv old.py new.py", True),
+    ("echo hello > out.txt", True),
+    ("cat src.py >> dest.py", True),
+    # Safe commands — must NOT be blocked
+    ("git status", False),
+    ("git log --oneline -10", False),
+    ("git diff HEAD", False),
+    ("grep -r foo src/", False),
+    ("python3 juggle_cli.py start", False),
+    ("curl -sf http://localhost:18888/health", False),
+    ("cat file.py", False),
+    ("ls -la", False),
+    ("command 2> /dev/stderr", False),
+    ("command > /dev/null", False),
+    ("command 2>&1", False),
+])
+def test_bash_write_pattern(cmd, expected_match):
+    result = _bash_write_pattern(cmd)
+    if expected_match:
+        assert result is not None, f"Expected block on: {cmd!r}"
+    else:
+        assert result is None, f"Expected pass on: {cmd!r} but got {result!r}"
 
 
 @pytest.fixture

@@ -1,8 +1,8 @@
-import sys, json
+import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 def _make_pre_data(tool_use_id, questions):
@@ -24,7 +24,8 @@ def test_askuser_creates_action_item(tmp_path):
 
     data = _make_pre_data("tuid-abc", ["Option A?", "Option B?"])
 
-    with patch("juggle_hooks.get_db", return_value=db):
+    with patch("juggle_hooks.is_active", return_value=True), \
+         patch("juggle_hooks.get_db", return_value=db):
         from juggle_hooks import handle_pre_tool_use
         with pytest.raises(SystemExit):
             handle_pre_tool_use(data)
@@ -60,7 +61,8 @@ def test_askuser_dismisses_action_item_on_answer(tmp_path):
         "tool_response": {},
     }
 
-    with patch("juggle_hooks.get_db", return_value=db):
+    with patch("juggle_hooks.is_active", return_value=True), \
+         patch("juggle_hooks.get_db", return_value=db):
         from juggle_hooks import handle_post_tool_use
         with pytest.raises(SystemExit):
             handle_post_tool_use(post_data)
