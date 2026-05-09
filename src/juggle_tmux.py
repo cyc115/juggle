@@ -43,7 +43,10 @@ class JuggleTmuxManager:
         return f"{self.session_name}:{first}"
 
     def spawn_pane(self) -> str:
-        """Split the first window to create a new pane. Returns pane_id like '%5'."""
+        """Split the first window to create a new pane. Returns pane_id like '%5'.
+
+        Falls back to new-window when the window is too small to split.
+        """
         result = self._run_tmux(
             "split-window",
             "-t", self._first_window(),
@@ -51,7 +54,19 @@ class JuggleTmuxManager:
         )
         pane_id = result.stdout.strip()
         if not pane_id:
-            raise RuntimeError(f"spawn_pane failed: tmux split-window returned no pane_id. stderr={result.stderr!r}")
+            if "no space" in result.stderr:
+                # Window too small to split — create a new window instead.
+                result = self._run_tmux(
+                    "new-window",
+                    "-t", self.session_name,
+                    "-P", "-F", "#{pane_id}",
+                )
+                pane_id = result.stdout.strip()
+            if not pane_id:
+                raise RuntimeError(
+                    f"spawn_pane failed: could not create pane via split-window or new-window. "
+                    f"stderr={result.stderr!r}"
+                )
         return pane_id
 
     def start_claude_in_pane(self, pane_id: str, model: str | None = None) -> None:

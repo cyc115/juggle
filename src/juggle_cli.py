@@ -103,6 +103,9 @@ def cmd_record_pending_decision(args):
         return
 
     thread_obj = db.get_thread(thread)
+    if thread_obj is None:
+        print(f"Error: thread {thread!r} not found", file=sys.stderr)
+        sys.exit(1)
 
     try:
         questions = json.loads(args.questions_json)
@@ -137,6 +140,9 @@ def cmd_clear_pending_decision(args):
         return
 
     thread_obj = db.get_thread(thread)
+    if thread_obj is None:
+        print(f"Error: thread {thread!r} not found", file=sys.stderr)
+        sys.exit(1)
     open_questions = thread_obj.get("open_questions") or []
     if isinstance(open_questions, str):
         open_questions = json.loads(open_questions)
