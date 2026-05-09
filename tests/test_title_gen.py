@@ -13,7 +13,7 @@ def test_title_gen_defaults_present():
     assert tg is not None, "title_gen section missing from DEFAULTS"
     assert tg["openrouter_enabled"] is True
     assert tg["openrouter_model"] == "meta-llama/llama-3.1-8b-instruct:free"
-    assert tg["openrouter_api_key"] == ""
+    assert "openrouter_api_key" not in tg, "API key must not appear in config defaults — use OPENROUTER_KEY env var"
     assert tg["haiku_model"] == "claude-haiku-4-5-20251001"
     assert tg["timeout_secs"] == 10
 

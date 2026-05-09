@@ -254,7 +254,7 @@ def run(db_path: str | None = None) -> None:
     console = Console()
 
     try:
-        with Live(console=console, screen=True, refresh_per_second=10) as live:
+        with Live(console=console, auto_refresh=False) as live:
             while True:
                 try:
                     size = console.size
@@ -272,6 +272,7 @@ def run(db_path: str | None = None) -> None:
                 except Exception as e:
                     from rich.text import Text
                     live.update(Text(f"[error] {e}", style="red"))
+                live.refresh()
                 time.sleep(REFRESH_INTERVAL)
     finally:
         scroll.stop()
