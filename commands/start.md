@@ -73,7 +73,7 @@ User proposes a new feature or idea.
 - All discussion stays in main thread — not delegated
 - Once requirements are clear: dispatch researcher to research and draft design doc
 - Subagent writes output to vault project directory (`specs/` or `docs/` as appropriate)
-- After subagent completes: open the written file for user to review inline
+- After subagent completes: open the written file with `/juggle:open <path>` for user to review
 
 ### Category 1: Conversation / Question
 
@@ -192,7 +192,7 @@ ______________________________________________________________________
 
 1. **Plan Review (main thread)**
 
-   - Orchestrator opens plan file for user review
+   - Orchestrator opens plan file with `/juggle:open <path>` for user to review
    - User answers batched questions via AskUserQuestion
    - Orchestrator re-dispatches planner for revisions until closed
 
