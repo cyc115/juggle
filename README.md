@@ -1,8 +1,47 @@
-# Juggle
+<div align="center">
 
-Claude Code can only hold one conversation at a time. You're designing an auth module, you need to look up rate-limiting best practices, and you want to check an env var config, but each detour blows away the context you've been building. You either serialize everything or lose your train of thought.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/juggle-logo-dark.svg">
+  <img src="docs/assets/juggle-logo.svg" alt="Juggle" width="380">
+</picture>
+
+**Parallel conversation threads for Claude Code.**
+
+[![Version](https://img.shields.io/badge/version-1.15.0-2563eb.svg)](.claude-plugin/plugin.json)
+[![Python](https://img.shields.io/badge/python-3.12+-f59e0b.svg)](https://www.python.org/)
+[![tmux](https://img.shields.io/badge/tmux-3.0+-22c55e.svg)](https://github.com/tmux/tmux)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-94a3b8.svg)](#prerequisites)
+
+</div>
+
+<!--
+  SCREENSHOT SUGGESTION #1 — Hero demo GIF
+  Place a 10–15s animated GIF here showing: user types a multi-topic prompt,
+  Juggle spins up a second thread + tmux pane, and the cockpit reflects the
+  new agent. Suggested filename: docs/assets/screenshots/hero-demo.gif
+  Embed with:  ![Juggle in action](docs/assets/screenshots/hero-demo.gif)
+-->
+
+---
+
+Claude Code can only hold one conversation at a time. You're designing an auth module, you need to look up rate-limiting best practices, and you want to check an env var config — but each detour blows away the context you've been building. You either serialize everything or lose your train of thought.
 
 Juggle fixes this. It gives Claude Code parallel conversation threads backed by persistent memory, so you can work on multiple topics simultaneously without losing context on any of them.
+
+## Table of Contents
+
+- [How it works](#how-it-works-in-practice)
+- [Key capabilities](#key-capabilities)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Install](#install)
+- [Commands](#commands)
+- [Cockpit](#cockpit)
+- [State Management](#state-management)
+- [Configuration](#configuration-reference)
+- [Troubleshooting](#troubleshooting)
+- [Roadmap](#roadmap)
 
 ### How it works in practice
 
@@ -15,9 +54,23 @@ You're building a feature and hit a question about API rate limits. Instead of d
 
 No copy-pasting prompts. No "where was I?" after a tangent. Just type naturally and let Juggle manage the concurrency.
 
+<!--
+  SCREENSHOT SUGGESTION #2 — Topic-shift detection
+  A still terminal capture showing the orchestrator detecting a topic shift
+  and announcing the new thread label (e.g. "[B] API rate limiting").
+  Suggested filename: docs/assets/screenshots/topic-shift.png
+-->
+
 ### Key capabilities
 
 **Background agents via tmux.** Dispatch research, code generation, or analysis to background agents running in tmux panes. They work in parallel while your main conversation continues uninterrupted. Up to 20 concurrent agents.
+
+<!--
+  SCREENSHOT SUGGESTION #3 — tmux pane grid with agents
+  Capture the "juggle" tmux session attached, showing 3–4 active agent panes
+  each running Claude Code. Use `tmux attach -t juggle` to capture.
+  Suggested filename: docs/assets/screenshots/tmux-agents.png
+-->
 
 **Persistent multi-topic threads.** Every thread is stored in SQLite with full message history. Session compactions, restarts, and context window limits don't erase your work. Pick up any topic exactly where you left off.
 
@@ -147,6 +200,15 @@ Under the hood every command shells out to `python3 ${CLAUDE_PLUGIN_ROOT}/src/ju
 
 A live terminal dashboard for the current juggle session. Read-only — it never writes to the DB.
 
+<!--
+  SCREENSHOT SUGGESTION #4 — Cockpit live view
+  A high-resolution still of the running cockpit (Topics / Action Items / Agents
+  columns + Notifications strip). Capture from a real session with 3+ topics
+  and at least one running agent so the glyph legend is visible.
+  Suggested filename: docs/assets/screenshots/cockpit.png
+  Place ABOVE the ASCII mockup so the mockup serves as a fallback / legend.
+-->
+
 **Launch:**
 
 ```bash
@@ -193,6 +255,13 @@ Refreshes once per second (configurable via `cockpit.refresh_interval_secs`). Ex
 | 📌 | Action item, normal priority |
 
 ## Topic Status Display
+
+<!--
+  SCREENSHOT SUGGESTION #5 — `/juggle:show-topics` output
+  Capture a real terminal showing the output of `/juggle:show-topics` with
+  a mix of active, running, and done topics. Useful to demo the CLI surface.
+  Suggested filename: docs/assets/screenshots/show-topics.png
+-->
 
 ```
 Topics:
