@@ -76,7 +76,9 @@ def test_start_claude_sets_juggle_is_agent(mgr):
 
     assert sent_commands, "send-keys was never called"
     cmd = sent_commands[0]
-    assert "JUGGLE_IS_AGENT=1" in cmd, f"Expected JUGGLE_IS_AGENT=1 in launch cmd, got: {cmd!r}"
+    assert cmd.startswith("env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1 "), (
+        f"Expected cmd to start with env prefix, got: {cmd!r}"
+    )
 
 
 def test_verify_pane_true_when_present(mgr):
