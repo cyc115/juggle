@@ -26,3 +26,6 @@ Track in `/Users/mikechen/Documents/personal/projects/juggle/TODO.md`:
 - New: `- [ ] <description>`
 - In-progress: prefix with `🔄 [IN PLANNING]` or `🔄 [IN PROGRESS]`
 - Done: `- [x] <description> ✅ YYYY-MM-DD` (move to Done section)
+
+## Directives
+- **Devil's advocate after every implementation:** After any code change is complete, run a critique pass before reporting done.
