@@ -12,7 +12,7 @@ Open a file in the nvim server running at `/tmp/juggle-nvim.sock`.
 
 Run:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py open-in-editor <file>
+python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py open-in-editor $ARGUMENTS
 ```
 
 If the socket is not running, the command will print how to start one:

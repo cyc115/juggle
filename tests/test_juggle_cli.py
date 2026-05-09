@@ -663,8 +663,9 @@ def test_open_in_editor_no_socket(tmp_path, capsys):
     socket_path = str(tmp_path / "missing.sock")
     with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.md"]):
         with patch("juggle_cli.NVIM_SOCKET", socket_path):
-            with pytest.raises(SystemExit) as exc:
-                main()
+            with patch.dict(os.environ, {"_JUGGLE_TEST_DB": "1"}):
+                with pytest.raises(SystemExit) as exc:
+                    main()
     assert exc.value.code == 1
     assert "nvim --listen" in capsys.readouterr().err
 
@@ -676,9 +677,10 @@ def test_open_in_editor_calls_nvim(tmp_path):
     sock.touch()
     with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.md"]):
         with patch("juggle_cli.NVIM_SOCKET", str(sock)):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0)
-                main()
+            with patch.dict(os.environ, {"_JUGGLE_TEST_DB": "1"}):
+                with patch("juggle_cli.subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0)
+                    main()
     mock_run.assert_called_once_with(
         ["nvim", "--server", str(sock), "--remote", "/some/file.md"],
         check=True,
