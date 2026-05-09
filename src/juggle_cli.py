@@ -5,6 +5,7 @@ Usage: python juggle_cli.py <command> [args]
 """
 
 import argparse
+import logging
 import os
 import subprocess
 import sys
@@ -12,6 +13,27 @@ from pathlib import Path
 
 SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(SRC_DIR))
+
+# Load ~/.juggle/.env before any module-level code reads env vars.
+# This makes OPENROUTER_KEY available to title_gen's Tier 1 path.
+_ENV_FILE = Path.home() / ".juggle" / ".env"
+if _ENV_FILE.exists():
+    for _line in _ENV_FILE.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            os.environ.setdefault(_k.strip(), _v.strip())
+
+# File-based logging — always active so background title_gen/hindsight paths are visible.
+_LOG_DIR = Path.home() / ".juggle" / "logs"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler(_LOG_DIR / "juggle-cli.log"),
+    ],
+)
 
 NVIM_SOCKET = "/tmp/juggle-nvim.sock"
 

@@ -73,7 +73,7 @@ If Custom: ask the user to paste the OpenRouter model ID (e.g. `anthropic/claude
 # Create directories
 mkdir -p ~/.juggle/memory/pg0 ~/.juggle/logs
 
-# Write .env
+# Write .env (KEY=VALUE format — no "export" prefix; juggle_cli.py loads this automatically)
 cat > ~/.juggle/.env << 'ENVEOF'
 OPENROUTER_KEY=<user's key>
 HINDSIGHT_LLM_MODEL=<user's model choice>
