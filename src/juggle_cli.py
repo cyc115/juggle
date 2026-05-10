@@ -36,6 +36,7 @@ logging.basicConfig(
 )
 
 NVIM_SOCKET = "/tmp/juggle-nvim.sock"
+VAULT_ROOT = Path("/Users/mikechen/Documents/personal")
 
 # Re-export commonly used symbols for backward compatibility with tests
 from juggle_cli_common import (  # noqa: F401
@@ -152,19 +153,27 @@ def cmd_clear_pending_decision(args):
     db.update_thread(thread, open_questions=open_questions)
 
 
-def cmd_open_in_editor(args):
-    if not os.path.exists(NVIM_SOCKET):
-        print(
-            f"No nvim server at {NVIM_SOCKET}. Start nvim with: nvim --listen {NVIM_SOCKET}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+def _obsidian_fallback(abs_file: str) -> None:
+    """Open via Obsidian (vault files) or macOS system open (non-vault files)."""
     try:
-        abs_file = os.path.abspath(args.file)
-        subprocess.run(["nvim", "--server", NVIM_SOCKET, "--remote", abs_file], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"nvim exited with code {e.returncode}", file=sys.stderr)
-        sys.exit(e.returncode)
+        rel = Path(abs_file).relative_to(VAULT_ROOT)
+        url = f"obsidian://open?vault=personal&file={rel}"
+        subprocess.run(["open", url], check=True)
+    except ValueError:
+        # File is outside the vault — Obsidian can't open it.
+        print(f"nvim socket unavailable; opening with system default: {abs_file}")
+        subprocess.run(["open", abs_file], check=True)
+
+
+def cmd_open_in_editor(args):
+    abs_file = os.path.abspath(args.file)
+    if os.path.exists(NVIM_SOCKET):
+        try:
+            subprocess.run(["nvim", "--server", NVIM_SOCKET, "--remote", abs_file], check=True)
+            return
+        except subprocess.CalledProcessError:
+            pass
+    _obsidian_fallback(abs_file)
 
 
 def main():
