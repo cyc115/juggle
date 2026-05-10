@@ -80,7 +80,7 @@ class _ScrollState:
     Key bindings (when cockpit is in focus):
       ↑ / k    scroll active pane up
       ↓ / j    scroll active pane down
-      Tab      cycle active pane (only panes with overflow)
+      Tab      cycle active pane (all 3 panes; j/k is a no-op when no overflow)
     """
 
     def __init__(self):
@@ -103,11 +103,9 @@ class _ScrollState:
             return dict(self._offsets), self._active
 
     def set_scrollable_panes(self, panes: tuple[str, ...]) -> None:
-        """Update which panes have overflow content. Resets active if it drops out."""
+        """Track which panes have overflow content (used for clamping only)."""
         with self._lock:
             self._scrollable = panes
-            if panes and self._active not in panes:
-                self._active = panes[0]
 
     def clamp(self, pane: str, max_offset: int) -> None:
         """Clamp pane offset to [0, max_offset]."""
@@ -121,9 +119,7 @@ class _ScrollState:
 
     def _cycle(self) -> None:
         with self._lock:
-            panes = self._scrollable
-            if len(panes) <= 1:
-                return  # 0 or 1 scrollable pane — nothing to cycle
+            panes = _SCROLL_PANES
             idx = panes.index(self._active) if self._active in panes else 0
             self._active = panes[(idx + 1) % len(panes)]
 
