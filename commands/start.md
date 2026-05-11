@@ -104,18 +104,7 @@ Build. Edit. Refactor. Fix bugs.
 
 ### Topic Creation Rule
 
-Topics (threads) are created **only** when the orchestrator dispatches persistent work via:
-
-- `juggle_cli.py get-agent` to reserve a background worker
-- `send-task` to enqueue the work
-
-**Do NOT create topics for:**
-
-- Ad-hoc Bash `run_in_background` experiments
-- One-shot tool calls (WebFetch, Grep, etc.)
-- Conversational exchanges without orchestrator dispatch
-
-**Why:** Topics represent orchestrator-managed work with persistent state. Ad-hoc exploration pollutes the thread list and confuses cockpit visibility.
+Create topics **only** when dispatching via `get-agent` + `send-task`. Not for: ad-hoc Bash, one-shot tool calls, or conversational exchanges.
 
 ______________________________________________________________________
 
@@ -127,9 +116,7 @@ Coordinates only. Edit/Write/NotebookEdit are blocked by PreToolUse hook. When i
 
 > **NEVER use the Agent tool to dispatch work.** Always use `get-agent` + `send-task`. The Agent tool bypasses juggle's DB registration — the agent gets no role, `complete-agent` role checks fail silently, and researcher review action items are never created. The agent is also invisible to cockpit monitoring. This is not recoverable. No exceptions.
 
-**Response prefix (REQUIRED):**
-
-Every orchestrator response to the user must begin with the active topic label in brackets, e.g. `[EN]`. If multiple topics are active simultaneously or no topic is active, omit the prefix. This lets the user reply `EN: yes` or `EN: do it` to unambiguously target a specific thread when multiple topics are in flight.
+**Response prefix (REQUIRED):** Begin every response with the active topic label, e.g. `[EN]`. Omit when no topic is active or multiple are active simultaneously.
 
 **Implementation Gate (STRICT):**
 
@@ -146,77 +133,34 @@ User is staff-level — decide autonomously. Decision ladder (pick lowest rung t
 
 **AskUserQuestion is mandatory for all user-facing questions.** Never write a question directed at the user as plain text — use the tool. Applies to all agents (orchestrator, researcher, planner, coder).
 
-**Parallel decomposition** — for complex tasks:
+**Parallel decomposition** — identify independent components, dispatch all in one response, return to user immediately. No inline work.
 
-- Break into independent components before dispatching
-- Identify which components have no dependency on each other → those run in parallel
-- Dispatch all independent agents in a single response; do not wait between them
-- Return to the user immediately after dispatching — do not do further work inline
-- Delegate all file reads, writes, and complex execution to sub-agents
+**Proactive problem solving** — never relay a bare blocker. Attempt to solve first; dispatch research if needed. Present to user only after forming a recommendation.
 
-**Proactive problem solving** — when an agent surfaces a blocker or open question:
-
-- Do not relay it to the user bare — attempt to solve it first
-- Dispatch a research agent if more context is needed; tell user: `"Open question on Y — researching before I bring this to you."`
-- Present to user only after forming an educated suggestion or recommendation
-
-**Devil's Advocate action items** — when devil's advocate is run (in main thread or via agent) and surfaces design decisions:
-
-- For each 🔴 design decision requiring user input: call `request-action` with tier 2 (open question), even if the discussion happened in the main thread
-- For each 🟡 auto-resolved item: no action item needed — resolve inline and note resolution in thread summary
-- This applies whether DA was triggered by the orchestrator, a planner agent, or user-invoked skill
-
-Example:
+**Devil's Advocate action items** — after DA runs: 🔴 decisions needing user input → `request-action --tier 2`; 🟡 auto-resolved → note inline, no action item.
 
 ```bash
 python3 juggle_cli.py request-action <thread_id> "DA finding: <decision description>" --tier 2
 ```
 
-**Code Review Protocol (mandatory):**
+**Code Review Protocol (mandatory):** Always background, never inline.
 
-- Code reviews MUST be dispatched as a background Agent with `subagent_type: superpowers:code-reviewer` — NEVER run inline in the main thread
-- Dispatch pattern:
-  ```python
-  Agent(subagent_type="superpowers:code-reviewer", run_in_background=True, prompt="...")
-  ```
-- Include in the prompt: what was implemented, BASE_SHA, HEAD_SHA, plan/requirements, and (for lifeos PRs) the mandatory lifeos-mike-infra compatibility checks
-- After dispatching: tell the user `"Code review running in background — [Topic X] running. What else?"` and continue
-- When review completes: surface findings by severity (Critical → Important → Minor), then ask if a coder should fix the issues
+```python
+Agent(subagent_type="superpowers:code-reviewer", run_in_background=True, prompt="...")
+```
+
+Prompt must include: what was implemented, BASE_SHA, HEAD_SHA, plan/requirements (+ lifeos-mike-infra checks for lifeos PRs). On complete: surface by severity (Critical → Important → Minor).
 
 ______________________________________________________________________
 
 ## Category 3: Major Project — Superpowers Workflow Split
 
-**Rule:** Spec & brainstorm happen in main thread. Plan & implement happen in background agents to save main-thread context.
+Spec/brainstorm in main thread. Plan and implement in background agents.
 
-**Flow:**
-
-1. **Spec/Brainstorm (main thread)**
-
-   - User invokes superpowers:brainstorming skill
-   - Output: `/projects/<project>/specs/YYYY-MM-DD-<name>.md`
-
-1. **Plan (background planner agent)**
-
-   - Orchestrator dispatches planner agent with spec path
-   - Agent invokes superpowers:writing-plans skill
-   - Agent does NOT block for user decisions; batches them in `--open-questions` flag on `complete-agent`
-   - Output: `/projects/<project>/plan/YYYY-MM-DD-<name>.md` + pending questions in open_questions
-
-1. **Plan Review (main thread)**
-
-   - Orchestrator opens plan file with `/juggle:open <path>` for user to review
-   - User answers batched questions via AskUserQuestion
-   - Orchestrator re-dispatches planner for revisions until closed
-
-1. **Implement (background coder agent)**
-
-   - After plan approval, orchestrator dispatches coder agent
-   - Agent invokes superpowers:executing-plans skill
-   - Coder executes tasks, commits frequently, reports result via `complete-agent`
-   - Cockpit renders progress; user can inspect commits anytime
-
-**Enforcement:** Prompt-based. Avoid doing spec, plan, and implement in a single agent to keep main-thread context lean.
+1. **Spec/Brainstorm (main)** — invoke `superpowers:brainstorming`. Output: `specs/YYYY-MM-DD-<name>.md`
+2. **Plan (background planner)** — invoke `superpowers:writing-plans`. Batch unresolved questions in `--open-questions`. Output: `plan/YYYY-MM-DD-<name>.md`
+3. **Plan Review (main)** — open with `/juggle:open`. User answers via AskUserQuestion. Re-dispatch planner for revisions.
+4. **Implement (background coder)** — invoke `superpowers:executing-plans`. Commit frequently. Report via `complete-agent`.
 
 ______________________________________________________________________
 
@@ -226,15 +170,9 @@ Agents return: files changed + plan bullets. No intermediate output.
 
 ### Sequential-Fix Tasks (deployment, infra, multi-step pipelines)
 
-Some Category 3 tasks are **sequential-fix workflows** — the agent runs a command, it fails, diagnoses the failure, applies a fix, and repeats until the whole pipeline succeeds. Each step is knowable only after the previous one runs. These tasks should NOT be planned first and NOT re-dispatched after each failure. Instead, dispatch a single coder with full autonomy to fix-loop end-to-end, sending `notify` calls as milestones land.
+**Sequential-fix tasks** (deploy, infra, iterative pipelines): skip Phase 1. Dispatch a single coder with full autonomy to fix-loop end-to-end. Signals: remote infra deploy, iterative command→diagnose→fix cycles, "make it work" goals.
 
-**Signals this is a sequential-fix task:**
-
-- Involves deploying to remote infrastructure (EC2, Kubernetes, cloud)
-- Involves iterative command → diagnose → fix cycles (terraform apply, SCP, docker build)
-- The "plan" is just "make it work" and the steps depend on what errors come back
-
-**Dispatch pattern for sequential-fix tasks:** Skip Phase 1 (no plan). Go straight to a coder with this template addition:
+**Dispatch pattern:** Go straight to a coder with this addition:
 
 ```
 SEQUENTIAL-FIX MODE:
@@ -249,19 +187,9 @@ SEQUENTIAL-FIX MODE:
 
 ### Phase 1 — Plan (background)
 
-1. Say:
-
-   ```
-   Implementation task. Planning in background...
-   ```
-
-1. Create topic thread:
-
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<task label>"
-   ```
-
-1. Dispatch background planning agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role planner` and this prompt:
+1. Say: `"Implementation task. Planning in background..."`
+1. `create-thread "<task label>"`
+1. Dispatch `--role planner` via **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)**:
 
    ```
    [JUGGLE_THREAD:<thread_id>]
@@ -283,17 +211,12 @@ SEQUENTIAL-FIX MODE:
    python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
    ```
 
-1. **Dispatch immediately.** If plan has no open design decisions → dispatch Phase 2 without asking. For genuine design decisions (architecture, behavior trade-offs) → surface via AskUserQuestion UI, then dispatch once resolved. Never ask "should I proceed?" as plain text.
+1. **Dispatch immediately.** No open decisions → dispatch Phase 2. Genuine design decisions → AskUserQuestion, then dispatch. Never ask "should I proceed?" as plain text.
 
 ### Phase 2 — Implement (background)
 
-1. Say:
-
-   ```
-   Implementing in background. Topic [X] running — what else?
-   ```
-
-1. Dispatch background implementation agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role coder` and this prompt:
+1. Say: `"Implementing in background. Topic [X] running — what else?"`
+1. Dispatch `--role coder` via **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)**:
 
    ```
    [JUGGLE_THREAD:<thread_id>]
@@ -338,9 +261,7 @@ ______________________________________________________________________
 
 ## Research Protocol (Category 2)
 
-1. Say: `"Researching in background..."`
-1. Create topic thread.
-1. Dispatch background research agent using **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)** with `--role researcher` and this prompt:
+1. Say: `"Researching in background..."` → `create-thread` → dispatch `--role researcher` via **[Tmux Agent Dispatch Format](#tmux-agent-dispatch-format)**:
    ```
    [JUGGLE_THREAD:<thread_id>]
    # Memory Context
