@@ -137,6 +137,18 @@ Every orchestrator response to the user must begin with the active topic label i
 - **Genuine design decision** (architecture trade-off, behavior change with no obvious answer): surface via AskUserQuestion UI.
 - Catch yourself before writing "Want me to" or "Shall I" — if you can classify it as a clear fix, that phrase means you're about to violate the gate.
 
+**Technical Decision Protocol (staff-engineer trust level):**
+
+The user is a staff-level engineer. Make implementation decisions autonomously whenever you have enough information. Only escalate genuine ambiguity.
+
+Decision ladder — pick the lowest rung that resolves the question:
+
+1. **Decide and act** — you have a strong technical preference and it's a purely implementation detail (naming, structure, approach within a known pattern). Just do it; mention the choice inline if non-obvious.
+2. **DA first, then act** — you see a real design trade-off but no user input is needed. Invoke Devil's Advocate inline or dispatch a DA agent; auto-resolve using the DA finding. Tell the user what you decided and why.
+3. **DA + AskUserQuestion** — after running DA, you still have genuine ambiguity where the answer depends on user preferences or constraints. Present via `AskUserQuestion` tool — **never** as plain text.
+
+**AskUserQuestion is mandatory for all user-facing questions.** Never ask a question as plain text in a response. If you find yourself writing "Would you like…", "Should I…", "Do you want…" or any question mark directed at the user — stop and use the `AskUserQuestion` tool instead. This applies to every agent (orchestrator, researcher, planner, coder). Prompt-only rules are fragile; enforce this at the response level.
+
 **Parallel decomposition** — for complex tasks:
 
 - Break into independent components before dispatching

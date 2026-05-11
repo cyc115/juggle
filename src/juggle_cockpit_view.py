@@ -8,7 +8,7 @@ from rich.text import Text
 from rich.style import Style
 
 from juggle_cockpit_model import (
-    Topic, Action, Agent, Notification, CockpitState, format_age
+    Topic, Action, Agent, Notification, ScheduledTask, CockpitState, format_age
 )
 from juggle_settings import get_nested
 
@@ -38,6 +38,13 @@ AGENT_STATUS_GLYPHS: dict[str, str] = {
     "busy":  "🟢",
     "idle":  "⚫",
     "stale": "🟡",
+}
+
+SCHED_STATUS_GLYPHS: dict[str, str] = {
+    "running": "🔄",
+    "ok":      "✅",
+    "failed":  "❌",
+    "unknown": "⏸️",
 }
 
 NOTIF_KIND_GLYPHS: dict[str, str] = {
@@ -259,6 +266,7 @@ def render_actions(
 
 def render_agents(
     agents: list[Agent],
+    scheduled: list[ScheduledTask] | None = None,
     scroll_offset: int = 0,
     active: bool = False,
 ) -> Panel:
@@ -266,7 +274,7 @@ def render_agents(
     scroll_offset skips that many rows from the top; active highlights the border.
     """
     border = _pane_border(active)
-    if not agents:
+    if not agents and not scheduled:
         table = Table.grid()
         table.add_column()
         table.add_row(Text("no agents", style=Style(dim=True)))
@@ -303,6 +311,25 @@ def render_agents(
             Text(agent.role, style=row_style),
             Text(age_str, style=row_style),
         )
+
+    if scheduled:
+        def _fmt_schedule(s: str) -> str:
+            return s.replace("every ", "").replace("daily ", "").replace("on-demand", "—").replace("on-change", "chg")
+
+        def _trunc(s: str, n: int = 16) -> str:
+            return s if len(s) <= n else s[:n - 1] + "…"
+
+        table.add_row(Text(""), Text(""), Text("──"), Text("scheduled", style=Style(dim=True)), Text(""))
+        for t in scheduled:
+            glyph = SCHED_STATUS_GLYPHS.get(t.status, "•")
+            label_style = Style(bold=True, color="red") if t.status == "failed" else Style(dim=True)
+            table.add_row(
+                Text(glyph),
+                Text(""),
+                Text(""),
+                Text(_trunc(t.label), style=label_style),
+                Text(_fmt_schedule(t.schedule), style=Style(dim=True)),
+            )
 
     return Panel(table, title=_scroll_title("Agents", scroll_offset), border_style=border)
 
@@ -385,7 +412,7 @@ def render_into(
 
     topics_panel  = render_topics(state.topics, bp)
     actions_panel = render_actions(state.actions, _offset("actions"), _active("actions"))
-    agents_panel  = render_agents(state.agents, _offset("agents"), _active("agents"))
+    agents_panel  = render_agents(state.agents, state.scheduled, _offset("agents"), _active("agents"))
     notifs_panel  = render_notifications(state.notifications, _offset("notifications"), _active("notifications"))
 
     if bp == "wide":

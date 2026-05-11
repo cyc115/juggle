@@ -1,7 +1,11 @@
 """Juggle Cockpit Model — DB reads → typed frozen dataclasses. Zero Rich imports."""
 from __future__ import annotations
 
+import glob
 import json
+import os
+import plistlib
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -36,6 +40,14 @@ class Agent:
 
 
 @dataclass(frozen=True)
+class ScheduledTask:
+    label: str       # short name, e.g. "otter-daily-summary"
+    schedule: str    # "every 5m", "daily 19:00", "on-demand"
+    status: str      # "running" | "ok" | "failed" | "unknown"
+    pid: int | None
+
+
+@dataclass(frozen=True)
 class Notification:
     text: str
     kind: str          # "complete" | "failed" | "info" | "warning" | "error"
@@ -48,12 +60,91 @@ class CockpitState:
     actions: list[Action]
     agents: list[Agent]
     notifications: list[Notification]
+    scheduled: list[ScheduledTask]
     fetched_at: float
 
 
 # ---------------------------------------------------------------------------
 # format_age
 # ---------------------------------------------------------------------------
+
+def _parse_schedule(data: dict) -> str:
+    if "StartInterval" in data:
+        secs = int(data["StartInterval"])
+        if secs < 60:
+            return f"every {secs}s"
+        if secs < 3600:
+            return f"every {secs // 60}m"
+        return f"every {secs // 3600}h"
+    if "StartCalendarInterval" in data:
+        entry = data["StartCalendarInterval"]
+        if isinstance(entry, list):
+            entry = entry[0]
+        h = entry.get("Hour")
+        m = entry.get("Minute", 0)
+        if h is not None:
+            return f"daily {h:02d}:{m:02d}"
+    if "WatchPaths" in data:
+        return "on-change"
+    return "on-demand"
+
+
+def _launchctl_status(label: str) -> tuple[int | None, int | None]:
+    """Return (pid, last_exit_status) for a launchd label."""
+    try:
+        r = subprocess.run(
+            ["launchctl", "list", label],
+            capture_output=True, text=True, timeout=2,
+        )
+        pid: int | None = None
+        exit_status: int | None = None
+        for line in r.stdout.splitlines():
+            line = line.strip()
+            if '"PID"' in line:
+                try:
+                    pid = int(line.split("=")[1].strip().rstrip(";"))
+                except (ValueError, IndexError):
+                    pass
+            if '"LastExitStatus"' in line:
+                try:
+                    exit_status = int(line.split("=")[1].strip().rstrip(";"))
+                except (ValueError, IndexError):
+                    pass
+        return pid, exit_status
+    except Exception:
+        return None, None
+
+
+def fetch_scheduled_tasks() -> list[ScheduledTask]:
+    """Discover me.mikechen.* and com.claude.schedule.* launchd agents."""
+    tasks: list[ScheduledTask] = []
+    plist_dir = os.path.expanduser("~/Library/LaunchAgents")
+    seen: set[str] = set()
+    for pattern in ("me.mikechen.*.plist", "com.claude.schedule.*.plist"):
+        for path in sorted(glob.glob(os.path.join(plist_dir, pattern))):
+            try:
+                with open(path, "rb") as f:
+                    data = plistlib.load(f)
+                label = data.get("Label", os.path.basename(path).removesuffix(".plist"))
+                if label in seen:
+                    continue
+                seen.add(label)
+                schedule = _parse_schedule(data)
+                pid, last_exit = _launchctl_status(label)
+                if pid is not None:
+                    status = "running"
+                elif last_exit is None:
+                    status = "unknown"
+                elif last_exit == 0:
+                    status = "ok"
+                else:
+                    status = "failed"
+                short = label.removeprefix("me.mikechen.").removeprefix("com.claude.schedule.")
+                tasks.append(ScheduledTask(label=short, schedule=schedule, status=status, pid=pid))
+            except Exception:
+                continue
+    return tasks
+
 
 def format_age(secs: int | None) -> str:
     """Convert seconds to compact age string: '12s', '5m', '2h', '3d'."""
@@ -317,5 +408,6 @@ def snapshot(db) -> CockpitState:
         actions=actions,
         agents=agents,
         notifications=notifications,
+        scheduled=fetch_scheduled_tasks(),
         fetched_at=time.time(),
     )
