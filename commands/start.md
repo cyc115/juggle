@@ -296,6 +296,12 @@ SEQUENTIAL-FIX MODE:
 
    Implement plan at <plan_file_path>. Read it first.
 
+   Validation requirement (mandatory before complete-agent):
+   - For any change touching Makefile, scripts/, docs/runbook/, docker-compose*, or Dockerfile*:
+     run the affected command end-to-end and paste output (command + stdout/stderr + exit code) in your complete-agent result.
+   - If the command cannot be run locally, report a BLOCKER with the specific reason — do not silently skip and do not claim "tested end-to-end" without proof.
+   - This is enforced by the mike:pre-pr gate.
+
    On completion:
    # Normal:  complete-agent <id> "Done. <summary>" --retain "<learnings>"
    # Blocker: complete-agent <id> "⚠️ BLOCKER: <description>. <summary>" --retain "<learnings>"
