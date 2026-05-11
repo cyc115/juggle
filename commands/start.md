@@ -302,6 +302,13 @@ SEQUENTIAL-FIX MODE:
    - If the command cannot be run locally, report a BLOCKER with the specific reason — do not silently skip and do not claim "tested end-to-end" without proof.
    - This is enforced by the mike:pre-pr gate.
 
+   Scope discipline (mandatory):
+   - Before touching any file, state the list of files you will change in your first notify call.
+   - If a file outside that list needs to change: STOP and report a BLOCKER asking for permission. Do not silently expand scope.
+   - Do not invent new config schemas, rename files, or rewrite content outside the stated change.
+   - Final `git diff --name-only` must match (or be a subset of) your declared list, or include explicit user-approved additions from a BLOCKER thread.
+   - This is enforced by the mike:pre-pr scope discipline gate.
+
    On completion:
    # Normal:  complete-agent <id> "Done. <summary>" --retain "<learnings>"
    # Blocker: complete-agent <id> "⚠️ BLOCKER: <description>. <summary>" --retain "<learnings>"
