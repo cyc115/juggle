@@ -1,6 +1,7 @@
 """Juggle Cockpit View — dataclasses → Rich renderables. Zero I/O."""
 from __future__ import annotations
 
+from rich.console import Group
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
@@ -270,9 +271,7 @@ def render_agents(
     scroll_offset: int = 0,
     active: bool = False,
 ) -> Panel:
-    """Render agents panel. Single-line per agent: glyph + [topic] + role + age.
-    scroll_offset skips that many rows from the top; active highlights the border.
-    """
+    """Render agents panel split into Active (topic-assigned) and Pool (idle/scheduled) sections."""
     border = _pane_border(active)
     if not agents and not scheduled:
         table = Table.grid()
@@ -280,56 +279,81 @@ def render_agents(
         table.add_row(Text("no agents", style=Style(dim=True)))
         return Panel(table, title="Agents", border_style=border)
 
-    table = Table.grid(padding=(0, 1))
-    table.add_column("glyph", no_wrap=True)
-    table.add_column("topic", no_wrap=True)
-    table.add_column("role",  no_wrap=True)
-    table.add_column("age",   no_wrap=True)
-
-    # Sort: busy first, stale second, idle last; then slice for scroll
     _sort_order = {"busy": 0, "stale": 1, "idle": 2}
     sorted_agents = sorted(agents, key=lambda a: (_sort_order.get(a.status, 3), a.id_short))
     visible = sorted_agents[scroll_offset:]
 
-    for agent in visible:
-        glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
-        topic_str = f"[{agent.topic_id}]" if agent.topic_id else " — "
-        age_str = format_age(agent.age_secs)
+    active_agents = [a for a in visible if a.topic_id]
+    pool_agents   = [a for a in visible if not a.topic_id]
 
-        if agent.status == "busy":
-            row_style = Style(color="green")
-        elif agent.status == "stale":
-            row_style = Style(color="yellow")
-        else:
-            row_style = Style(dim=True)
+    def _row_style(status: str) -> Style:
+        if status == "busy":
+            return Style(color="green")
+        if status == "stale":
+            return Style(color="yellow")
+        return Style(dim=True)
 
-        table.add_row(
-            Text(glyph),
-            Text(topic_str, style=row_style),
-            Text(agent.role, style=row_style),
-            Text(age_str, style=row_style),
-        )
+    parts: list = []
 
-    if scheduled:
-        def _fmt_schedule(s: str) -> str:
-            return s.replace("every ", "").replace("daily ", "").replace("on-demand", "—").replace("on-change", "chg")
-
-        def _trunc(s: str, n: int = 16) -> str:
-            return s if len(s) <= n else s[:n - 1] + "…"
-
-        table.add_row(Text(""), Text(""), Text("──"), Text("scheduled", style=Style(dim=True)), Text(""))
-        for t in scheduled:
-            glyph = SCHED_STATUS_GLYPHS.get(t.status, "•")
-            label_style = Style(bold=True, color="red") if t.status == "failed" else Style(dim=True)
-            table.add_row(
+    # --- Active section: topic-assigned agents ---
+    if active_agents:
+        parts.append(Text("Active", style=Style(dim=True)))
+        t_active = Table.grid(padding=(0, 1))
+        t_active.add_column(no_wrap=True)  # glyph
+        t_active.add_column(no_wrap=True)  # [topic]
+        t_active.add_column(no_wrap=True)  # role
+        t_active.add_column(no_wrap=True)  # age
+        for agent in active_agents:
+            glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
+            st = _row_style(agent.status)
+            t_active.add_row(
                 Text(glyph),
-                Text(""),
-                Text(""),
-                Text(_trunc(t.label), style=label_style),
-                Text(_fmt_schedule(t.schedule), style=Style(dim=True)),
+                Text(f"[{agent.topic_id}]", style=st),
+                Text(agent.role, style=st),
+                Text(format_age(agent.age_secs), style=st),
+            )
+        parts.append(t_active)
+
+    # --- Pool section: idle/unassigned agents + scheduled tasks ---
+    if pool_agents or scheduled:
+        if active_agents:
+            parts.append(Text("─" * 22, style=Style(dim=True)))
+        parts.append(Text("Pool", style=Style(dim=True)))
+        t_pool = Table.grid(padding=(0, 1))
+        t_pool.add_column(no_wrap=True)  # glyph
+        t_pool.add_column(no_wrap=True)  # name
+        t_pool.add_column(no_wrap=True)  # duration
+
+        for agent in pool_agents:
+            glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
+            st = _row_style(agent.status)
+            t_pool.add_row(
+                Text(glyph),
+                Text(agent.role, style=st),
+                Text(format_age(agent.age_secs), style=st),
             )
 
-    return Panel(table, title=_scroll_title("Agents", scroll_offset), border_style=border)
+        if scheduled:
+            def _fmt_schedule(s: str) -> str:
+                s = s.replace("every ", "").replace("daily ", "").replace("on-change", "chg")
+                return "" if s == "on-demand" else s
+
+            def _trunc(s: str, n: int = 20) -> str:
+                return s if len(s) <= n else s[:n - 1] + "…"
+
+            for task in scheduled:
+                glyph = SCHED_STATUS_GLYPHS.get(task.status, "⏰")
+                label_style = Style(bold=True, color="red") if task.status == "failed" else Style(dim=True)
+                sched_str = _fmt_schedule(task.schedule)
+                t_pool.add_row(
+                    Text(glyph),
+                    Text(_trunc(task.label), style=label_style),
+                    Text(sched_str, style=Style(dim=True)),
+                )
+
+        parts.append(t_pool)
+
+    return Panel(Group(*parts), title=_scroll_title("Agents", scroll_offset), border_style=border)
 
 
 def render_notifications(
