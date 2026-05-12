@@ -270,7 +270,7 @@ def render_agents(
     scroll_offset: int = 0,
     active: bool = False,
 ) -> Panel:
-    """Render agents panel. Single-line per agent: glyph + [label] + id_short + role + age.
+    """Render agents panel. Single-line per agent: glyph + [topic] + role + age.
     scroll_offset skips that many rows from the top; active highlights the border.
     """
     border = _pane_border(active)
@@ -283,7 +283,6 @@ def render_agents(
     table = Table.grid(padding=(0, 1))
     table.add_column("glyph", no_wrap=True)
     table.add_column("topic", no_wrap=True)
-    table.add_column("id",    no_wrap=True)
     table.add_column("role",  no_wrap=True)
     table.add_column("age",   no_wrap=True)
 
@@ -307,7 +306,6 @@ def render_agents(
         table.add_row(
             Text(glyph),
             Text(topic_str, style=row_style),
-            Text(agent.id_short, style=row_style),
             Text(agent.role, style=row_style),
             Text(age_str, style=row_style),
         )
