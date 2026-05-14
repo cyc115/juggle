@@ -1,11 +1,11 @@
 ---
-description: Search research KB — HN articles, PDFs, vault, memory, and web — via background agent
+description: Search research KB — HN articles, PDFs, vault, memory, and web — via parallel background agents
 allowed-tools: Bash
 ---
 
 # /juggle:research — Research Knowledge Base
 
-Delegates research to a background agent. Returns immediately; agent reports back when done.
+Delegates research to parallel background agents. Returns immediately; loops back with a report when done.
 
 **Usage:** `/juggle:research <topic> [--no-web] [--verbose]`
 
@@ -18,6 +18,8 @@ Delegates research to a background agent. Returns immediately; agent reports bac
 - `VERBOSE` — true if `--verbose` present
 
 Derive `SLUG` from TOPIC: first 4 words, lowercase, hyphens only (e.g. "claude for small business" → `claude-for-small`).
+
+Derive `REPORT_FILE`: `~/.juggle/research/$(date +%Y%m%d)-<SLUG>.md`
 
 ### 2. Create thread
 
@@ -47,7 +49,7 @@ cat > "$TASK_FILE" << 'TASKEOF'
 [JUGGLE_THREAD:<THREAD_LABEL>]
 Research topic: "<TOPIC>"
 
-Steps:
+## Parallel research steps (run searches in parallel where possible):
 
 1. Check web search config:
    source ~/.juggle/.env 2>/dev/null
@@ -59,14 +61,25 @@ Steps:
    [{"title":"...","url":"...","snippet":"..."},...]
    Store as WEB_JSON.
 
-3. Run the research script:
+3. Run the research script (searches KB, vault, memory, and web in parallel internally):
    source ~/.juggle/.env 2>/dev/null
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_WEB_FLAG> <VERBOSE_FLAG> ${WEB_JSON:+--web-results "$WEB_JSON"}
+   REPORT=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_WEB_FLAG> <VERBOSE_FLAG> ${WEB_JSON:+--web-results "$WEB_JSON"})
 
-4. Print the full script output so it appears in this thread.
+4. Save report to file:
+   mkdir -p ~/.juggle/research
+   REPORT_FILE="$HOME/.juggle/research/$(date +%Y%m%d)-<SLUG>.md"
+   {
+     printf "# Research: <TOPIC>\nDate: $(date +%Y-%m-%d)\n\n"
+     echo "$REPORT"
+   } > "$REPORT_FILE"
+   echo "Saved: $REPORT_FILE"
 
-5. Complete:
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD_LABEL> "Research complete: <TOPIC>" --retain "<one-sentence summary of key findings>"
+5. Print the full report output so it appears in this thread.
+
+6. Notify orchestrator and complete:
+   ONE_LINE=$(echo "$REPORT" | head -5 | tr '\n' ' ' | cut -c1-200)
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <THREAD_LABEL> "Research complete: <TOPIC> — report at $REPORT_FILE" --type manual_step
+   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD_LABEL> "Research complete: $REPORT_FILE" --retain "$ONE_LINE"
 TASKEOF
 
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FILE"
@@ -75,4 +88,4 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FIL
 ### 5. Confirm dispatch
 
 Tell the user:
-> "Researching **<TOPIC>** in background — thread [<THREAD_LABEL>]. I'll loop back with results."
+> "Researching **<TOPIC>** in background — thread [<THREAD_LABEL>]. Report will be saved to `~/.juggle/research/YYYYMMDD-<SLUG>.md` and I'll loop back when done."
