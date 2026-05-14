@@ -19,7 +19,7 @@ Delegates research to parallel background agents. Returns immediately; loops bac
 
 Derive `SLUG` from TOPIC: first 4 words, lowercase, hyphens only (e.g. "claude for small business" → `claude-for-small`).
 
-Derive `REPORT_FILE`: `~/.juggle/research/$(date +%Y%m%d)-<SLUG>.md`
+Derive `REPORT_FILE`: `~/Documents/personal/research/$(date +%Y-%m-%d)-<SLUG>.md`
 
 ### 2. Create thread
 
@@ -65,9 +65,8 @@ Research topic: "<TOPIC>"
    source ~/.juggle/.env 2>/dev/null
    REPORT=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_WEB_FLAG> <VERBOSE_FLAG> ${WEB_JSON:+--web-results "$WEB_JSON"})
 
-4. Save report to file:
-   mkdir -p ~/.juggle/research
-   REPORT_FILE="$HOME/.juggle/research/$(date +%Y%m%d)-<SLUG>.md"
+4. Save report to vault:
+   REPORT_FILE="$HOME/Documents/personal/research/$(date +%Y-%m-%d)-<SLUG>.md"
    {
      printf "# Research: <TOPIC>\nDate: $(date +%Y-%m-%d)\n\n"
      echo "$REPORT"
@@ -88,4 +87,4 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FIL
 ### 5. Confirm dispatch
 
 Tell the user:
-> "Researching **<TOPIC>** in background — thread [<THREAD_LABEL>]. Report will be saved to `~/.juggle/research/YYYYMMDD-<SLUG>.md` and I'll loop back when done."
+> "Researching **<TOPIC>** in background — thread [<THREAD_LABEL>]. Report will be saved to `~/Documents/personal/research/YYYY-MM-DD-<SLUG>.md` and I'll loop back when done."
