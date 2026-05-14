@@ -90,7 +90,7 @@ DEFAULTS: dict = {
     "research_kb": {
         "db_path": "~/.juggle/research_kb.db",
         "embedding_model": "openai/text-embedding-3-small",
-        "summarization_model": "google/gemini-3.1-flash-lite",
+        "summarization_model": "~google/gemini-pro-latest",
         "hn_score_threshold": 100,
         "web_search_enabled": True,
         "pdf_dirs": [],

@@ -26,12 +26,13 @@ Topic: {topic}
 Search results:
 {context}
 
-Rules:
-- Use ONLY inline markdown links [Title](url) for ALL references — never bare URLs
-- Vault notes: use obsidian://open?vault=personal&file=<relative-path> links
-- Sections (omit if empty): ## Articles, ## Books & Papers, ## From Your Notes, ## Web, ## From Memory
-- Each item: `- [Title](url) — one-line summary`
-- No filler, no preamble, no trailing paragraph
+Output format:
+1. Start with a ## Summary section: 3-5 sentences synthesizing what you know about the topic based on the search results. Be direct, substantive, and analytical — not a list of sources.
+2. Then source sections (omit if empty): ## Articles, ## Books & Papers, ## From Your Notes, ## Web, ## From Memory
+3. Each source item format: `- Title — one-line summary\n  URL: <full url>`
+4. Vault notes URL format: obsidian://open?vault=personal&file=<relative-path>
+5. No inline markdown hyperlinks — always show the full URL on its own line prefixed with "URL: "
+6. No filler, no preamble, no trailing paragraph
 """
 
 
@@ -106,7 +107,7 @@ def format_kb_results(articles: list[dict], verbose: bool) -> str:
         url = a["url"]
         title = a["title"]
         summary = a.get("summary") or ""
-        line = f"- [{title}]({url})"
+        line = f"- {title}"
         if summary:
             line += f" — {summary[:120]}"
         if verbose:
@@ -117,6 +118,7 @@ def format_kb_results(articles: list[dict], verbose: bool) -> str:
                 meta.append(a["date"])
             if meta:
                 line += f" ({', '.join(meta)})"
+        line += f"\n  URL: {url}"
         lines.append(line)
     return "\n".join(lines)
 
@@ -132,7 +134,7 @@ def format_vault_results(paths: list[str], vault_path: str) -> str:
         name = rel.stem
         encoded = str(rel).replace(" ", "%20")
         url = f"obsidian://open?vault=personal&file={encoded}"
-        lines.append(f"- [{name}]({url})")
+        lines.append(f"- {name}\n  URL: {url}")
     return "\n".join(lines)
 
 
@@ -142,9 +144,10 @@ def format_web_results(results: list[dict]) -> str:
         title = r.get("title", r.get("url", "Link"))
         url = r.get("url", "")
         snippet = r.get("snippet", r.get("description", ""))
-        line = f"- [{title}]({url})"
+        line = f"- {title}"
         if snippet:
             line += f" — {snippet[:120]}"
+        line += f"\n  URL: {url}"
         lines.append(line)
     return "\n".join(lines)
 
