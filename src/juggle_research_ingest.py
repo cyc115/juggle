@@ -151,14 +151,14 @@ async def run_hn_ingest(kb, score_threshold: int, model: str, api_key: str,
     )
     print(f"Running BigQuery export (score>={score_threshold}, since {cutoff})...")
     result = subprocess.run(
-        ["bq", "query", "--format=newline_delimited_json", "--nouse_legacy_sql", query],
+        ["bq", "query", "--format=json", "--nouse_legacy_sql", query],
         capture_output=True, text=True, timeout=300,
     )
     if result.returncode != 0:
         print(f"BigQuery error: {result.stderr}", file=sys.stderr)
         sys.exit(1)
 
-    rows = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    rows = json.loads(result.stdout) if result.stdout.strip() else []
     inserted = ingest_hn_rows(kb, rows)
     print(f"Inserted {inserted} new articles from {len(rows)} rows")
     embedded = await embed_pending(kb, model, api_key)
