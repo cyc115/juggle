@@ -179,7 +179,49 @@ fi
 
 Tell the user: `nvim-juggle` starts nvim as a server on `/tmp/juggle-nvim.sock`. Use it instead of `nvim` when you want `juggle:open` to target that session. Run `source <rc-file>` or open a new terminal to activate.
 
-### 5. Report
+### 5. Initialize Research Knowledge Base
+
+```bash
+python3 -c "
+import sys, json
+sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
+from juggle_research_kb import ResearchKB
+from juggle_settings import get_settings
+from pathlib import Path
+
+s = get_settings()['research_kb']
+db_path = str(Path(s['db_path']).expanduser())
+kb = ResearchKB(db_path)
+kb.init_db()
+print(f'Research KB initialized at {db_path}')
+"
+```
+
+Then update `~/.juggle/config.json` to include the `research_kb` block if missing:
+
+```bash
+python3 - << 'PYEOF'
+import sys, json, copy
+from pathlib import Path
+
+sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
+from juggle_settings import DEFAULTS
+
+config_path = Path.home() / ".juggle" / "config.json"
+current = json.loads(config_path.read_text()) if config_path.exists() else {}
+
+if "research_kb" not in current:
+    current["research_kb"] = copy.deepcopy(DEFAULTS["research_kb"])
+    config_path.write_text(json.dumps(current, indent=2))
+    print("Added research_kb config block")
+else:
+    print("research_kb config already present — skipped")
+PYEOF
+```
+
+Tell the user: "Research KB ready. Run `/juggle:research-ingest` to populate the HN corpus (~5 min, ~$0.50 in embeddings)."
+
+### 6. Report
 
 ```
 Juggle initialized.
