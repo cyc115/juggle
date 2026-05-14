@@ -26,49 +26,51 @@ class ResearchKB:
     def init_db(self) -> None:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = self._connect()
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS articles (
-                id      INTEGER PRIMARY KEY,
-                title   TEXT NOT NULL,
-                url     TEXT UNIQUE NOT NULL,
-                score   INTEGER,
-                date    TEXT,
-                source  TEXT NOT NULL,
-                summary TEXT,
-                body    TEXT
-            );
+        try:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS articles (
+                    id      INTEGER PRIMARY KEY,
+                    title   TEXT NOT NULL,
+                    url     TEXT UNIQUE NOT NULL,
+                    score   INTEGER,
+                    date    TEXT,
+                    source  TEXT NOT NULL,
+                    summary TEXT,
+                    body    TEXT
+                );
 
-            CREATE VIRTUAL TABLE IF NOT EXISTS articles_vec USING vec0(
-                article_id INTEGER PRIMARY KEY,
-                embedding  FLOAT[1536]
-            );
+                CREATE VIRTUAL TABLE IF NOT EXISTS articles_vec USING vec0(
+                    article_id INTEGER PRIMARY KEY,
+                    embedding  FLOAT[1536]
+                );
 
-            CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
-                title, summary,
-                content=articles, content_rowid=id
-            );
+                CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+                    title, summary,
+                    content=articles, content_rowid=id
+                );
 
-            CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
-                INSERT INTO articles_fts(rowid, title, summary) VALUES (new.id, new.title, new.summary);
-            END;
+                CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
+                    INSERT INTO articles_fts(rowid, title, summary) VALUES (new.id, new.title, new.summary);
+                END;
 
-            CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
-                INSERT INTO articles_fts(articles_fts, rowid, title, summary) VALUES ('delete', old.id, old.title, old.summary);
-            END;
+                CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, title, summary) VALUES ('delete', old.id, old.title, old.summary);
+                END;
 
-            CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
-                INSERT INTO articles_fts(articles_fts, rowid, title, summary) VALUES ('delete', old.id, old.title, old.summary);
-                INSERT INTO articles_fts(rowid, title, summary) VALUES (new.id, new.title, new.summary);
-            END;
+                CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+                    INSERT INTO articles_fts(articles_fts, rowid, title, summary) VALUES ('delete', old.id, old.title, old.summary);
+                    INSERT INTO articles_fts(rowid, title, summary) VALUES (new.id, new.title, new.summary);
+                END;
 
-            CREATE TABLE IF NOT EXISTS pdf_files (
-                path         TEXT PRIMARY KEY,
-                mtime        REAL NOT NULL,
-                ingested_at  TEXT NOT NULL
-            );
-        """)
-        conn.commit()
-        conn.close()
+                CREATE TABLE IF NOT EXISTS pdf_files (
+                    path         TEXT PRIMARY KEY,
+                    mtime        REAL NOT NULL,
+                    ingested_at  TEXT NOT NULL
+                );
+            """)
+            conn.commit()
+        finally:
+            conn.close()
 
     def insert_article(
         self, title: str, url: str, score: Optional[int], date: Optional[str],
@@ -90,8 +92,9 @@ class ResearchKB:
     def upsert_embedding(self, article_id: int, embedding: list[float]) -> None:
         conn = self._connect()
         try:
+            conn.execute("DELETE FROM articles_vec WHERE article_id=?", (article_id,))
             conn.execute(
-                "INSERT OR REPLACE INTO articles_vec (article_id, embedding) VALUES (?, ?)",
+                "INSERT INTO articles_vec (article_id, embedding) VALUES (?, ?)",
                 (article_id, _serialize_f32(embedding)),
             )
             conn.commit()

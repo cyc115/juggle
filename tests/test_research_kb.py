@@ -66,13 +66,18 @@ def test_upsert_embedding(kb):
     kb.insert_article(
         title="Vec Article", url="https://example.com/vec",
         score=150, date="2024-01-01", source="hn",
-        summary="s", body="b",
+        summary="vec article test", body="b",
     )
-    conn = sqlite3.connect(kb.db_path)
-    article_id = conn.execute("SELECT id FROM articles WHERE url=?", ("https://example.com/vec",)).fetchone()[0]
-    conn.close()
-    embedding = [0.1] * 1536
-    kb.upsert_embedding(article_id, embedding)
+    article_id = kb.get_article_id("https://example.com/vec")
+    assert article_id is not None
+    # First upsert
+    kb.upsert_embedding(article_id, [0.1] * 1536)
+    # Second upsert with different values — should replace, not duplicate
+    kb.upsert_embedding(article_id, [0.2] * 1536)
+    # hybrid_search should return exactly 1 result (no duplicate)
+    results = kb.hybrid_search([0.2] * 1536, "vec article", k=10)
+    urls = [r["url"] for r in results]
+    assert urls.count("https://example.com/vec") == 1
 
 
 def test_fts_search_returns_results(kb):
