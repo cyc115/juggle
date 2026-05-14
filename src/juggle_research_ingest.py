@@ -26,12 +26,12 @@ def _load_env() -> None:
 def parse_bq_row(row: dict) -> Optional[dict]:
     if not row.get("url"):
         return None
-    ts = row.get("time", 0)
+    ts = int(row.get("time") or 0)
     date = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else None
     return {
         "title": row.get("title", ""),
         "url": row["url"],
-        "score": row.get("score"),
+        "score": int(row["score"]) if row.get("score") else None,
         "date": date,
         "source": "hn",
         "summary": (row.get("text") or "")[:500] or None,
@@ -79,8 +79,7 @@ def ingest_hn_rows(kb, rows: list[dict]) -> int:
 
 async def embed_pending(kb, model: str, api_key: str, batch_size: int = 100) -> int:
     """Embed articles that have no vector yet. Returns count embedded."""
-    import sqlite3
-    conn = sqlite3.connect(kb.db_path)
+    conn = kb._connect()
     rows = conn.execute(
         """SELECT a.id, a.title, a.summary FROM articles a
            WHERE NOT EXISTS (SELECT 1 FROM articles_vec v WHERE v.article_id = a.id)"""
@@ -151,7 +150,7 @@ async def run_hn_ingest(kb, score_threshold: int, model: str, api_key: str,
     )
     print(f"Running BigQuery export (score>={score_threshold}, since {cutoff})...")
     result = subprocess.run(
-        ["bq", "query", "--format=json", "--nouse_legacy_sql", query],
+        ["bq", "query", "--format=json", "--nouse_legacy_sql", "--max_rows=100000", query],
         capture_output=True, text=True, timeout=300,
     )
     if result.returncode != 0:
