@@ -19,7 +19,7 @@ Delegates research to parallel background agents. Returns immediately; loops bac
 
 Derive `SLUG` from TOPIC: first 4 words, lowercase, hyphens only (e.g. "claude for small business" → `claude-for-small`).
 
-Derive `REPORT_FILE`: `~/Documents/personal/research/$(date +%Y-%m-%d)-<SLUG>.md`
+Derive `VAULT_PATH` by reading the vault domain from juggle settings (the domain path tagged `"vault"` in `domains.initial_domain_paths`), expanded with `$HOME`. Derive `REPORT_FILE`: `<VAULT_PATH>/research/YYYY-MM-DD-<SLUG>.md`.
 
 ### 2. Create thread
 
@@ -66,7 +66,15 @@ Research topic: "<TOPIC>"
    REPORT=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_WEB_FLAG> <VERBOSE_FLAG> ${WEB_JSON:+--web-results "$WEB_JSON"})
 
 4. Save report to vault:
-   REPORT_FILE="$HOME/Documents/personal/research/$(date +%Y-%m-%d)-<SLUG>.md"
+   VAULT_PATH=$(python3 -c "
+import sys, os
+sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
+from juggle_settings import get_settings
+paths = get_settings()['domains']['initial_domain_paths']
+vault = next((p[0] for p in paths if p[1] == 'vault'), None)
+print(os.path.expanduser('~') + vault if vault else '')
+" 2>/dev/null)
+   REPORT_FILE="${VAULT_PATH}/research/$(date +%Y-%m-%d)-<SLUG>.md"
    {
      printf "# Research: <TOPIC>\nDate: $(date +%Y-%m-%d)\n\n"
      echo "$REPORT"
@@ -87,4 +95,4 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FIL
 ### 5. Confirm dispatch
 
 Tell the user:
-> "Researching **<TOPIC>** in background — thread [<THREAD_LABEL>]. Report will be saved to `~/Documents/personal/research/YYYY-MM-DD-<SLUG>.md` and I'll loop back when done."
+> "Researching **<TOPIC>** in background — thread [<THREAD_LABEL>]. Report will be saved to the vault's `research/` directory and I'll loop back when done."
