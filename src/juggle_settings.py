@@ -86,6 +86,16 @@ DEFAULTS: dict = {
         "port": 18787,
     },
 
+    # Research Knowledge Base
+    "research_kb": {
+        "db_path": "~/.juggle/research_kb.db",
+        "embedding_model": "openai/text-embedding-3-small",
+        "summarization_model": "google/gemini-3.1-flash",
+        "hn_score_threshold": 100,
+        "web_search_enabled": True,
+        "pdf_dirs": [],
+    },
+
     # Title Generation (API key lives in ~/.juggle/.env as OPENROUTER_KEY, not here)
     "title_gen": {
         "openrouter_enabled": True,
