@@ -93,6 +93,8 @@ from juggle_cmd_context import (
     cmd_next_action,
 )
 
+from juggle_cmd_research import cmd_research
+
 
 def cmd_record_pending_decision(args):
     """Record pending user decisions in current thread's open_questions."""
@@ -451,6 +453,14 @@ def main():
     p_open = subparsers.add_parser("open-in-editor", help="Open file in nvim server")
     p_open.add_argument("file", help="Path to file to open")
     p_open.set_defaults(func=cmd_open_in_editor)
+
+    # research
+    p_research = subparsers.add_parser("research", help="Search research KB")
+    p_research.add_argument("topic", help="Research topic")
+    p_research.add_argument("--no-web", action="store_true")
+    p_research.add_argument("--verbose", action="store_true")
+    p_research.add_argument("--web-results", dest="web_results", default=None)
+    p_research.set_defaults(func=cmd_research)
 
     args = parser.parse_args()
 
