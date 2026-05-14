@@ -7,7 +7,7 @@ allowed-tools: Bash
 
 Delegates research to parallel background agents. Returns immediately; loops back with a report when done.
 
-**Usage:** `/juggle:research <topic> [--no-web] [--verbose]`
+**Usage:** `/juggle:research <topic> [--no-web] [--verbose] [--deep]`
 
 ## Steps
 
@@ -16,6 +16,7 @@ Delegates research to parallel background agents. Returns immediately; loops bac
 - `TOPIC` — everything except flags (required)
 - `NO_WEB` — true if `--no-web` present
 - `VERBOSE` — true if `--verbose` present
+- `DEEP_FLAG` — `--deep` if `--deep` present, otherwise empty
 
 Derive `SLUG` from TOPIC: first 4 words, lowercase, hyphens only (e.g. "claude for small business" → `claude-for-small`).
 
@@ -63,17 +64,14 @@ Research topic: "<TOPIC>"
       - Technical query: "<TOPIC> how to tutorial"
       Deduplicate results across queries by URL.
 
-   b. From the combined results, pick the top 5 most relevant URLs. For each, use
-      the WebFetch tool to read the full page content (not just the snippet).
-      Skip paywalled, login-required, or non-HTML URLs.
-
-   c. Build WEB_JSON as a JSON array combining search metadata + fetched content:
-      [{"title":"...","url":"...","snippet":"...","content":"<first 3000 chars of fetched page>"},...]
-      If a fetch fails, include the entry with content omitted.
+   b. Write the combined deduplicated results to a temp JSON file (title, url, snippet only — no content; the Python script fetches page content itself):
+      WEB_FILE="/tmp/juggle_web_<SLUG>_$(date +%s).json"
+      echo '<JSON_ARRAY_OF_{title,url,snippet}>' > "$WEB_FILE"
 
 3. Run the research script (searches KB, vault, memory, and web in parallel internally):
    source ~/.juggle/.env 2>/dev/null
-   REPORT=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_WEB_FLAG> <VERBOSE_FLAG> ${WEB_JSON:+--web-results "$WEB_JSON"})
+   REPORT=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_WEB_FLAG> <VERBOSE_FLAG> <DEEP_FLAG> ${WEB_FILE:+--web-results-file "$WEB_FILE"})
+   rm -f "$WEB_FILE"
 
 4. Save report to vault:
    VAULT_PATH=$(python3 -c "

@@ -88,6 +88,59 @@ async def search_hindsight(query: str) -> str:
         return ""
 
 
+async def fetch_url_content(url: str, client: httpx.AsyncClient) -> str:
+    try:
+        resp = await client.get(
+            url,
+            timeout=15.0,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; research-bot)"},
+            follow_redirects=True,
+        )
+        resp.raise_for_status()
+        if "text" not in resp.headers.get("content-type", ""):
+            return ""
+        return resp.text[:8000]
+    except (httpx.HTTPError, OSError, UnicodeDecodeError):
+        return ""
+
+
+async def enrich_web_results(web_data: list[dict], deep: bool = False) -> list[dict]:
+    if not web_data:
+        return web_data
+    batch_size = 5
+    max_urls = min(15 if deep else 5, len(web_data))
+
+    async with httpx.AsyncClient() as client:
+        if not deep:
+            batch = web_data[:max_urls]
+            contents = await asyncio.gather(
+                *[fetch_url_content(r["url"], client) for r in batch],
+                return_exceptions=True,
+            )
+            for r, content in zip(batch, contents):
+                if isinstance(content, str):
+                    r["content"] = content
+        else:
+            prior_total = 0
+            for batch_start in range(0, max_urls, batch_size):
+                batch = web_data[batch_start : batch_start + batch_size]
+                contents = await asyncio.gather(
+                    *[fetch_url_content(r["url"], client) for r in batch],
+                    return_exceptions=True,
+                )
+                batch_total = 0
+                for r, content in zip(batch, contents):
+                    if isinstance(content, str):
+                        r["content"] = content
+                        batch_total += len(content)
+                if batch_start >= batch_size and prior_total > 0:
+                    if batch_total < 0.2 * prior_total:
+                        break
+                prior_total += batch_total
+
+    return web_data
+
+
 async def synthesize(topic: str, context: str, model: str, api_key: str) -> str:
     prompt = SYNTHESIS_PROMPT.format(topic=topic, context=context)
     async with httpx.AsyncClient() as client:
@@ -156,7 +209,7 @@ def format_web_results(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
-async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optional[str]) -> None:
+async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optional[str], web_results_file: Optional[str] = None, deep: bool = False) -> None:
     _load_env()
     sys.path.insert(0, str(Path(__file__).parent))
     from juggle_research_kb import ResearchKB
@@ -186,9 +239,17 @@ async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optiona
     kb_articles = results["kb"] if isinstance(results["kb"], list) else []
     vault_paths = results["vault"] if isinstance(results["vault"], list) else []
     memory_text = results["hindsight"] if isinstance(results["hindsight"], str) else ""
-    web_data = json.loads(web_results_json) if web_results_json else []
+    if web_results_file:
+        web_data = json.loads(Path(web_results_file).read_text())
+    elif web_results_json:
+        web_data = json.loads(web_results_json)
+    else:
+        web_data = []
     if isinstance(web_data, dict):
         web_data = web_data.get("results", [])
+
+    if web_data and not no_web:
+        web_data = await enrich_web_results(web_data, deep=deep)
 
     if verbose:
         print(f"\n=== KB results ({len(kb_articles)}) ===")
@@ -223,12 +284,13 @@ async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optiona
 
 def cmd_research(args) -> None:
     """Entry point called by juggle_cli.py."""
-    web_results_json = getattr(args, "web_results", None)
     asyncio.run(run(
         topic=args.topic,
         no_web=getattr(args, "no_web", False),
         verbose=getattr(args, "verbose", False),
-        web_results_json=web_results_json,
+        web_results_json=getattr(args, "web_results", None),
+        web_results_file=getattr(args, "web_results_file", None),
+        deep=getattr(args, "deep", False),
     ))
 
 
@@ -238,6 +300,9 @@ if __name__ == "__main__":
     p.add_argument("--no-web", action="store_true", help="Skip web search results")
     p.add_argument("--verbose", action="store_true", help="Show raw results before synthesis")
     p.add_argument("--web-results", dest="web_results", default=None,
-                   help="Pre-fetched web results as JSON string")
+                   help="Web results as JSON string")
+    p.add_argument("--web-results-file", dest="web_results_file", default=None,
+                   help="Path to JSON file containing web results (preferred over --web-results)")
+    p.add_argument("--deep", action="store_true", help="Incremental URL fetching up to 15 results")
     args = p.parse_args()
-    asyncio.run(run(args.topic, args.no_web, args.verbose, args.web_results))
+    asyncio.run(run(args.topic, args.no_web, args.verbose, args.web_results, args.web_results_file, args.deep))
