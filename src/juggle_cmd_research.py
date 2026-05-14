@@ -144,10 +144,14 @@ def format_web_results(results: list[dict]) -> str:
         title = r.get("title", r.get("url", "Link"))
         url = r.get("url", "")
         snippet = r.get("snippet", r.get("description", ""))
+        content = r.get("content", "")
         line = f"- {title}"
         if snippet:
             line += f" — {snippet[:120]}"
         line += f"\n  URL: {url}"
+        if content:
+            # Include fetched page content, truncated, as additional context
+            line += f"\n  Content: {content[:2000]}"
         lines.append(line)
     return "\n".join(lines)
 

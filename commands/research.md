@@ -55,11 +55,21 @@ Research topic: "<TOPIC>"
    source ~/.juggle/.env 2>/dev/null
    python3 -c "import sys; sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src'); from juggle_settings import get_settings; print(get_settings()['research_kb'].get('web_search_enabled', True))"
 
-2. If web_search_enabled=True and --no-web was NOT requested:
-   Use the mcp__web-search__search-web tool with query="<TOPIC>" depth="standard".
-   Collect all results into a single-line JSON array:
-   [{"title":"...","url":"...","snippet":"..."},...]
-   Store as WEB_JSON.
+2. If web_search_enabled=True and --no-web was NOT requested, do an extensive web search:
+
+   a. Run 2-3 targeted searches using mcp__web-search__search-web (depth="deep"):
+      - Primary query: "<TOPIC>"
+      - Angle query: "<TOPIC> best practices guide"
+      - Technical query: "<TOPIC> how to tutorial"
+      Deduplicate results across queries by URL.
+
+   b. From the combined results, pick the top 5 most relevant URLs. For each, use
+      the WebFetch tool to read the full page content (not just the snippet).
+      Skip paywalled, login-required, or non-HTML URLs.
+
+   c. Build WEB_JSON as a JSON array combining search metadata + fetched content:
+      [{"title":"...","url":"...","snippet":"...","content":"<first 3000 chars of fetched page>"},...]
+      If a fetch fails, include the entry with content omitted.
 
 3. Run the research script (searches KB, vault, memory, and web in parallel internally):
    source ~/.juggle/.env 2>/dev/null
