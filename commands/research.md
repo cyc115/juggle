@@ -25,22 +25,31 @@ Derive `SLUG` from TOPIC: first 4 words, lowercase, hyphens only.
 
 ---
 
-### 2. Clarify research intent (skip if `--no-clarify` or `--no-web`)
+### 2. Clarify research intent — MANDATORY (skip only if `--no-clarify`)
 
-Load `AskUserQuestion` via ToolSearch (`select:AskUserQuestion`), then ask **1–2 focused questions** to sharpen the research direction. Do NOT ask more than 2 questions. Keep options concrete and actionable.
+**Never skip this step without `--no-clarify`.** Researching in the wrong direction wastes depth. Two well-chosen questions are always worth 30 seconds.
 
-**Always ask Q1 — Purpose:**
-- `Deep background / learning` — understand the topic thoroughly, cover fundamentals + current state
-- `Decision support` — researching to make a specific decision (investment, tool choice, approach)
-- `Build something` — looking for tools, libraries, implementations, how-tos
-- `Explore ideas` — open-ended discovery, surface surprising angles and connections
+Load `AskUserQuestion` via ToolSearch (`select:AskUserQuestion`), then ask **exactly 2 questions in a single call**. Keep options concrete and mutually exclusive.
 
-**Ask Q2 only if the topic is broad enough to need scoping:**
-Phrase it as: "Any specific angles to prioritize?" with 3–4 options derived from the topic itself (e.g. for "trading strategies": "Technical analysis", "Quantitative/systematic", "Fundamental/macro", "AI/ML-driven").
+**Q1 — Purpose (always):**
+- `Deep background / learning` — thorough understanding, fundamentals + current state of the art
+- `Decision support` — researching to make a specific decision (invest, choose a tool, pick an approach)
+- `Build something` — need tools, libraries, implementations, code examples, how-tos
+- `Explore ideas` — open-ended discovery, surface surprising angles and non-obvious connections
+
+**Q2 — Specific angle (always, topic-derived):**
+Derive 3–4 concrete sub-angle options from the topic itself. Do not use generic options. Examples:
+- Topic "trading strategies" → "Technical/chart-based", "Quantitative/systematic", "Macro/fundamental", "AI/ML-driven"
+- Topic "Claude research agent" → "Architecture & implementation", "Prompt design", "Tool use & web search", "Comparison to other approaches"
+- Topic "investment research tools" → "Screening & data sources", "AI/LLM-based analysis", "Backtesting & simulation", "Portfolio construction"
+
+Allow multiSelect on Q2 so the user can pick multiple angles.
+
+**Block on the user's answers before proceeding to step 3.** Do not dispatch until you have both answers.
 
 From the answers, derive:
 - `INTENT` — one of: background, decision, build, explore
-- `FOCUS_AREAS` — comma-separated list of specific angles to prioritize (from Q2, or empty)
+- `FOCUS_AREAS` — the selected angle(s) as a comma-separated string (shapes Round 1 and 2 queries)
 
 Include `INTENT` and `FOCUS_AREAS` as context in the task file (step 4).
 
