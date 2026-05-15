@@ -155,7 +155,10 @@ async def enrich_web_results(web_data: list[dict], deep: bool = False) -> list[d
 
 
 async def synthesize(topic: str, context: str, model: str, api_key: str, vault_name: str = "personal") -> str:
-    prompt = SYNTHESIS_PROMPT.format(topic=topic, context=context, vault_name=vault_name)
+    prompt = (SYNTHESIS_PROMPT
+              .replace("{vault_name}", vault_name)
+              .replace("{topic}", topic)
+              .replace("{context}", context))
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/chat/completions",

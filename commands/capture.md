@@ -46,7 +46,7 @@ if explicit:
 else:
     paths = s['domains']['initial_domain_paths']
     vault_rel = next((p[0] for p in paths if p[1] == 'vault'), '/Documents/personal')
-    print(Path(vault_rel).name)
+    print(Path(vault_rel.rstrip('/')).name)
 " 2>/dev/null)
 
 INBOX="${VAULT_PATH}/inbox.md"
