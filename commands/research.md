@@ -143,7 +143,12 @@ print(os.path.expanduser('~') + vault if vault else '')
 " 2>/dev/null)
 REPORT_FILE="${VAULT_PATH}/research/$(date +%Y-%m-%d)-<SLUG>.md"
 {
-  printf "# Research: <TOPIC>\nDate: $(date +%Y-%m-%d)\nIntent: <INTENT>\n\n"
+  printf "# Research: <TOPIC>\nDate: $(date +%Y-%m-%d)\n\n"
+  printf "## Research Brief\n"
+  printf "**Question:** <TOPIC>\n"
+  printf "**Intent:** <INTENT>\n"
+  printf "**Focus:** <FOCUS_AREAS>\n\n"
+  printf "---\n\n"
   echo "$REPORT"
 } > "$REPORT_FILE"
 echo "Saved: $REPORT_FILE"
