@@ -31,8 +31,9 @@ Output format:
 2. Then source sections (omit if empty): ## Articles, ## Books & Papers, ## From Your Notes, ## Web, ## From Memory
 3. Each source item format: `- Title — one-line summary\n  URL: <full url>`
 4. Vault notes URL format: obsidian://open?vault=personal&file=<relative-path>
-5. No inline markdown hyperlinks — always show the full URL on its own line prefixed with "URL: "
-6. No filler, no preamble, no trailing paragraph
+5. Inline citation style: use markdown hyperlinks inline with the text for every specific number, statistic, claim, or named fact — e.g. "global GDP fell [2.8%](https://...) in 2026". Ample inline links are required; do not leave statistics or key statements unsupported.
+6. Source section URLs still use the `URL: <full url>` format on their own line (no change).
+7. No filler, no preamble, no trailing paragraph
 """
 
 
