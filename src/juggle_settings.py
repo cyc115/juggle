@@ -73,6 +73,7 @@ DEFAULTS: dict = {
             ["/Documents/personal", "vault"],
             ["/work/", "work"],
         ],
+        "vault_name": "",  # empty = auto-derive as Path(vault_path).name
     },
 
     # Agent Launch

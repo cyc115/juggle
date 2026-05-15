@@ -30,11 +30,23 @@ Output format:
 1. Start with a ## Summary section: 3-5 sentences synthesizing what you know about the topic based on the search results. Be direct, substantive, and analytical — not a list of sources.
 2. Then source sections (omit if empty): ## Articles, ## Books & Papers, ## From Your Notes, ## Web, ## From Memory
 3. Each source item format: `- Title — one-line summary\n  URL: <full url>`
-4. Vault notes URL format: obsidian://open?vault=personal&file=<relative-path>
+4. Vault notes URL format: obsidian://open?vault={vault_name}&file=<relative-path>
 5. Inline citation style: use markdown hyperlinks inline with the text for every specific number, statistic, claim, or named fact — e.g. "global GDP fell [2.8%](https://...) in 2026". Ample inline links are required; do not leave statistics or key statements unsupported.
 6. Source section URLs still use the `URL: <full url>` format on their own line (no change).
 7. No filler, no preamble, no trailing paragraph
 """
+
+
+def _get_vault_info() -> tuple[str, str]:
+    """Returns (vault_path, vault_name) from juggle settings."""
+    from juggle_settings import get_settings
+    s = get_settings()
+    paths = s["domains"]["initial_domain_paths"]
+    vault_rel = next((p[0] for p in paths if p[1] == "vault"), "/Documents/personal")
+    vault_path = str(Path.home() / vault_rel.lstrip("/"))
+    explicit_name = s["domains"].get("vault_name", "")
+    vault_name = explicit_name if explicit_name else Path(vault_path).name
+    return vault_path, vault_name
 
 
 def _load_env() -> None:
@@ -142,8 +154,8 @@ async def enrich_web_results(web_data: list[dict], deep: bool = False) -> list[d
     return web_data
 
 
-async def synthesize(topic: str, context: str, model: str, api_key: str) -> str:
-    prompt = SYNTHESIS_PROMPT.format(topic=topic, context=context)
+async def synthesize(topic: str, context: str, model: str, api_key: str, vault_name: str = "personal") -> str:
+    prompt = SYNTHESIS_PROMPT.format(topic=topic, context=context, vault_name=vault_name)
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -177,7 +189,7 @@ def format_kb_results(articles: list[dict], verbose: bool) -> str:
     return "\n".join(lines)
 
 
-def format_vault_results(paths: list[str], vault_path: str) -> str:
+def format_vault_results(paths: list[str], vault_path: str, vault_name: str = "personal") -> str:
     lines = []
     vault_root = Path(vault_path)
     for p in paths:
@@ -187,7 +199,7 @@ def format_vault_results(paths: list[str], vault_path: str) -> str:
             rel = Path(p)
         name = rel.stem
         encoded = str(rel).replace(" ", "%20")
-        url = f"obsidian://open?vault=personal&file={encoded}"
+        url = f"obsidian://open?vault={vault_name}&file={encoded}"
         lines.append(f"- {name}\n  URL: {url}")
     return "\n".join(lines)
 
@@ -222,7 +234,7 @@ async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optiona
         print("Error: OPENROUTER_KEY not set in ~/.juggle/.env", file=sys.stderr)
         sys.exit(1)
 
-    vault_path = str(Path("~/Documents/personal").expanduser())
+    vault_path, vault_name = _get_vault_info()
     db_path = str(Path(s["db_path"]).expanduser())
     embedding_model = s["embedding_model"]
     synthesis_model = s["summarization_model"]
@@ -256,7 +268,7 @@ async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optiona
         print(f"\n=== KB results ({len(kb_articles)}) ===")
         print(format_kb_results(kb_articles, verbose=True))
         print(f"\n=== Vault results ({len(vault_paths)}) ===")
-        print(format_vault_results(vault_paths, vault_path))
+        print(format_vault_results(vault_paths, vault_path, vault_name))
         if memory_text:
             print(f"\n=== Memory ===\n{memory_text}")
         if web_data:
@@ -269,7 +281,7 @@ async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optiona
     if kb_articles:
         context_parts.append("## Articles from KB\n" + format_kb_results(kb_articles, verbose=False))
     if vault_paths:
-        context_parts.append("## Vault Notes\n" + format_vault_results(vault_paths, vault_path))
+        context_parts.append("## Vault Notes\n" + format_vault_results(vault_paths, vault_path, vault_name))
     if memory_text:
         context_parts.append(f"## From Memory\n{memory_text}")
     if web_data:
@@ -279,7 +291,7 @@ async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optiona
         print(f"No results found for: {topic}")
         return
 
-    digest = await synthesize(topic, "\n\n".join(context_parts), synthesis_model, api_key)
+    digest = await synthesize(topic, "\n\n".join(context_parts), synthesis_model, api_key, vault_name)
     print(digest)
 
 

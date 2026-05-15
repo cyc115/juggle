@@ -36,7 +36,25 @@ logging.basicConfig(
 )
 
 NVIM_SOCKET = "/tmp/juggle-nvim.sock"
-VAULT_ROOT = Path("/Users/mikechen/Documents/personal")
+
+
+def _get_vault_root() -> Path:
+    from juggle_settings import get_settings
+    paths = get_settings()["domains"]["initial_domain_paths"]
+    vault_rel = next((p[0] for p in paths if p[1] == "vault"), "/Documents/personal")
+    return Path.home() / vault_rel.lstrip("/")
+
+
+def _get_vault_name() -> str:
+    from juggle_settings import get_settings
+    s = get_settings()["domains"]
+    explicit = s.get("vault_name", "")
+    if explicit:
+        return explicit
+    return _get_vault_root().name
+
+
+VAULT_ROOT = _get_vault_root()
 
 # Re-export commonly used symbols for backward compatibility with tests
 from juggle_cli_common import (  # noqa: F401
@@ -159,7 +177,7 @@ def _obsidian_fallback(abs_file: str) -> None:
     """Open via Obsidian (vault files) or macOS system open (non-vault files)."""
     try:
         rel = Path(abs_file).relative_to(VAULT_ROOT)
-        url = f"obsidian://open?vault=personal&file={rel}"
+        url = f"obsidian://open?vault={_get_vault_name()}&file={rel}"
         subprocess.run(["open", url], check=True)
     except ValueError:
         # File is outside the vault — Obsidian can't open it.
@@ -414,7 +432,7 @@ def main():
     # grep-vault
     p_grep = subparsers.add_parser("grep-vault", help="Search vault for terms (file paths only)")
     p_grep.add_argument("terms", nargs="+", help="Search terms (max 5)")
-    p_grep.add_argument("--vault-path", default=str(Path.home() / "Documents" / "personal"),
+    p_grep.add_argument("--vault-path", default=str(_get_vault_root()),
                         help="Vault path to search")
     p_grep.set_defaults(func=cmd_grep_vault)
 
