@@ -27,12 +27,21 @@ Search results:
 {context}
 
 Output format:
-1. Start with a ## Summary section: 3-5 sentences synthesizing what you know about the topic based on the search results. Be direct, substantive, and analytical — not a list of sources.
-2. Then source sections (omit if empty): ## Articles, ## Books & Papers, ## From Your Notes, ## Web, ## From Memory
-3. Each source item format: `- Title — one-line summary\n  URL: <full url>`
-4. Vault notes URL format: obsidian://open?vault={vault_name}&file=<relative-path>
-5. Inline citation style: use markdown hyperlinks inline with the text for every specific number, statistic, claim, or named fact — e.g. "global GDP fell [2.8%](https://...) in 2026". Ample inline links are required; do not leave statistics or key statements unsupported.
-6. Source section URLs still use the `URL: <full url>` format on their own line (no change).
+1. Start with a ## Summary section: 3-5 sentences synthesizing what you know about the topic. Be direct, substantive, and analytical — not a list of sources.
+
+2. Then source sections (omit entire section if empty): ## Articles, ## Books & Papers, ## From Your Notes, ## Web, ## From Memory
+
+3. Source quality rules (apply to ALL sections):
+   - Deduplicate aggressively: if multiple sources cover the same ground, pick the single best one and discard the rest.
+   - Group by sub-topic: within each section, cluster related sources under a bold sub-topic label (e.g. **Backtesting frameworks**). Each cluster gets 1-3 sources max — the most authoritative or information-dense ones.
+   - Omit any source that adds no new information beyond what other sources already cover.
+
+4. Each source item format: `- Title — one-line summary of what's unique/valuable about this specific source\n  URL: <full url>`
+
+5. Vault notes URL format: obsidian://open?vault={vault_name}&file=<relative-path>
+
+6. Inline citation style: use markdown hyperlinks inline with the text for every specific number, statistic, or named fact — e.g. "global GDP fell [2.8%](https://...) in 2026". Do not leave statistics or key claims unsupported.
+
 7. No filler, no preamble, no trailing paragraph
 """
 
