@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Juggle Tmux Manager — persistent agent pool via tmux panes."""
 
+import logging
 import os
 import subprocess
 import time
@@ -8,6 +9,11 @@ import uuid
 from pathlib import Path
 
 from juggle_settings import get_settings as _get_settings
+
+_READY_MARKERS = ("bypass permissions on", "/effort")
+_SUBMISSION_MARKERS = ("esc to interrupt", "✻", "✶")
+_BOTTOM_REGION_LINES = 10
+_PROMPT_HEAD_CHARS = 40
 
 
 class JuggleTmuxManager:
@@ -105,58 +111,99 @@ class JuggleTmuxManager:
             return
         self._run_tmux("kill-pane", "-t", pane_id)
 
+    def wait_for_ready_to_paste(self, pane_id: str, timeout: int = 30) -> bool:
+        """Poll capture-pane until a Claude UI readiness marker appears.
+
+        Returns True once any marker in _READY_MARKERS appears in the pane
+        contents; False after `timeout` seconds. Polls at 1s intervals.
+        """
+        for _ in range(max(1, timeout)):
+            result = self._run_tmux("capture-pane", "-pt", pane_id)
+            out = getattr(result, "stdout", "") or ""
+            if any(m in out for m in _READY_MARKERS):
+                return True
+            time.sleep(1)
+        return False
+
+    def wait_for_submission(
+        self,
+        pane_id: str,
+        pasted_prompt: str,
+        timeout: int = 15,
+        max_enter_retries: int = 3,
+    ) -> bool:
+        """Verify a pasted prompt was submitted; retry Enter if stuck.
+
+        Success: a processing marker (e.g. "esc to interrupt") appears, OR
+        the first ~40 chars of the prompt are no longer visible in the
+        bottom region of the pane (input box has cleared).
+
+        On consecutive stuck observations, sends an extra C-m. The very
+        first stuck observation only records the state — the retry fires
+        on the second stuck poll. Bounded by `max_enter_retries`.
+
+        Returns True on success, False on timeout.
+        """
+        first_line = pasted_prompt.strip().split("\n", 1)[0] if pasted_prompt.strip() else ""
+        head = first_line[:_PROMPT_HEAD_CHARS]
+
+        consecutive_stuck = 0
+        retries = 0
+        for _ in range(max(1, timeout)):
+            result = self._run_tmux("capture-pane", "-pt", pane_id)
+            out = getattr(result, "stdout", "") or ""
+            if any(m in out for m in _SUBMISSION_MARKERS):
+                return True
+            bottom = "\n".join(out.splitlines()[-_BOTTOM_REGION_LINES:])
+            if head and head not in bottom:
+                return True
+            consecutive_stuck += 1
+            if consecutive_stuck >= 2 and retries < max_enter_retries:
+                self._run_tmux("send-keys", "-t", pane_id, "C-m")
+                retries += 1
+            time.sleep(1)
+        return False
+
     def send_task(self, pane_id: str, prompt: str, is_new: bool = False) -> None:
         """Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
 
         Uses a temp file to avoid shell-escaping issues with multi-line prompts.
-        For new agents (is_new=True): spawns a background subprocess that waits
-        for Claude Code to start, pastes, and retries Enter after 10s.
-        For existing agents: sends synchronously.
+        Unified flow for both new and reused agents:
+          1. wait_for_ready_to_paste — block until the Claude UI is up.
+          2. load-buffer + paste-buffer + send-keys C-m.
+          3. wait_for_submission — verify the prompt left the input box; retry Enter if not.
+
+        `is_new` is accepted for caller backward compatibility but is no longer
+        consulted — the wait helpers handle both cold-start and mid-render cases.
         No-op if JUGGLE_TMUX_MOCK_SEND=1.
         """
+        del is_new
         if not pane_id or not pane_id.strip():
             raise ValueError(f"send_task called with empty pane_id — aborting to avoid pasting to wrong tmux session")
         if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
             return
+
+        if not self.wait_for_ready_to_paste(pane_id, timeout=30):
+            raise RuntimeError(
+                f"Claude UI not ready in pane {pane_id} after 30s — aborting send_task"
+            )
+
         tmp = f"/tmp/juggle_task_{uuid.uuid4().hex[:8]}.txt"
         Path(tmp).write_text(prompt)
         buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
-
-        if is_new:
-            # Background subprocess: survives parent exit, handles delays
-            script = (
-                f"sleep 5; "
-                f"tmux load-buffer -b {buf_name} '{tmp}'; "
-                f"tmux paste-buffer -b {buf_name} -t '{pane_id}'; "
-                f"tmux send-keys -t '{pane_id}' C-m; "
-                f"sleep 10; "
-                f"tmux send-keys -t '{pane_id}' C-m; "
-                f"tmux delete-buffer -b {buf_name}; "
-                f"rm -f '{tmp}'"
-            )
-            subprocess.Popen(
-                ["bash", "-c", script],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        else:
-            try:
-                self._run_tmux("load-buffer", "-b", buf_name, tmp)
-                self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
-                time.sleep(1)  # let Claude Code process pasted input
-                self._run_tmux("send-keys", "-t", pane_id, "C-m")
-                self._run_tmux("delete-buffer", "-b", buf_name)
-                # Retry Enter after 5s in case first was swallowed
-                subprocess.Popen(
-                    ["bash", "-c", f"sleep 5; tmux send-keys -t '{pane_id}' C-m"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
+        try:
+            self._run_tmux("load-buffer", "-b", buf_name, tmp)
+            self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
+            self._run_tmux("delete-buffer", "-b", buf_name)
+            self._run_tmux("send-keys", "-t", pane_id, "C-m")
+            if not self.wait_for_submission(pane_id, prompt, timeout=15):
+                logging.warning(
+                    "send_task: submission not verified for pane %s — may need manual retry",
+                    pane_id,
                 )
-            finally:
-                if Path(tmp).exists():
-                    os.unlink(tmp)
+        finally:
+            if Path(tmp).exists():
+                os.unlink(tmp)
 
     def spawn_agent(self, db, role: str, model: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.
