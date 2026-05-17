@@ -55,7 +55,22 @@ Include `INTENT` and `FOCUS_AREAS` as context in the task file (step 4).
 
 ---
 
-### 3. Create thread and get agent
+### 3. Extract conversation context (orchestrator step — do this inline, not in agent)
+
+Scan the current conversation for anything related to `<TOPIC>`. This includes: prior decisions, code snippets, findings, constraints, user preferences, or earlier research that bears on this topic.
+
+If relevant context is found:
+- Summarize it as `CONVERSATION_CONTEXT` — 3–8 concise bullet points, max ~600 chars total
+- Focus on facts and decisions, not narration ("we decided X", "the constraint is Y", "user prefers Z")
+- Omit anything unrelated to the topic
+
+If nothing relevant is found, set `CONVERSATION_CONTEXT` to empty string.
+
+This context is injected into the task file (step 4) so the researcher agent starts with relevant background it would otherwise not have.
+
+---
+
+### 4. Create thread and get agent
 
 ```bash
 CREATE_OUT=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "research-<SLUG>")
@@ -71,7 +86,7 @@ If `get-agent` exits non-zero or prints "Agent pool full", tell the user and sto
 
 ---
 
-### 4. Write task file and dispatch
+### 5. Write task file and dispatch
 
 Fill in all `<PLACEHOLDERS>` with real values. `VERBOSE_FLAG`, `NO_WEB_FLAG`, `DEEP_FLAG` are the respective flags or empty.
 
@@ -80,8 +95,25 @@ TASK_FILE="/tmp/juggle_research_$(date +%s%N).txt"
 cat > "$TASK_FILE" << 'TASKEOF'
 [JUGGLE_THREAD:<THREAD_LABEL>]
 Research topic: "<TOPIC>"
+
+## Researcher behavioral spec
+
+Mark confidence: [HIGH CONFIDENCE] (3+ independent sources) / [CONFLICTING] / [UNVERIFIED]
+Never fabricate URLs. State gaps explicitly rather than guessing.
+
+OUTPUT FORMAT:
+## Summary (3-5 sentences, standalone readable)
+## [Section per research angle]
+  - Finding [CONFIDENCE] — URL
+## Gaps / open questions
+
 Intent: <INTENT>
 Focus areas: <FOCUS_AREAS>
+
+## Context from current conversation
+<CONVERSATION_CONTEXT_OR_"None">
+
+Use this context to avoid re-researching known ground and to align findings with existing decisions.
 
 ## Research process
 
@@ -165,7 +197,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FIL
 
 ---
 
-### 5. Confirm dispatch
+### 6. Confirm dispatch
 
 Tell the user:
 > "Researching **<TOPIC>** in background — thread [<THREAD_LABEL>] (intent: <INTENT>, focus: <FOCUS_AREAS or "broad">). Running multi-round parallel web search. Report will be saved to the vault's `research/` directory and I'll loop back when done."

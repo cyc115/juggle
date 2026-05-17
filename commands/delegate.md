@@ -39,6 +39,34 @@ Load `AskUserQuestion` via ToolSearch (`select:AskUserQuestion`), then issue a *
 
 ---
 
+## Step 1.5: Context exploration (orchestrator-inline, before dispatch)
+
+Using the task description from `$ARGUMENTS` or Q1, explore the relevant project state. This context is injected into the task file so the agent starts with ground truth rather than assumptions.
+
+Run the following in parallel (all are read-only):
+
+```bash
+# Recent git activity
+git log --oneline -10
+
+# Current changes
+git status --short
+
+# Find files matching key terms from the task description
+# Extract 2-4 keywords from the task description and grep for them
+grep -rn "<keyword1>\|<keyword2>" --include="*.py" --include="*.ts" --include="*.md" . | grep -v venv | grep -v ".git" | head -30
+```
+
+Then read the 1-3 most relevant files (at most 80 lines each) based on grep hits and git history.
+
+Synthesize into `CONTEXT_SUMMARY`: 4-8 concise bullets — current state, relevant files, recent changes, known constraints. Omit anything unrelated to the task.
+
+If the task description is vague or no relevant files found, set `CONTEXT_SUMMARY` to `"No specific files identified — agent should explore ad-hoc."`.
+
+This summary is injected into the task file (step 4) under `## Context from codebase`.
+
+---
+
 ## Step 2: Derive plan parameters
 
 From the answers:
@@ -106,6 +134,13 @@ cat > "$TASK_FILE" << 'TASKEOF'
 [JUGGLE_THREAD:<THREAD_LABEL>]
 <task description from $ARGUMENTS or Q1 answer>
 
+<BEHAVIORAL_SPEC>
+
+## Context from codebase
+<CONTEXT_SUMMARY>
+
+Use this context to avoid re-exploring known ground. Trust it as the state at dispatch time.
+
 Constraints: <Q2 answer>
 
 On completion:
@@ -115,7 +150,45 @@ TASKEOF
 python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FILE"
 ```
 
-Fill in the placeholders (`<label>`, `<role>`, `<THREAD_LABEL>`, task description, constraints) from the answers collected in Steps 1–2 before running.
+Fill in the placeholders (`<label>`, `<role>`, `<THREAD_LABEL>`, task description, constraints, `<BEHAVIORAL_SPEC>`) from the answers collected in Steps 1–2 before running. Substitute `<BEHAVIORAL_SPEC>` with the role-appropriate block from the templates below.
+
+### Behavioral Spec Templates
+
+**Coder** (role = `coder`):
+```
+## Coder behavioral spec
+
+SCOPE: Only change what the task requires. Do not refactor, add comments, or improve
+surrounding code. If requirements are ambiguous, STOP and signal via complete-agent
+with "BLOCKED: <question>" before making assumptions.
+
+QUALITY GATE (run before complete-agent):
+1. Run tests for changed files (if tests exist)
+2. Fix linting errors
+3. Fix type errors
+4. Verify diff has no unrelated changes
+5. Invoke mike:pre-pr skill (configurable via agent.quality_gate_skill setting)
+
+VERSION BUMP: patch=fix, minor=feature, major=breaking. State target version in summary.
+```
+
+**Planner** (role = `planner`):
+```
+## Planner behavioral spec
+
+DECOMPOSE: Break into subtasks of one file/concern each, ordered by dependency.
+Each subtask must have: what to do, where to do it, acceptance criteria.
+
+DEVIL'S ADVOCATE (mandatory before emitting plan):
+1. Identify weakest assumption and its failure mode
+2. Ask: is there a simpler alternative that achieves the same goal?
+3. Hunt for hidden dependencies or scope creep
+State findings in ## Devil's Advocate section of plan.
+
+DONE when: a coder with no prior context could execute every subtask without asking.
+```
+
+**Researcher** (role = `researcher`): omit `<BEHAVIORAL_SPEC>` — use `/juggle:research` which embeds the spec automatically.
 
 ### Parallel dispatch (Q3 = researcher then coder)
 

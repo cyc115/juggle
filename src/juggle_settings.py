@@ -79,6 +79,137 @@ DEFAULTS: dict = {
     # Agent Launch
     "agent": {
         "claude_launch_command": "claude --dangerously-skip-permissions",
+        # Tools denied for ALL agent roles (reduces tool-definition token cost).
+        # opentabs (78 browser tools) + meta tools agents never invoke.
+        "disallowed_tools_universal": [
+            # opentabs browser tools
+            "mcp__opentabs__browser_add_tabs_to_group",
+            "mcp__opentabs__browser_clear_console_logs",
+            "mcp__opentabs__browser_clear_emulation",
+            "mcp__opentabs__browser_clear_network_throttle",
+            "mcp__opentabs__browser_clear_site_data",
+            "mcp__opentabs__browser_click_element",
+            "mcp__opentabs__browser_close_tab",
+            "mcp__opentabs__browser_close_window",
+            "mcp__opentabs__browser_create_bookmark",
+            "mcp__opentabs__browser_create_tab_group",
+            "mcp__opentabs__browser_create_window",
+            "mcp__opentabs__browser_delete_cookies",
+            "mcp__opentabs__browser_disable_network_capture",
+            "mcp__opentabs__browser_download_file",
+            "mcp__opentabs__browser_emulate_device",
+            "mcp__opentabs__browser_emulate_vision_deficiency",
+            "mcp__opentabs__browser_enable_network_capture",
+            "mcp__opentabs__browser_execute_script",
+            "mcp__opentabs__browser_export_har",
+            "mcp__opentabs__browser_fail_request",
+            "mcp__opentabs__browser_focus_tab",
+            "mcp__opentabs__browser_force_pseudo_state",
+            "mcp__opentabs__browser_fulfill_request",
+            "mcp__opentabs__browser_get_console_logs",
+            "mcp__opentabs__browser_get_cookies",
+            "mcp__opentabs__browser_get_css_coverage",
+            "mcp__opentabs__browser_get_download_status",
+            "mcp__opentabs__browser_get_element_styles",
+            "mcp__opentabs__browser_get_network_requests",
+            "mcp__opentabs__browser_get_page_html",
+            "mcp__opentabs__browser_get_recently_closed",
+            "mcp__opentabs__browser_get_resource_content",
+            "mcp__opentabs__browser_get_storage",
+            "mcp__opentabs__browser_get_tab_content",
+            "mcp__opentabs__browser_get_tab_info",
+            "mcp__opentabs__browser_get_visits",
+            "mcp__opentabs__browser_get_websocket_frames",
+            "mcp__opentabs__browser_handle_dialog",
+            "mcp__opentabs__browser_hover_element",
+            "mcp__opentabs__browser_intercept_requests",
+            "mcp__opentabs__browser_list_bookmark_tree",
+            "mcp__opentabs__browser_list_downloads",
+            "mcp__opentabs__browser_list_resources",
+            "mcp__opentabs__browser_list_tab_groups",
+            "mcp__opentabs__browser_list_tabs",
+            "mcp__opentabs__browser_list_tabs_in_group",
+            "mcp__opentabs__browser_list_windows",
+            "mcp__opentabs__browser_navigate_tab",
+            "mcp__opentabs__browser_notify",
+            "mcp__opentabs__browser_open_tab",
+            "mcp__opentabs__browser_press_key",
+            "mcp__opentabs__browser_query_elements",
+            "mcp__opentabs__browser_remove_tabs_from_group",
+            "mcp__opentabs__browser_restore_session",
+            "mcp__opentabs__browser_screenshot_tab",
+            "mcp__opentabs__browser_scroll",
+            "mcp__opentabs__browser_search_bookmarks",
+            "mcp__opentabs__browser_search_history",
+            "mcp__opentabs__browser_select_option",
+            "mcp__opentabs__browser_set_cookie",
+            "mcp__opentabs__browser_set_geolocation",
+            "mcp__opentabs__browser_set_media_features",
+            "mcp__opentabs__browser_stop_intercepting",
+            "mcp__opentabs__browser_throttle_network",
+            "mcp__opentabs__browser_type_text",
+            "mcp__opentabs__browser_update_tab_group",
+            "mcp__opentabs__browser_update_window",
+            "mcp__opentabs__browser_wait_for_element",
+            "mcp__opentabs__extension_check_adapter",
+            "mcp__opentabs__extension_force_reconnect",
+            "mcp__opentabs__extension_get_logs",
+            "mcp__opentabs__extension_get_side_panel",
+            "mcp__opentabs__extension_get_state",
+            "mcp__opentabs__extension_reload",
+            "mcp__opentabs__plugin_analyze_site",
+            "mcp__opentabs__plugin_inspect",
+            "mcp__opentabs__plugin_list_tabs",
+            "mcp__opentabs__plugin_mark_reviewed",
+            # personal-mcp financial tools (not for agents)
+            "mcp__personal-mcp__plaid_get_accounts",
+            "mcp__personal-mcp__plaid_get_statements",
+            "mcp__personal-mcp__plaid_sync_transactions",
+            # meta / orchestrator tools agents don't invoke
+            "ScheduleWakeup",
+            "CronCreate",
+            "CronList",
+            "CronDelete",
+            "ShareOnboardingGuide",
+            "ExitPlanMode",
+            "EnterPlanMode",
+            "EnterWorktree",
+            "ExitWorktree",
+            "PushNotification",
+            # sub-agent spawning and remote triggers — orchestrator-only
+            "Agent",
+            "RemoteTrigger",
+            # MCP resource browsing — not used by any agent role
+            "ListMcpResourcesTool",
+            "ReadMcpResourceTool",
+        ],
+        # Per-role role identity sentences injected into agent context anchor.
+        "role_context": {
+            "researcher": "Produce comprehensive, well-structured, cited reports. Never fabricate URLs.",
+            "coder":      "Implement exactly what is specified — no more. Minimal diff.",
+            "planner":    "Produce plans a coder can execute without clarification.",
+        },
+        # Skill invoked by coder agents before complete-agent (configurable per deployment).
+        "quality_gate_skill": "mike:pre-pr",
+        # Per-role additional denylists (merged with universal at spawn time).
+        "disallowed_tools_by_role": {
+            "researcher": [
+                "Edit",          # researchers don't patch code
+                "NotebookEdit",  # no Jupyter in Juggle
+            ],
+            "coder": [
+                "NotebookEdit",                              # no Jupyter in Juggle
+                "mcp__personal-mcp__extract_text_from_file", # OCR not needed for coding
+            ],
+            "planner": [
+                "Edit",                                      # planners write plans, not code
+                "NotebookEdit",                              # no Jupyter in Juggle
+                "Monitor",                                   # planners don't run bg processes
+                "TaskOutput",                                # no bg tasks to monitor
+                "TaskStop",                                  # no bg tasks to stop
+                "mcp__personal-mcp__extract_text_from_file", # OCR not needed for planning
+            ],
+        },
     },
 
     # Talkback TTS

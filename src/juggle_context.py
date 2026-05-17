@@ -111,6 +111,27 @@ def _render_tier2(t: dict) -> str:
     return f"[{label}] ✅ closed  | {title}"
 
 
+def _render_agent_role_anchor() -> str:
+    """Return the AGENT ROLE anchor block for agent panes. Empty string otherwise."""
+    import os
+    if os.environ.get("JUGGLE_IS_AGENT") != "1":
+        return ""
+    role = os.environ.get("JUGGLE_AGENT_ROLE", "")
+    if not role:
+        return ""
+    role_context = _get_settings().get("agent", {}).get("role_context", {})
+    identity = role_context.get(role, "")
+    if not identity:
+        return ""
+    from pathlib import Path as _Path
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", str(_Path(__file__).resolve().parent.parent))
+    return (
+        "--- AGENT ROLE ---\n"
+        f"ROLE: {role}. {identity}\n"
+        f'COMPLETION: python3 {plugin_root}/src/juggle_cli.py complete-agent <THREAD> "<summary>" --retain "<key finding>"'
+    )
+
+
 def _build(db: JuggleDB) -> str:
     if not db.is_active():
         return ""
@@ -185,6 +206,16 @@ def _build(db: JuggleDB) -> str:
 
     if len(out) > _CHAR_LIMIT:
         out = _trim_to_limit(out, _CHAR_LIMIT)
+
+    # Inject role anchor after trim so it is never cut by the char limit.
+    role_anchor = _render_agent_role_anchor()
+    if role_anchor:
+        footer = "--- END JUGGLE ---"
+        if out.endswith(footer):
+            out = out[: -len(footer)] + role_anchor + "\n" + footer
+        else:
+            out += "\n" + role_anchor
+
     return out
 
 

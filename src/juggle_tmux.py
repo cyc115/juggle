@@ -69,15 +69,25 @@ class JuggleTmuxManager:
                 )
         return pane_id
 
-    def start_claude_in_pane(self, pane_id: str, model: str | None = None) -> None:
+    def start_claude_in_pane(self, pane_id: str, model: str | None = None, role: str | None = None) -> None:
         """Send the 'claude' command to a pane.
 
         Prefixes with env -u CLAUDE_PLUGIN_DATA to prevent DB fragmentation.
+        Appends --disallowedTools from settings to reduce tool-definition token cost.
         """
-        cmd = _get_settings()["agent"]["claude_launch_command"]
+        agent_cfg = _get_settings().get("agent", {})
+        cmd = agent_cfg["claude_launch_command"]
         if model:
             cmd += f" --model {model}"
-        cmd = f"env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1 {cmd}"
+
+        denied = list(agent_cfg.get("disallowed_tools_universal", []))
+        if role:
+            denied += agent_cfg.get("disallowed_tools_by_role", {}).get(role, [])
+        if denied:
+            cmd += " --disallowedTools " + ",".join(denied)
+
+        role_env = f" JUGGLE_AGENT_ROLE={role}" if role else ""
+        cmd = f"env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1{role_env} {cmd}"
         self._run_tmux("send-keys", "-t", pane_id, cmd, "Enter")
 
     def verify_pane(self, pane_id: str) -> bool:
@@ -174,7 +184,7 @@ class JuggleTmuxManager:
 
         self.ensure_session()
         pane_id = self.spawn_pane()
-        self.start_claude_in_pane(pane_id, model=model)
+        self.start_claude_in_pane(pane_id, model=model, role=role)
 
         agent_id = db.create_agent(role=role, pane_id=pane_id)
         return db.get_agent(agent_id)
