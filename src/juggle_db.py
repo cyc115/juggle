@@ -79,24 +79,6 @@ CREATE TABLE IF NOT EXISTS agents (
 );
 """
 
-CREATE_DOMAINS = """
-CREATE TABLE IF NOT EXISTS domains (
-  name  TEXT PRIMARY KEY
-);
-"""
-
-CREATE_DOMAIN_PATHS = """
-CREATE TABLE IF NOT EXISTS domain_paths (
-  path_fragment TEXT NOT NULL PRIMARY KEY,
-  domain        TEXT NOT NULL REFERENCES domains(name)
-);
-"""
-
-_INITIAL_DOMAINS: list[str] = _get_settings()["domains"]["initial_domains"]
-_INITIAL_DOMAIN_PATHS: list[tuple[str, str]] = [
-    (p, d) for p, d in _get_settings()["domains"]["initial_domain_paths"]
-]
-
 CREATE_NOTIFICATIONS_V2 = """
 CREATE TABLE IF NOT EXISTS notifications_v2 (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -192,8 +174,6 @@ class JuggleDB:
             conn.execute(CREATE_NOTIFICATIONS)
             conn.execute(CREATE_SESSION)
             conn.execute(CREATE_AGENTS)
-            conn.execute(CREATE_DOMAINS)
-            conn.execute(CREATE_DOMAIN_PATHS)
             conn.execute(CREATE_NOTIFICATIONS_V2)
             conn.execute(CREATE_ACTION_ITEMS)
             conn.execute(CREATE_SETTINGS)
@@ -306,25 +286,8 @@ class JuggleDB:
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 8 skipped: %s", e)
 
-        # Migration 9: seed domains + domain_paths tables if empty
-        tables = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
-        if "domains" in tables:
-            existing_domains = {row[0] for row in conn.execute("SELECT name FROM domains").fetchall()}
-            for name in _INITIAL_DOMAINS:
-                if name not in existing_domains:
-                    conn.execute("INSERT OR IGNORE INTO domains (name) VALUES (?)", (name,))
-        if "domain_paths" in tables:
-            existing_paths = {row[0] for row in conn.execute(
-                "SELECT path_fragment FROM domain_paths"
-            ).fetchall()}
-            for path_fragment, domain in _INITIAL_DOMAIN_PATHS:
-                if path_fragment not in existing_paths:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO domain_paths (path_fragment, domain) VALUES (?, ?)",
-                        (path_fragment, domain),
-                    )
+        # Migration 9: (removed in 1.21.0) — previously seeded domains/domain_paths
+        # tables, which are now dropped in Migrations 17–19. Body intentionally empty.
 
         # Migration 10: add memory columns for Hindsight integration
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
@@ -409,6 +372,41 @@ class JuggleDB:
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 16 skipped: %s", e)
 
+        # Migration 17: drop domain column from threads
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        if "domain" in cols:
+            try:
+                domain_indexes = [
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master "
+                        "WHERE type='index' AND tbl_name='threads' AND sql LIKE '%domain%'"
+                    ).fetchall()
+                ]
+                for idx_name in domain_indexes:
+                    conn.execute(f"DROP INDEX IF EXISTS {idx_name}")
+                conn.execute("ALTER TABLE threads DROP COLUMN domain")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 17 skipped: %s", e)
+
+        # Migration 18: drop domain column from agents
+        agent_cols = {row["name"] for row in conn.execute("PRAGMA table_info(agents)").fetchall()}
+        if "domain" in agent_cols:
+            try:
+                conn.execute("ALTER TABLE agents DROP COLUMN domain")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 18 skipped: %s", e)
+
+        # Migration 19: drop domain tables (domain_paths FK → domains, drop in order)
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        if "domain_paths" in tables or "domains" in tables:
+            try:
+                conn.execute("DROP TABLE IF EXISTS domain_paths")
+                conn.execute("DROP TABLE IF EXISTS domains")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 19 skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -467,7 +465,7 @@ class JuggleDB:
     # Thread operations
     # ------------------------------------------------------------------
 
-    def create_thread(self, topic: str, session_id: str, domain: str | None = None) -> str:
+    def create_thread(self, topic: str, session_id: str) -> str:
         """Create a new thread. Returns the UUID of the new thread.
 
         Assigns next available A–Z label. Raises ValueError if 10 non-archived
@@ -507,10 +505,10 @@ class JuggleDB:
                   (id, user_label, session_id, topic, status,
                    summary, key_decisions, open_questions,
                    last_user_intent, agent_task_id, agent_result,
-                   show_in_list, summarized_msg_count, domain, created_at, last_active, last_active_at)
-                VALUES (?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?, ?)
+                   show_in_list, summarized_msg_count, created_at, last_active, last_active_at)
+                VALUES (?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?)
                 """,
-                (new_id, user_label, session_id, topic, domain, now_iso, now_iso, now_min),
+                (new_id, user_label, session_id, topic, now_iso, now_iso, now_min),
             )
             conn.commit()
             return new_id

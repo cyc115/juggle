@@ -45,6 +45,8 @@ DEFAULTS: dict = {
         "data_dir": "~/.claude/juggle",
         "config_dir": "~/.juggle",
         "digest_log_dir": "~/.juggle/logs",
+        "vault": "/Documents/personal",
+        "vault_name": "",
     },
 
     # Tmux
@@ -63,17 +65,6 @@ DEFAULTS: dict = {
         "bank": "juggle",
         "timeout_secs": 10,
         "reflect_timeout_secs": 60,
-    },
-
-    # Domain Seeds
-    "domains": {
-        "initial_domains": ["juggle", "vault", "work"],
-        "initial_domain_paths": [
-            ["/github/juggle", "juggle"],
-            ["/Documents/personal", "vault"],
-            ["/work/", "work"],
-        ],
-        "vault_name": "",  # empty = auto-derive as Path(vault_path).name
     },
 
     # Agent Launch
@@ -231,7 +222,7 @@ DEFAULTS: dict = {
     # Title Generation (API key lives in ~/.juggle/.env as OPENROUTER_KEY, not here)
     "title_gen": {
         "openrouter_enabled": True,
-        "openrouter_model": "meta-llama/llama-3.1-8b-instruct:free",
+        "openrouter_model": "google/gemini-2.5-flash-lite",
         "haiku_model": "claude-haiku-4-5-20251001",
         "timeout_secs": 10,
     },

@@ -12,7 +12,7 @@ def test_title_gen_defaults_present():
     tg = DEFAULTS.get("title_gen")
     assert tg is not None, "title_gen section missing from DEFAULTS"
     assert tg["openrouter_enabled"] is True
-    assert tg["openrouter_model"] == "meta-llama/llama-3.1-8b-instruct:free"
+    assert tg["openrouter_model"] == "google/gemini-2.5-flash-lite"
     assert "openrouter_api_key" not in tg, "API key must not appear in config defaults — use OPENROUTER_KEY env var"
     assert tg["haiku_model"] == "claude-haiku-4-5-20251001"
     assert tg["timeout_secs"] == 10
@@ -104,14 +104,14 @@ def test_tier1_exception_falls_to_tier2(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
     db = _db()
     monkeypatch.setenv("OPENROUTER_KEY", "sk-test-key")
-    mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout="Haiku Result\n"))
+    mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout="Haiku Result Title\n"))
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("urllib.request.urlopen", side_effect=Exception("network error")):
             with patch("subprocess.run", mock_run):
                 title = _generate_title_for_thread(db, "uuid-1", "Some task")
 
-    assert title == "Haiku Result"
+    assert title == "Haiku Result Title"
     call_args = mock_run.call_args[0][0]
     assert "--model" in call_args
     assert "claude-haiku-4-5-20251001" in call_args
@@ -161,7 +161,7 @@ def test_tier2_nonzero_returncode_falls_to_tier3(monkeypatch):
         with patch("subprocess.run", mock_run):
             title = _generate_title_for_thread(db, "uuid-1", "one two three four five six")
 
-    assert title == "one two three four five"
+    assert title == "One Two Three Four Five Six"
 
 
 def test_tier2_empty_stdout_falls_to_tier3(monkeypatch):
@@ -174,7 +174,7 @@ def test_tier2_empty_stdout_falls_to_tier3(monkeypatch):
         with patch("subprocess.run", mock_run):
             title = _generate_title_for_thread(db, "uuid-1", "one two three four five six")
 
-    assert title == "one two three four five"
+    assert title == "One Two Three Four Five Six"
 
 
 def test_tier2_file_not_found_falls_to_tier3(monkeypatch):
@@ -187,7 +187,7 @@ def test_tier2_file_not_found_falls_to_tier3(monkeypatch):
         with patch("subprocess.run", mock_run):
             title = _generate_title_for_thread(db, "uuid-1", "alpha beta gamma delta epsilon eta")
 
-    assert title == "alpha beta gamma delta epsilon"
+    assert title == "Alpha Beta Gamma Delta Epsilon Eta"
 
 
 def test_tier2_overlong_output_falls_to_tier3(monkeypatch):
@@ -201,7 +201,7 @@ def test_tier2_overlong_output_falls_to_tier3(monkeypatch):
         with patch("subprocess.run", mock_run):
             title = _generate_title_for_thread(db, "uuid-1", "one two three four five six")
 
-    assert title == "one two three four five"
+    assert title == "One Two Three Four Five Six"
 
 
 # ---------------------------------------------------------------------------
@@ -232,5 +232,5 @@ def test_tier3_db_updated_with_fallback(monkeypatch):
                 db, "uuid-1", "apple banana cherry date elderberry fig"
             )
 
-    assert title == "apple banana cherry date elderberry"
-    db.update_thread.assert_called_once_with("uuid-1", title="apple banana cherry date elderberry")
+    assert title == "Apple Banana Cherry Date Elderberry Fig"
+    db.update_thread.assert_called_once_with("uuid-1", title="Apple Banana Cherry Date Elderberry Fig")
