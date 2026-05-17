@@ -1003,55 +1003,6 @@ class JuggleDB:
 
         return max(idle, key=_score)
 
-    # ------------------------------------------------------------------
-    # Domain registry
-    # ------------------------------------------------------------------
-
-    def register_domain(self, name: str) -> None:
-        """Insert domain name into domains table. No-op if already exists."""
-        with self._connect() as conn:
-            conn.execute("INSERT OR IGNORE INTO domains (name) VALUES (?)", (name,))
-            conn.commit()
-
-    def get_domains(self) -> list[str]:
-        """Return all registered domain names."""
-        with self._connect() as conn:
-            rows = conn.execute("SELECT name FROM domains ORDER BY name").fetchall()
-            return [row["name"] for row in rows]
-
-    def is_known_domain(self, name: str) -> bool:
-        """Return True if name is a registered domain."""
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT name FROM domains WHERE name = ?", (name,)
-            ).fetchone()
-            return row is not None
-
-    def add_domain_path(self, path_fragment: str, domain: str) -> None:
-        """Insert or replace a path_fragment → domain mapping."""
-        with self._connect() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO domain_paths (path_fragment, domain) VALUES (?, ?)",
-                (path_fragment, domain),
-            )
-            conn.commit()
-
-    def get_domain_paths(self) -> list[dict]:
-        """Return all path→domain mappings."""
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT path_fragment, domain FROM domain_paths ORDER BY path_fragment"
-            ).fetchall()
-            return [dict(row) for row in rows]
-
-    def infer_domain_from_prompt(self, prompt: str) -> str | None:
-        """Return first domain whose path_fragment appears in prompt, or None."""
-        mappings = self.get_domain_paths()
-        for m in mappings:
-            if m["path_fragment"] in prompt:
-                return m["domain"]
-        return None
-
     def get_agent_by_thread(self, thread_id: str) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(
