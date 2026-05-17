@@ -29,6 +29,9 @@ from juggle_settings import get_settings as _get_settings
 
 _AGENT_TTL_SECS: int = _get_settings()["agent_idle_ttl_secs"]
 
+_DRAFT_KEYWORDS = ("draft", "partial", "pending", "v1", "initial", "wip", "first pass", "todo", "placeholder")
+_PLAN_KEYWORDS = ("plan written", "spec written", "design doc", "plan at", "spec at")
+
 
 def cmd_set_agent(args):
     db = get_db()
@@ -120,7 +123,7 @@ def cmd_complete_agent(args):
         session_id=session_id,
     )
 
-    # 6a. Researcher completions → action item for review
+    # 6a. Role-based action items
     role = (agent.get("role") if agent else None) or getattr(args, "role", None)
     if role == "researcher":
         db.add_action_item(
@@ -129,6 +132,29 @@ def cmd_complete_agent(args):
             type_="review",
             priority="normal",
         )
+    elif role == "planner":
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"Review plan before dispatching coder: {args.result_summary}",
+            type_="decision",
+            priority="normal",
+        )
+    elif role not in ("researcher", "planner"):
+        summary_lower = (args.result_summary or "").lower()
+        if any(kw in summary_lower for kw in _PLAN_KEYWORDS):
+            db.add_action_item(
+                thread_id=thread_uuid,
+                message=f"Review before dispatching coder: {args.result_summary}",
+                type_="decision",
+                priority="normal",
+            )
+        elif any(kw in summary_lower for kw in _DRAFT_KEYWORDS):
+            db.add_action_item(
+                thread_id=thread_uuid,
+                message=f"Review/iterate: {args.result_summary}",
+                type_="manual_step",
+                priority="normal",
+            )
 
     # 6b. Optional retain text → Hindsight
     retain_text = getattr(args, "retain_text", None)
@@ -488,6 +514,12 @@ def cmd_release_agent(args):
             with db._connect() as conn:
                 row = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
             session_id = row["value"] if row else ""
+            db.add_action_item(
+                thread_id=assigned,
+                message=f"⚠️ [{label}] Agent released without completing — investigate and re-dispatch",
+                type_="failure",
+                priority="high",
+            )
             db.add_notification_v2(assigned,
                 f"[Topic {label} failed] Agent released without completing.",
                 session_id=session_id)
