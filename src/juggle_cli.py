@@ -212,6 +212,12 @@ def main():
     p_create.add_argument("topic", help="Topic name")
     p_create.set_defaults(func=cmd_create_thread)
 
+    # doctor — auto-migrate config + DB to current schema
+    p_doctor = subparsers.add_parser("doctor", help="Migrate config + DB to current schema")
+    p_doctor.add_argument("--dry-run", action="store_true",
+                          help="Print actions; write nothing")
+    p_doctor.set_defaults(func=lambda a: __import__("juggle_cmd_doctor").cmd_doctor(a))
+
     # switch-thread
     p_switch = subparsers.add_parser("switch-thread", help="Switch to a topic thread")
     p_switch.add_argument("thread_id", help="Thread ID (e.g. A, B, C)")
