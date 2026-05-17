@@ -1,5 +1,6 @@
 """Juggle CLI — `doctor` subcommand: migrate config + DB to current schema."""
 
+import copy
 import json
 import shutil
 import sqlite3
@@ -16,6 +17,7 @@ def _migrate_config(cfg: dict) -> tuple[dict, list[str]]:
 
     Returns (new_cfg, list_of_change_descriptions).
     """
+    cfg = copy.deepcopy(cfg)
     changes: list[str] = []
     domains = cfg.get("domains")
     if not isinstance(domains, dict):
@@ -63,6 +65,8 @@ def cmd_doctor(args) -> int:
                 if not BACKUP_PATH.exists():
                     shutil.copy2(CONFIG_PATH, BACKUP_PATH)
                 CONFIG_PATH.write_text(json.dumps(new_cfg, indent=2))
+                from juggle_settings import get_settings
+                get_settings.cache_clear()
             print(f"config: {len(changes)} change(s):")
             for c in changes:
                 print(f"  - {c}")

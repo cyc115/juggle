@@ -45,3 +45,26 @@ def test_get_vault_info_research():
         vault_path, vault_name = _get_vault_info()
         assert vault_path.endswith("/Documents/personal")
         assert vault_name == "personal"
+
+
+def test_get_vault_root_tilde_path():
+    """_get_vault_root() expands tilde-prefixed vault values."""
+    with patch("juggle_cli.get_settings", return_value={
+        "paths": {"vault": "~/Documents/personal", "vault_name": ""},
+    }):
+        from juggle_cli import _get_vault_root
+        root = _get_vault_root()
+        assert root == Path.home() / "Documents" / "personal"
+
+
+def test_migrate_config_deep_copy():
+    """_migrate_config does not mutate the input dict."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from juggle_cmd_doctor import _migrate_config
+    original = {"domains": {"initial_domain_paths": [["/Documents/personal", "vault"]]}, "paths": {}}
+    original_paths_id = id(original["paths"])
+    _migrate_config(original)
+    # input should not have been mutated
+    assert "domains" in original
+    assert original["paths"] == {}

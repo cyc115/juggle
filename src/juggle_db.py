@@ -383,7 +383,8 @@ class JuggleDB:
                     ).fetchall()
                 ]
                 for idx_name in domain_indexes:
-                    conn.execute(f"DROP INDEX IF EXISTS {idx_name}")
+                    safe = idx_name.replace('"', '""')
+                    conn.execute(f'DROP INDEX IF EXISTS "{safe}"')
                 conn.execute("ALTER TABLE threads DROP COLUMN domain")
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 17 skipped: %s", e)

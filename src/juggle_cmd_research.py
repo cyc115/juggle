@@ -51,8 +51,11 @@ Output format:
 def _get_vault_info() -> tuple[str, str]:
     """Returns (vault_path, vault_name) from juggle settings."""
     s = get_settings()
-    vault_rel = s["paths"].get("vault", "/Documents/personal")
-    vault_path = str(Path.home() / vault_rel.lstrip("/"))
+    vault_val = s["paths"].get("vault", "/Documents/personal")
+    if vault_val.startswith("~"):
+        vault_path = str(Path(vault_val).expanduser())
+    else:
+        vault_path = str(Path.home() / vault_val.lstrip("/"))
     explicit_name = s["paths"].get("vault_name", "")
     vault_name = explicit_name if explicit_name else Path(vault_path).name
     return vault_path, vault_name

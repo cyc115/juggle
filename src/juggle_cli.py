@@ -41,8 +41,10 @@ NVIM_SOCKET = "/tmp/juggle-nvim.sock"
 
 
 def _get_vault_root() -> Path:
-    vault_rel = get_settings()["paths"].get("vault", "/Documents/personal")
-    return Path.home() / vault_rel.lstrip("/")
+    vault_val = get_settings()["paths"].get("vault", "/Documents/personal")
+    if vault_val.startswith("~"):
+        return Path(vault_val).expanduser()
+    return Path.home() / vault_val.lstrip("/")
 
 
 def _get_vault_name() -> str:
