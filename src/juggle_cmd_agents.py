@@ -410,11 +410,7 @@ def cmd_get_agent(args):
         print(f"Error: Agent pool full ({MAX_BACKGROUND_AGENTS} max). Wait for one to finish.")
         sys.exit(1)
 
-    thread_domain = thread.get("domain") if thread else None
-    if thread_domain is None:
-        thread_domain = db.infer_domain_from_prompt(thread.get("topic", "") if thread else "")
-
-    agent = db.get_best_agent(thread_uuid, role=args.role, domain=thread_domain)
+    agent = db.get_best_agent(thread_uuid, role=args.role)
     is_new = agent is None
 
     if is_new:
@@ -427,7 +423,7 @@ def cmd_get_agent(args):
 
     now = datetime.now(timezone.utc).isoformat()
     db.update_agent(agent["id"], status="busy", assigned_thread=thread_uuid,
-                    last_active=now, domain=thread_domain)
+                    last_active=now)
     db.update_thread(thread_uuid, status="background")
 
     suffix = " new" if is_new else ""
