@@ -35,20 +35,18 @@ logging.basicConfig(
     ],
 )
 
+from juggle_settings import get_settings
+
 NVIM_SOCKET = "/tmp/juggle-nvim.sock"
 
 
 def _get_vault_root() -> Path:
-    from juggle_settings import get_settings
-    paths = get_settings()["domains"]["initial_domain_paths"]
-    vault_rel = next((p[0] for p in paths if p[1] == "vault"), "/Documents/personal")
+    vault_rel = get_settings()["paths"].get("vault", "/Documents/personal")
     return Path.home() / vault_rel.lstrip("/")
 
 
 def _get_vault_name() -> str:
-    from juggle_settings import get_settings
-    s = get_settings()["domains"]
-    explicit = s.get("vault_name", "")
+    explicit = get_settings()["paths"].get("vault_name", "")
     if explicit:
         return explicit
     return _get_vault_root().name
@@ -105,8 +103,6 @@ from juggle_cmd_context import (
     cmd_recall_if_cold,
     cmd_retain,
     cmd_grep_vault,
-    cmd_register_domain,
-    cmd_register_domain_path,
     cmd_digest,
     cmd_next_action,
 )
@@ -214,21 +210,7 @@ def main():
     # create-thread
     p_create = subparsers.add_parser("create-thread", help="Create a new topic thread")
     p_create.add_argument("topic", help="Topic name")
-    p_create.add_argument("--domain", dest="domain", default=None,
-                          help="Domain tag for agent isolation (e.g. 'juggle', 'vault', 'work')")
     p_create.set_defaults(func=cmd_create_thread)
-
-    # register-domain
-    p_reg_domain = subparsers.add_parser("register-domain", help="Register a new domain name")
-    p_reg_domain.add_argument("name", help="Domain name (e.g. 'juggle', 'vault')")
-    p_reg_domain.set_defaults(func=cmd_register_domain)
-
-    # register-domain-path
-    p_reg_path = subparsers.add_parser("register-domain-path",
-                                        help="Map a path fragment to a domain for auto-detection")
-    p_reg_path.add_argument("path_fragment", help="Path substring (e.g. '/github/juggle')")
-    p_reg_path.add_argument("domain", help="Domain name to map to")
-    p_reg_path.set_defaults(func=cmd_register_domain_path)
 
     # switch-thread
     p_switch = subparsers.add_parser("switch-thread", help="Switch to a topic thread")

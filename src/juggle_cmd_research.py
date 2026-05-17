@@ -19,6 +19,8 @@ from typing import Optional
 
 import httpx
 
+from juggle_settings import get_settings
+
 SYNTHESIS_PROMPT = """You are a research assistant synthesizing results for a personal knowledge base.
 
 Topic: {topic}
@@ -48,12 +50,10 @@ Output format:
 
 def _get_vault_info() -> tuple[str, str]:
     """Returns (vault_path, vault_name) from juggle settings."""
-    from juggle_settings import get_settings
     s = get_settings()
-    paths = s["domains"]["initial_domain_paths"]
-    vault_rel = next((p[0] for p in paths if p[1] == "vault"), "/Documents/personal")
+    vault_rel = s["paths"].get("vault", "/Documents/personal")
     vault_path = str(Path.home() / vault_rel.lstrip("/"))
-    explicit_name = s["domains"].get("vault_name", "")
+    explicit_name = s["paths"].get("vault_name", "")
     vault_name = explicit_name if explicit_name else Path(vault_path).name
     return vault_path, vault_name
 
