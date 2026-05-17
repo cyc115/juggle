@@ -29,8 +29,7 @@ import sys, os
 sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
 from juggle_settings import get_settings
 s = get_settings()
-paths = s['domains']['initial_domain_paths']
-vault_rel = next((p[0] for p in paths if p[1] == 'vault'), '/Documents/personal')
+vault_rel = s['paths'].get('vault', '/Documents/personal')
 print(os.path.expanduser('~') + vault_rel)
 " 2>/dev/null)
 
@@ -40,12 +39,11 @@ from pathlib import Path
 sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
 from juggle_settings import get_settings
 s = get_settings()
-explicit = s['domains'].get('vault_name', '')
+explicit = s['paths'].get('vault_name', '')
 if explicit:
     print(explicit)
 else:
-    paths = s['domains']['initial_domain_paths']
-    vault_rel = next((p[0] for p in paths if p[1] == 'vault'), '/Documents/personal')
+    vault_rel = s['paths'].get('vault', '/Documents/personal')
     print(Path(vault_rel.rstrip('/')).name)
 " 2>/dev/null)
 

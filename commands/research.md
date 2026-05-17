@@ -162,9 +162,8 @@ VAULT_PATH=$(python3 -c "
 import sys, os
 sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
 from juggle_settings import get_settings
-paths = get_settings()['domains']['initial_domain_paths']
-vault = next((p[0] for p in paths if p[1] == 'vault'), None)
-print(os.path.expanduser('~') + vault if vault else '')
+vault_rel = get_settings()['paths'].get('vault', '')
+print(os.path.expanduser('~') + vault_rel if vault_rel else '')
 " 2>/dev/null)
 REPORT_FILE="${VAULT_PATH}/research/$(date +%Y-%m-%d)-<SLUG>.md"
 {

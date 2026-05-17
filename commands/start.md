@@ -25,7 +25,8 @@ Auto-create Topic A from first substantive message: `create-thread "<label>"`
 
 | Command | Signature | Notes |
 | ------- | --------- | ----- |
-| `create-thread` | `<label> [--domain D]` | New topic |
+| `create-thread` | `<label>` | New topic |
+| `doctor`        | `[--dry-run]` | Migrate config + DB to current schema |
 | `switch-thread` | `<thread_id>` | Switch active |
 | `show-topics` | — | List all |
 | `close-thread` | `<thread_id>` | Mark done |
