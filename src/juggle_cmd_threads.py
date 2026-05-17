@@ -101,16 +101,11 @@ def cmd_stop(_):
 
 def cmd_create_thread(args):
     db = get_db()
-    domain = getattr(args, "domain", None)
-    if domain is not None and not db.is_known_domain(domain):
-        print(f"Unknown domain '{domain}'. Run: juggle register-domain {domain}")
-        sys.exit(1)
-    thread_uuid = db.create_thread(args.topic, session_id="", domain=domain)
+    thread_uuid = db.create_thread(args.topic, session_id="")
     db.set_current_thread(thread_uuid)
     thread = db.get_thread(thread_uuid)
     label = (thread.get("user_label") or thread.get("label")) if thread else thread_uuid
-    domain_str = f" [domain={domain}]" if domain else ""
-    print(f"Created Topic {label}: {args.topic}.{domain_str} Now in Topic {label}.")
+    print(f"Created Topic {label}: {args.topic}. Now in Topic {label}.")
     # Title generation is cosmetic — run in background so create-thread returns immediately.
     threading.Thread(
         target=_generate_title_for_thread,

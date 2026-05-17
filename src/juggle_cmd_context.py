@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Juggle CLI — Shared context, memory, domain, and misc commands."""
+"""Juggle CLI — Shared context, memory, and misc commands."""
 
 import json
 import subprocess
@@ -114,21 +114,6 @@ def cmd_grep_vault(args):
             continue
     if results:
         print("\n".join(results[:20]))
-
-
-def cmd_register_domain(args):
-    db = get_db()
-    db.register_domain(args.name)
-    print(f"Domain '{args.name}' registered.")
-
-
-def cmd_register_domain_path(args):
-    db = get_db()
-    if not db.is_known_domain(args.domain):
-        print(f"Unknown domain '{args.domain}'. Run: juggle register-domain {args.domain}")
-        sys.exit(1)
-    db.add_domain_path(args.path_fragment, args.domain)
-    print(f"Path '{args.path_fragment}' → domain '{args.domain}' registered.")
 
 
 def _parse_cutoff(since: str) -> str:
