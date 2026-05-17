@@ -57,14 +57,7 @@ Include `INTENT` and `FOCUS_AREAS` as context in the task file (step 4).
 
 ### 3. Extract conversation context (orchestrator step — do this inline, not in agent)
 
-Scan the current conversation for anything related to `<TOPIC>`. This includes: prior decisions, code snippets, findings, constraints, user preferences, or earlier research that bears on this topic.
-
-If relevant context is found:
-- Summarize it as `CONVERSATION_CONTEXT` — 3–8 concise bullet points, max ~600 chars total
-- Focus on facts and decisions, not narration ("we decided X", "the constraint is Y", "user prefers Z")
-- Omit anything unrelated to the topic
-
-If nothing relevant is found, set `CONVERSATION_CONTEXT` to empty string.
+Follow the **CONVERSATION block** in [`commands/_context-extraction.md`](_context-extraction.md). Use `<TOPIC>` as the dispatched task. Assign the result to variable `CONVERSATION_CONTEXT`.
 
 This context is injected into the task file (step 4) so the researcher agent starts with relevant background it would otherwise not have.
 

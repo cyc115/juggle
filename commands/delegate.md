@@ -41,27 +41,7 @@ Load `AskUserQuestion` via ToolSearch (`select:AskUserQuestion`), then issue a *
 
 ## Step 1.5: Context exploration (orchestrator-inline, before dispatch)
 
-Using the task description from `$ARGUMENTS` or Q1, explore the relevant project state. This context is injected into the task file so the agent starts with ground truth rather than assumptions.
-
-Run the following in parallel (all are read-only):
-
-```bash
-# Recent git activity
-git log --oneline -10
-
-# Current changes
-git status --short
-
-# Find files matching key terms from the task description
-# Extract 2-4 keywords from the task description and grep for them
-grep -rn "<keyword1>\|<keyword2>" --include="*.py" --include="*.ts" --include="*.md" . | grep -v venv | grep -v ".git" | head -30
-```
-
-Then read the 1-3 most relevant files (at most 80 lines each) based on grep hits and git history.
-
-Synthesize into `CONTEXT_SUMMARY`: 4-8 concise bullets — current state, relevant files, recent changes, known constraints. Omit anything unrelated to the task.
-
-If the task description is vague or no relevant files found, set `CONTEXT_SUMMARY` to `"No specific files identified — agent should explore ad-hoc."`.
+Follow the **CODEBASE block** in [`commands/_context-extraction.md`](_context-extraction.md). Use the task description from `$ARGUMENTS` or Q1 as the input. Assign the result to variable `CONTEXT_SUMMARY`.
 
 This summary is injected into the task file (step 4) under `## Context from codebase`.
 

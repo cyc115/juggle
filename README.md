@@ -150,6 +150,8 @@ uv run ~/.claude/plugins/juggle/src/juggle_cockpit.py
 
 No event loop. State lives in SQLite; Claude Code lifecycle hooks (`UserPromptSubmit`, `PostToolUse`, `Stop`, `SessionStart`) do all the routing. See [`docs/architecture.md`](docs/architecture.md) for the full data flow and schema.
 
+**Agent context injection.** Dispatched agents receive two kinds of context: (a) DB-persisted thread state, auto-injected via `src/juggle_context.py` in the `UserPromptSubmit` hook; (b) orchestrator-side conversation and working-tree context, extracted per-skill at dispatch time. Skills that dispatch agents share a canonical extraction pattern in [`commands/_context-extraction.md`](commands/_context-extraction.md) — see [`docs/agent-context-injection.md`](docs/agent-context-injection.md) for the full pattern.
+
 ## Install
 
 ```
