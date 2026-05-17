@@ -114,3 +114,11 @@ def test_get_best_agent_context_beats_role(db):
     db.update_agent(a1, context_threads=["thread-1"])
     result = db.get_best_agent("thread-1", role="coder")
     assert result["id"] == a1
+
+
+def test_get_best_agent_signature_has_no_domain():
+    """get_best_agent must not accept a domain kwarg after 1.21.0 cleanup."""
+    import inspect
+    from juggle_db import JuggleDB
+    sig = inspect.signature(JuggleDB.get_best_agent)
+    assert "domain" not in sig.parameters

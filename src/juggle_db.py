@@ -975,37 +975,19 @@ class JuggleDB:
             conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
             conn.commit()
 
-    def get_best_agent(self, thread_id: str, role: str | None = None,
-                       domain: str | None = None) -> dict | None:
+    def get_best_agent(self, thread_id: str, role: str | None = None) -> dict | None:
         """Return the best idle agent for a given thread using scoring.
 
-        Domain filtering (applied before scoring):
-          - domain is non-null → only agents with matching domain OR null domain
-          - domain is null → only agents with null domain (fresh/unassigned)
-
         Scoring (higher = better):
+          +3 if agent is currently assigned to this thread
           +2 if thread_id is in agent's context_threads (has existing context)
           +1 if agent's role matches the requested role
 
         Ties broken by most recent last_active.
-        Returns None if no suitable idle agents exist.
+        Returns None if no idle agents exist.
         """
         idle = [a for a in self.get_all_agents() if a["status"] == "idle"]
         if not idle:
-            return None
-
-        if domain:
-            # Non-null domain: accept agents with matching domain or null domain
-            idle = [
-                a for a in idle
-                if a.get("domain") is None or a.get("domain") == domain
-            ]
-        else:
-            # Null domain thread: only fresh agents (domain=null) to avoid cross-pollination
-            idle = [a for a in idle if a.get("domain") is None]
-
-        if not idle:
-            logging.info("domain filter: no idle '%s' agents, will spawn fresh", domain)
             return None
 
         def _score(agent: dict) -> tuple:
