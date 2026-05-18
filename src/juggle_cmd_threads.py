@@ -2,9 +2,15 @@
 """Juggle CLI — Thread lifecycle and display commands."""
 
 import json
+import logging
+import os
+import signal
 import sys
 from pathlib import Path
 import threading
+
+_log = logging.getLogger(__name__)
+_Path = Path
 
 from juggle_cli_common import (
     SRC_DIR,
@@ -15,6 +21,58 @@ from juggle_cli_common import (
 from juggle_context import get_thread_state
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
 from juggle_settings import get_settings as _get_settings
+
+
+def _watchdog_script() -> _Path:
+    return _Path(__file__).parent.parent / "scripts" / "juggle-agent-watchdog"
+
+
+def _watchdog_pid_file() -> _Path:
+    from juggle_settings import get_settings
+    return _Path(get_settings()["paths"]["config_dir"]) / "watchdog.pid"
+
+
+def _start_watchdog() -> None:
+    import subprocess
+    pid_file = _watchdog_pid_file()
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, 0)
+            return  # already running
+        except (OSError, ValueError):
+            pid_file.unlink(missing_ok=True)
+
+    log_path = pid_file.parent / "watchdog.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    script = _watchdog_script()
+    if not script.exists():
+        _log.warning("Watchdog script not found at %s — skipping", script)
+        return
+
+    with open(log_path, "a") as log_fh:
+        proc = subprocess.Popen(
+            [sys.executable, str(script)],
+            stdout=log_fh, stderr=log_fh,
+            start_new_session=True,
+        )
+    import time
+    time.sleep(1)
+    _log.info("Watchdog started (PID=%d)", proc.pid)
+
+
+def _stop_watchdog() -> None:
+    pid_file = _watchdog_pid_file()
+    if not pid_file.exists():
+        return
+    try:
+        pid = int(pid_file.read_text().strip())
+        os.kill(pid, signal.SIGTERM)
+        _log.info("Watchdog stopped (PID=%d)", pid)
+    except (OSError, ValueError, ProcessLookupError):
+        pass
+    finally:
+        pid_file.unlink(missing_ok=True)
 
 
 def _get_version():
@@ -64,6 +122,7 @@ def cmd_start(_):
 
     # Auto-start talkback if enabled in config
     _maybe_start_talkback()
+    _start_watchdog()
 
     ver = _get_version()
     threads = db.get_all_threads()
@@ -96,6 +155,7 @@ def cmd_stop(_):
     else:
         print("No topics.")
 
+    _stop_watchdog()
     print("Juggle stopped.")
 
 
