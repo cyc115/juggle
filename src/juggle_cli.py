@@ -95,6 +95,8 @@ from juggle_cmd_agents import (
     cmd_ack_action,
     cmd_list_actions,
     cmd_notify,
+    cmd_set_watchdog,
+    cmd_stop_watchdog,
 )
 
 from juggle_cmd_context import (
@@ -374,6 +376,20 @@ def main():
     p_send_task.add_argument("agent_id", help="Agent UUID")
     p_send_task.add_argument("prompt_file", help="Path to prompt file")
     p_send_task.set_defaults(func=cmd_send_task)
+
+    # set-watchdog
+    p_set_watchdog = subparsers.add_parser(
+        "set-watchdog", help="Set per-agent watchdog threshold or disable it"
+    )
+    p_set_watchdog.add_argument("agent_id")
+    p_set_watchdog.add_argument("value", help="Minutes (int) or 'off'")
+    p_set_watchdog.set_defaults(func=cmd_set_watchdog)
+
+    # stop-watchdog
+    p_stop_watchdog = subparsers.add_parser(
+        "stop-watchdog", help="Send SIGTERM to the watchdog daemon"
+    )
+    p_stop_watchdog.set_defaults(func=cmd_stop_watchdog)
 
     # get-context
     p_ctx = subparsers.add_parser("get-context", help="Print context string")

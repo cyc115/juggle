@@ -650,3 +650,43 @@ def cmd_send_task(args):
         last_send_task_at=now_iso,
     )
     print(f"Task sent to agent {args.agent_id[:8]} (pane {pane_id}).")
+
+
+def cmd_set_watchdog(args):
+    db = get_db()
+    agent = db.get_agent(args.agent_id)
+    if agent is None:
+        print(f"Error: Agent {args.agent_id} not found.")
+        sys.exit(1)
+    if args.value == "off":
+        db.update_agent(args.agent_id, watchdog_threshold_minutes=-1)
+        print(f"Watchdog disabled for agent {args.agent_id[:8]}.")
+    else:
+        try:
+            minutes = int(args.value)
+            if minutes <= 0:
+                raise ValueError
+        except ValueError:
+            print(f"Error: value must be a positive integer or 'off', got {args.value!r}")
+            sys.exit(1)
+        db.update_agent(args.agent_id, watchdog_threshold_minutes=minutes)
+        print(f"Watchdog threshold for agent {args.agent_id[:8]} set to {minutes} min.")
+
+
+def cmd_stop_watchdog(_args):
+    """Send SIGTERM to the watchdog daemon if running."""
+    import os
+    import signal as _signal
+    from juggle_settings import get_settings
+    pid_file = Path(get_settings()["paths"]["config_dir"]) / "watchdog.pid"
+    if not pid_file.exists():
+        print("Watchdog is not running.")
+        return
+    try:
+        pid = int(pid_file.read_text().strip())
+        os.kill(pid, _signal.SIGTERM)
+        pid_file.unlink(missing_ok=True)
+        print(f"Watchdog stopped (PID={pid}).")
+    except (OSError, ValueError, ProcessLookupError) as e:
+        print(f"Error stopping watchdog: {e}")
+        pid_file.unlink(missing_ok=True)
