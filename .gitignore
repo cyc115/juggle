@@ -1,5 +1,48 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Runtime data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Process / daemon artifacts
+*.pid
+*.log
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Temp
+/tmp/
+*.tmp
+*.bak
+
+# Tool-specific
 .codesight/
+graphify-out/cache/
+
+# Local secrets
 docker/.env
