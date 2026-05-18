@@ -16,10 +16,13 @@ TEST_SESSION = "juggle-watchdog-test"
 @pytest.fixture(scope="session", autouse=True)
 def ensure_tmux_session():
     r = subprocess.run(["tmux", "has-session", "-t", TEST_SESSION], capture_output=True)
-    if r.returncode != 0:
+    session_existed = r.returncode == 0
+    if not session_existed:
         subprocess.run(["tmux", "new-session", "-d", "-s", TEST_SESSION], check=True)
     yield
-    subprocess.run(["tmux", "kill-session", "-t", TEST_SESSION], capture_output=True)
+    # Only destroy the session if we created it — don't kill pre-existing sessions.
+    if not session_existed:
+        subprocess.run(["tmux", "kill-session", "-t", TEST_SESSION], capture_output=True)
 
 
 @pytest.fixture
@@ -60,4 +63,5 @@ def fake_agent(tmux_pane, test_db):
         conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
         conn.execute("DELETE FROM action_items WHERE thread_id = ?", (tid,))
         conn.execute("DELETE FROM notifications_v2 WHERE thread_id = ?", (tid,))
+        conn.execute("DELETE FROM messages WHERE thread_id = ?", (tid,))
         conn.execute("DELETE FROM threads WHERE id = ?", (tid,))

@@ -26,7 +26,7 @@ cd ~/github/juggle
 pytest tests/watchdog/test_watchdog_active.py -v --tb=short
 ```
 
-**Expected before watchdog ships:** `1 error` (ImportError on `juggle_watchdog`)  
+**Expected before watchdog ships:** `5 skipped` (module skipped via `pytest.importorskip`)  
 **Expected after watchdog ships:** `5 passed`
 
 ### Full suite
@@ -39,7 +39,7 @@ pytest tests/watchdog/ -v --tb=short
 
 | Scenario | baseline | active |
 |---|---|---|
-| No watchdog | 5/5 PASS | 1 ERROR (import) |
+| No watchdog | 5/5 PASS | 5/5 SKIP |
 | Watchdog shipped | 5/5 PASS | 5/5 PASS |
 | Watchdog partial | 5/5 PASS | N/5 PASS |
 
@@ -82,6 +82,10 @@ Additional requirements:
 - Detect ╭─╮ box via `r'^╭─+╮\s*$'` (width-agnostic)
 - Read `JUGGLE_WATCHDOG_STALL_SECS` env var (default: 60) for stall threshold
 - For stalled: write snapshot to `~/.juggle/watchdog/snapshots/{agent_id}-{timestamp}.txt`
+
+## Crash Detection Design Note
+
+`crashed.sh` exits immediately with `exit 1`. The tmux pane itself stays alive (the pane's outer shell continues running). After the script exits, `tmux capture-pane` sees the shell prompt at the bottom of the pane — this is the signal the watchdog uses to classify state as `crashed`. The pane is NOT closed by `exit 1`; only the subprocess exits. This correctly mimics real Claude crash behavior.
 
 ## Isolation Guarantees
 
