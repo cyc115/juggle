@@ -14,13 +14,9 @@
 
 </div>
 
-<!--
-  SCREENSHOT SUGGESTION #1 — Hero demo GIF
-  Place a 10–15s animated GIF here showing: user types a multi-topic prompt,
-  Juggle spins up a second thread + tmux pane, and the cockpit reflects the
-  new agent. Suggested filename: docs/assets/screenshots/hero-demo.gif
-  Embed with:  ![Juggle in action](docs/assets/screenshots/hero-demo.gif)
--->
+![Juggle in action](docs/images/juggle-in-action.png)
+
+*Juggle cockpit showing concurrent topics (left), action items queue (center), and live agent terminal panes (right).*
 
 ---
 
