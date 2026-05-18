@@ -107,12 +107,10 @@ def test_add_watchdog_event(db):
 
 # --- Task 2 tests: metadata tracking ---
 
-def test_get_agent_sets_busy_since(tmp_path, monkeypatch):
+def test_get_agent_sets_busy_since(tmp_path):
     import os, subprocess, sys
-    monkeypatch.setenv("JUGGLE_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("JUGGLE_TMUX_MOCK_PANE", "%5")
-
-    d = JuggleDB(str(tmp_path / "test.db"))
+    db_path = tmp_path / "test.db"
+    d = JuggleDB(str(db_path))
     d.init_db()
     thread_id = d.create_thread("test topic", session_id="")
     agent_id_raw = d.create_agent(role="coder", pane_id="%5")
@@ -123,21 +121,23 @@ def test_get_agent_sets_busy_since(tmp_path, monkeypatch):
          "--role", "coder", "--model", "claude-sonnet-4-6"],
         cwd=str(Path(__file__).parent.parent),
         capture_output=True, text=True,
-        env={**os.environ, "JUGGLE_DATA_DIR": str(tmp_path), "JUGGLE_TMUX_MOCK_PANE": "%5"},
+        env={**os.environ, "_JUGGLE_TEST_DB": str(db_path), "JUGGLE_TMUX_MOCK_PANE": "%5"},
     )
     agent_id = result.stdout.strip().split()[0]
     agent = d.get_agent(agent_id)
+    assert agent is not None, f"Agent not found; stdout={result.stdout!r} stderr={result.stderr!r}"
     assert agent["busy_since"] is not None
     assert agent["model"] == "claude-sonnet-4-6"
 
 
-def test_send_task_stores_last_task_and_pane_hash(tmp_path, monkeypatch):
+def test_send_task_stores_last_task_and_pane_hash(tmp_path):
     """send-task writes last_task, last_send_task_pane_hash (16 hex chars), last_send_task_at."""
     import os, subprocess, sys
+    db_path = tmp_path / "test.db"
     task_file = tmp_path / "task.txt"
     task_file.write_text("do something useful")
 
-    d = JuggleDB(str(tmp_path / "test.db"))
+    d = JuggleDB(str(db_path))
     d.init_db()
     agent_id = d.create_agent(role="coder", pane_id="%5")
     d.update_agent(agent_id, status="busy")
@@ -146,7 +146,7 @@ def test_send_task_stores_last_task_and_pane_hash(tmp_path, monkeypatch):
         [sys.executable, "src/juggle_cli.py", "send-task", agent_id, str(task_file)],
         cwd=str(Path(__file__).parent.parent),
         capture_output=True, text=True,
-        env={**os.environ, "JUGGLE_DATA_DIR": str(tmp_path),
+        env={**os.environ, "_JUGGLE_TEST_DB": str(db_path),
              "JUGGLE_TMUX_MOCK_SEND": "1", "JUGGLE_TMUX_MOCK_PANE": "%5"},
     )
     agent = d.get_agent(agent_id)
@@ -158,8 +158,9 @@ def test_send_task_stores_last_task_and_pane_hash(tmp_path, monkeypatch):
 
 def test_complete_agent_inserts_completion(tmp_path):
     import os, subprocess, sys
+    db_path = tmp_path / "test.db"
 
-    d = JuggleDB(str(tmp_path / "test.db"))
+    d = JuggleDB(str(db_path))
     d.init_db()
     thread_id = d.create_thread("test topic", session_id="")
     agent_id = d.create_agent(role="coder", pane_id="%5")
@@ -170,7 +171,7 @@ def test_complete_agent_inserts_completion(tmp_path):
         [sys.executable, "src/juggle_cli.py", "complete-agent", thread_id, "Done. All good."],
         cwd=str(Path(__file__).parent.parent),
         capture_output=True, text=True,
-        env={**os.environ, "JUGGLE_DATA_DIR": str(tmp_path)},
+        env={**os.environ, "_JUGGLE_TEST_DB": str(db_path)},
     )
     with d._connect() as conn:
         rows = conn.execute("SELECT * FROM agent_completions").fetchall()
@@ -218,7 +219,8 @@ def test_release_agent_copies_dispatch_payload(tmp_path):
 
 def test_set_watchdog_minutes(tmp_path):
     import os, subprocess, sys
-    d = JuggleDB(str(tmp_path / "test.db"))
+    db_path = tmp_path / "test.db"
+    d = JuggleDB(str(db_path))
     d.init_db()
     agent_id = d.create_agent(role="coder", pane_id="%5")
 
@@ -226,15 +228,16 @@ def test_set_watchdog_minutes(tmp_path):
         [sys.executable, "src/juggle_cli.py", "set-watchdog", agent_id, "15"],
         cwd=str(Path(__file__).parent.parent),
         capture_output=True, text=True,
-        env={**os.environ, "JUGGLE_DATA_DIR": str(tmp_path)},
+        env={**os.environ, "_JUGGLE_TEST_DB": str(db_path)},
     )
-    assert result.returncode == 0
+    assert result.returncode == 0, result.stderr
     assert d.get_agent(agent_id)["watchdog_threshold_minutes"] == 15
 
 
 def test_set_watchdog_off(tmp_path):
     import os, subprocess, sys
-    d = JuggleDB(str(tmp_path / "test.db"))
+    db_path = tmp_path / "test.db"
+    d = JuggleDB(str(db_path))
     d.init_db()
     agent_id = d.create_agent(role="coder", pane_id="%5")
 
@@ -242,6 +245,6 @@ def test_set_watchdog_off(tmp_path):
         [sys.executable, "src/juggle_cli.py", "set-watchdog", agent_id, "off"],
         cwd=str(Path(__file__).parent.parent),
         capture_output=True, text=True,
-        env={**os.environ, "JUGGLE_DATA_DIR": str(tmp_path)},
+        env={**os.environ, "_JUGGLE_TEST_DB": str(db_path)},
     )
     assert d.get_agent(agent_id)["watchdog_threshold_minutes"] == -1

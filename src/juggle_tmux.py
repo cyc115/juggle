@@ -164,24 +164,28 @@ class JuggleTmuxManager:
             time.sleep(1)
         return False
 
-    def send_task(self, pane_id: str, prompt: str, is_new: bool = False) -> None:
+    def send_task(self, pane_id: str, prompt: str, is_new: bool = False) -> str:
         """Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
 
         Uses a temp file to avoid shell-escaping issues with multi-line prompts.
         Unified flow for both new and reused agents:
           1. wait_for_ready_to_paste — block until the Claude UI is up.
-          2. load-buffer + paste-buffer + send-keys C-m.
+          2. load-buffer + paste-buffer (captures pane hash) + send-keys C-m.
           3. wait_for_submission — verify the prompt left the input box; retry Enter if not.
 
+        Returns a 16-hex-char SHA-256 of the post-paste-pre-Enter pane tail.
         `is_new` is accepted for caller backward compatibility but is no longer
         consulted — the wait helpers handle both cold-start and mid-render cases.
-        No-op if JUGGLE_TMUX_MOCK_SEND=1.
+        Returns a deterministic mock hash if JUGGLE_TMUX_MOCK_SEND=1.
         """
+        import hashlib as _hashlib
+        import time as _time
+
         del is_new
         if not pane_id or not pane_id.strip():
             raise ValueError(f"send_task called with empty pane_id — aborting to avoid pasting to wrong tmux session")
         if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
-            return
+            return _hashlib.sha256(prompt.encode()).hexdigest()[:16]
 
         if not self.wait_for_ready_to_paste(pane_id, timeout=30):
             raise RuntimeError(
@@ -191,10 +195,16 @@ class JuggleTmuxManager:
         tmp = f"/tmp/juggle_task_{uuid.uuid4().hex[:8]}.txt"
         Path(tmp).write_text(prompt)
         buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
+        pane_hash = "0000000000000000"
         try:
             self._run_tmux("load-buffer", "-b", buf_name, tmp)
             self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
             self._run_tmux("delete-buffer", "-b", buf_name)
+            # Capture pane tail BEFORE sending Enter for stuck-at-prompt detection
+            _time.sleep(0.15)
+            cap = self._run_tmux("capture-pane", "-pt", pane_id, "-S", "-10")
+            tail = (cap.stdout or "") if cap else ""
+            pane_hash = _hashlib.sha256(tail.encode()).hexdigest()[:16]
             self._run_tmux("send-keys", "-t", pane_id, "C-m")
             if not self.wait_for_submission(pane_id, prompt, timeout=15):
                 logging.warning(
@@ -204,6 +214,7 @@ class JuggleTmuxManager:
         finally:
             if Path(tmp).exists():
                 os.unlink(tmp)
+        return pane_hash
 
     def spawn_agent(self, db, role: str, model: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.

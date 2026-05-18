@@ -154,6 +154,16 @@ def cmd_complete_agent(args):
     # Resolve agent before step 5 (needed for role check below)
     agent = db.get_agent_by_thread(thread_uuid)
     if agent:
+        busy_since = agent.get("busy_since")
+        if busy_since:
+            try:
+                busy_dt = datetime.fromisoformat(busy_since.replace("Z", "+00:00"))
+                if busy_dt.tzinfo is None:
+                    busy_dt = busy_dt.replace(tzinfo=timezone.utc)
+                duration = (datetime.now(timezone.utc) - busy_dt).total_seconds()
+                db.insert_agent_completion(role=agent["role"], duration_secs=duration)
+            except (ValueError, TypeError):
+                pass
         db.update_agent(agent["id"], status="idle", assigned_thread=None)
 
     # 5. Create notification row (informational, session TTL)
@@ -489,8 +499,12 @@ def cmd_get_agent(args):
             sys.exit(1)
 
     now = datetime.now(timezone.utc).isoformat()
-    db.update_agent(agent["id"], status="busy", assigned_thread=thread_uuid,
-                    last_active=now)
+    _update_kw: dict = dict(status="busy", assigned_thread=thread_uuid,
+                            last_active=now, busy_since=now)
+    _model_arg = getattr(args, "model", None)
+    if _model_arg:
+        _update_kw["model"] = _model_arg
+    db.update_agent(agent["id"], **_update_kw)
     db.update_thread(thread_uuid, status="background")
 
     suffix = " new" if is_new else ""
@@ -544,6 +558,19 @@ def cmd_release_agent(args):
         )
     else:
         db.update_agent(agent_id, status="idle", last_active=now)
+
+    # Copy dispatch payload to thread before the agent record is cleared
+    if assigned:
+        agent_snap = db.get_agent(agent_id)
+        if agent_snap:
+            with db._connect() as conn:
+                conn.execute(
+                    "UPDATE threads SET last_dispatched_task=?, last_dispatched_role=?, "
+                    "last_dispatched_model=? WHERE id=?",
+                    (agent_snap.get("last_task"), agent_snap.get("role"),
+                     agent_snap.get("model"), assigned),
+                )
+                conn.commit()
 
     # Reconcile: if the agent's thread is still "background", it was released
     # without completing — mark the thread as failed so it doesn't appear stuck.
@@ -614,5 +641,12 @@ def cmd_send_task(args):
 
     now = datetime.now(timezone.utc).isoformat()
     db.update_agent(args.agent_id, last_active=now)
-    mgr.send_task(pane_id, full_prompt, is_new=is_new)
+    pane_hash = mgr.send_task(pane_id, full_prompt, is_new=is_new)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db.update_agent(
+        args.agent_id,
+        last_task=full_prompt,
+        last_send_task_pane_hash=pane_hash,
+        last_send_task_at=now_iso,
+    )
     print(f"Task sent to agent {args.agent_id[:8]} (pane {pane_id}).")
