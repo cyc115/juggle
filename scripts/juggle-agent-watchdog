@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""juggle-agent-watchdog — polls for stalled/crashed agents every 30s."""
+from __future__ import annotations
+
+import logging
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+SRC_DIR = Path(__file__).parent.parent / "src"
+sys.path.insert(0, str(SRC_DIR))
+
+from juggle_db import JuggleDB, DB_PATH
+from juggle_settings import get_settings
+from juggle_tmux import JuggleTmuxManager
+from juggle_watchdog import (
+    check_orphaned_threads,
+    classify_pane_state,
+    execute_recovery,
+    get_session_id,
+    get_threshold_seconds,
+    handle_prompt,
+    read_snapshot,
+    write_snapshot,
+)
+
+_POLL_INTERVAL = int(os.environ.get("JUGGLE_WATCHDOG_INTERVAL", "30"))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler(
+            Path(get_settings()["paths"]["config_dir"]) / "watchdog.log"
+        ),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+_log = logging.getLogger("juggle-watchdog")
+
+_running = True
+# In-memory Enter retry count; resets on restart (stalled-silent is fallback)
+_enter_sent: dict[str, int] = {}
+
+
+def _handle_sigterm(signum, frame):
+    global _running
+    _log.info("Watchdog: SIGTERM received, shutting down")
+    _running = False
+
+
+def _get_dirs() -> tuple[Path, Path]:
+    config_dir = Path(get_settings()["paths"]["config_dir"])
+    return (
+        config_dir / "watchdog" / "snapshots",
+        config_dir / "watchdog" / "recovery",
+    )
+
+
+def _capture_pane(mgr: JuggleTmuxManager, pane_id: str, lines: int = 80) -> str | None:
+    if not mgr.verify_pane(pane_id):
+        return None
+    result = mgr._run_tmux("capture-pane", "-pt", pane_id, "-S", f"-{lines}")
+    if result.returncode != 0:
+        return None
+    return result.stdout or ""
+
+
+def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
+    snapshot_dir, recovery_dir = _get_dirs()
+    now_ts = time.time()
+    session_id = get_session_id(db)
+    agents = [a for a in db.get_all_agents() if a["status"] == "busy"]
+
+    for agent in agents:
+        agent_id = agent["id"]
+        pane_id = agent["pane_id"]
+
+        prev = read_snapshot(agent_id, snapshot_dir)
+        content = _capture_pane(mgr, pane_id)
+
+        # Compute stalled_for from last_activity_at in DB (survives restarts)
+        last_activity_at_str = agent.get("last_activity_at")
+        if last_activity_at_str:
+            try:
+                from datetime import datetime, timezone
+                last_dt = datetime.fromisoformat(last_activity_at_str)
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                stalled_for = now_ts - last_dt.timestamp()
+            except (ValueError, TypeError):
+                stalled_for = 0.0
+        else:
+            stalled_for = 0.0  # first observation — treat as just changed
+
+        threshold = get_threshold_seconds(db, agent)
+
+        state, key = classify_pane_state(
+            content=content,
+            prev_content=prev,
+            stalled_for=stalled_for,
+            threshold=threshold,
+            last_send_task_pane_hash=agent.get("last_send_task_pane_hash"),
+        )
+
+        if state == "working":
+            write_snapshot(agent_id, content, snapshot_dir)
+            from datetime import datetime, timezone
+            db.update_agent(agent_id, last_activity_at=datetime.now(timezone.utc).isoformat())
+            _enter_sent.pop(agent_id, None)
+
+        elif state == "prompt":
+            handle_prompt(db, mgr, agent, pane_id, key or "")
+            write_snapshot(agent_id, content, snapshot_dir)
+            from datetime import datetime, timezone
+            db.update_agent(agent_id, last_activity_at=datetime.now(timezone.utc).isoformat())
+            _enter_sent.pop(agent_id, None)
+
+        elif state == "stuck":
+            enter_count = _enter_sent.get(agent_id, 0)
+            if enter_count < 2:
+                mgr._run_tmux("send-keys", "-t", pane_id, "Enter")
+                _enter_sent[agent_id] = enter_count + 1
+                db.add_notification_v2(
+                    thread_id=agent.get("assigned_thread"),
+                    message=(f"[Watchdog] agent {agent_id[:8]} stuck-at-prompt — "
+                             f"sent Enter (attempt {enter_count + 1}/2)"),
+                    session_id=session_id,
+                )
+                _log.info("Watchdog: stuck-at-prompt Enter #%d sent to %s",
+                          enter_count + 1, agent_id[:8])
+            else:
+                _log.warning("Watchdog: agent %s stuck after 2 Enters — escalating to recovery",
+                             agent_id[:8])
+                execute_recovery(db, mgr, agent, content or "",
+                                 recovery_dir=recovery_dir, session_id=session_id)
+                _enter_sent.pop(agent_id, None)
+
+        elif state in ("stalled", "crashed"):
+            _log.warning("Watchdog: agent %s is %s (stalled_for=%.0fs threshold=%.0fs)",
+                         agent_id[:8], state, stalled_for, threshold)
+            execute_recovery(db, mgr, agent, content or "",
+                             recovery_dir=recovery_dir, session_id=session_id)
+
+        # "quiet" — no action
+
+    # Loop 2: orphaned thread detection
+    _orphan_threshold = float(os.environ.get("JUGGLE_ORPHAN_THRESHOLD", "300"))
+    check_orphaned_threads(db, orphan_threshold=_orphan_threshold)
+
+
+def main() -> None:
+    config_dir = Path(get_settings()["paths"]["config_dir"])
+    pid_file = config_dir / "watchdog.pid"
+    pid_file.write_text(str(os.getpid()))
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+    signal.signal(signal.SIGINT, _handle_sigterm)
+
+    db = JuggleDB(str(DB_PATH))
+    db.init_db()
+    db.cleanup_watchdog_events()
+
+    mgr = JuggleTmuxManager()
+    _log.info("Watchdog started (PID=%d, interval=%ds)", os.getpid(), _POLL_INTERVAL)
+
+    while _running:
+        try:
+            _poll_once(db, mgr)
+        except Exception:
+            _log.exception("Watchdog: unhandled error in poll — continuing")
+        time.sleep(_POLL_INTERVAL)
+
+    pid_file.unlink(missing_ok=True)
+    _log.info("Watchdog stopped.")
+
+
+if __name__ == "__main__":
+    main()
