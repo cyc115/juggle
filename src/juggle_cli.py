@@ -486,6 +486,21 @@ def main():
     p_research.add_argument("--web-results", dest="web_results", default=None)
     p_research.set_defaults(func=cmd_research)
 
+    # schedule-dogfood
+    p_dogfood = subparsers.add_parser("schedule-dogfood", help="Run /schedule:dogfood routine (Sat 03:00)")
+    p_dogfood.add_argument("--dry-run", action="store_true", help="Simulate run; write artifacts to /tmp/")
+    p_dogfood.set_defaults(func=lambda a: __import__("juggle_schedule_dogfood").run(dry_run=a.dry_run) or None)
+
+    # schedule-autofix
+    p_autofix = subparsers.add_parser("schedule-autofix", help="Run /schedule:autofix routine (Sun 03:00)")
+    p_autofix.add_argument("--dry-run", action="store_true", help="Simulate run; write artifacts to /tmp/")
+    p_autofix.set_defaults(func=lambda a: __import__("juggle_schedule_autofix").run(dry_run=a.dry_run) or None)
+
+    # schedule-reflect
+    p_reflect = subparsers.add_parser("schedule-reflect", help="Run /schedule:reflect routine (Mon 03:00)")
+    p_reflect.add_argument("--dry-run", action="store_true", help="Simulate run; write artifacts to /tmp/")
+    p_reflect.set_defaults(func=lambda a: __import__("juggle_schedule_reflect").run(dry_run=a.dry_run) or None)
+
     args = parser.parse_args()
 
     # Reap stale agents on every CLI invocation (skip in test mode)

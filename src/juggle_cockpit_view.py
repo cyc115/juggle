@@ -309,7 +309,7 @@ def render_agents(
             t_active.add_row(
                 Text(glyph),
                 Text(f"[{agent.topic_id}]", style=st),
-                Text(agent.role, style=st),
+                Text(f"(A) {agent.role}", style=st),
                 Text(format_age(agent.age_secs), style=st),
             )
         parts.append(t_active)
@@ -329,7 +329,7 @@ def render_agents(
             st = _row_style(agent.status)
             t_pool.add_row(
                 Text(glyph),
-                Text(agent.role, style=st),
+                Text(f"(A) {agent.role}", style=st),
                 Text(format_age(agent.age_secs), style=st),
             )
 
@@ -347,7 +347,7 @@ def render_agents(
                 sched_str = _fmt_schedule(task.schedule)
                 t_pool.add_row(
                     Text(glyph),
-                    Text(_trunc(task.label), style=label_style),
+                    Text(f"(L) {_trunc(task.label)}", style=label_style),
                     Text(sched_str, style=Style(dim=True)),
                 )
 

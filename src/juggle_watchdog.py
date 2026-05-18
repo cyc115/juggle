@@ -28,6 +28,8 @@ _COLD_START_DEFAULTS: dict[str, float] = {
 _EXECUTION_MARKERS = ("Thinking", "Running", "→", "↓", "Tool call", "✓", "⚡")
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 _BOX_TOP_RE = re.compile(r"^╭─+╮\s*$")
+# Sentinel: caller did not supply last_send_task_at, so backward-compat applies.
+_NO_DISPATCH_INFO: object = object()
 
 
 def _strip_ansi(s: str) -> str:
@@ -88,11 +90,17 @@ def classify_pane_state(
     threshold: float,
     *,
     last_send_task_pane_hash: str | None = None,
+    last_send_task_at: object = _NO_DISPATCH_INFO,
 ) -> tuple[str, str | None]:
     """Classify agent pane state. Returns (state, key_to_send).
 
-    States: working | crashed | prompt | stuck | quiet | stalled
+    States: working | crashed | prompt | stuck | quiet | stalled | awaiting_dispatch
     Classification order (most specific first).
+
+    Pass ``last_send_task_at=None`` to signal the agent has never been dispatched;
+    the function returns ``awaiting_dispatch`` instead of ``stalled`` so the
+    watchdog does not recover agents the orchestrator hasn't sent a task to yet.
+    When ``last_send_task_at`` is omitted the old behaviour is preserved.
     """
     if content is None:
         return "crashed", None
@@ -125,6 +133,9 @@ def classify_pane_state(
 
     if "Thinking" in tail or stalled_for < 60:
         return "quiet", None
+
+    if last_send_task_at is not _NO_DISPATCH_INFO and last_send_task_at is None:
+        return "awaiting_dispatch", None
 
     if stalled_for >= threshold:
         return "stalled", None
@@ -285,7 +296,22 @@ def execute_recovery(
     if thread_id:
         db.update_thread(thread_id, status="background")
 
-    mgr.send_task(new_pane_id, last_task)
+    try:
+        mgr.send_task(new_pane_id, last_task)
+    except RuntimeError as exc:
+        _log.error("Watchdog: [RECOVERY-COLD-START-FAILED] send_task raised for agent %s: %s",
+                   new_agent_id[:8], exc)
+        if thread_id:
+            db.add_action_item(
+                thread_id=thread_id,
+                message=(f"🚨 [{label}] [RECOVERY-COLD-START-FAILED] recovery send_task "
+                         f"raised: {exc}. New agent {new_agent_id[:8]} spawned but task "
+                         f"not sent — re-dispatch manually."),
+                type_="failure", priority="high",
+            )
+        db.add_watchdog_event(agent_id=new_agent_id, thread_id=thread_id,
+                              event_type="cold_start_failed", snapshot_path=str(snap_path))
+        return
 
     if thread_id:
         db.add_action_item(
@@ -516,6 +542,11 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
         return result
 
     # 4. Stall detection — compare stall_for against threshold
+    # Guard: orchestrator owns undispatched agents; watchdog must not recover them.
+    if agent.get("last_send_task_at") is None:
+        result["state"] = "awaiting_dispatch"
+        return result
+
     last_active_str = agent.get("last_active") or agent.get("last_active_at")
     stall_for = 0.0
     if last_active_str:

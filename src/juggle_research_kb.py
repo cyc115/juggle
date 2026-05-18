@@ -101,6 +101,17 @@ class ResearchKB:
         finally:
             conn.close()
 
+    def get_latest_hn_date(self) -> Optional[str]:
+        """Return the most recent date stored for HN articles, or None."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT MAX(date) FROM articles WHERE source='hn'"
+            ).fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+
     def get_article_id(self, url: str) -> Optional[int]:
         conn = self._connect()
         try:
