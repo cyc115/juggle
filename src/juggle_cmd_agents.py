@@ -9,6 +9,7 @@ Agent completion protocol (embed in all dispatched prompts):
 """
 
 import json
+import re
 import shutil
 import sys
 import threading
@@ -29,8 +30,48 @@ from juggle_settings import get_settings as _get_settings
 
 _AGENT_TTL_SECS: int = _get_settings()["agent_idle_ttl_secs"]
 
-_DRAFT_KEYWORDS = ("draft", "partial", "pending", "v1", "initial", "wip", "first pass", "todo", "placeholder")
-_PLAN_KEYWORDS = ("plan written", "spec written", "design doc", "plan at", "spec at")
+_DRAFT_PATTERNS = [
+    re.compile(r"\bdraft (v\d+|version|complete|written)\b", re.I),
+    re.compile(r"\bfirst pass\b", re.I),
+    re.compile(r"\bwip\b", re.I),
+    re.compile(r"\bplaceholders? (remain|left|unresolved)\b", re.I),
+    re.compile(r"\btodos? (remain|left|added)\b", re.I),
+    re.compile(r"\bpartial (result|implementation|fix|completion|work)\b", re.I),
+    re.compile(r"\bin progress\b", re.I),
+    re.compile(r"\binitial (draft|version|cut|pass)\b", re.I),
+    re.compile(r"\bpending (?:review|input|decision) (?:from|by|on|before|required|needed)\b", re.I),
+    re.compile(r"\bpending user\b", re.I),
+    re.compile(r"\bv1 (draft|prototype|sketch)\b", re.I),
+]
+
+_PLAN_PATTERNS = [
+    re.compile(r"\bplan written\b", re.I),
+    re.compile(r"\bspec written\b", re.I),
+    re.compile(r"\bdesign doc(?:ument)? (?:written|drafted)\b", re.I),
+    re.compile(r"\bplan at \S+", re.I),
+    re.compile(r"\bspec at \S+", re.I),
+]
+
+_COMPLETE_PATTERNS = [
+    re.compile(r"\ball (\d+ )?tests pass(?:ing|ed)?\b", re.I),
+    re.compile(r"\b(?:committed|merged|pushed) to (?:main|master)\b", re.I),
+    re.compile(r"\bSHA: ?[a-f0-9]{7,}\b", re.I),
+    re.compile(r"\bPR (?:opened|merged|created): ?#?\d+", re.I),
+    re.compile(r"\bshipped (?:v\d|to (?:prod|production|main))\b", re.I),
+    re.compile(r"\bv\d+\.\d+\.\d+\b.*\b(?:released|shipped|complete)\b", re.I),
+]
+
+
+def _looks_complete(summary: str) -> bool:
+    return any(p.search(summary) for p in _COMPLETE_PATTERNS)
+
+
+def _matches_draft(summary: str) -> bool:
+    return any(p.search(summary) for p in _DRAFT_PATTERNS)
+
+
+def _matches_plan(summary: str) -> bool:
+    return any(p.search(summary) for p in _PLAN_PATTERNS)
 
 
 def cmd_set_agent(args):
@@ -140,15 +181,15 @@ def cmd_complete_agent(args):
             priority="normal",
         )
     elif role not in ("researcher", "planner"):
-        summary_lower = (args.result_summary or "").lower()
-        if any(kw in summary_lower for kw in _PLAN_KEYWORDS):
+        summary = args.result_summary or ""
+        if _matches_plan(summary):
             db.add_action_item(
                 thread_id=thread_uuid,
                 message=f"Review before dispatching coder: {args.result_summary}",
                 type_="decision",
                 priority="normal",
             )
-        elif any(kw in summary_lower for kw in _DRAFT_KEYWORDS):
+        elif _matches_draft(summary) and not _looks_complete(summary):
             db.add_action_item(
                 thread_id=thread_uuid,
                 message=f"Review/iterate: {args.result_summary}",
