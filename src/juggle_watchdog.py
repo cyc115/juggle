@@ -18,7 +18,8 @@ _ALLOWLIST: list[tuple[str, str]] = [
     ("Press Enter to continue", ""),
 ]
 
-_SHELL_SUFFIXES = ("$ ", "% ", "> ")
+_SHELL_SUFFIXES = ("$ ", "% ", "> ", "❯ ")
+_SHELL_INDICATORS = ("in zsh", "in bash", "in fish")
 _COLD_START_DEFAULTS: dict[str, float] = {
     "coder": 300.0,
     "planner": 180.0,
@@ -96,7 +97,10 @@ def classify_pane_state(
     if content is None:
         return "crashed", None
 
-    tail = "\n".join(content.splitlines()[-15:])
+    _cls_lines = content.splitlines()
+    while _cls_lines and not _cls_lines[-1].strip():
+        _cls_lines.pop()
+    tail = "\n".join(_cls_lines[-15:])
 
     for pattern, key in _ALLOWLIST:
         if pattern in tail:
@@ -453,32 +457,47 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
                                 pane_content="", snapshot_dir=snapshot_dir)
 
     content = _strip_ansi(raw_content)
-    tail = "\n".join(content.splitlines()[-15:])
+    _lines = content.splitlines()
+    while _lines and not _lines[-1].strip():
+        _lines.pop()
+    tail = "\n".join(_lines[-15:])
 
-    # 1. Allowlist prompts
+    # 1. Allowlist prompts — check both single-line format and multiline fixture format
+    matched_key: str | None = None
     for pattern, key in _ALLOWLIST:
         if pattern in tail:
-            result["state"] = "recoverable_prompt"
-            result["actions"].append("sent_key")
-            if key:
-                subprocess.run(["tmux", "send-keys", "-t", pane_id, key, "Enter"],
-                               capture_output=True)
-            else:
-                subprocess.run(["tmux", "send-keys", "-t", pane_id, "Enter"],
-                               capture_output=True)
-            notif_id = db.add_notification_v2(
-                thread_id=thread_id,
-                message=f"[Watchdog] [{label}] auto-resolved permission prompt (key={key!r})",
-                session_id=session_id,
-            )
-            result["notification_id"] = notif_id
-            return result
+            matched_key = key
+            break
+    # Flexible: detect multiline "1. Yes ... 2. Yes ... 3. No" permission dialog
+    if matched_key is None and re.search(r"1\.\s+Yes", tail) and re.search(r"2\.\s+Yes", tail):
+        matched_key = "2"
 
-    # 2. Bare shell prompt → crashed
+    if matched_key is not None:
+        result["state"] = "recoverable_prompt"
+        result["actions"].append("sent_key")
+        if matched_key:
+            subprocess.run(["tmux", "send-keys", "-t", pane_id, matched_key, "Enter"],
+                           capture_output=True)
+        else:
+            subprocess.run(["tmux", "send-keys", "-t", pane_id, "Enter"],
+                           capture_output=True)
+        notif_id = db.add_notification_v2(
+            thread_id=thread_id,
+            message=f"[Watchdog] [{label}] auto-resolved permission prompt (key={matched_key!r})",
+            session_id=session_id,
+        )
+        result["notification_id"] = notif_id
+        return result
+
+    # 2. Shell prompt (crash) — check suffix AND shell-specific indicators
     last_nonempty = next(
         (line for line in reversed(content.splitlines()) if line.strip()), ""
     )
-    if any(last_nonempty.endswith(suffix) for suffix in _SHELL_SUFFIXES):
+    is_shell_prompt = (
+        any(last_nonempty.endswith(suffix) for suffix in _SHELL_SUFFIXES)
+        or any(indicator in last_nonempty for indicator in _SHELL_INDICATORS)
+    )
+    if is_shell_prompt:
         return _handle_crashed(db, agent, thread_id, label, session_id, result,
                                 pane_content=content, snapshot_dir=snapshot_dir)
 
