@@ -5,6 +5,15 @@
 
 ---
 
+## Revision Log
+
+| Date | Items |
+|---|---|
+| 2026-05-17 v1 | Initial spec |
+| 2026-05-17 v2 | Added Stuck-at-prompt state (Item 1); Orphaned thread detection (Item 2); `last_send_task_pane_hash` + `last_send_task_at` schema + send-task instrumentation (Item 3); `last_activity_at` column replacing in-memory stall tracking (Item 4); structured multiline action item format (Item 5) |
+
+---
+
 ## Motivation
 
 Agents stall silently when network interruptions break Claude's mid-stream output. The Monitor tool sees nothing because nothing is emitted — no `complete-agent`, no heartbeat. In the incident that prompted this spec, agents IF and IH burned 108k and 30k tokens respectively and never completed; the user had to diagnose via DB inspection and recover manually.
@@ -26,10 +35,13 @@ cmd_start
   └─ subprocess.Popen(juggle-agent-watchdog, start_new_session=True)
        └─ writes ~/.juggle/watchdog.pid
             └─ poll loop (30 s)
-                 ├─ for each busy agent: capture pane → classify
-                 ├─ allowlist prompt → send key, log
-                 ├─ stalled / crashed → aggressive recovery
-                 └─ writes events to watchdog_events table (telemetry)
+                 ├─ Loop 1 — for each busy agent: capture pane → classify
+                 │    ├─ allowlist prompt → send key, log
+                 │    ├─ stuck-at-prompt → send Enter (up to 2×), then escalate
+                 │    ├─ stalled / crashed → aggressive recovery
+                 │    └─ writes events to watchdog_events table (telemetry)
+                 └─ Loop 2 — for each background thread with no agent:
+                      └─ orphaned > 5 min → file high-priority action item
 
 cmd_stop
   └─ reads ~/.juggle/watchdog.pid → SIGTERM → remove PID file
@@ -39,17 +51,28 @@ cmd_stop
 
 ## State Machine
 
-Each poll cycle iterates every agent with `status='busy'`. An in-memory dict tracks per-agent grace state across cycles.
+### Loop 1 — Per-agent (status='busy')
+
+Each poll cycle iterates every agent with `status='busy'`. The watchdog tracks `agents.last_activity_at` (a DB column, updated when pane content changes) to compute stall duration — NOT an in-memory dict, so it survives watchdog restarts. Classification order matters: more specific patterns win.
 
 | State | Detection | Action |
 |---|---|---|
-| **Working** | Pane content differs from previous snapshot | Save snapshot; reset grace counter |
-| **Working-but-quiet** | Unchanged AND pane shows `Thinking…` OR last change < 60 s ago | Increment grace counter; no action if grace ≤ 1 cycle |
+| **Working** | Pane content differs from previous snapshot | Save snapshot; update `agents.last_activity_at = now` in DB |
+| **Working-but-quiet** | Unchanged AND (`Thinking…` in tail OR `now - last_activity_at < 60 s`) | No action; wait next cycle |
 | **Recoverable prompt** | Pane tail matches allowlist pattern (see below) | Auto-send safe key; log to `watchdog.log`; add `notifications_v2` row (no action item) |
-| **Stalled-silent** | Unchanged ≥ threshold, no recoverable prompt, grace expired | Save 500-line recovery snapshot; file `high` action item; execute aggressive recovery |
-| **Crashed** | Pane no longer exists (`verify_pane` returns False) OR pane ends with bare shell prompt (`$`, `%`, `>` on last non-empty line) — Claude process exited | Mark thread `failed`; file `high` action item; execute aggressive recovery |
+| **Stuck-at-prompt** | ALL 4 conditions: (a) `now - agents.last_send_task_at ≥ 60 s` (cold-start grace passed); (b) pane tail shows `╭─…─╮` input-box with pasted task text visible; (c) NO execution markers (`✻ Thinking`, tool calls, streaming output) in tail; (d) pane hash bit-identical to `agents.last_send_task_pane_hash`. Note: 60 s is a MINIMUM grace, not a maximum — stuck-at-prompt classification holds at 60 s, 6 min, or 6 hr as long as all 4 conditions hold. | Send `Enter`; wait 15 s; re-capture. If still bit-identical: send `Enter` again. If still stuck after second `Enter`: escalate to aggressive recovery (same path as Stalled-silent). File `notifications_v2` row for auto-fix (no action item). Log to `watchdog.log`. |
+| **Stalled-silent** | Unchanged ≥ threshold (`now - agents.last_activity_at ≥ threshold`), no recoverable/stuck-at-prompt match | Save 500-line recovery snapshot; file `high` action item (structured format); execute aggressive recovery |
+| **Crashed** | Pane no longer exists (`verify_pane` returns False) OR pane ends with bare shell prompt (`$`, `%`, `>` on last non-empty line) — Claude process exited | Mark thread `failed`; file `high` action item (structured format); execute aggressive recovery |
 
-Grace counter resets on any state change. An agent triggers recovery only after spending ≥ 2 consecutive cycles in stalled state (i.e., threshold elapsed AND one more poll with no change).
+### Loop 2 — Per background thread (orphaned detection)
+
+After the per-agent loop, iterate every thread with `status='background'`:
+
+| State | Detection | Action |
+|---|---|---|
+| **Orphaned** | Thread `status='background'` AND no agent with `assigned_thread = thread.id` AND `now - threads.last_active_at > orphan_threshold` (configurable, default 5 min) | File high-priority action item (structured format); insert `watchdog_events` row `event_type='orphaned'`. **Auto-recovery is out of scope for v1** — action item only. |
+
+`threads.last_active_at` is already updated by `complete-agent`, `touch_last_active`, and `set_thread_status` (migration 14 added this column — verify it exists before relying on it).
 
 ### Allowlist of safe auto-responses
 
@@ -70,26 +93,51 @@ Triggered on Stalled-silent or Crashed. Runs once per agent lifetime (guarded by
 
 ```
 1. Capture pane (last 500 lines) → ~/.juggle/watchdog/recovery/<agent_id>-<unix_ts>.txt
-2. Read agent.assigned_thread, agent.last_task, agent.role, agent.model from DB
+2. Read agent.assigned_thread, agent.last_task, agent.role, agent.model, agents.last_activity_at from DB
 3. Decommission stuck agent: kill_pane(agent.pane_id) + delete_agent(agent.id)
+   → Before delete: copy last_task/role/model to threads.last_dispatched_task/role/model
 4. DB: update threads SET status='failed' WHERE id=<assigned_thread>
-5. DB: add_action_item type='failure' priority='high':
-       "🚨 [LABEL] agent stalled/crashed — snapshot at <path>, auto-retrying"
+5. DB: add_action_item type='failure' priority='high' (structured format):
+       "🚨 [LABEL] <state> — agent <agent_id[:8]>
+         State: <stalled-silent|crashed|stuck-at-prompt>
+         Last activity: <N> min ago (at <last_activity_at ISO>)
+         Snapshot: <path>
+         Recovery attempted: aggressive-redispatch
+         Recovery result: pending
+         Next step: verify result when complete"
 6. IF agent.watchdog_retried == 1:
-       DB: add_action_item type='failure' priority='high':
-           "🛑 [LABEL] agent stalled AGAIN after watchdog retry — manual intervention required"
+       DB: add_action_item type='failure' priority='high' (structured format):
+           "🛑 [LABEL] <state> — agent <agent_id[:8]>
+             State: <stalled-silent|crashed>
+             Last activity: <N> min ago
+             Snapshot: <path>
+             Recovery attempted: none (retry limit reached)
+             Recovery result: not-attempted
+             Next step: manual investigation needed"
        STOP — do not re-dispatch.
-7. IF agent.last_task is NULL:
-       DB: add_action_item type='failure' priority='high':
-           "🚨 [LABEL] agent stalled — no task content to replay; re-dispatch manually"
+7. IF agent.last_task is NULL (threads.last_dispatched_task also NULL):
+       DB: add_action_item type='failure' priority='high' (structured format):
+           "🚨 [LABEL] <state> — agent <agent_id[:8]>
+             State: <stalled-silent|crashed>
+             Last activity: <N> min ago
+             Snapshot: <path>
+             Recovery attempted: none (no task content)
+             Recovery result: not-attempted
+             Next step: re-dispatch from snapshot"
        STOP.
 8. spawn_agent(db, role=agent.role, model=agent.model) → new_agent
 9. DB: update agents SET watchdog_retried=1, last_task=<task_content> WHERE id=<new_agent.id>
 10. DB: update threads SET status='background' WHERE id=<assigned_thread>
 11. DB: update agents SET assigned_thread=<assigned_thread>, status='busy', busy_since=now WHERE id=<new_agent.id>
 12. send_task(new_agent.pane_id, agent.last_task)
-13. DB: add_action_item type='manual_step' priority='normal':
-        "⚠️ [LABEL] agent auto-re-dispatched after stall — verify result when complete"
+13. DB: add_action_item type='manual_step' priority='normal' (structured format):
+        "⚠️ [LABEL] auto-re-dispatched — agent <new_agent_id[:8]>
+          State: recovered
+          Last activity: just now
+          Snapshot: <path>
+          Recovery attempted: aggressive-redispatch
+          Recovery result: success
+          Next step: verify result when complete"
 14. Insert into watchdog_events: agent_id, thread_id, event_type, snapshot_path, created_at
 ```
 
@@ -127,12 +175,31 @@ Computed lazily once per watchdog poll (single SQL query per role, cheap).
 ### Modified: `agents` table (new columns via migration)
 
 ```sql
-ALTER TABLE agents ADD COLUMN watchdog_retried    INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE agents ADD COLUMN watchdog_threshold_minutes INTEGER;  -- NULL = adaptive
-ALTER TABLE agents ADD COLUMN model               TEXT;            -- claude model for re-dispatch
-ALTER TABLE agents ADD COLUMN last_task           TEXT;            -- task content, set by send-task
-ALTER TABLE agents ADD COLUMN busy_since          TEXT;            -- UTC ISO, set by get-agent
+ALTER TABLE agents ADD COLUMN watchdog_retried           INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE agents ADD COLUMN watchdog_threshold_minutes INTEGER;   -- NULL = adaptive
+ALTER TABLE agents ADD COLUMN model                      TEXT;      -- claude model for re-dispatch
+ALTER TABLE agents ADD COLUMN last_task                  TEXT;      -- task content, set by send-task
+ALTER TABLE agents ADD COLUMN busy_since                 TEXT;      -- UTC ISO, set by get-agent
+ALTER TABLE agents ADD COLUMN last_send_task_pane_hash   TEXT;      -- pane tail hash post-paste/pre-Enter
+ALTER TABLE agents ADD COLUMN last_send_task_at          TEXT;      -- UTC ISO, set by send-task
+ALTER TABLE agents ADD COLUMN last_activity_at           TEXT;      -- UTC ISO, set by watchdog when pane changes
 ```
+
+`last_send_task_pane_hash`: SHA-256 (truncated to 16 hex chars) of `tmux capture-pane` last 10 lines, captured after task is pasted into the Claude input box but BEFORE Enter is sent. Used by the Stuck-at-prompt classifier as a bit-identical baseline.
+
+`last_activity_at`: Set by the watchdog (not by CLI commands) whenever pane content differs from the previous snapshot. Used by the Stalled-silent threshold check: `now - last_activity_at >= threshold`. Survives watchdog restarts (in DB, not in-memory dict).
+
+### Modified: `threads` table (new columns for orphaned recovery payload)
+
+```sql
+ALTER TABLE threads ADD COLUMN last_dispatched_task  TEXT;  -- copied from agent.last_task on decommission
+ALTER TABLE threads ADD COLUMN last_dispatched_role  TEXT;  -- copied from agent.role on decommission
+ALTER TABLE threads ADD COLUMN last_dispatched_model TEXT;  -- copied from agent.model on decommission
+```
+
+**Why:** Agent records are deleted on decommission. Without copying the task payload to the thread, orphaned detection cannot surface what task was running. The copy happens in: (a) the watchdog's recovery flow (step 3, before `delete_agent`), and (b) `cmd_release_agent` before deleting the agent row.
+
+`threads.last_active_at` already exists (migration 14). The orphaned detector reads it directly — no new column needed on threads.
 
 ### New: `agent_completions` table (for adaptive threshold)
 
@@ -171,7 +238,7 @@ Retention: watchdog cleans `watchdog_events` older than 30 days on startup. Reco
 | Command | Change |
 |---|---|
 | `get-agent` | Set `agents.busy_since = now`, `agents.model = args.model` (if provided) |
-| `send-task` | After paste: write prompt content to `agents.last_task` |
+| `send-task` | 1. Paste task content. 2. Capture post-paste-pre-Enter pane tail (last 10 lines) → SHA-256 (16 hex chars) → store in `agents.last_send_task_pane_hash`. 3. Set `agents.last_send_task_at = now`. 4. Send Enter key. 5. Write prompt content to `agents.last_task`. |
 | `complete-agent` | Insert row into `agent_completions` with `duration_secs = now - agent.busy_since` |
 
 ### New commands
@@ -197,6 +264,9 @@ Retention: watchdog cleans `watchdog_events` older than 30 days on startup. Reco
 | First stall/crash + auto-retry | Yes (high priority) | No | Yes |
 | Successful re-dispatch | Yes (normal priority) | No | Yes |
 | Retry blocked (second stall) | Yes (high priority) | No | Yes |
+| Stuck-at-prompt Enter sent (1st or 2nd attempt) | No | Yes (`notifications_v2` row) | Yes (`watchdog.log`) |
+| Stuck-at-prompt escalated to recovery | Yes (high priority) | No | Yes |
+| Orphaned thread detected | Yes (high priority) | No | Yes |
 
 ---
 
@@ -235,6 +305,7 @@ Snapshots and logs:
 - Watching non-Juggle Claude sessions (only `juggle.db` agents).
 - UI for browsing/replaying recovery snapshots.
 - Watchdog for the cockpit or monitor processes themselves.
+- Orphaned thread auto-recovery (v1 detects and files action item only; no re-dispatch).
 
 ---
 
@@ -285,3 +356,21 @@ Snapshots and logs:
 **Problem:** `complete-agent` calls `update_agent(status='idle', last_active=now)`, which overwrites `last_active`. Then when we try to compute `now - agent.busy_since`, `busy_since` is the right field but we need to read it before the update happens.
 
 **Mitigation:** `complete-agent` reads `agent.busy_since` FIRST, inserts into `agent_completions`, THEN calls `update_agent`. The new schema adds `busy_since` as a separate column — it is not updated by `complete-agent`, only by `get-agent`.
+
+### 8. Stuck-at-prompt false positive from slow UI render
+
+**Problem:** After pasting the task, Claude Code renders its input box over 200–500 ms. If `last_send_task_pane_hash` is captured before the render fully settles, the hash may not be bit-identical to the "stuck" pane state — so the classifier fails to detect stuck-at-prompt even when the agent genuinely is stuck.
+
+**Mitigation:** The 60 s minimum grace period (condition a) fully absorbs this. By the time `now - last_send_task_at >= 60 s`, the render has been complete for ~59.5 s. The hash comparison happens after the grace period — render timing is irrelevant at that point.
+
+### 9. Orphaned false-positive: orchestrator is thinking
+
+**Problem:** A thread may legitimately have no agent for minutes — the orchestrator released the previous agent and hasn't dispatched a new one yet. With a 5-min threshold, a slow orchestrator decision loop could trigger an orphan alert.
+
+**Mitigation:** 5 min is deliberately conservative; normal orchestrator think time is under 30 s. The alert is informational only (auto-recovery is OOS for v1), so a false positive costs one extra action item — not a wasted re-dispatch. Users can tune `JUGGLE_ORPHAN_THRESHOLD`. The 24-hour dedup guard in `watchdog_events` prevents repeated re-filing for the same thread.
+
+### 10. `last_send_task_pane_hash` race on slow paste
+
+**Problem:** tmux paste is not atomic for large prompts — content may be flushed in multiple writes. If the watchdog polls mid-paste (improbable given the 30 s cycle), `last_send_task_pane_hash` captures a partial paste state. The hash won't match the settled post-paste state, so stuck-at-prompt won't fire even if the agent is genuinely stuck.
+
+**Mitigation:** This is a latency issue, not a safety issue — a false *negative* (watchdog misses the stuck state) rather than a false *positive* (watchdog fires incorrectly). The agent will still be caught by Stalled-silent if it never proceeds. For v1, the gap is accepted. v2 can capture the hash after a configurable settle delay (default 1–2 s after paste).

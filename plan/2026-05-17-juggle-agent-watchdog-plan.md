@@ -16,7 +16,7 @@
 
 | Action | File | Purpose |
 |---|---|---|
-| Modify | `src/juggle_db.py` | Schema migrations 20–22; new DB methods |
+| Modify | `src/juggle_db.py` | Schema migrations 20–23; new DB methods |
 | Modify | `src/juggle_cmd_agents.py` | Track busy_since/model on get-agent; last_task on send-task; completion on complete-agent; add cmd_set_watchdog |
 | Modify | `src/juggle_cmd_threads.py` | cmd_start launches watchdog daemon; cmd_stop kills it |
 | Modify | `src/juggle_cli.py` | Wire set-watchdog subcommand |
@@ -1762,6 +1762,780 @@ git commit -m "chore: bump version to vX.Y.Z for watchdog feature"
 
 ---
 
+## Task 10: Additional schema columns + daemon refactor (migration 23)
+
+**Files:**
+- Modify: `src/juggle_db.py`
+- Modify: `src/juggle_watchdog.py` (`execute_recovery` — copy dispatch payload to threads)
+- Modify: `scripts/juggle-agent-watchdog` (replace `_last_changed` dict with `last_activity_at` DB column)
+- Test: `tests/test_db_watchdog.py` (extend)
+
+Adds 3 new `agents` columns (`last_send_task_pane_hash`, `last_send_task_at`, `last_activity_at`) and 3 new `threads` columns (`last_dispatched_task`, `last_dispatched_role`, `last_dispatched_model`). The daemon stops using an in-memory `_last_changed` dict and reads/writes `last_activity_at` from DB instead — making stall tracking survive watchdog restarts.
+
+- [ ] **Step 1: Write failing tests**
+
+Add to `tests/test_db_watchdog.py`:
+
+```python
+def test_agents_has_last_send_task_pane_hash(db):
+    assert "last_send_task_pane_hash" in _col_names(db, "agents")
+
+
+def test_agents_has_last_send_task_at(db):
+    assert "last_send_task_at" in _col_names(db, "agents")
+
+
+def test_agents_has_last_activity_at(db):
+    assert "last_activity_at" in _col_names(db, "agents")
+
+
+def test_threads_has_last_dispatched_columns(db):
+    cols = _col_names(db, "threads")
+    assert "last_dispatched_task" in cols
+    assert "last_dispatched_role" in cols
+    assert "last_dispatched_model" in cols
+```
+
+- [ ] **Step 2: Run to verify tests fail**
+
+```bash
+cd ~/github/juggle && python -m pytest tests/test_db_watchdog.py::test_agents_has_last_send_task_pane_hash tests/test_db_watchdog.py::test_agents_has_last_activity_at tests/test_db_watchdog.py::test_threads_has_last_dispatched_columns -v
+```
+
+Expected: all 4 fail (columns don't exist).
+
+- [ ] **Step 3: Add migration 23 in `juggle_db.py`**
+
+In `init_db()`, after migration 22 block, add:
+
+```python
+        # Migration 23: pane hash + last_activity_at on agents; last_dispatched_* on threads
+        try:
+            agents_cols = {r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()}
+            threads_cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
+            if "last_send_task_pane_hash" not in agents_cols:
+                conn.execute("ALTER TABLE agents ADD COLUMN last_send_task_pane_hash TEXT")
+            if "last_send_task_at" not in agents_cols:
+                conn.execute("ALTER TABLE agents ADD COLUMN last_send_task_at TEXT")
+            if "last_activity_at" not in agents_cols:
+                conn.execute("ALTER TABLE agents ADD COLUMN last_activity_at TEXT")
+            if "last_dispatched_task" not in threads_cols:
+                conn.execute("ALTER TABLE threads ADD COLUMN last_dispatched_task TEXT")
+            if "last_dispatched_role" not in threads_cols:
+                conn.execute("ALTER TABLE threads ADD COLUMN last_dispatched_role TEXT")
+            if "last_dispatched_model" not in threads_cols:
+                conn.execute("ALTER TABLE threads ADD COLUMN last_dispatched_model TEXT")
+            conn.commit()
+            _log.info("Migration 23: pane hash + last_activity_at + last_dispatched_* columns added")
+        except Exception as e:
+            _log.warning("Migration 23 skipped: %s", e)
+```
+
+Also update `CREATE_AGENTS` to include the 3 new columns (fresh DBs get them without migration):
+
+```python
+CREATE_AGENTS = """
+CREATE TABLE IF NOT EXISTS agents (
+  id                         TEXT PRIMARY KEY,
+  role                       TEXT NOT NULL,
+  pane_id                    TEXT NOT NULL,
+  assigned_thread            TEXT,
+  status                     TEXT NOT NULL DEFAULT 'idle',
+  context_threads            TEXT NOT NULL DEFAULT '[]',
+  created_at                 TEXT NOT NULL,
+  last_active                TEXT NOT NULL,
+  watchdog_retried           INTEGER NOT NULL DEFAULT 0,
+  watchdog_threshold_minutes INTEGER,
+  model                      TEXT,
+  last_task                  TEXT,
+  busy_since                 TEXT,
+  last_send_task_pane_hash   TEXT,
+  last_send_task_at          TEXT,
+  last_activity_at           TEXT
+);
+"""
+```
+
+Update `CREATE_THREADS` similarly — add the 3 `last_dispatched_*` columns at the end:
+
+```sql
+  last_dispatched_task  TEXT,
+  last_dispatched_role  TEXT,
+  last_dispatched_model TEXT
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+cd ~/github/juggle && python -m pytest tests/test_db_watchdog.py -v
+```
+
+Expected: all tests pass, including the 4 new ones.
+
+- [ ] **Step 5: Update `execute_recovery` in `src/juggle_watchdog.py`**
+
+In `execute_recovery`, find step 2 (decommission):
+```python
+    # 2. Decommission stuck agent (kill pane + delete record)
+    mgr.decommission_agent(db, agent_id)
+```
+
+Replace with:
+```python
+    # 2. Copy dispatch payload to thread before deleting agent record
+    if thread_id:
+        with db._connect() as conn:
+            conn.execute(
+                "UPDATE threads SET last_dispatched_task=?, last_dispatched_role=?, "
+                "last_dispatched_model=? WHERE id=?",
+                (last_task, role, model, thread_id),
+            )
+            conn.commit()
+    # Decommission stuck agent (kill pane + delete record)
+    mgr.decommission_agent(db, agent_id)
+```
+
+- [ ] **Step 6: Update daemon `scripts/juggle-agent-watchdog` to use `last_activity_at` from DB**
+
+Remove the `_last_changed` module-level dict and all references to it. Replace the stall-tracking block inside `_poll_once`:
+
+**Remove** this from the top of the daemon script:
+```python
+# Per-agent in-memory state (reset on each agent's recovery)
+_last_changed: dict[str, float] = {}
+```
+
+**Replace** this block in `_poll_once` (before `stalled_for` is computed):
+```python
+        if agent_id not in _last_changed:
+            _last_changed[agent_id] = now  # first time seen — treat as just changed
+
+        # If content changed or this is first observation, update last_changed
+        if content is not None and content != prev:
+            _last_changed[agent_id] = now
+
+        stalled_for = now - _last_changed.get(agent_id, now)
+```
+
+With:
+```python
+        last_activity_at_str = agent.get("last_activity_at")
+        if last_activity_at_str:
+            try:
+                from datetime import datetime, timezone
+                last_dt = datetime.fromisoformat(last_activity_at_str)
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                stalled_for = now - last_dt.timestamp()
+            except (ValueError, TypeError):
+                stalled_for = 0.0
+        else:
+            stalled_for = 0.0  # first observation — treat as just changed
+```
+
+**Replace** the `state == "working"` handler:
+```python
+        if state == "working":
+            write_snapshot(agent_id, content, snapshot_dir)
+```
+
+With:
+```python
+        if state == "working":
+            write_snapshot(agent_id, content, snapshot_dir)
+            from datetime import datetime, timezone
+            db.update_agent(agent_id, last_activity_at=datetime.now(timezone.utc).isoformat())
+```
+
+**Remove** `_last_changed.pop(agent_id, None)` from the stalled/crashed recovery block.
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd ~/github/juggle
+git add src/juggle_db.py src/juggle_watchdog.py scripts/juggle-agent-watchdog tests/test_db_watchdog.py
+git commit -m "feat(watchdog): migration 23 — pane hash + last_activity_at + last_dispatched_* columns; daemon uses DB for stall tracking"
+```
+
+---
+
+## Task 11: send-task pane hash instrumentation
+
+**Files:**
+- Modify: `src/juggle_tmux.py` (`JuggleTmuxManager.send_task` — capture hash pre-Enter, return it)
+- Modify: `src/juggle_cmd_agents.py` (`cmd_send_task` — store hash + timestamp in DB)
+- Test: `tests/test_db_watchdog.py` (extend)
+
+`send_task` currently pastes the content and sends Enter in one shot. We need to split: paste → capture pane tail → hash → store → send Enter.
+
+- [ ] **Step 1: Write failing test**
+
+Add to `tests/test_db_watchdog.py`:
+
+```python
+def test_send_task_stores_pane_hash(tmp_path, monkeypatch):
+    """send-task stores last_send_task_pane_hash (16 hex chars) and last_send_task_at."""
+    import os, subprocess, sys
+    db_path = str(tmp_path / "test.db")
+    task_file = tmp_path / "task.txt"
+    task_file.write_text("do something useful")
+
+    d = JuggleDB(db_path)
+    d.init_db()
+    agent_id = d.create_agent(role="coder", pane_id="%5")
+    d.update_agent(agent_id, status="busy")
+
+    result = subprocess.run(
+        [sys.executable, "src/juggle_cli.py", "send-task", agent_id, str(task_file)],
+        cwd=str(Path(__file__).parent.parent),
+        capture_output=True, text=True,
+        env={**os.environ, "JUGGLE_DATA_DIR": str(tmp_path),
+             "JUGGLE_TMUX_MOCK_SEND": "1", "JUGGLE_TMUX_MOCK_PANE": "%5"},
+    )
+    agent = d.get_agent(agent_id)
+    assert agent["last_send_task_pane_hash"] is not None
+    assert len(agent["last_send_task_pane_hash"]) == 16
+    assert agent["last_send_task_at"] is not None
+```
+
+- [ ] **Step 2: Run to verify test fails**
+
+```bash
+cd ~/github/juggle && python -m pytest tests/test_db_watchdog.py::test_send_task_stores_pane_hash -v
+```
+
+Expected: FAIL (columns exist but not populated by send-task).
+
+- [ ] **Step 3: Modify `JuggleTmuxManager.send_task` in `src/juggle_tmux.py`**
+
+Find the existing `send_task` method. It should end with something like `self._run_tmux("send-keys", "-t", pane_id, "Enter")` or `self._run_tmux("send-keys", "-t", pane_id, "C-m")`.
+
+Split the Enter-send out and add hash capture between paste and Enter. The method return type changes from `None` to `str`:
+
+```python
+def send_task(self, pane_id: str, content: str, *, is_new: bool = False) -> str:
+    """Paste task content into pane.
+
+    Returns post-paste-pre-Enter pane tail hash (SHA-256, 16 hex chars) for
+    stuck-at-prompt detection. Enter is sent AFTER the hash is captured.
+    """
+    import hashlib
+    import time as _time
+
+    # --- existing paste logic (unchanged) ---
+    # ... (keep all paste-buffer code exactly as-is) ...
+    # --- end paste logic ---
+
+    # Capture pane tail BEFORE sending Enter (brief settle for tmux render)
+    _time.sleep(0.15)
+    cap = self._run_tmux("capture-pane", "-pt", pane_id, "-S", "-10")
+    tail = cap.stdout or "" if hasattr(cap, "stdout") else ""
+    pane_hash = hashlib.sha256(tail.encode()).hexdigest()[:16]
+
+    # Now send Enter
+    self._run_tmux("send-keys", "-t", pane_id, "Enter")
+    return pane_hash
+```
+
+Read the actual `send_task` body first (`grep -n "def send_task" src/juggle_tmux.py`) and insert the hash capture + Enter split at the correct point without disrupting the paste logic.
+
+- [ ] **Step 4: Update `cmd_send_task` in `src/juggle_cmd_agents.py`**
+
+Find:
+```python
+    mgr.send_task(pane_id, full_prompt, is_new=is_new)
+    db.update_agent(args.agent_id, last_task=full_prompt)
+```
+
+Replace with:
+```python
+    pane_hash = mgr.send_task(pane_id, full_prompt, is_new=is_new)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db.update_agent(
+        args.agent_id,
+        last_task=full_prompt,
+        last_send_task_pane_hash=pane_hash,
+        last_send_task_at=now_iso,
+    )
+```
+
+(`datetime` and `timezone` are already imported at the top of `juggle_cmd_agents.py`.)
+
+- [ ] **Step 5: Run tests**
+
+```bash
+cd ~/github/juggle && python -m pytest tests/test_db_watchdog.py -v
+```
+
+Expected: all tests pass including `test_send_task_stores_pane_hash`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd ~/github/juggle
+git add src/juggle_tmux.py src/juggle_cmd_agents.py tests/test_db_watchdog.py
+git commit -m "feat(watchdog): capture post-paste pane hash in send-task for stuck-at-prompt detection"
+```
+
+---
+
+## Task 12: Stuck-at-prompt classifier and Enter retry in daemon
+
+**Files:**
+- Modify: `src/juggle_watchdog.py` (`classify_pane_state` — add "stuck" state; add `_hash_tail`, `_has_execution_markers` helpers)
+- Modify: `scripts/juggle-agent-watchdog` (handle "stuck" in `_poll_once`; in-memory Enter retry count)
+- Test: `tests/test_watchdog.py` (extend)
+
+Adds the 4-condition stuck-at-prompt check to the classifier and a 2× Enter retry loop in the daemon before escalating to aggressive recovery.
+
+- [ ] **Step 1: Write failing tests**
+
+Add to `tests/test_watchdog.py`:
+
+```python
+def test_classify_stuck_at_prompt():
+    """Pane content bit-identical to last_send_task_pane_hash → stuck."""
+    from juggle_watchdog import classify_pane_state, _hash_tail
+    content = "╭─────────────────────╮\n│ do something useful │\n╰─────────────────────╯"
+    pane_hash = _hash_tail(content)
+    state, key = classify_pane_state(
+        content=content,
+        prev_content=content,
+        stalled_for=90.0,  # >= 60s grace
+        threshold=300.0,
+        last_send_task_pane_hash=pane_hash,
+    )
+    assert state == "stuck"
+    assert key is None
+
+
+def test_classify_stuck_not_triggered_within_grace():
+    """Stuck-at-prompt NOT fired if stalled_for < 60s (grace window)."""
+    from juggle_watchdog import classify_pane_state, _hash_tail
+    content = "╭───╮\n│ x │\n╰───╯"
+    pane_hash = _hash_tail(content)
+    state, _ = classify_pane_state(
+        content=content,
+        prev_content=content,
+        stalled_for=30.0,  # within grace
+        threshold=300.0,
+        last_send_task_pane_hash=pane_hash,
+    )
+    assert state == "quiet"  # grace window, not stuck yet
+
+
+def test_classify_stuck_not_triggered_with_execution_markers():
+    """Stuck-at-prompt NOT fired when execution markers present."""
+    from juggle_watchdog import classify_pane_state, _hash_tail
+    content = "╭───╮\n│ x │\n╰───╯\n✻ Thinking…"
+    pane_hash = _hash_tail(content)
+    state, _ = classify_pane_state(
+        content=content,
+        prev_content=content,
+        stalled_for=120.0,
+        threshold=300.0,
+        last_send_task_pane_hash=pane_hash,
+    )
+    assert state == "quiet"  # Thinking marker suppresses stuck
+
+
+def test_classify_stuck_not_triggered_without_hash():
+    """No hash → stuck-at-prompt never fires (falls through to quiet/stalled)."""
+    from juggle_watchdog import classify_pane_state
+    state, _ = classify_pane_state(
+        content="unchanged",
+        prev_content="unchanged",
+        stalled_for=120.0,
+        threshold=300.0,
+        last_send_task_pane_hash=None,
+    )
+    assert state == "quiet"
+```
+
+- [ ] **Step 2: Run to verify tests fail**
+
+```bash
+cd ~/github/juggle && python -m pytest tests/test_watchdog.py::test_classify_stuck_at_prompt tests/test_watchdog.py::test_classify_stuck_not_triggered_within_grace -v
+```
+
+Expected: failures (`_hash_tail` not found, "stuck" state not returned).
+
+- [ ] **Step 3: Add helpers and update `classify_pane_state` in `src/juggle_watchdog.py`**
+
+After `_COLD_START_DEFAULTS`, add:
+
+```python
+import hashlib as _hashlib
+
+_EXECUTION_MARKERS = ("Thinking", "Running", "→", "↓", "Tool call", "✓", "⚡")
+
+
+def _hash_tail(content: str, lines: int = 10) -> str:
+    """SHA-256 of the last `lines` of pane content, truncated to 16 hex chars."""
+    tail = "\n".join(content.splitlines()[-lines:])
+    return _hashlib.sha256(tail.encode()).hexdigest()[:16]
+
+
+def _has_execution_markers(tail: str) -> bool:
+    return any(m in tail for m in _EXECUTION_MARKERS)
+```
+
+Update `classify_pane_state` signature to accept `last_send_task_pane_hash`:
+
+```python
+def classify_pane_state(
+    content: str | None,
+    prev_content: str | None,
+    stalled_for: float,
+    threshold: float,
+    *,
+    last_send_task_pane_hash: str | None = None,
+) -> tuple[str, str | None]:
+```
+
+Inside the function, after the allowlist check and after the bare-shell-prompt check, before `if content != prev_content`, add:
+
+```python
+    # Content unchanged from here — check stuck-at-prompt before quiet/stalled
+    if content != prev_content:
+        return "working", None
+
+    # Stuck-at-prompt: all 4 conditions must hold
+    if (
+        last_send_task_pane_hash is not None
+        and stalled_for >= 60
+        and not _has_execution_markers(tail)
+        and _hash_tail(content) == last_send_task_pane_hash
+    ):
+        return "stuck", None
+```
+
+Remove the original `if content != prev_content: return "working", None` line (it moved up).
+
+Final order of checks in the function:
+1. `if content is None` → crashed
+2. Compute tail (last 15 lines)
+3. Allowlist check → prompt
+4. Bare shell prompt → crashed
+5. `if content != prev_content` → working
+6. Stuck-at-prompt (4 conditions) → stuck
+7. `if "Thinking" in tail or stalled_for < 60` → quiet
+8. `if stalled_for >= threshold` → stalled
+9. Default → quiet
+
+- [ ] **Step 4: Run classifier tests**
+
+```bash
+cd ~/github/juggle && python -m pytest tests/test_watchdog.py -v
+```
+
+Expected: all tests pass, including the 4 new stuck-at-prompt tests.
+
+- [ ] **Step 5: Update daemon `scripts/juggle-agent-watchdog` to handle "stuck"**
+
+Add a module-level dict for Enter retry tracking (in-memory, resets on restart — that's acceptable since we still have stalled-silent as a fallback):
+
+```python
+_enter_sent: dict[str, int] = {}  # agent_id → number of Enter keys sent so far
+```
+
+In `_poll_once`, update the `classify_pane_state` call to pass `last_send_task_pane_hash`:
+
+```python
+        state, key = classify_pane_state(
+            content=content,
+            prev_content=prev,
+            stalled_for=stalled_for,
+            threshold=threshold,
+            last_send_task_pane_hash=agent.get("last_send_task_pane_hash"),
+        )
+```
+
+Add the "stuck" handler after the `elif state == "prompt"` block:
+
+```python
+        elif state == "stuck":
+            enter_count = _enter_sent.get(agent_id, 0)
+            if enter_count < 2:
+                mgr._run_tmux("send-keys", "-t", pane_id, "Enter")
+                _enter_sent[agent_id] = enter_count + 1
+                session_id = get_session_id(db)
+                db.add_notification_v2(
+                    thread_id=agent.get("assigned_thread"),
+                    message=f"[Watchdog] agent {agent_id[:8]} stuck-at-prompt — sent Enter (attempt {enter_count + 1}/2)",
+                    session_id=session_id,
+                )
+                _log.info("Watchdog: stuck-at-prompt Enter #%d sent to agent %s", enter_count + 1, agent_id[:8])
+            else:
+                _log.warning(
+                    "Watchdog: agent %s stuck after 2 Enters — escalating to recovery",
+                    agent_id[:8],
+                )
+                execute_recovery(
+                    db, mgr, agent, content or "",
+                    recovery_dir=recovery_dir,
+                    session_id=session_id,
+                )
+                _enter_sent.pop(agent_id, None)
+```
+
+Also reset `_enter_sent` when an agent recovers or is no longer stuck. In the `state == "working"` handler, add:
+
+```python
+            _enter_sent.pop(agent_id, None)
+```
+
+- [ ] **Step 6: Run all watchdog tests**
+
+```bash
+cd ~/github/juggle && python -m pytest tests/test_watchdog.py tests/test_watchdog_integration.py -v
+```
+
+Expected: all tests pass.
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd ~/github/juggle
+git add src/juggle_watchdog.py scripts/juggle-agent-watchdog tests/test_watchdog.py
+git commit -m "feat(watchdog): stuck-at-prompt classifier + Enter retry (2x) before escalation"
+```
+
+---
+
+## Task 13: Orphaned thread detection (Loop 2)
+
+**Files:**
+- Modify: `src/juggle_watchdog.py` (add `check_orphaned_threads` pure function)
+- Modify: `scripts/juggle-agent-watchdog` (call `check_orphaned_threads` in `_poll_once` as Loop 2)
+- Test: `tests/test_watchdog_integration.py` (extend)
+
+After the per-agent Loop 1, scan all background threads with no active agent. File a high-priority action item for any thread orphaned longer than `JUGGLE_ORPHAN_THRESHOLD` (default 5 min). Dedup via `watchdog_events` to avoid re-filing within 24 h.
+
+- [ ] **Step 1: Write failing test**
+
+Add to `tests/test_watchdog_integration.py`:
+
+```python
+def test_orphaned_thread_files_action_item(db, tmp_path):
+    """Background thread with no agent and old last_active_at gets an action item."""
+    from datetime import datetime, timezone, timedelta
+    from juggle_watchdog import check_orphaned_threads
+
+    thread_id = db.create_thread("orphan test", session_id="")
+    # Set thread to background with last_active_at 10 min ago
+    db.set_thread_status(thread_id, "background")
+    past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id)
+        )
+        conn.commit()
+
+    orphaned = check_orphaned_threads(db, orphan_threshold=300.0)
+    assert thread_id in orphaned
+
+    items = db.get_open_action_items()
+    assert any("orphaned" in it["message"].lower() for it in items)
+    priorities = {it["priority"] for it in items}
+    assert "high" in priorities
+
+
+def test_orphaned_thread_dedup(db, tmp_path):
+    """A second call within 24h does NOT file a duplicate action item."""
+    from datetime import datetime, timezone, timedelta
+    from juggle_watchdog import check_orphaned_threads
+
+    thread_id = db.create_thread("dedup test", session_id="")
+    db.set_thread_status(thread_id, "background")
+    past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id)
+        )
+        conn.commit()
+
+    check_orphaned_threads(db, orphan_threshold=300.0)
+    check_orphaned_threads(db, orphan_threshold=300.0)  # second call
+
+    items = db.get_open_action_items()
+    orphan_items = [it for it in items if "orphaned" in it["message"].lower()]
+    assert len(orphan_items) == 1  # only one, not two
+
+
+def test_active_thread_not_orphaned(db, tmp_path):
+    """Thread with an active busy agent is NOT flagged as orphaned."""
+    from datetime import datetime, timezone, timedelta
+    from juggle_watchdog import check_orphaned_threads
+
+    thread_id = db.create_thread("active test", session_id="")
+    db.set_thread_status(thread_id, "background")
+    agent_id = db.create_agent(role="coder", pane_id="%5")
+    db.update_agent(agent_id, status="busy", assigned_thread=thread_id)
+    past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id)
+        )
+        conn.commit()
+
+    orphaned = check_orphaned_threads(db, orphan_threshold=300.0)
+    assert thread_id not in orphaned
+    assert db.get_open_action_items() == []
+```
+
+- [ ] **Step 2: Run to verify tests fail**
+
+```bash
+cd ~/github/juggle && python -m pytest tests/test_watchdog_integration.py::test_orphaned_thread_files_action_item tests/test_watchdog_integration.py::test_orphaned_thread_dedup -v
+```
+
+Expected: `ImportError: cannot import name 'check_orphaned_threads'`.
+
+- [ ] **Step 3: Add `check_orphaned_threads` to `src/juggle_watchdog.py`**
+
+Add after `execute_recovery`:
+
+```python
+# ---------------------------------------------------------------------------
+# Orphaned thread detection (Loop 2)
+# ---------------------------------------------------------------------------
+
+def check_orphaned_threads(
+    db: Any,
+    *,
+    orphan_threshold: float = 300.0,
+    dedup_window_hours: float = 24.0,
+) -> list[str]:
+    """Scan background threads with no active agent; file action items for orphans.
+
+    Returns list of orphaned thread_ids detected this cycle.
+    Dedup guard: skips threads that already have an 'orphaned' watchdog_event
+    within the last `dedup_window_hours`.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    dedup_cutoff = (now - timedelta(hours=dedup_window_hours)).isoformat()
+
+    with db._connect() as conn:
+        thread_rows = conn.execute(
+            "SELECT * FROM threads WHERE status='background'"
+        ).fetchall()
+        threads = [dict(r) for r in thread_rows]
+
+        busy_rows = conn.execute(
+            "SELECT assigned_thread FROM agents WHERE status='busy' AND assigned_thread IS NOT NULL"
+        ).fetchall()
+        busy_thread_ids = {r["assigned_thread"] for r in busy_rows}
+
+    orphaned: list[str] = []
+
+    for thread in threads:
+        thread_id = thread["id"]
+        if thread_id in busy_thread_ids:
+            continue
+
+        last_active_at = thread.get("last_active_at")
+        if not last_active_at:
+            continue
+
+        try:
+            last_dt = datetime.fromisoformat(last_active_at)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            orphaned_for = (now - last_dt).total_seconds()
+        except (ValueError, TypeError):
+            continue
+
+        if orphaned_for < orphan_threshold:
+            continue
+
+        # Dedup: skip if already filed within dedup window
+        with db._connect() as conn:
+            recent = conn.execute(
+                "SELECT id FROM watchdog_events "
+                "WHERE thread_id=? AND event_type='orphaned' AND created_at > ?",
+                (thread_id, dedup_cutoff),
+            ).fetchone()
+        if recent:
+            continue
+
+        label = thread.get("user_label") or thread.get("label") or thread_id[:8]
+        mins = int(orphaned_for // 60)
+        last_task = thread.get("last_dispatched_task")
+        task_snippet = f"\n  Last task: {last_task[:80]}..." if last_task else ""
+
+        db.add_action_item(
+            thread_id=thread_id,
+            message=(
+                f"🔴 [{label}] orphaned — background thread with no agent for {mins} min"
+                f"{task_snippet}\n"
+                f"  State: orphaned\n"
+                f"  Last activity: {mins} min ago\n"
+                f"  Recovery attempted: none (auto-recovery OOS v1)\n"
+                f"  Next step: re-dispatch manually"
+            ),
+            type_="failure",
+            priority="high",
+        )
+        db.add_watchdog_event(
+            agent_id="",
+            thread_id=thread_id,
+            event_type="orphaned",
+            snapshot_path=None,
+        )
+        orphaned.append(thread_id)
+        _log.warning(
+            "Watchdog: orphaned thread %s (%s, %d min no agent)", thread_id[:8], label, mins
+        )
+
+    return orphaned
+```
+
+- [ ] **Step 4: Wire Loop 2 into daemon `scripts/juggle-agent-watchdog`**
+
+Add `check_orphaned_threads` to the imports at the top of the daemon script:
+
+```python
+from juggle_watchdog import (
+    check_orphaned_threads,
+    classify_pane_state,
+    execute_recovery,
+    get_session_id,
+    get_threshold_seconds,
+    handle_prompt,
+    read_snapshot,
+    write_snapshot,
+)
+```
+
+At the end of `_poll_once`, after the Loop 1 `for agent in agents:` block, add:
+
+```python
+    # Loop 2: orphaned thread detection
+    _orphan_threshold = float(os.environ.get("JUGGLE_ORPHAN_THRESHOLD", "300"))
+    check_orphaned_threads(db, orphan_threshold=_orphan_threshold)
+```
+
+- [ ] **Step 5: Run all tests**
+
+```bash
+cd ~/github/juggle && python -m pytest tests/ -v --tb=short 2>&1 | tail -40
+```
+
+Expected: all tests pass, no regressions.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd ~/github/juggle
+git add src/juggle_watchdog.py scripts/juggle-agent-watchdog tests/test_watchdog_integration.py
+git commit -m "feat(watchdog): orphaned thread detection (Loop 2) — action item after 5 min, 24h dedup"
+```
+
+---
+
 ## Self-Review Against Spec
 
 Checklist run against `docs/superpowers/specs/2026-05-17-juggle-agent-watchdog.md`:
@@ -1791,4 +2565,15 @@ Checklist run against `docs/superpowers/specs/2026-05-17-juggle-agent-watchdog.m
 | watchdog_events retention (30d cleanup) | Task 1 + 5 |
 | Action items: high for crash/stall, normal for re-dispatch | Task 4 |
 | Cockpit notification for prompt auto-resolve | Task 4 |
+| New agents columns: last_send_task_pane_hash, last_send_task_at, last_activity_at | Task 10 |
+| New threads columns: last_dispatched_task/role/model | Task 10 |
+| Daemon uses last_activity_at from DB (not in-memory dict) | Task 10 |
+| execute_recovery copies dispatch payload to threads before decommission | Task 10 |
+| send-task captures post-paste-pre-Enter pane hash | Task 11 |
+| send-task stores last_send_task_pane_hash + last_send_task_at in DB | Task 11 |
+| Stuck-at-prompt state (4-condition classifier, "stuck" return value) | Task 12 |
+| 2× Enter retry before escalation to aggressive recovery | Task 12 |
+| Orphaned thread detection as Loop 2 in daemon | Task 13 |
+| check_orphaned_threads pure function with 24h dedup guard | Task 13 |
+| Structured action item format for orphaned threads | Task 13 |
 | pre-PR gate | Task 9 |
