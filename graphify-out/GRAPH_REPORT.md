@@ -1,11 +1,11 @@
 # Graph Report - juggle  (2026-05-18)
 
 ## Corpus Check
-- 84 files · ~120,881 words
+- 84 files · ~115,132 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1807 nodes · 2598 edges · 359 communities detected
+- 1811 nodes · 2597 edges · 365 communities detected
 - Extraction: 73% EXTRACTED · 27% INFERRED · 0% AMBIGUOUS · INFERRED: 691 edges (avg confidence: 0.75)
 - Token cost: 0 input · 0 output
 
@@ -44,8 +44,8 @@
 - [[_COMMUNITY_Community 31|Community 31]]
 - [[_COMMUNITY_Community 32|Community 32]]
 - [[_COMMUNITY_Community 33|Community 33]]
-- [[_COMMUNITY_Community 38|Community 38]]
-- [[_COMMUNITY_Community 39|Community 39]]
+- [[_COMMUNITY_Community 34|Community 34]]
+- [[_COMMUNITY_Community 35|Community 35]]
 - [[_COMMUNITY_Community 40|Community 40]]
 - [[_COMMUNITY_Community 41|Community 41]]
 - [[_COMMUNITY_Community 42|Community 42]]
@@ -369,6 +369,12 @@
 - [[_COMMUNITY_Community 360|Community 360]]
 - [[_COMMUNITY_Community 361|Community 361]]
 - [[_COMMUNITY_Community 362|Community 362]]
+- [[_COMMUNITY_Community 363|Community 363]]
+- [[_COMMUNITY_Community 364|Community 364]]
+- [[_COMMUNITY_Community 365|Community 365]]
+- [[_COMMUNITY_Community 366|Community 366]]
+- [[_COMMUNITY_Community 367|Community 367]]
+- [[_COMMUNITY_Community 368|Community 368]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `JuggleDB` - 124 edges
@@ -391,22 +397,22 @@
   tests/test_auto_archive.py → src/juggle_db.py
 - `db()` --calls--> `JuggleDB`  [INFERRED]
   tests/test_auto_action_items.py → src/juggle_db.py
-- `db()` --calls--> `JuggleDB`  [INFERRED]
-  tests/test_data_migration.py → src/juggle_db.py
+- `test_release_agent_files_failure_action_item()` --calls--> `cmd_release_agent()`  [INFERRED]
+  tests/test_auto_action_items.py → src/juggle_cmd_agents.py
 
 ## Communities
 
 ### Community 0 - "Community 0"
 Cohesion: 0.02
-Nodes (110): _extract_decision_prompt(), _last_sentences(), Return the tail of text, capped at max_chars., Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, _is_junk_message(), JuggleDB, _next_excel_label(), Create a new agent record. Returns the agent UUID. (+102 more)
+Nodes (94): _last_sentences(), Return the tail of text, capped at max_chars., _is_junk_message(), JuggleDB, Create a new agent record. Returns the agent UUID., Look up an agent by UUID. Returns None if not found., Return all agents ordered by creation time., Update any column(s) on an agent row. Serializes list values to JSON. (+86 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.03
-Nodes (111): get_db(), _get_hindsight_client(), _humanize_dt(), Return HindsightClient or None if disabled/unconfigured., Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -, Return a human-friendly relative time string for an ISO-8601 UTC timestamp., _resolve_thread(), cmd_ack_action() (+103 more)
+Cohesion: 0.02
+Nodes (127): _extract_decision_prompt(), get_db(), _get_hindsight_client(), _humanize_dt(), Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Return HindsightClient or None if disabled/unconfigured., Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -, Return a human-friendly relative time string for an ISO-8601 UTC timestamp. (+119 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.02
-Nodes (91): Return a sort key tuple for cmd_show_topics ordering., _sort_key_for_topic(), get_thread_state(), Return emoji state string for a thread dict.      Returns one of: "👉", "🏃‍♂️", ", db(), get_recent_exchanges returns last n Q/A pairs, most recent first., get_recent_exchanges skips junk user messages., get_recent_exchanges returns None assistant when none exists yet. (+83 more)
+Nodes (87): db(), get_recent_exchanges returns last n Q/A pairs, most recent first., get_recent_exchanges skips junk user messages., get_recent_exchanges returns None assistant when none exists yet., get_recent_exchanges returns empty list when no messages., get_recent_exchanges respects n parameter., get_thread_state returns 👉 for the current thread., get_thread_state returns 🏃 for background threads. (+79 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.06
@@ -425,36 +431,36 @@ Cohesion: 0.06
 Nodes (76): _add_skip_markers(), _branch_name(), _build_pr_description(), _extract_relevant_src(), _find_or_create_schedule_thread(), _find_untested_functions(), fx1_ruff(), fx2_vulture() (+68 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.05
-Nodes (68): cmd_get_context(), _auto_archive_closed_threads(), _build(), build_context_string(), build_startup_output(), ContextBuilder, _current_session_id(), _get_juggle_version() (+60 more)
-
-### Community 8 - "Community 8"
 Cohesion: 0.06
 Nodes (50): _check_coder(), _check_planner(), _check_researcher(), _extract_plan_file(), _extract_researcher_file(), _fetch_threads(), _get_db_path(), _infer_role() (+42 more)
 
-### Community 9 - "Community 9"
+### Community 8 - "Community 8"
 Cohesion: 0.06
 Nodes (49): _age_secs(), fetch_scheduled_tasks(), format_age(), _launchctl_status(), _parse_schedule(), priority_tier(), Juggle Cockpit Model — DB reads → typed frozen dataclasses. Zero Rich imports., Discover me.mikechen.* and com.claude.schedule.* launchd agents. (+41 more)
+
+### Community 9 - "Community 9"
+Cohesion: 0.05
+Nodes (47): cmd_clear_pending_decision(), cmd_open_in_editor(), cmd_record_pending_decision(), _get_vault_name(), _get_vault_root(), main(), _obsidian_fallback(), Record pending user decisions in current thread's open_questions. (+39 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.06
 Nodes (30): from_config(), HindsightClient, HindsightError, _hs(), _paths(), Hindsight HTTP API client for Juggle memory integration.  All Hindsight communic, Request with one retry after auto-restart on failure., Attempt to restart the juggle-hindsight Docker service. (+22 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.05
-Nodes (47): cmd_clear_pending_decision(), cmd_open_in_editor(), cmd_record_pending_decision(), _get_vault_name(), _get_vault_root(), main(), _obsidian_fallback(), Record pending user decisions in current thread's open_questions. (+39 more)
-
-### Community 12 - "Community 12"
 Cohesion: 0.06
 Nodes (42): auto_approve_blocked_agents(), _bash_write_pattern(), _classify_context(), get_classification_candidates(), get_db(), _get_session_id(), handle_post_tool_use(), handle_pre_tool_use() (+34 more)
 
-### Community 13 - "Community 13"
+### Community 12 - "Community 12"
 Cohesion: 0.07
 Nodes (26): chunk_text(), embed_batch(), embed_pending(), ingest_hn_rows(), ingest_pdf(), _load_env(), main(), parse_bq_row() (+18 more)
 
-### Community 14 - "Community 14"
+### Community 13 - "Community 13"
 Cohesion: 0.05
 Nodes (6): Exception, Tests for juggle_schedule_common shared infrastructure., test_gh_create_issue_handles_error(), test_gh_issue_exists_false_on_subprocess_error(), test_gh_pr_list_head_handles_error(), test_gh_run_fails_with_check_true()
+
+### Community 14 - "Community 14"
+Cohesion: 0.07
+Nodes (34): cmd_ack_action(), cmd_complete_agent(), cmd_request_action(), Create an action_items row tied to a thread. Thread stays in current state;, Dismiss an action item by id., Mark agent complete: thread → closed, create notifications_v2 row,     convert a, cmd_close_thread(), db() (+26 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.08
@@ -465,172 +471,172 @@ Cohesion: 0.08
 Nodes (24): _compute_scrollable_panes(), _make_cockpit_db(), Return (offsets_copy, active_pane) atomically., Update which panes have overflow content. Resets active if it drops out., Clamp pane offset to [0, max_offset]., One cockpit tick: snapshot DB → pick breakpoint → render into layout.      Retur, Reap agents, throttled to once per throttle_secs., Create a JuggleDB with a persistent connection for cockpit use.      Normal Jugg (+16 more)
 
 ### Community 17 - "Community 17"
+Cohesion: 0.12
+Nodes (29): ContextBuilder, active_db(), Tests for juggle_context.py ContextBuilder., Archived threads are not shown in v2 context injection (cockpit only)., Key decisions ARE injected for Tier 1 (active) threads in v2., Open questions ARE injected for Tier 1 (active) threads in v2., Summaries for all threads (including non-current) appear in the Topics list., Running threads show '🏃 running' in v2 format. (+21 more)
+
+### Community 18 - "Community 18"
 Cohesion: 0.1
 Nodes (20): _col_names(), db(), Tests for watchdog-related DB schema and methods., send-task writes last_task, last_send_task_pane_hash (16 hex chars), last_send_t, release-agent copies last_task/role/model to thread before decommissioning agent, test_agents_has_busy_since(), test_agents_has_last_activity_at(), test_agents_has_last_send_task_at() (+12 more)
 
-### Community 18 - "Community 18"
+### Community 19 - "Community 19"
 Cohesion: 0.25
 Nodes (20): _generate_title_for_thread(), Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words., _cfg(), _db(), Tests for title generation fallback chain and settings defaults., Return a full get_settings()-shaped dict. No openrouter_api_key — key lives in e, Return a mock for urllib.request.urlopen that yields a 200 response., test_tier1_exception_falls_to_tier2() (+12 more)
 
-### Community 19 - "Community 19"
+### Community 20 - "Community 20"
 Cohesion: 0.1
 Nodes (4): db(), Tests for JuggleDB agents table and related methods., get_best_agent must not accept a domain kwarg after 1.21.0 cleanup., test_get_best_agent_signature_has_no_domain()
 
-### Community 20 - "Community 20"
+### Community 21 - "Community 21"
 Cohesion: 0.19
 Nodes (17): migrate(), One-shot migration: legacy thread statuses → new 4-state machine.  Safe to run m, Migrate legacy thread statuses. Returns a summary dict., db(), _insert_raw(), Tests for Task 9 one-shot lifecycle data migration., Insert a thread row with raw status (bypasses set_thread_status guards)., Migrations 17–19 drop domain columns and tables on an old-schema DB. (+9 more)
 
-### Community 21 - "Community 21"
+### Community 22 - "Community 22"
 Cohesion: 0.16
 Nodes (17): consolidate(), get_existing_ids(), get_primary_key(), get_rows_to_migrate(), get_schema(), get_tables(), get_thread_labels(), main() (+9 more)
 
-### Community 22 - "Community 22"
+### Community 23 - "Community 23"
 Cohesion: 0.25
 Nodes (16): _action_count(), _agent_status(), _capture(), _notif_count(), Baseline: confirms detection gaps without watchdog daemon. All 5 MUST pass., Control: working agent emits output. No intervention expected., GAP: permission dialog not auto-dismissed without watchdog., GAP: silent stall not detected without watchdog. (+8 more)
 
-### Community 23 - "Community 23"
+### Community 24 - "Community 24"
 Cohesion: 0.19
 Nodes (13): _classify_failure(), cmd_fail_agent(), Return 'transient' or 'persistent'. Case-insensitive substring match., Route agent failure: transient → leave running for retry; persistent → action_it, _make_db(), test_recovery_dispatched_notifies_no_action_item(), test_unrecoverable_creates_high_action_item_and_notification(), db() (+5 more)
 
-### Community 24 - "Community 24"
+### Community 25 - "Community 25"
+Cohesion: 0.33
+Nodes (9): _auto_archive_closed_threads(), Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou, db(), Tests for Task 7 auto-archive hook., _set_last_active(), test_fresh_closed_thread_stays_closed(), test_idempotent(), test_preserves_user_label() (+1 more)
+
+### Community 26 - "Community 26"
 Cohesion: 0.2
 Nodes (3): Tests for juggle_schedule_reflect., Cost cap in RF-1 should not abort the entire routine — partial digest is written, test_cost_cap_in_rf1_continues_with_remaining()
 
-### Community 25 - "Community 25"
+### Community 27 - "Community 27"
 Cohesion: 0.22
 Nodes (2): db(), Tests for Task 1 schema additions (notifications_v2, action_items, threads colum
 
-### Community 26 - "Community 26"
+### Community 28 - "Community 28"
 Cohesion: 0.25
 Nodes (2): db(), Tests for Task 2 thread state helpers.
 
-### Community 27 - "Community 27"
+### Community 29 - "Community 29"
 Cohesion: 0.39
 Nodes (7): db(), _load_monitor(), Tests for scripts/juggle-agent-monitor polling logic., test_poll_detects_coder_completion(), test_poll_detects_researcher_completion(), test_poll_respects_last_seen_id(), test_poll_skips_non_closed_threads()
 
-### Community 28 - "Community 28"
+### Community 30 - "Community 30"
 Cohesion: 0.25
 Nodes (1): Tests for juggle_schedule_autofix.
 
-### Community 29 - "Community 29"
+### Community 31 - "Community 31"
 Cohesion: 0.29
 Nodes (2): db(), Tests for memory-related DB columns on threads.
 
-### Community 30 - "Community 30"
+### Community 32 - "Community 32"
 Cohesion: 0.29
 Nodes (1): Tests for juggle_schedule_dogfood.
 
-### Community 31 - "Community 31"
+### Community 33 - "Community 33"
 Cohesion: 0.33
 Nodes (5): Regression test: DB_PATH is invariant under CLAUDE_PLUGIN_DATA., Verify DB_PATH doesn't change when CLAUDE_PLUGIN_DATA env var is set., Verify DB_PATH is absolute and properly expanded., test_db_path_ignores_claude_plugin_data(), test_db_path_resolves_absolute()
 
-### Community 32 - "Community 32"
+### Community 34 - "Community 34"
 Cohesion: 0.5
 Nodes (1): Guard that agent prompt templates reference the new commands.
 
-### Community 33 - "Community 33"
+### Community 35 - "Community 35"
 Cohesion: 0.5
 Nodes (3): isolated_schedule_env(), Conftest for schedule tests — sets _JUGGLE_TEST_DB to an in-memory path., Redirect DB, state file, and reports dir for each test.
 
-### Community 38 - "Community 38"
+### Community 40 - "Community 40"
 Cohesion: 1.0
 Nodes (1): Load client from config. If config_path provided and exists, reads it directly.
 
-### Community 39 - "Community 39"
+### Community 41 - "Community 41"
 Cohesion: 1.0
 Nodes (1): Find function signatures in src/ that have no corresponding test.
 
-### Community 40 - "Community 40"
+### Community 42 - "Community 42"
 Cohesion: 1.0
 Nodes (1): Extract a brief src snippet relevant to the doc.
 
-### Community 41 - "Community 41"
+### Community 43 - "Community 43"
 Cohesion: 1.0
 Nodes (1): Read the most recent dogfood report and extract first 2 suggestions.
 
-### Community 42 - "Community 42"
+### Community 44 - "Community 44"
 Cohesion: 1.0
 Nodes (1): Run pytest (excluding auto-generated) on the branch. Return True if passing.
 
-### Community 43 - "Community 43"
-Cohesion: 1.0
-Nodes (1): Pure helper: rewrite a config dict from the pre-1.21.0 schema to 1.21+.      Ret
-
-### Community 44 - "Community 44"
-Cohesion: 1.0
-Nodes (1): Return (pid, last_exit_status) for a launchd label.
-
 ### Community 45 - "Community 45"
 Cohesion: 1.0
-Nodes (1): Discover me.mikechen.* and com.claude.schedule.* launchd agents.
+Nodes (1): Find function signatures in src/ that have no corresponding test.
 
 ### Community 46 - "Community 46"
 Cohesion: 1.0
-Nodes (1): Convert seconds to compact age string: '12s', '5m', '2h', '3d'.
+Nodes (1): Extract a brief src snippet relevant to the doc.
 
 ### Community 47 - "Community 47"
 Cohesion: 1.0
-Nodes (1): Compute display-priority tier for a thread. Lower = higher priority.
+Nodes (1): Read the most recent dogfood report and extract first 2 suggestions.
 
 ### Community 48 - "Community 48"
 Cohesion: 1.0
-Nodes (1): Return seconds since last_active ISO timestamp, or 0 if unparseable.
+Nodes (1): Run pytest (excluding auto-generated) on the branch. Return True if passing.
 
 ### Community 49 - "Community 49"
 Cohesion: 1.0
-Nodes (1): Read DB state into a frozen CockpitState. Only function that touches DB.
+Nodes (1): Pure helper: rewrite a config dict from the pre-1.21.0 schema to 1.21+.      Ret
 
 ### Community 50 - "Community 50"
 Cohesion: 1.0
-Nodes (1): Mark agent complete: thread → closed, create notifications_v2 row,     convert a
+Nodes (1): Return (pid, last_exit_status) for a launchd label.
 
 ### Community 51 - "Community 51"
 Cohesion: 1.0
-Nodes (1): Return 'transient' or 'persistent'. Case-insensitive substring match.
+Nodes (1): Discover me.mikechen.* and com.claude.schedule.* launchd agents.
 
 ### Community 52 - "Community 52"
 Cohesion: 1.0
-Nodes (1): Route agent failure: transient → leave running for retry; persistent → action_it
+Nodes (1): Convert seconds to compact age string: '12s', '5m', '2h', '3d'.
 
 ### Community 53 - "Community 53"
 Cohesion: 1.0
-Nodes (1): Create an action_items row tied to a thread. Thread stays in current state;
+Nodes (1): Compute display-priority tier for a thread. Lower = higher priority.
 
 ### Community 54 - "Community 54"
 Cohesion: 1.0
-Nodes (1): Dismiss an action item by id.
+Nodes (1): Return seconds since last_active ISO timestamp, or 0 if unparseable.
 
 ### Community 55 - "Community 55"
 Cohesion: 1.0
-Nodes (1): Print open action items, newest high-priority first.
+Nodes (1): Read DB state into a frozen CockpitState. Only function that touches DB.
 
 ### Community 56 - "Community 56"
 Cohesion: 1.0
-Nodes (1): Insert a notifications_v2 row for the given thread.
+Nodes (1): Mark agent complete: thread → closed, create notifications_v2 row,     convert a
 
 ### Community 57 - "Community 57"
 Cohesion: 1.0
-Nodes (1): Send SIGTERM to the watchdog daemon if running.
+Nodes (1): Return 'transient' or 'persistent'. Case-insensitive substring match.
 
 ### Community 58 - "Community 58"
 Cohesion: 1.0
-Nodes (1): Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).
+Nodes (1): Route agent failure: transient → leave running for retry; persistent → action_it
 
 ### Community 59 - "Community 59"
 Cohesion: 1.0
-Nodes (1): Classify agent pane state. Returns (state, key_to_send).      States: working |
+Nodes (1): Create an action_items row tied to a thread. Thread stays in current state;
 
 ### Community 60 - "Community 60"
 Cohesion: 1.0
-Nodes (1): Decommission a stalled/crashed agent and (if eligible) re-dispatch it.
+Nodes (1): Dismiss an action item by id.
 
 ### Community 61 - "Community 61"
 Cohesion: 1.0
-Nodes (1): Scan background threads with no active agent; file action items for orphans.
+Nodes (1): Print open action items, newest high-priority first.
 
 ### Community 62 - "Community 62"
 Cohesion: 1.0
-Nodes (1): Inspect a single agent's tmux pane and take action based on state.      Args:
+Nodes (1): Insert a notifications_v2 row for the given thread.
 
 ### Community 63 - "Community 63"
 Cohesion: 1.0
@@ -638,891 +644,891 @@ Nodes (1): Send SIGTERM to the watchdog daemon if running.
 
 ### Community 64 - "Community 64"
 Cohesion: 1.0
-Nodes (1): Scan background threads with no active agent; file action items for orphans.
+Nodes (1): Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).
 
 ### Community 65 - "Community 65"
 Cohesion: 1.0
-Nodes (1): Inspect a single agent's tmux pane and take action based on state.      Args:
+Nodes (1): Classify agent pane state. Returns (state, key_to_send).      States: working |
 
 ### Community 66 - "Community 66"
 Cohesion: 1.0
-Nodes (1): Record pending user decisions in current thread's open_questions.
+Nodes (1): Decommission a stalled/crashed agent and (if eligible) re-dispatch it.
 
 ### Community 67 - "Community 67"
 Cohesion: 1.0
-Nodes (1): Clear pending decisions by tool_use_id prefix.
+Nodes (1): Scan background threads with no active agent; file action items for orphans.
 
 ### Community 68 - "Community 68"
 Cohesion: 1.0
-Nodes (1): Open via Obsidian (vault files) or macOS system open (non-vault files).
+Nodes (1): Inspect a single agent's tmux pane and take action based on state.      Args:
 
 ### Community 69 - "Community 69"
 Cohesion: 1.0
-Nodes (1): Start talkback server if talkback.enabled=true and not already running.
+Nodes (1): Send SIGTERM to the watchdog daemon if running.
 
 ### Community 70 - "Community 70"
 Cohesion: 1.0
-Nodes (1): Render a structured context briefing for a thread. Template rendering — no LLM c
+Nodes (1): Scan background threads with no active agent; file action items for orphans.
 
 ### Community 71 - "Community 71"
 Cohesion: 1.0
-Nodes (1): Return a sort key tuple for cmd_show_topics ordering.
+Nodes (1): Inspect a single agent's tmux pane and take action based on state.      Args:
 
 ### Community 72 - "Community 72"
 Cohesion: 1.0
-Nodes (1): Find 'running' threads with no busy agent; convert each to closed + action_item.
+Nodes (1): Record pending user decisions in current thread's open_questions.
 
 ### Community 73 - "Community 73"
 Cohesion: 1.0
-Nodes (1): Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).
+Nodes (1): Clear pending decisions by tool_use_id prefix.
 
 ### Community 74 - "Community 74"
 Cohesion: 1.0
-Nodes (1): Classify agent pane state. Returns (state, key_to_send).      States: working |
+Nodes (1): Open via Obsidian (vault files) or macOS system open (non-vault files).
 
 ### Community 75 - "Community 75"
 Cohesion: 1.0
-Nodes (1): Decommission a stalled/crashed agent and (if eligible) re-dispatch it.
+Nodes (1): Start talkback server if talkback.enabled=true and not already running.
 
 ### Community 76 - "Community 76"
 Cohesion: 1.0
-Nodes (1): Scan background threads with no active agent; file action items for orphans.
+Nodes (1): Render a structured context briefing for a thread. Template rendering — no LLM c
 
 ### Community 77 - "Community 77"
 Cohesion: 1.0
-Nodes (1): Inspect a single agent's tmux pane and take action based on state.      Args:
+Nodes (1): Return a sort key tuple for cmd_show_topics ordering.
 
 ### Community 78 - "Community 78"
 Cohesion: 1.0
-Nodes (1): send-task writes last_task, last_send_task_pane_hash (16 hex chars), last_send_t
+Nodes (1): Find 'running' threads with no busy agent; convert each to closed + action_item.
 
 ### Community 79 - "Community 79"
 Cohesion: 1.0
-Nodes (1): release-agent copies last_task/role/model to thread before decommissioning agent
+Nodes (1): Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).
 
 ### Community 80 - "Community 80"
 Cohesion: 1.0
-Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
+Nodes (1): Classify agent pane state. Returns (state, key_to_send).      States: working |
 
 ### Community 81 - "Community 81"
 Cohesion: 1.0
-Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
+Nodes (1): Decommission a stalled/crashed agent and (if eligible) re-dispatch it.
 
 ### Community 82 - "Community 82"
 Cohesion: 1.0
-Nodes (1): Kill the agent's pane and remove it from the DB.
+Nodes (1): Scan background threads with no active agent; file action items for orphans.
 
 ### Community 83 - "Community 83"
 Cohesion: 1.0
-Nodes (1): Return True if any child process of the pane has JUGGLE_IS_AGENT=1.
+Nodes (1): Inspect a single agent's tmux pane and take action based on state.      Args:
 
 ### Community 84 - "Community 84"
 Cohesion: 1.0
-Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
+Nodes (1): send-task writes last_task, last_send_task_pane_hash (16 hex chars), last_send_t
 
 ### Community 85 - "Community 85"
 Cohesion: 1.0
-Nodes (1): Return 'transient' or 'persistent'. Case-insensitive substring match.
+Nodes (1): release-agent copies last_task/role/model to thread before decommissioning agent
 
 ### Community 86 - "Community 86"
 Cohesion: 1.0
-Nodes (1): Route agent failure: transient → leave running for retry; persistent → action_it
+Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
 
 ### Community 87 - "Community 87"
 Cohesion: 1.0
-Nodes (1): Create an action_items row tied to a thread. Thread stays in current state;
+Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
 
 ### Community 88 - "Community 88"
 Cohesion: 1.0
-Nodes (1): Dismiss an action item by id.
+Nodes (1): Kill the agent's pane and remove it from the DB.
 
 ### Community 89 - "Community 89"
 Cohesion: 1.0
-Nodes (1): Print open action items, newest high-priority first.
+Nodes (1): Return True if any child process of the pane has JUGGLE_IS_AGENT=1.
 
 ### Community 90 - "Community 90"
 Cohesion: 1.0
-Nodes (1): Insert a notifications_v2 row for the given thread.
+Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
 
 ### Community 91 - "Community 91"
 Cohesion: 1.0
-Nodes (1): Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.
+Nodes (1): Return 'transient' or 'persistent'. Case-insensitive substring match.
 
 ### Community 92 - "Community 92"
 Cohesion: 1.0
-Nodes (1): Parse last_active ISO timestamp, return seconds since now, or None.
+Nodes (1): Route agent failure: transient → leave running for retry; persistent → action_it
 
 ### Community 93 - "Community 93"
 Cohesion: 1.0
-Nodes (1): Return True if content is a junk/system message to be excluded from display.
+Nodes (1): Create an action_items row tied to a thread. Thread stays in current state;
 
 ### Community 94 - "Community 94"
 Cohesion: 1.0
-Nodes (1): Create tables if not exist, run schema migrations, enable WAL mode.
+Nodes (1): Dismiss an action item by id.
 
 ### Community 95 - "Community 95"
 Cohesion: 1.0
-Nodes (1): Return True if session.active == '1'.
+Nodes (1): Print open action items, newest high-priority first.
 
 ### Community 96 - "Community 96"
 Cohesion: 1.0
-Nodes (1): Return a value from the settings table, or default if not found.
+Nodes (1): Insert a notifications_v2 row for the given thread.
 
 ### Community 97 - "Community 97"
 Cohesion: 1.0
-Nodes (1): Public helper to write a session key (for tests).
+Nodes (1): Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.
 
 ### Community 98 - "Community 98"
 Cohesion: 1.0
-Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
+Nodes (1): Parse last_active ISO timestamp, return seconds since now, or None.
 
 ### Community 99 - "Community 99"
 Cohesion: 1.0
-Nodes (1): Look up a thread by its UUID `id`. Returns None if not found.
+Nodes (1): Return True if content is a junk/system message to be excluded from display.
 
 ### Community 100 - "Community 100"
 Cohesion: 1.0
-Nodes (1): Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U
+Nodes (1): Create tables if not exist, run schema migrations, enable WAL mode.
 
 ### Community 101 - "Community 101"
 Cohesion: 1.0
-Nodes (1): Transition a thread to a new state ({'active','running','closed','archived'}).
+Nodes (1): Return True if session.active == '1'.
 
 ### Community 102 - "Community 102"
 Cohesion: 1.0
-Nodes (1): Update last_active_at to now without changing status.
+Nodes (1): Return a value from the settings table, or default if not found.
 
 ### Community 103 - "Community 103"
 Cohesion: 1.0
-Nodes (1): Return all threads matching the given status. Order: last_active_at DESC.
+Nodes (1): Public helper to write a session key (for tests).
 
 ### Community 104 - "Community 104"
 Cohesion: 1.0
-Nodes (1): Load messages newest-first until token budget is exhausted         (token estima
+Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
 
 ### Community 105 - "Community 105"
 Cohesion: 1.0
-Nodes (1): Count user messages for a thread, optionally excluding junk.
+Nodes (1): Look up a thread by its UUID `id`. Returns None if not found.
 
 ### Community 106 - "Community 106"
 Cohesion: 1.0
-Nodes (1): Return the last user message and last assistant message for a thread.          R
+Nodes (1): Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U
 
 ### Community 107 - "Community 107"
 Cohesion: 1.0
-Nodes (1): Return the last n Q/A pairs for a thread, most recent first.          Each item:
+Nodes (1): Transition a thread to a new state ({'active','running','closed','archived'}).
 
 ### Community 108 - "Community 108"
 Cohesion: 1.0
-Nodes (1): Return threads where substantive user message delta >= threshold.          Uses
+Nodes (1): Update last_active_at to now without changing status.
 
 ### Community 109 - "Community 109"
 Cohesion: 1.0
-Nodes (1): Insert a notifications_v2 row. Returns new id.
+Nodes (1): Return all threads matching the given status. Order: last_active_at DESC.
 
 ### Community 110 - "Community 110"
 Cohesion: 1.0
-Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
+Nodes (1): Load messages newest-first until token budget is exhausted         (token estima
 
 ### Community 111 - "Community 111"
 Cohesion: 1.0
-Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
+Nodes (1): Count user messages for a thread, optionally excluding junk.
 
 ### Community 112 - "Community 112"
 Cohesion: 1.0
-Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
+Nodes (1): Return the last user message and last assistant message for a thread.          R
 
 ### Community 113 - "Community 113"
 Cohesion: 1.0
-Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
+Nodes (1): Return the last n Q/A pairs for a thread, most recent first.          Each item:
 
 ### Community 114 - "Community 114"
 Cohesion: 1.0
-Nodes (1): Unarchive: status=active, show_in_list=1, user_label preserved.
+Nodes (1): Return threads where substantive user message delta >= threshold.          Uses
 
 ### Community 115 - "Community 115"
 Cohesion: 1.0
-Nodes (1): Create a new agent record. Returns the agent UUID.
+Nodes (1): Insert a notifications_v2 row. Returns new id.
 
 ### Community 116 - "Community 116"
 Cohesion: 1.0
-Nodes (1): Look up an agent by UUID. Returns None if not found.
+Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
 
 ### Community 117 - "Community 117"
 Cohesion: 1.0
-Nodes (1): Return all agents ordered by creation time.
+Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
 
 ### Community 118 - "Community 118"
 Cohesion: 1.0
-Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
 
 ### Community 119 - "Community 119"
 Cohesion: 1.0
-Nodes (1): Return the best idle agent for a given thread using scoring.          Domain fil
+Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
 
 ### Community 120 - "Community 120"
 Cohesion: 1.0
-Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
+Nodes (1): Unarchive: status=active, show_in_list=1, user_label preserved.
 
 ### Community 121 - "Community 121"
 Cohesion: 1.0
-Nodes (1): Mark agent complete: thread → closed, create notifications_v2 row,     convert a
+Nodes (1): Create a new agent record. Returns the agent UUID.
 
 ### Community 122 - "Community 122"
 Cohesion: 1.0
-Nodes (1): Return 'transient' or 'persistent'. Case-insensitive substring match.
+Nodes (1): Look up an agent by UUID. Returns None if not found.
 
 ### Community 123 - "Community 123"
 Cohesion: 1.0
-Nodes (1): Route agent failure: transient → leave running for retry; persistent → action_it
+Nodes (1): Return all agents ordered by creation time.
 
 ### Community 124 - "Community 124"
 Cohesion: 1.0
-Nodes (1): Create an action_items row tied to a thread. Thread stays in current state;
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
 
 ### Community 125 - "Community 125"
 Cohesion: 1.0
-Nodes (1): Insert a notifications_v2 row for the given thread.
+Nodes (1): Return the best idle agent for a given thread using scoring.          Domain fil
 
 ### Community 126 - "Community 126"
 Cohesion: 1.0
-Nodes (1): Print open action items, newest high-priority first.
+Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
 
 ### Community 127 - "Community 127"
 Cohesion: 1.0
-Nodes (1): Insert a notifications_v2 row for the given thread.
+Nodes (1): Mark agent complete: thread → closed, create notifications_v2 row,     convert a
 
 ### Community 128 - "Community 128"
 Cohesion: 1.0
-Nodes (1): Working agent: inspect returns 'working', no spurious action items.
+Nodes (1): Return 'transient' or 'persistent'. Case-insensitive substring match.
 
 ### Community 129 - "Community 129"
 Cohesion: 1.0
-Nodes (1): Recoverable prompt: watchdog sends '2', dialog clears, notification logged, no a
+Nodes (1): Route agent failure: transient → leave running for retry; persistent → action_it
 
 ### Community 130 - "Community 130"
 Cohesion: 1.0
-Nodes (1): Stalled silent: action item filed (failure/high) + snapshot written.
+Nodes (1): Create an action_items row tied to a thread. Thread stays in current state;
 
 ### Community 131 - "Community 131"
 Cohesion: 1.0
-Nodes (1): Crashed: thread marked failed, action item filed, agent record cleaned up.
+Nodes (1): Insert a notifications_v2 row for the given thread.
 
 ### Community 132 - "Community 132"
 Cohesion: 1.0
-Nodes (1): Stuck-at-prompt: watchdog sends Enter, pane advances, notification logged, no ac
+Nodes (1): Print open action items, newest high-priority first.
 
 ### Community 133 - "Community 133"
 Cohesion: 1.0
-Nodes (1): GAP: permission dialog not auto-dismissed without watchdog.
+Nodes (1): Insert a notifications_v2 row for the given thread.
 
 ### Community 134 - "Community 134"
 Cohesion: 1.0
-Nodes (1): GAP: silent stall not detected without watchdog.
+Nodes (1): Working agent: inspect returns 'working', no spurious action items.
 
 ### Community 135 - "Community 135"
 Cohesion: 1.0
-Nodes (1): GAP: crash not detected without watchdog.
+Nodes (1): Recoverable prompt: watchdog sends '2', dialog clears, notification logged, no a
 
 ### Community 136 - "Community 136"
 Cohesion: 1.0
-Nodes (1): GAP: stuck-at-prompt not detected without watchdog.
+Nodes (1): Stalled silent: action item filed (failure/high) + snapshot written.
 
 ### Community 137 - "Community 137"
 Cohesion: 1.0
-Nodes (1): Mark agent complete: thread → closed, create notifications_v2 row,     convert a
+Nodes (1): Crashed: thread marked failed, action item filed, agent record cleaned up.
 
 ### Community 138 - "Community 138"
 Cohesion: 1.0
-Nodes (1): Return 'transient' or 'persistent'. Case-insensitive substring match.
+Nodes (1): Stuck-at-prompt: watchdog sends Enter, pane advances, notification logged, no ac
 
 ### Community 139 - "Community 139"
 Cohesion: 1.0
-Nodes (1): Route agent failure: transient → leave running for retry; persistent → action_it
+Nodes (1): GAP: permission dialog not auto-dismissed without watchdog.
 
 ### Community 140 - "Community 140"
 Cohesion: 1.0
-Nodes (1): Create an action_items row tied to a thread. Thread stays in current state;
+Nodes (1): GAP: silent stall not detected without watchdog.
 
 ### Community 141 - "Community 141"
 Cohesion: 1.0
-Nodes (1): Dismiss an action item by id.
+Nodes (1): GAP: crash not detected without watchdog.
 
 ### Community 142 - "Community 142"
 Cohesion: 1.0
-Nodes (1): Print open action items, newest high-priority first.
+Nodes (1): GAP: stuck-at-prompt not detected without watchdog.
 
 ### Community 143 - "Community 143"
 Cohesion: 1.0
-Nodes (1): Tests for juggle agent domain isolation (v1.5.0).
+Nodes (1): Mark agent complete: thread → closed, create notifications_v2 row,     convert a
 
 ### Community 144 - "Community 144"
 Cohesion: 1.0
-Nodes (1): Thread with domain=null only gets agents with domain=null.
+Nodes (1): Return 'transient' or 'persistent'. Case-insensitive substring match.
 
 ### Community 145 - "Community 145"
 Cohesion: 1.0
-Nodes (1): Thread with domain=null and only domain-stamped agents → None (spawn fresh).
+Nodes (1): Route agent failure: transient → leave running for retry; persistent → action_it
 
 ### Community 146 - "Community 146"
 Cohesion: 1.0
-Nodes (1): Thread with domain='juggle' accepts domain='juggle' agents.
+Nodes (1): Create an action_items row tied to a thread. Thread stays in current state;
 
 ### Community 147 - "Community 147"
 Cohesion: 1.0
-Nodes (1): Thread with domain='juggle' also accepts domain=null (fresh) agents.
+Nodes (1): Dismiss an action item by id.
 
 ### Community 148 - "Community 148"
 Cohesion: 1.0
-Nodes (1): Thread with domain='juggle' must NOT reuse domain='vault' agent.
+Nodes (1): Print open action items, newest high-priority first.
 
 ### Community 149 - "Community 149"
 Cohesion: 1.0
-Nodes (1): Juggle agent is never returned for a vault thread.
+Nodes (1): Tests for juggle agent domain isolation (v1.5.0).
 
 ### Community 150 - "Community 150"
 Cohesion: 1.0
-Nodes (1): Within matching domain agents, context_threads scoring still applies.
+Nodes (1): Thread with domain=null only gets agents with domain=null.
 
 ### Community 151 - "Community 151"
 Cohesion: 1.0
-Nodes (1): Return True if session.active == '1'.
+Nodes (1): Thread with domain=null and only domain-stamped agents → None (spawn fresh).
 
 ### Community 152 - "Community 152"
 Cohesion: 1.0
-Nodes (1): Return a value from the settings table, or default if not found.
+Nodes (1): Thread with domain='juggle' accepts domain='juggle' agents.
 
 ### Community 153 - "Community 153"
 Cohesion: 1.0
-Nodes (1): Public helper to write a session key (for tests).
+Nodes (1): Thread with domain='juggle' also accepts domain=null (fresh) agents.
 
 ### Community 154 - "Community 154"
 Cohesion: 1.0
-Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
+Nodes (1): Thread with domain='juggle' must NOT reuse domain='vault' agent.
 
 ### Community 155 - "Community 155"
 Cohesion: 1.0
-Nodes (1): Look up a thread by its UUID `id`. Returns None if not found.
+Nodes (1): Juggle agent is never returned for a vault thread.
 
 ### Community 156 - "Community 156"
 Cohesion: 1.0
-Nodes (1): Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U
+Nodes (1): Within matching domain agents, context_threads scoring still applies.
 
 ### Community 157 - "Community 157"
 Cohesion: 1.0
-Nodes (1): Update any column(s) on a thread row.
+Nodes (1): Return True if session.active == '1'.
 
 ### Community 158 - "Community 158"
 Cohesion: 1.0
-Nodes (1): Transition a thread to a new state ({'active','running','closed','archived'}).
+Nodes (1): Return a value from the settings table, or default if not found.
 
 ### Community 159 - "Community 159"
 Cohesion: 1.0
-Nodes (1): Update last_active_at to now without changing status.
+Nodes (1): Public helper to write a session key (for tests).
 
 ### Community 160 - "Community 160"
 Cohesion: 1.0
-Nodes (1): Return all threads matching the given status. Order: last_active_at DESC.
+Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
 
 ### Community 161 - "Community 161"
 Cohesion: 1.0
-Nodes (1): Load messages newest-first until token budget is exhausted         (token estima
+Nodes (1): Look up a thread by its UUID `id`. Returns None if not found.
 
 ### Community 162 - "Community 162"
 Cohesion: 1.0
-Nodes (1): Count user messages for a thread, optionally excluding junk.
+Nodes (1): Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U
 
 ### Community 163 - "Community 163"
 Cohesion: 1.0
-Nodes (1): Return the last user message and last assistant message for a thread.          R
+Nodes (1): Update any column(s) on a thread row.
 
 ### Community 164 - "Community 164"
 Cohesion: 1.0
-Nodes (1): Return the last n Q/A pairs for a thread, most recent first.          Each item:
+Nodes (1): Transition a thread to a new state ({'active','running','closed','archived'}).
 
 ### Community 165 - "Community 165"
 Cohesion: 1.0
-Nodes (1): Return threads where substantive user message delta >= threshold.          Uses
+Nodes (1): Update last_active_at to now without changing status.
 
 ### Community 166 - "Community 166"
 Cohesion: 1.0
-Nodes (1): Insert a notifications_v2 row. Returns new id.
+Nodes (1): Return all threads matching the given status. Order: last_active_at DESC.
 
 ### Community 167 - "Community 167"
 Cohesion: 1.0
-Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
+Nodes (1): Load messages newest-first until token budget is exhausted         (token estima
 
 ### Community 168 - "Community 168"
 Cohesion: 1.0
-Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
+Nodes (1): Count user messages for a thread, optionally excluding junk.
 
 ### Community 169 - "Community 169"
 Cohesion: 1.0
-Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
+Nodes (1): Return the last user message and last assistant message for a thread.          R
 
 ### Community 170 - "Community 170"
 Cohesion: 1.0
-Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
+Nodes (1): Return the last n Q/A pairs for a thread, most recent first.          Each item:
 
 ### Community 171 - "Community 171"
 Cohesion: 1.0
-Nodes (1): Unarchive: status=active, show_in_list=1, user_label preserved.
+Nodes (1): Return threads where substantive user message delta >= threshold.          Uses
 
 ### Community 172 - "Community 172"
 Cohesion: 1.0
-Nodes (1): Create a new agent record. Returns the agent UUID.
+Nodes (1): Insert a notifications_v2 row. Returns new id.
 
 ### Community 173 - "Community 173"
 Cohesion: 1.0
-Nodes (1): Look up an agent by UUID. Returns None if not found.
+Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
 
 ### Community 174 - "Community 174"
 Cohesion: 1.0
-Nodes (1): Return all agents ordered by creation time.
+Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
 
 ### Community 175 - "Community 175"
 Cohesion: 1.0
-Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
 
 ### Community 176 - "Community 176"
 Cohesion: 1.0
-Nodes (1): Delete an agent record.
+Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
 
 ### Community 177 - "Community 177"
 Cohesion: 1.0
-Nodes (1): Return the best idle agent for a given thread using scoring.          Scoring (h
+Nodes (1): Unarchive: status=active, show_in_list=1, user_label preserved.
 
 ### Community 178 - "Community 178"
 Cohesion: 1.0
-Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
+Nodes (1): Create a new agent record. Returns the agent UUID.
 
 ### Community 179 - "Community 179"
 Cohesion: 1.0
-Nodes (1): Record pending user decisions in current thread's open_questions.
+Nodes (1): Look up an agent by UUID. Returns None if not found.
 
 ### Community 180 - "Community 180"
 Cohesion: 1.0
-Nodes (1): Clear pending decisions by tool_use_id prefix.
+Nodes (1): Return all agents ordered by creation time.
 
 ### Community 181 - "Community 181"
 Cohesion: 1.0
-Nodes (1): Open via Obsidian (vault files) or macOS system open (non-vault files).
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
 
 ### Community 182 - "Community 182"
 Cohesion: 1.0
-Nodes (1): Entry point called by juggle_cli.py.
+Nodes (1): Delete an agent record.
 
 ### Community 183 - "Community 183"
 Cohesion: 1.0
-Nodes (1): Returns (vault_path, vault_name) from juggle settings.
+Nodes (1): Return the best idle agent for a given thread using scoring.          Scoring (h
 
 ### Community 184 - "Community 184"
 Cohesion: 1.0
-Nodes (1): Insert domain name into domains table. No-op if already exists.
+Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
 
 ### Community 185 - "Community 185"
 Cohesion: 1.0
-Nodes (1): Return all registered domain names.
+Nodes (1): Record pending user decisions in current thread's open_questions.
 
 ### Community 186 - "Community 186"
 Cohesion: 1.0
-Nodes (1): Return True if name is a registered domain.
+Nodes (1): Clear pending decisions by tool_use_id prefix.
 
 ### Community 187 - "Community 187"
 Cohesion: 1.0
-Nodes (1): Insert domain name into domains table. No-op if already exists.
+Nodes (1): Open via Obsidian (vault files) or macOS system open (non-vault files).
 
 ### Community 188 - "Community 188"
 Cohesion: 1.0
-Nodes (1): Return all path→domain mappings.
+Nodes (1): Entry point called by juggle_cli.py.
 
 ### Community 189 - "Community 189"
 Cohesion: 1.0
-Nodes (1): Return first domain whose path_fragment appears in prompt, or None.
+Nodes (1): Returns (vault_path, vault_name) from juggle settings.
 
 ### Community 190 - "Community 190"
 Cohesion: 1.0
-Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
+Nodes (1): Insert domain name into domains table. No-op if already exists.
 
 ### Community 191 - "Community 191"
 Cohesion: 1.0
-Nodes (1): Render a structured context briefing for a thread. Template rendering — no LLM c
+Nodes (1): Return all registered domain names.
 
 ### Community 192 - "Community 192"
 Cohesion: 1.0
-Nodes (1): Return a sort key tuple for cmd_show_topics ordering.
+Nodes (1): Return True if name is a registered domain.
 
 ### Community 193 - "Community 193"
 Cohesion: 1.0
-Nodes (1): Find 'running' threads with no busy agent; convert each to closed + action_item.
+Nodes (1): Insert domain name into domains table. No-op if already exists.
 
 ### Community 194 - "Community 194"
 Cohesion: 1.0
-Nodes (1): Parse --since value to UTC ISO timestamp. Accepts 'today', 'yesterday', or ISO.
+Nodes (1): Return all path→domain mappings.
 
 ### Community 195 - "Community 195"
 Cohesion: 1.0
-Nodes (1): Simple status icon for digest output.
+Nodes (1): Return first domain whose path_fragment appears in prompt, or None.
 
 ### Community 196 - "Community 196"
 Cohesion: 1.0
-Nodes (1): Summarize topics, decisions, blockers, and agent activity since cutoff.
+Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
 
 ### Community 197 - "Community 197"
 Cohesion: 1.0
-Nodes (1): Switch to the highest-priority action item (blocker > review > idle OQ > open qu
+Nodes (1): Render a structured context briefing for a thread. Template rendering — no LLM c
 
 ### Community 198 - "Community 198"
 Cohesion: 1.0
-Nodes (1): Insert domain name into domains table. No-op if already exists.
+Nodes (1): Return a sort key tuple for cmd_show_topics ordering.
 
 ### Community 199 - "Community 199"
 Cohesion: 1.0
-Nodes (1): Return all registered domain names.
+Nodes (1): Find 'running' threads with no busy agent; convert each to closed + action_item.
 
 ### Community 200 - "Community 200"
 Cohesion: 1.0
-Nodes (1): Return True if name is a registered domain.
+Nodes (1): Parse --since value to UTC ISO timestamp. Accepts 'today', 'yesterday', or ISO.
 
 ### Community 201 - "Community 201"
 Cohesion: 1.0
-Nodes (1): Insert or replace a path_fragment → domain mapping.
+Nodes (1): Simple status icon for digest output.
 
 ### Community 202 - "Community 202"
 Cohesion: 1.0
-Nodes (1): Return all path→domain mappings.
+Nodes (1): Summarize topics, decisions, blockers, and agent activity since cutoff.
 
 ### Community 203 - "Community 203"
 Cohesion: 1.0
-Nodes (1): Return first domain whose path_fragment appears in prompt, or None.
+Nodes (1): Switch to the highest-priority action item (blocker > review > idle OQ > open qu
 
 ### Community 204 - "Community 204"
 Cohesion: 1.0
-Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
+Nodes (1): Insert domain name into domains table. No-op if already exists.
 
 ### Community 205 - "Community 205"
 Cohesion: 1.0
-Nodes (1): Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.
+Nodes (1): Return all registered domain names.
 
 ### Community 206 - "Community 206"
 Cohesion: 1.0
-Nodes (1): Parse last_active ISO timestamp, return seconds since now, or None.
+Nodes (1): Return True if name is a registered domain.
 
 ### Community 207 - "Community 207"
 Cohesion: 1.0
-Nodes (1): Create tables if not exist, run schema migrations, enable WAL mode.
+Nodes (1): Insert or replace a path_fragment → domain mapping.
 
 ### Community 208 - "Community 208"
 Cohesion: 1.0
-Nodes (1): Apply incremental schema migrations.
+Nodes (1): Return all path→domain mappings.
 
 ### Community 209 - "Community 209"
 Cohesion: 1.0
-Nodes (1): Return True if session.active == '1'.
+Nodes (1): Return first domain whose path_fragment appears in prompt, or None.
 
 ### Community 210 - "Community 210"
 Cohesion: 1.0
-Nodes (1): Return a value from the settings table, or default if not found.
+Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
 
 ### Community 211 - "Community 211"
 Cohesion: 1.0
-Nodes (1): Public helper to write a session key (for tests).
+Nodes (1): Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.
 
 ### Community 212 - "Community 212"
 Cohesion: 1.0
-Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
+Nodes (1): Parse last_active ISO timestamp, return seconds since now, or None.
 
 ### Community 213 - "Community 213"
 Cohesion: 1.0
-Nodes (1): Look up a thread by its UUID `id`. Returns None if not found.
+Nodes (1): Create tables if not exist, run schema migrations, enable WAL mode.
 
 ### Community 214 - "Community 214"
 Cohesion: 1.0
-Nodes (1): Update any column(s) on a thread row.
+Nodes (1): Apply incremental schema migrations.
 
 ### Community 215 - "Community 215"
 Cohesion: 1.0
-Nodes (1): Transition a thread to a new state ({'active','running','closed','archived'}).
+Nodes (1): Return True if session.active == '1'.
 
 ### Community 216 - "Community 216"
 Cohesion: 1.0
-Nodes (1): Update last_active_at to now without changing status.
+Nodes (1): Return a value from the settings table, or default if not found.
 
 ### Community 217 - "Community 217"
 Cohesion: 1.0
-Nodes (1): Return all threads matching the given status. Order: last_active_at DESC.
+Nodes (1): Public helper to write a session key (for tests).
 
 ### Community 218 - "Community 218"
 Cohesion: 1.0
-Nodes (1): Load messages newest-first until token budget is exhausted         (token estima
+Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
 
 ### Community 219 - "Community 219"
 Cohesion: 1.0
-Nodes (1): Count user messages for a thread, optionally excluding junk.
+Nodes (1): Look up a thread by its UUID `id`. Returns None if not found.
 
 ### Community 220 - "Community 220"
 Cohesion: 1.0
-Nodes (1): Return the last user message and last assistant message for a thread.          R
+Nodes (1): Update any column(s) on a thread row.
 
 ### Community 221 - "Community 221"
 Cohesion: 1.0
-Nodes (1): Return the last n Q/A pairs for a thread, most recent first.          Each item:
+Nodes (1): Transition a thread to a new state ({'active','running','closed','archived'}).
 
 ### Community 222 - "Community 222"
 Cohesion: 1.0
-Nodes (1): Return threads where substantive user message delta >= threshold.          Uses
+Nodes (1): Update last_active_at to now without changing status.
 
 ### Community 223 - "Community 223"
 Cohesion: 1.0
-Nodes (1): Insert a notifications_v2 row. Returns new id.
+Nodes (1): Return all threads matching the given status. Order: last_active_at DESC.
 
 ### Community 224 - "Community 224"
 Cohesion: 1.0
-Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
+Nodes (1): Load messages newest-first until token budget is exhausted         (token estima
 
 ### Community 225 - "Community 225"
 Cohesion: 1.0
-Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
+Nodes (1): Count user messages for a thread, optionally excluding junk.
 
 ### Community 226 - "Community 226"
 Cohesion: 1.0
-Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
+Nodes (1): Return the last user message and last assistant message for a thread.          R
 
 ### Community 227 - "Community 227"
 Cohesion: 1.0
-Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
+Nodes (1): Return the last n Q/A pairs for a thread, most recent first.          Each item:
 
 ### Community 228 - "Community 228"
 Cohesion: 1.0
-Nodes (1): Create a new agent record. Returns the agent UUID.
+Nodes (1): Return threads where substantive user message delta >= threshold.          Uses
 
 ### Community 229 - "Community 229"
 Cohesion: 1.0
-Nodes (1): Look up an agent by UUID. Returns None if not found.
+Nodes (1): Insert a notifications_v2 row. Returns new id.
 
 ### Community 230 - "Community 230"
 Cohesion: 1.0
-Nodes (1): Return all agents ordered by creation time.
+Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
 
 ### Community 231 - "Community 231"
 Cohesion: 1.0
-Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
 
 ### Community 232 - "Community 232"
 Cohesion: 1.0
-Nodes (1): Delete an agent record.
+Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
 
 ### Community 233 - "Community 233"
 Cohesion: 1.0
-Nodes (1): Return the best idle agent for a given thread using scoring.          Domain fil
+Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
 
 ### Community 234 - "Community 234"
 Cohesion: 1.0
-Nodes (1): Return all registered domain names.
+Nodes (1): Create a new agent record. Returns the agent UUID.
 
 ### Community 235 - "Community 235"
 Cohesion: 1.0
-Nodes (1): Return True if name is a registered domain.
+Nodes (1): Look up an agent by UUID. Returns None if not found.
 
 ### Community 236 - "Community 236"
 Cohesion: 1.0
-Nodes (1): Return all path→domain mappings.
+Nodes (1): Return all agents ordered by creation time.
 
 ### Community 237 - "Community 237"
 Cohesion: 1.0
-Nodes (1): Return first domain whose path_fragment appears in prompt, or None.
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
 
 ### Community 238 - "Community 238"
 Cohesion: 1.0
-Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
+Nodes (1): Delete an agent record.
 
 ### Community 239 - "Community 239"
 Cohesion: 1.0
-Nodes (1): Recursively merge override into base. Returns a new dict.
+Nodes (1): Return the best idle agent for a given thread using scoring.          Domain fil
 
 ### Community 240 - "Community 240"
 Cohesion: 1.0
-Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
+Nodes (1): Return all registered domain names.
 
 ### Community 241 - "Community 241"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a top-level setting value.
+Nodes (1): Return True if name is a registered domain.
 
 ### Community 242 - "Community 242"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a nested setting value from a named section.
+Nodes (1): Return all path→domain mappings.
 
 ### Community 243 - "Community 243"
 Cohesion: 1.0
-Nodes (1): Create the juggle tmux session + window 0 if not already running.
+Nodes (1): Return first domain whose path_fragment appears in prompt, or None.
 
 ### Community 244 - "Community 244"
 Cohesion: 1.0
-Nodes (1): Return the target string for the first window (respects base-index).
+Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
 
 ### Community 245 - "Community 245"
 Cohesion: 1.0
-Nodes (1): Split the first window to create a new pane. Returns pane_id like '%5'.
+Nodes (1): Recursively merge override into base. Returns a new dict.
 
 ### Community 246 - "Community 246"
 Cohesion: 1.0
-Nodes (1): Send the 'claude' command to a pane.          Prefixes with env -u CLAUDE_PLUGIN
+Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
 
 ### Community 247 - "Community 247"
 Cohesion: 1.0
-Nodes (1): Return True if pane_id exists in the juggle session.
+Nodes (1): Shortcut: get a top-level setting value.
 
 ### Community 248 - "Community 248"
 Cohesion: 1.0
-Nodes (1): Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.
+Nodes (1): Shortcut: get a nested setting value from a named section.
 
 ### Community 249 - "Community 249"
 Cohesion: 1.0
-Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
+Nodes (1): Create the juggle tmux session + window 0 if not already running.
 
 ### Community 250 - "Community 250"
 Cohesion: 1.0
-Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
+Nodes (1): Return the target string for the first window (respects base-index).
 
 ### Community 251 - "Community 251"
 Cohesion: 1.0
-Nodes (1): Kill the agent's pane and remove it from the DB.
+Nodes (1): Split the first window to create a new pane. Returns pane_id like '%5'.
 
 ### Community 252 - "Community 252"
 Cohesion: 1.0
-Nodes (1): Return True if any child process of the pane has JUGGLE_IS_AGENT=1.
+Nodes (1): Send the 'claude' command to a pane.          Prefixes with env -u CLAUDE_PLUGIN
 
 ### Community 253 - "Community 253"
 Cohesion: 1.0
-Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
+Nodes (1): Return True if pane_id exists in the juggle session.
 
 ### Community 254 - "Community 254"
 Cohesion: 1.0
-Nodes (1): Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
+Nodes (1): Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.
 
 ### Community 255 - "Community 255"
 Cohesion: 1.0
-Nodes (1): Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.
+Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
 
 ### Community 256 - "Community 256"
 Cohesion: 1.0
-Nodes (1): Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
+Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
 
 ### Community 257 - "Community 257"
 Cohesion: 1.0
-Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
+Nodes (1): Kill the agent's pane and remove it from the DB.
 
 ### Community 258 - "Community 258"
 Cohesion: 1.0
-Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
+Nodes (1): Return True if any child process of the pane has JUGGLE_IS_AGENT=1.
 
 ### Community 259 - "Community 259"
 Cohesion: 1.0
-Nodes (1): Kill the agent's pane and remove it from the DB.
+Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
 
 ### Community 260 - "Community 260"
 Cohesion: 1.0
-Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
+Nodes (1): Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
 
 ### Community 261 - "Community 261"
 Cohesion: 1.0
-Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
+Nodes (1): Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.
 
 ### Community 262 - "Community 262"
 Cohesion: 1.0
-Nodes (1): Trim text to at most `limit` chars while preserving the header/footer lines
+Nodes (1): Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
 
 ### Community 263 - "Community 263"
 Cohesion: 1.0
-Nodes (1): Module-level convenience function for use by the UserPromptSubmit hook.      Ret
+Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
 
 ### Community 264 - "Community 264"
 Cohesion: 1.0
-Nodes (1): Return emoji state string for a thread dict.      Returns one of: "👉", "🏃‍♂️", "
+Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
 
 ### Community 265 - "Community 265"
 Cohesion: 1.0
-Nodes (1): Return up to 2 Hindsight snippet lines for a topic. Empty list on any failure.
+Nodes (1): Kill the agent's pane and remove it from the DB.
 
 ### Community 266 - "Community 266"
 Cohesion: 1.0
-Nodes (1): Render the topics tree as a string. Returns 'No topics.' if no visible threads.
+Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
 
 ### Community 267 - "Community 267"
 Cohesion: 1.0
-Nodes (1): Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou
+Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
 
 ### Community 268 - "Community 268"
 Cohesion: 1.0
-Nodes (1): Full enriched startup string: topics tree + per-thread Hindsight recalls.      C
+Nodes (1): Trim text to at most `limit` chars while preserving the header/footer lines
 
 ### Community 269 - "Community 269"
 Cohesion: 1.0
-Nodes (1): Recursively merge override into base. Returns a new dict.
+Nodes (1): Module-level convenience function for use by the UserPromptSubmit hook.      Ret
 
 ### Community 270 - "Community 270"
 Cohesion: 1.0
-Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
+Nodes (1): Return emoji state string for a thread dict.      Returns one of: "👉", "🏃‍♂️", "
 
 ### Community 271 - "Community 271"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a top-level setting value.
+Nodes (1): Return up to 2 Hindsight snippet lines for a topic. Empty list on any failure.
 
 ### Community 272 - "Community 272"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a nested setting value from a named section.
+Nodes (1): Render the topics tree as a string. Returns 'No topics.' if no visible threads.
 
 ### Community 273 - "Community 273"
 Cohesion: 1.0
-Nodes (1): RRF fusion of vec0 KNN and FTS5. Returns top-k results.
+Nodes (1): Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou
 
 ### Community 274 - "Community 274"
 Cohesion: 1.0
-Nodes (1): Returns (vault_path, vault_name) from juggle settings.
+Nodes (1): Full enriched startup string: topics tree + per-thread Hindsight recalls.      C
 
 ### Community 275 - "Community 275"
 Cohesion: 1.0
-Nodes (1): Entry point called by juggle_cli.py.
+Nodes (1): Recursively merge override into base. Returns a new dict.
 
 ### Community 276 - "Community 276"
 Cohesion: 1.0
-Nodes (1): Entry point called by juggle_cli.py.
+Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
 
 ### Community 277 - "Community 277"
 Cohesion: 1.0
-Nodes (1): Record pending user decisions in current thread's open_questions.
+Nodes (1): Shortcut: get a top-level setting value.
 
 ### Community 278 - "Community 278"
 Cohesion: 1.0
-Nodes (1): Clear pending decisions by tool_use_id prefix.
+Nodes (1): Shortcut: get a nested setting value from a named section.
 
 ### Community 279 - "Community 279"
 Cohesion: 1.0
-Nodes (1): Open via Obsidian (vault files) or macOS system open (non-vault files).
+Nodes (1): RRF fusion of vec0 KNN and FTS5. Returns top-k results.
 
 ### Community 280 - "Community 280"
 Cohesion: 1.0
-Nodes (1): Entry point called by juggle_cli.py.
+Nodes (1): Returns (vault_path, vault_name) from juggle settings.
 
 ### Community 281 - "Community 281"
 Cohesion: 1.0
-Nodes (1): Recursively merge override into base. Returns a new dict.
+Nodes (1): Entry point called by juggle_cli.py.
 
 ### Community 282 - "Community 282"
 Cohesion: 1.0
-Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
+Nodes (1): Entry point called by juggle_cli.py.
 
 ### Community 283 - "Community 283"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a top-level setting value.
+Nodes (1): Record pending user decisions in current thread's open_questions.
 
 ### Community 284 - "Community 284"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a nested setting value from a named section.
+Nodes (1): Clear pending decisions by tool_use_id prefix.
 
 ### Community 285 - "Community 285"
 Cohesion: 1.0
-Nodes (1): Entry point called by juggle_cli.py.
+Nodes (1): Open via Obsidian (vault files) or macOS system open (non-vault files).
 
 ### Community 286 - "Community 286"
 Cohesion: 1.0
@@ -1530,982 +1536,1014 @@ Nodes (1): Entry point called by juggle_cli.py.
 
 ### Community 287 - "Community 287"
 Cohesion: 1.0
-Nodes (1): Entry point called by juggle_cli.py.
+Nodes (1): Recursively merge override into base. Returns a new dict.
 
 ### Community 288 - "Community 288"
 Cohesion: 1.0
-Nodes (1): Entry point called by juggle_cli.py.
+Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
 
 ### Community 289 - "Community 289"
 Cohesion: 1.0
-Nodes (1): Record pending user decisions in current thread's open_questions.
+Nodes (1): Shortcut: get a top-level setting value.
 
 ### Community 290 - "Community 290"
 Cohesion: 1.0
-Nodes (1): Clear pending decisions by tool_use_id prefix.
+Nodes (1): Shortcut: get a nested setting value from a named section.
 
 ### Community 291 - "Community 291"
 Cohesion: 1.0
-Nodes (1): Open via Obsidian (vault files) or macOS system open (non-vault files).
+Nodes (1): Entry point called by juggle_cli.py.
 
 ### Community 292 - "Community 292"
 Cohesion: 1.0
-Nodes (1): Insert article; skip if URL exists. Returns new row id or None.
+Nodes (1): Entry point called by juggle_cli.py.
 
 ### Community 293 - "Community 293"
 Cohesion: 1.0
-Nodes (1): RRF fusion of vec0 KNN and FTS5. Returns top-k results.
+Nodes (1): Entry point called by juggle_cli.py.
 
 ### Community 294 - "Community 294"
 Cohesion: 1.0
-Nodes (1): Recursively merge override into base. Returns a new dict.
+Nodes (1): Entry point called by juggle_cli.py.
 
 ### Community 295 - "Community 295"
 Cohesion: 1.0
-Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
+Nodes (1): Record pending user decisions in current thread's open_questions.
 
 ### Community 296 - "Community 296"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a top-level setting value.
+Nodes (1): Clear pending decisions by tool_use_id prefix.
 
 ### Community 297 - "Community 297"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a nested setting value from a named section.
+Nodes (1): Open via Obsidian (vault files) or macOS system open (non-vault files).
 
 ### Community 298 - "Community 298"
 Cohesion: 1.0
-Nodes (1): Return 'wide', 'medium', or 'narrow' based on terminal width.
+Nodes (1): Insert article; skip if URL exists. Returns new row id or None.
 
 ### Community 299 - "Community 299"
 Cohesion: 1.0
-Nodes (1): Build a Rich Layout tree for the given breakpoint.      Wide (>=120):         ro
+Nodes (1): RRF fusion of vec0 KNN and FTS5. Returns top-k results.
 
 ### Community 300 - "Community 300"
 Cohesion: 1.0
-Nodes (1): Render topics panel.      Wide: one row per topic with glyph + [label] + title.
+Nodes (1): Recursively merge override into base. Returns a new dict.
 
 ### Community 301 - "Community 301"
 Cohesion: 1.0
-Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
+Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
 
 ### Community 302 - "Community 302"
 Cohesion: 1.0
-Nodes (1): Render agents panel. Single-line per agent: glyph + [label] + id_short + role +
+Nodes (1): Shortcut: get a top-level setting value.
 
 ### Community 303 - "Community 303"
 Cohesion: 1.0
-Nodes (1): Render notifications panel. Input is expected newest-first (from snapshot).
+Nodes (1): Shortcut: get a nested setting value from a named section.
 
 ### Community 304 - "Community 304"
 Cohesion: 1.0
-Nodes (1): Populate layout panels from state. Mutates layout in place.      If state is Non
+Nodes (1): Return 'wide', 'medium', or 'narrow' based on terminal width.
 
 ### Community 305 - "Community 305"
 Cohesion: 1.0
-Nodes (1): Render notifications panel. Input is expected newest-first (from snapshot).
+Nodes (1): Build a Rich Layout tree for the given breakpoint.      Wide (>=120):         ro
 
 ### Community 306 - "Community 306"
 Cohesion: 1.0
-Nodes (1): Populate layout panels from state. Mutates layout in place.      If state is Non
+Nodes (1): Render topics panel.      Wide: one row per topic with glyph + [label] + title.
 
 ### Community 307 - "Community 307"
 Cohesion: 1.0
-Nodes (1): Return 'wide', 'medium', or 'narrow' based on terminal width.
+Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
 
 ### Community 308 - "Community 308"
 Cohesion: 1.0
-Nodes (1): Build a Rich Layout tree for the given breakpoint.      Wide (>=120):         ro
+Nodes (1): Render agents panel. Single-line per agent: glyph + [label] + id_short + role +
 
 ### Community 309 - "Community 309"
 Cohesion: 1.0
-Nodes (1): Render topics panel.      Wide: one row per topic with glyph + [label] + title.
+Nodes (1): Render notifications panel. Input is expected newest-first (from snapshot).
 
 ### Community 310 - "Community 310"
 Cohesion: 1.0
-Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
+Nodes (1): Populate layout panels from state. Mutates layout in place.      If state is Non
 
 ### Community 311 - "Community 311"
 Cohesion: 1.0
-Nodes (1): Render agents panel. Single-line per agent: glyph + [label] + id_short + role +
+Nodes (1): Render notifications panel. Input is expected newest-first (from snapshot).
 
 ### Community 312 - "Community 312"
 Cohesion: 1.0
-Nodes (1): Render notifications panel. Input is expected newest-first (from snapshot).
+Nodes (1): Populate layout panels from state. Mutates layout in place.      If state is Non
 
 ### Community 313 - "Community 313"
 Cohesion: 1.0
-Nodes (1): Populate layout panels from state. Mutates layout in place.      If state is Non
+Nodes (1): Return 'wide', 'medium', or 'narrow' based on terminal width.
 
 ### Community 314 - "Community 314"
 Cohesion: 1.0
-Nodes (1): Convert seconds to compact age string: '12s', '5m', '2h', '3d'.
+Nodes (1): Build a Rich Layout tree for the given breakpoint.      Wide (>=120):         ro
 
 ### Community 315 - "Community 315"
 Cohesion: 1.0
-Nodes (1): Compute display-priority tier for a thread. Lower = higher priority.
+Nodes (1): Render topics panel.      Wide: one row per topic with glyph + [label] + title.
 
 ### Community 316 - "Community 316"
 Cohesion: 1.0
-Nodes (1): Return seconds since last_active ISO timestamp, or 0 if unparseable.
+Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
 
 ### Community 317 - "Community 317"
 Cohesion: 1.0
-Nodes (1): Read DB state into a frozen CockpitState. Only function that touches DB.
+Nodes (1): Render agents panel. Single-line per agent: glyph + [label] + id_short + role +
 
 ### Community 318 - "Community 318"
 Cohesion: 1.0
-Nodes (1): Record pending user decisions in current thread's open_questions.
+Nodes (1): Render notifications panel. Input is expected newest-first (from snapshot).
 
 ### Community 319 - "Community 319"
 Cohesion: 1.0
-Nodes (1): Clear pending decisions by tool_use_id prefix.
+Nodes (1): Populate layout panels from state. Mutates layout in place.      If state is Non
 
 ### Community 320 - "Community 320"
 Cohesion: 1.0
-Nodes (1): Clamp pane offset to [0, max_offset].
+Nodes (1): Convert seconds to compact age string: '12s', '5m', '2h', '3d'.
 
 ### Community 321 - "Community 321"
 Cohesion: 1.0
-Nodes (1): One cockpit tick: snapshot DB → pick breakpoint → render into layout.      Retur
+Nodes (1): Compute display-priority tier for a thread. Lower = higher priority.
 
 ### Community 322 - "Community 322"
 Cohesion: 1.0
-Nodes (1): Reap agents, throttled to once per throttle_secs.
+Nodes (1): Return seconds since last_active ISO timestamp, or 0 if unparseable.
 
 ### Community 323 - "Community 323"
 Cohesion: 1.0
-Nodes (1): Create a JuggleDB with a persistent connection for cockpit use.      Normal Jugg
+Nodes (1): Read DB state into a frozen CockpitState. Only function that touches DB.
 
 ### Community 324 - "Community 324"
 Cohesion: 1.0
-Nodes (1): Start the cockpit refresh loop using Rich Live.
+Nodes (1): Record pending user decisions in current thread's open_questions.
 
 ### Community 325 - "Community 325"
 Cohesion: 1.0
-Nodes (1): Hard-block Edit/Write/NotebookEdit in the orchestrator main thread.
+Nodes (1): Clear pending decisions by tool_use_id prefix.
 
 ### Community 326 - "Community 326"
 Cohesion: 1.0
-Nodes (1): Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls.
+Nodes (1): Clamp pane offset to [0, max_offset].
 
 ### Community 327 - "Community 327"
 Cohesion: 1.0
-Nodes (1): Send the 'claude' command to a pane.          Prefixes with env -u CLAUDE_PLUGIN
+Nodes (1): One cockpit tick: snapshot DB → pick breakpoint → render into layout.      Retur
 
 ### Community 328 - "Community 328"
 Cohesion: 1.0
-Nodes (1): Return True if pane_id exists in the juggle session.
+Nodes (1): Reap agents, throttled to once per throttle_secs.
 
 ### Community 329 - "Community 329"
 Cohesion: 1.0
-Nodes (1): Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.
+Nodes (1): Create a JuggleDB with a persistent connection for cockpit use.      Normal Jugg
 
 ### Community 330 - "Community 330"
 Cohesion: 1.0
-Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
+Nodes (1): Start the cockpit refresh loop using Rich Live.
 
 ### Community 331 - "Community 331"
 Cohesion: 1.0
-Nodes (1): Kill the agent's pane and remove it from the DB.
+Nodes (1): Hard-block Edit/Write/NotebookEdit in the orchestrator main thread.
 
 ### Community 332 - "Community 332"
 Cohesion: 1.0
-Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
+Nodes (1): Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls.
 
 ### Community 333 - "Community 333"
 Cohesion: 1.0
-Nodes (1): Clear pending decisions by tool_use_id prefix.
+Nodes (1): Send the 'claude' command to a pane.          Prefixes with env -u CLAUDE_PLUGIN
 
 ### Community 334 - "Community 334"
 Cohesion: 1.0
-Nodes (1): Record pending user decisions in current thread's open_questions.
+Nodes (1): Return True if pane_id exists in the juggle session.
 
 ### Community 335 - "Community 335"
 Cohesion: 1.0
-Nodes (1): Clear pending decisions by tool_use_id prefix.
+Nodes (1): Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.
 
 ### Community 336 - "Community 336"
 Cohesion: 1.0
-Nodes (1): Calls nvim --server --remote when socket exists.
+Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
 
 ### Community 337 - "Community 337"
 Cohesion: 1.0
-Nodes (1): Record pending user decisions in current thread's open_questions.
+Nodes (1): Kill the agent's pane and remove it from the DB.
 
 ### Community 338 - "Community 338"
 Cohesion: 1.0
-Nodes (1): Clear pending decisions by tool_use_id prefix.
+Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
 
 ### Community 339 - "Community 339"
 Cohesion: 1.0
-Nodes (1): Recursively merge override into base. Returns a new dict.
+Nodes (1): Clear pending decisions by tool_use_id prefix.
 
 ### Community 340 - "Community 340"
 Cohesion: 1.0
-Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
+Nodes (1): Record pending user decisions in current thread's open_questions.
 
 ### Community 341 - "Community 341"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a top-level setting value.
+Nodes (1): Clear pending decisions by tool_use_id prefix.
 
 ### Community 342 - "Community 342"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a nested setting value from a named section.
+Nodes (1): Calls nvim --server --remote when socket exists.
 
 ### Community 343 - "Community 343"
 Cohesion: 1.0
-Nodes (1): Return HindsightClient or None if disabled/unconfigured.
+Nodes (1): Record pending user decisions in current thread's open_questions.
 
 ### Community 344 - "Community 344"
 Cohesion: 1.0
-Nodes (1): Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -
+Nodes (1): Clear pending decisions by tool_use_id prefix.
 
 ### Community 345 - "Community 345"
 Cohesion: 1.0
-Nodes (1): Return a human-friendly relative time string for an ISO-8601 UTC timestamp.
+Nodes (1): Recursively merge override into base. Returns a new dict.
 
 ### Community 346 - "Community 346"
 Cohesion: 1.0
-Nodes (1): Return the tail of text, capped at max_chars.
+Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
 
 ### Community 347 - "Community 347"
 Cohesion: 1.0
-Nodes (1): Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la
+Nodes (1): Shortcut: get a top-level setting value.
 
 ### Community 348 - "Community 348"
 Cohesion: 1.0
-Nodes (1): Generate a 5-10 word title for a thread via claude -p. Stores result in DB.
+Nodes (1): Shortcut: get a nested setting value from a named section.
 
 ### Community 349 - "Community 349"
 Cohesion: 1.0
-Nodes (1): Recursively merge override into base. Returns a new dict.
+Nodes (1): Return HindsightClient or None if disabled/unconfigured.
 
 ### Community 350 - "Community 350"
 Cohesion: 1.0
-Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
+Nodes (1): Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -
 
 ### Community 351 - "Community 351"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a top-level setting value.
+Nodes (1): Return a human-friendly relative time string for an ISO-8601 UTC timestamp.
 
 ### Community 352 - "Community 352"
 Cohesion: 1.0
-Nodes (1): Shortcut: get a nested setting value from a named section.
+Nodes (1): Return the tail of text, capped at max_chars.
 
 ### Community 353 - "Community 353"
 Cohesion: 1.0
-Nodes (1): Return pane names whose item count exceeds estimated visible rows.      Uses lay
+Nodes (1): Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la
 
 ### Community 354 - "Community 354"
 Cohesion: 1.0
-Nodes (1): Thread-safe per-pane scroll offsets + active pane, driven by keyboard.      Key
+Nodes (1): Generate a 5-10 word title for a thread via claude -p. Stores result in DB.
 
 ### Community 355 - "Community 355"
 Cohesion: 1.0
-Nodes (1): Return (offsets_copy, active_pane) atomically.
+Nodes (1): Recursively merge override into base. Returns a new dict.
 
 ### Community 356 - "Community 356"
 Cohesion: 1.0
-Nodes (1): Update which panes have overflow content. Resets active if it drops out.
+Nodes (1): Return merged settings dict. Cached for process lifetime.      Load order: DEFAU
 
 ### Community 357 - "Community 357"
 Cohesion: 1.0
-Nodes (1): Clamp pane offset to [0, max_offset].
+Nodes (1): Shortcut: get a top-level setting value.
 
 ### Community 358 - "Community 358"
 Cohesion: 1.0
-Nodes (1): One cockpit tick: snapshot DB → pick breakpoint → render into layout.      Retur
+Nodes (1): Shortcut: get a nested setting value from a named section.
 
 ### Community 359 - "Community 359"
 Cohesion: 1.0
-Nodes (1): Reap agents, throttled to once per throttle_secs.
+Nodes (1): Return pane names whose item count exceeds estimated visible rows.      Uses lay
 
 ### Community 360 - "Community 360"
 Cohesion: 1.0
-Nodes (1): Create a JuggleDB with a persistent connection for cockpit use.      Normal Jugg
+Nodes (1): Thread-safe per-pane scroll offsets + active pane, driven by keyboard.      Key
 
 ### Community 361 - "Community 361"
 Cohesion: 1.0
-Nodes (1): Start the cockpit refresh loop using Rich Live.
+Nodes (1): Return (offsets_copy, active_pane) atomically.
 
 ### Community 362 - "Community 362"
+Cohesion: 1.0
+Nodes (1): Update which panes have overflow content. Resets active if it drops out.
+
+### Community 363 - "Community 363"
+Cohesion: 1.0
+Nodes (1): Clamp pane offset to [0, max_offset].
+
+### Community 364 - "Community 364"
+Cohesion: 1.0
+Nodes (1): One cockpit tick: snapshot DB → pick breakpoint → render into layout.      Retur
+
+### Community 365 - "Community 365"
+Cohesion: 1.0
+Nodes (1): Reap agents, throttled to once per throttle_secs.
+
+### Community 366 - "Community 366"
+Cohesion: 1.0
+Nodes (1): Create a JuggleDB with a persistent connection for cockpit use.      Normal Jugg
+
+### Community 367 - "Community 367"
+Cohesion: 1.0
+Nodes (1): Start the cockpit refresh loop using Rich Live.
+
+### Community 368 - "Community 368"
 Cohesion: 1.0
 Nodes (1): Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls.
 
 ## Knowledge Gaps
-- **668 isolated node(s):** `End-to-end test: create thread → auto-recall → do work → retain → recall again.`, `Mock that tracks retained content and returns it on recall.`, `1. Create thread (auto-recall, empty at first)     2. Retain learnings     3. Cr`, `All memory commands are no-ops when disabled.`, `Tests for Task 7 auto-archive hook.` (+663 more)
+- **672 isolated node(s):** `End-to-end test: create thread → auto-recall → do work → retain → recall again.`, `Mock that tracks retained content and returns it on recall.`, `1. Create thread (auto-recall, empty at first)     2. Retain learnings     3. Cr`, `All memory commands are no-ops when disabled.`, `Tests for Task 7 auto-archive hook.` (+667 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Community 25`** (9 nodes): `db()`, `test_schema_v2.py`, `Tests for Task 1 schema additions (notifications_v2, action_items, threads colum`, `test_action_items_open_index_filters_dismissed()`, `test_action_items_table_exists()`, `test_notifications_v2_table_exists()`, `test_thread_auto_archive_ttl_setting_seeded()`, `test_threads_has_user_label_and_last_active_at()`, `test_user_label_unique_constraint()`
+- **Thin community `Community 27`** (9 nodes): `db()`, `test_schema_v2.py`, `Tests for Task 1 schema additions (notifications_v2, action_items, threads colum`, `test_action_items_open_index_filters_dismissed()`, `test_action_items_table_exists()`, `test_notifications_v2_table_exists()`, `test_thread_auto_archive_ttl_setting_seeded()`, `test_threads_has_user_label_and_last_active_at()`, `test_user_label_unique_constraint()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 26`** (8 nodes): `db()`, `test_thread_state_machine.py`, `Tests for Task 2 thread state helpers.`, `test_get_threads_by_status()`, `test_set_thread_status_closed_sets_last_active_now()`, `test_set_thread_status_rejects_invalid()`, `test_set_thread_status_to_running_updates_last_active()`, `test_touch_last_active_updates_timestamp()`
+- **Thin community `Community 28`** (8 nodes): `db()`, `test_thread_state_machine.py`, `Tests for Task 2 thread state helpers.`, `test_get_threads_by_status()`, `test_set_thread_status_closed_sets_last_active_now()`, `test_set_thread_status_rejects_invalid()`, `test_set_thread_status_to_running_updates_last_active()`, `test_touch_last_active_updates_timestamp()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 28`** (8 nodes): `Tests for juggle_schedule_autofix.`, `test_dry_run_writes_pr_description()`, `test_existing_pr_blocks_run()`, `test_fx2_vulture_low_confidence_goes_to_issue()`, `test_is1_bandit_empty_output()`, `test_issue_dedup_skips_existing()`, `test_pr_description_schema()`, `test_schedule_autofix.py`
+- **Thin community `Community 30`** (8 nodes): `Tests for juggle_schedule_autofix.`, `test_dry_run_writes_pr_description()`, `test_existing_pr_blocks_run()`, `test_fx2_vulture_low_confidence_goes_to_issue()`, `test_is1_bandit_empty_output()`, `test_issue_dedup_skips_existing()`, `test_pr_description_schema()`, `test_schedule_autofix.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 29`** (7 nodes): `db()`, `test_juggle_db_memory.py`, `Tests for memory-related DB columns on threads.`, `test_memory_loaded_survives_other_updates()`, `test_thread_has_memory_context_default_empty()`, `test_thread_has_memory_loaded_default_false()`, `test_update_memory_context()`
+- **Thin community `Community 31`** (7 nodes): `db()`, `test_juggle_db_memory.py`, `Tests for memory-related DB columns on threads.`, `test_memory_loaded_survives_other_updates()`, `test_thread_has_memory_context_default_empty()`, `test_thread_has_memory_loaded_default_false()`, `test_update_memory_context()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 30`** (7 nodes): `Tests for juggle_schedule_dogfood.`, `test_action_item_filed_once_on_dry_run()`, `test_active_session_defers_once()`, `test_cost_cap_aborts_and_writes_partial()`, `test_dry_run_writes_report()`, `test_prior_dogfood_thread_blocks_run()`, `test_schedule_dogfood.py`
+- **Thin community `Community 32`** (7 nodes): `Tests for juggle_schedule_dogfood.`, `test_action_item_filed_once_on_dry_run()`, `test_active_session_defers_once()`, `test_cost_cap_aborts_and_writes_partial()`, `test_dry_run_writes_report()`, `test_prior_dogfood_thread_blocks_run()`, `test_schedule_dogfood.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 32`** (4 nodes): `test_agent_prompt_conventions.py`, `Guard that agent prompt templates reference the new commands.`, `test_no_warning_prefix_in_prompt_text()`, `test_prompt_templates_mention_three_commands()`
+- **Thin community `Community 34`** (4 nodes): `test_agent_prompt_conventions.py`, `Guard that agent prompt templates reference the new commands.`, `test_no_warning_prefix_in_prompt_text()`, `test_prompt_templates_mention_three_commands()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 38`** (1 nodes): `Load client from config. If config_path provided and exists, reads it directly.`
+- **Thin community `Community 40`** (1 nodes): `Load client from config. If config_path provided and exists, reads it directly.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 39`** (1 nodes): `Find function signatures in src/ that have no corresponding test.`
+- **Thin community `Community 41`** (1 nodes): `Find function signatures in src/ that have no corresponding test.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 40`** (1 nodes): `Extract a brief src snippet relevant to the doc.`
+- **Thin community `Community 42`** (1 nodes): `Extract a brief src snippet relevant to the doc.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 41`** (1 nodes): `Read the most recent dogfood report and extract first 2 suggestions.`
+- **Thin community `Community 43`** (1 nodes): `Read the most recent dogfood report and extract first 2 suggestions.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 42`** (1 nodes): `Run pytest (excluding auto-generated) on the branch. Return True if passing.`
+- **Thin community `Community 44`** (1 nodes): `Run pytest (excluding auto-generated) on the branch. Return True if passing.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 43`** (1 nodes): `Pure helper: rewrite a config dict from the pre-1.21.0 schema to 1.21+.      Ret`
+- **Thin community `Community 45`** (1 nodes): `Find function signatures in src/ that have no corresponding test.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 44`** (1 nodes): `Return (pid, last_exit_status) for a launchd label.`
+- **Thin community `Community 46`** (1 nodes): `Extract a brief src snippet relevant to the doc.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 45`** (1 nodes): `Discover me.mikechen.* and com.claude.schedule.* launchd agents.`
+- **Thin community `Community 47`** (1 nodes): `Read the most recent dogfood report and extract first 2 suggestions.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 46`** (1 nodes): `Convert seconds to compact age string: '12s', '5m', '2h', '3d'.`
+- **Thin community `Community 48`** (1 nodes): `Run pytest (excluding auto-generated) on the branch. Return True if passing.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 47`** (1 nodes): `Compute display-priority tier for a thread. Lower = higher priority.`
+- **Thin community `Community 49`** (1 nodes): `Pure helper: rewrite a config dict from the pre-1.21.0 schema to 1.21+.      Ret`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 48`** (1 nodes): `Return seconds since last_active ISO timestamp, or 0 if unparseable.`
+- **Thin community `Community 50`** (1 nodes): `Return (pid, last_exit_status) for a launchd label.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 49`** (1 nodes): `Read DB state into a frozen CockpitState. Only function that touches DB.`
+- **Thin community `Community 51`** (1 nodes): `Discover me.mikechen.* and com.claude.schedule.* launchd agents.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 50`** (1 nodes): `Mark agent complete: thread → closed, create notifications_v2 row,     convert a`
+- **Thin community `Community 52`** (1 nodes): `Convert seconds to compact age string: '12s', '5m', '2h', '3d'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 51`** (1 nodes): `Return 'transient' or 'persistent'. Case-insensitive substring match.`
+- **Thin community `Community 53`** (1 nodes): `Compute display-priority tier for a thread. Lower = higher priority.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 52`** (1 nodes): `Route agent failure: transient → leave running for retry; persistent → action_it`
+- **Thin community `Community 54`** (1 nodes): `Return seconds since last_active ISO timestamp, or 0 if unparseable.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 53`** (1 nodes): `Create an action_items row tied to a thread. Thread stays in current state;`
+- **Thin community `Community 55`** (1 nodes): `Read DB state into a frozen CockpitState. Only function that touches DB.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 54`** (1 nodes): `Dismiss an action item by id.`
+- **Thin community `Community 56`** (1 nodes): `Mark agent complete: thread → closed, create notifications_v2 row,     convert a`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 55`** (1 nodes): `Print open action items, newest high-priority first.`
+- **Thin community `Community 57`** (1 nodes): `Return 'transient' or 'persistent'. Case-insensitive substring match.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (1 nodes): `Insert a notifications_v2 row for the given thread.`
+- **Thin community `Community 58`** (1 nodes): `Route agent failure: transient → leave running for retry; persistent → action_it`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (1 nodes): `Send SIGTERM to the watchdog daemon if running.`
+- **Thin community `Community 59`** (1 nodes): `Create an action_items row tied to a thread. Thread stays in current state;`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 58`** (1 nodes): `Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).`
+- **Thin community `Community 60`** (1 nodes): `Dismiss an action item by id.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 59`** (1 nodes): `Classify agent pane state. Returns (state, key_to_send).      States: working |`
+- **Thin community `Community 61`** (1 nodes): `Print open action items, newest high-priority first.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 60`** (1 nodes): `Decommission a stalled/crashed agent and (if eligible) re-dispatch it.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 61`** (1 nodes): `Scan background threads with no active agent; file action items for orphans.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 62`** (1 nodes): `Inspect a single agent's tmux pane and take action based on state.      Args:`
+- **Thin community `Community 62`** (1 nodes): `Insert a notifications_v2 row for the given thread.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 63`** (1 nodes): `Send SIGTERM to the watchdog daemon if running.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 64`** (1 nodes): `Scan background threads with no active agent; file action items for orphans.`
+- **Thin community `Community 64`** (1 nodes): `Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 65`** (1 nodes): `Inspect a single agent's tmux pane and take action based on state.      Args:`
+- **Thin community `Community 65`** (1 nodes): `Classify agent pane state. Returns (state, key_to_send).      States: working |`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 66`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
+- **Thin community `Community 66`** (1 nodes): `Decommission a stalled/crashed agent and (if eligible) re-dispatch it.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 67`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
+- **Thin community `Community 67`** (1 nodes): `Scan background threads with no active agent; file action items for orphans.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 68`** (1 nodes): `Open via Obsidian (vault files) or macOS system open (non-vault files).`
+- **Thin community `Community 68`** (1 nodes): `Inspect a single agent's tmux pane and take action based on state.      Args:`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 69`** (1 nodes): `Start talkback server if talkback.enabled=true and not already running.`
+- **Thin community `Community 69`** (1 nodes): `Send SIGTERM to the watchdog daemon if running.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 70`** (1 nodes): `Render a structured context briefing for a thread. Template rendering — no LLM c`
+- **Thin community `Community 70`** (1 nodes): `Scan background threads with no active agent; file action items for orphans.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 71`** (1 nodes): `Return a sort key tuple for cmd_show_topics ordering.`
+- **Thin community `Community 71`** (1 nodes): `Inspect a single agent's tmux pane and take action based on state.      Args:`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 72`** (1 nodes): `Find 'running' threads with no busy agent; convert each to closed + action_item.`
+- **Thin community `Community 72`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 73`** (1 nodes): `Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).`
+- **Thin community `Community 73`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 74`** (1 nodes): `Classify agent pane state. Returns (state, key_to_send).      States: working |`
+- **Thin community `Community 74`** (1 nodes): `Open via Obsidian (vault files) or macOS system open (non-vault files).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 75`** (1 nodes): `Decommission a stalled/crashed agent and (if eligible) re-dispatch it.`
+- **Thin community `Community 75`** (1 nodes): `Start talkback server if talkback.enabled=true and not already running.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 76`** (1 nodes): `Scan background threads with no active agent; file action items for orphans.`
+- **Thin community `Community 76`** (1 nodes): `Render a structured context briefing for a thread. Template rendering — no LLM c`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 77`** (1 nodes): `Inspect a single agent's tmux pane and take action based on state.      Args:`
+- **Thin community `Community 77`** (1 nodes): `Return a sort key tuple for cmd_show_topics ordering.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 78`** (1 nodes): `send-task writes last_task, last_send_task_pane_hash (16 hex chars), last_send_t`
+- **Thin community `Community 78`** (1 nodes): `Find 'running' threads with no busy agent; convert each to closed + action_item.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 79`** (1 nodes): `release-agent copies last_task/role/model to thread before decommissioning agent`
+- **Thin community `Community 79`** (1 nodes): `Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 80`** (1 nodes): `Spawn a new claude pane, register in DB, return agent dict.          db must be`
+- **Thin community `Community 80`** (1 nodes): `Classify agent pane state. Returns (state, key_to_send).      States: working |`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 81`** (1 nodes): `Return Unix timestamp of pane's last activity, or 0 on failure.`
+- **Thin community `Community 81`** (1 nodes): `Decommission a stalled/crashed agent and (if eligible) re-dispatch it.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 82`** (1 nodes): `Kill the agent's pane and remove it from the DB.`
+- **Thin community `Community 82`** (1 nodes): `Scan background threads with no active agent; file action items for orphans.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 83`** (1 nodes): `Return True if any child process of the pane has JUGGLE_IS_AGENT=1.`
+- **Thin community `Community 83`** (1 nodes): `Inspect a single agent's tmux pane and take action based on state.      Args:`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 84`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
+- **Thin community `Community 84`** (1 nodes): `send-task writes last_task, last_send_task_pane_hash (16 hex chars), last_send_t`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 85`** (1 nodes): `Return 'transient' or 'persistent'. Case-insensitive substring match.`
+- **Thin community `Community 85`** (1 nodes): `release-agent copies last_task/role/model to thread before decommissioning agent`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 86`** (1 nodes): `Route agent failure: transient → leave running for retry; persistent → action_it`
+- **Thin community `Community 86`** (1 nodes): `Spawn a new claude pane, register in DB, return agent dict.          db must be`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 87`** (1 nodes): `Create an action_items row tied to a thread. Thread stays in current state;`
+- **Thin community `Community 87`** (1 nodes): `Return Unix timestamp of pane's last activity, or 0 on failure.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 88`** (1 nodes): `Dismiss an action item by id.`
+- **Thin community `Community 88`** (1 nodes): `Kill the agent's pane and remove it from the DB.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 89`** (1 nodes): `Print open action items, newest high-priority first.`
+- **Thin community `Community 89`** (1 nodes): `Return True if any child process of the pane has JUGGLE_IS_AGENT=1.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 90`** (1 nodes): `Insert a notifications_v2 row for the given thread.`
+- **Thin community `Community 90`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 91`** (1 nodes): `Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.`
+- **Thin community `Community 91`** (1 nodes): `Return 'transient' or 'persistent'. Case-insensitive substring match.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 92`** (1 nodes): `Parse last_active ISO timestamp, return seconds since now, or None.`
+- **Thin community `Community 92`** (1 nodes): `Route agent failure: transient → leave running for retry; persistent → action_it`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 93`** (1 nodes): `Return True if content is a junk/system message to be excluded from display.`
+- **Thin community `Community 93`** (1 nodes): `Create an action_items row tied to a thread. Thread stays in current state;`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 94`** (1 nodes): `Create tables if not exist, run schema migrations, enable WAL mode.`
+- **Thin community `Community 94`** (1 nodes): `Dismiss an action item by id.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 95`** (1 nodes): `Return True if session.active == '1'.`
+- **Thin community `Community 95`** (1 nodes): `Print open action items, newest high-priority first.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 96`** (1 nodes): `Return a value from the settings table, or default if not found.`
+- **Thin community `Community 96`** (1 nodes): `Insert a notifications_v2 row for the given thread.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 97`** (1 nodes): `Public helper to write a session key (for tests).`
+- **Thin community `Community 97`** (1 nodes): `Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 98`** (1 nodes): `Create a new thread. Returns the UUID of the new thread.          Assigns next a`
+- **Thin community `Community 98`** (1 nodes): `Parse last_active ISO timestamp, return seconds since now, or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 99`** (1 nodes): `Look up a thread by its UUID `id`. Returns None if not found.`
+- **Thin community `Community 99`** (1 nodes): `Return True if content is a junk/system message to be excluded from display.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 100`** (1 nodes): `Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U`
+- **Thin community `Community 100`** (1 nodes): `Create tables if not exist, run schema migrations, enable WAL mode.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 101`** (1 nodes): `Transition a thread to a new state ({'active','running','closed','archived'}).`
+- **Thin community `Community 101`** (1 nodes): `Return True if session.active == '1'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 102`** (1 nodes): `Update last_active_at to now without changing status.`
+- **Thin community `Community 102`** (1 nodes): `Return a value from the settings table, or default if not found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 103`** (1 nodes): `Return all threads matching the given status. Order: last_active_at DESC.`
+- **Thin community `Community 103`** (1 nodes): `Public helper to write a session key (for tests).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 104`** (1 nodes): `Load messages newest-first until token budget is exhausted         (token estima`
+- **Thin community `Community 104`** (1 nodes): `Create a new thread. Returns the UUID of the new thread.          Assigns next a`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 105`** (1 nodes): `Count user messages for a thread, optionally excluding junk.`
+- **Thin community `Community 105`** (1 nodes): `Look up a thread by its UUID `id`. Returns None if not found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 106`** (1 nodes): `Return the last user message and last assistant message for a thread.          R`
+- **Thin community `Community 106`** (1 nodes): `Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 107`** (1 nodes): `Return the last n Q/A pairs for a thread, most recent first.          Each item:`
+- **Thin community `Community 107`** (1 nodes): `Transition a thread to a new state ({'active','running','closed','archived'}).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 108`** (1 nodes): `Return threads where substantive user message delta >= threshold.          Uses`
+- **Thin community `Community 108`** (1 nodes): `Update last_active_at to now without changing status.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 109`** (1 nodes): `Insert a notifications_v2 row. Returns new id.`
+- **Thin community `Community 109`** (1 nodes): `Return all threads matching the given status. Order: last_active_at DESC.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 110`** (1 nodes): `Delete notifications_v2 whose session_id != current. Returns rows deleted.`
+- **Thin community `Community 110`** (1 nodes): `Load messages newest-first until token budget is exhausted         (token estima`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 111`** (1 nodes): `Open action items ordered by (priority: high > normal > low), then created_at DE`
+- **Thin community `Community 111`** (1 nodes): `Count user messages for a thread, optionally excluding junk.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 112`** (1 nodes): `Dismiss all open action items for thread_id. Returns count dismissed.`
+- **Thin community `Community 112`** (1 nodes): `Return the last user message and last assistant message for a thread.          R`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 113`** (1 nodes): `Set status='archived', show_in_list=0. Preserves user_label.`
+- **Thin community `Community 113`** (1 nodes): `Return the last n Q/A pairs for a thread, most recent first.          Each item:`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 114`** (1 nodes): `Unarchive: status=active, show_in_list=1, user_label preserved.`
+- **Thin community `Community 114`** (1 nodes): `Return threads where substantive user message delta >= threshold.          Uses`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 115`** (1 nodes): `Create a new agent record. Returns the agent UUID.`
+- **Thin community `Community 115`** (1 nodes): `Insert a notifications_v2 row. Returns new id.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 116`** (1 nodes): `Look up an agent by UUID. Returns None if not found.`
+- **Thin community `Community 116`** (1 nodes): `Delete notifications_v2 whose session_id != current. Returns rows deleted.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 117`** (1 nodes): `Return all agents ordered by creation time.`
+- **Thin community `Community 117`** (1 nodes): `Open action items ordered by (priority: high > normal > low), then created_at DE`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 118`** (1 nodes): `Update any column(s) on an agent row. Serializes list values to JSON.`
+- **Thin community `Community 118`** (1 nodes): `Dismiss all open action items for thread_id. Returns count dismissed.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 119`** (1 nodes): `Return the best idle agent for a given thread using scoring.          Domain fil`
+- **Thin community `Community 119`** (1 nodes): `Set status='archived', show_in_list=0. Preserves user_label.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 120`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
+- **Thin community `Community 120`** (1 nodes): `Unarchive: status=active, show_in_list=1, user_label preserved.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 121`** (1 nodes): `Mark agent complete: thread → closed, create notifications_v2 row,     convert a`
+- **Thin community `Community 121`** (1 nodes): `Create a new agent record. Returns the agent UUID.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 122`** (1 nodes): `Return 'transient' or 'persistent'. Case-insensitive substring match.`
+- **Thin community `Community 122`** (1 nodes): `Look up an agent by UUID. Returns None if not found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 123`** (1 nodes): `Route agent failure: transient → leave running for retry; persistent → action_it`
+- **Thin community `Community 123`** (1 nodes): `Return all agents ordered by creation time.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 124`** (1 nodes): `Create an action_items row tied to a thread. Thread stays in current state;`
+- **Thin community `Community 124`** (1 nodes): `Update any column(s) on an agent row. Serializes list values to JSON.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 125`** (1 nodes): `Insert a notifications_v2 row for the given thread.`
+- **Thin community `Community 125`** (1 nodes): `Return the best idle agent for a given thread using scoring.          Domain fil`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 126`** (1 nodes): `Print open action items, newest high-priority first.`
+- **Thin community `Community 126`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 127`** (1 nodes): `Insert a notifications_v2 row for the given thread.`
+- **Thin community `Community 127`** (1 nodes): `Mark agent complete: thread → closed, create notifications_v2 row,     convert a`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 128`** (1 nodes): `Working agent: inspect returns 'working', no spurious action items.`
+- **Thin community `Community 128`** (1 nodes): `Return 'transient' or 'persistent'. Case-insensitive substring match.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 129`** (1 nodes): `Recoverable prompt: watchdog sends '2', dialog clears, notification logged, no a`
+- **Thin community `Community 129`** (1 nodes): `Route agent failure: transient → leave running for retry; persistent → action_it`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 130`** (1 nodes): `Stalled silent: action item filed (failure/high) + snapshot written.`
+- **Thin community `Community 130`** (1 nodes): `Create an action_items row tied to a thread. Thread stays in current state;`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 131`** (1 nodes): `Crashed: thread marked failed, action item filed, agent record cleaned up.`
+- **Thin community `Community 131`** (1 nodes): `Insert a notifications_v2 row for the given thread.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 132`** (1 nodes): `Stuck-at-prompt: watchdog sends Enter, pane advances, notification logged, no ac`
+- **Thin community `Community 132`** (1 nodes): `Print open action items, newest high-priority first.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 133`** (1 nodes): `GAP: permission dialog not auto-dismissed without watchdog.`
+- **Thin community `Community 133`** (1 nodes): `Insert a notifications_v2 row for the given thread.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 134`** (1 nodes): `GAP: silent stall not detected without watchdog.`
+- **Thin community `Community 134`** (1 nodes): `Working agent: inspect returns 'working', no spurious action items.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 135`** (1 nodes): `GAP: crash not detected without watchdog.`
+- **Thin community `Community 135`** (1 nodes): `Recoverable prompt: watchdog sends '2', dialog clears, notification logged, no a`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 136`** (1 nodes): `GAP: stuck-at-prompt not detected without watchdog.`
+- **Thin community `Community 136`** (1 nodes): `Stalled silent: action item filed (failure/high) + snapshot written.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 137`** (1 nodes): `Mark agent complete: thread → closed, create notifications_v2 row,     convert a`
+- **Thin community `Community 137`** (1 nodes): `Crashed: thread marked failed, action item filed, agent record cleaned up.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 138`** (1 nodes): `Return 'transient' or 'persistent'. Case-insensitive substring match.`
+- **Thin community `Community 138`** (1 nodes): `Stuck-at-prompt: watchdog sends Enter, pane advances, notification logged, no ac`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 139`** (1 nodes): `Route agent failure: transient → leave running for retry; persistent → action_it`
+- **Thin community `Community 139`** (1 nodes): `GAP: permission dialog not auto-dismissed without watchdog.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 140`** (1 nodes): `Create an action_items row tied to a thread. Thread stays in current state;`
+- **Thin community `Community 140`** (1 nodes): `GAP: silent stall not detected without watchdog.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 141`** (1 nodes): `Dismiss an action item by id.`
+- **Thin community `Community 141`** (1 nodes): `GAP: crash not detected without watchdog.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 142`** (1 nodes): `Print open action items, newest high-priority first.`
+- **Thin community `Community 142`** (1 nodes): `GAP: stuck-at-prompt not detected without watchdog.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 143`** (1 nodes): `Tests for juggle agent domain isolation (v1.5.0).`
+- **Thin community `Community 143`** (1 nodes): `Mark agent complete: thread → closed, create notifications_v2 row,     convert a`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 144`** (1 nodes): `Thread with domain=null only gets agents with domain=null.`
+- **Thin community `Community 144`** (1 nodes): `Return 'transient' or 'persistent'. Case-insensitive substring match.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 145`** (1 nodes): `Thread with domain=null and only domain-stamped agents → None (spawn fresh).`
+- **Thin community `Community 145`** (1 nodes): `Route agent failure: transient → leave running for retry; persistent → action_it`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 146`** (1 nodes): `Thread with domain='juggle' accepts domain='juggle' agents.`
+- **Thin community `Community 146`** (1 nodes): `Create an action_items row tied to a thread. Thread stays in current state;`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 147`** (1 nodes): `Thread with domain='juggle' also accepts domain=null (fresh) agents.`
+- **Thin community `Community 147`** (1 nodes): `Dismiss an action item by id.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 148`** (1 nodes): `Thread with domain='juggle' must NOT reuse domain='vault' agent.`
+- **Thin community `Community 148`** (1 nodes): `Print open action items, newest high-priority first.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 149`** (1 nodes): `Juggle agent is never returned for a vault thread.`
+- **Thin community `Community 149`** (1 nodes): `Tests for juggle agent domain isolation (v1.5.0).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 150`** (1 nodes): `Within matching domain agents, context_threads scoring still applies.`
+- **Thin community `Community 150`** (1 nodes): `Thread with domain=null only gets agents with domain=null.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 151`** (1 nodes): `Return True if session.active == '1'.`
+- **Thin community `Community 151`** (1 nodes): `Thread with domain=null and only domain-stamped agents → None (spawn fresh).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 152`** (1 nodes): `Return a value from the settings table, or default if not found.`
+- **Thin community `Community 152`** (1 nodes): `Thread with domain='juggle' accepts domain='juggle' agents.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 153`** (1 nodes): `Public helper to write a session key (for tests).`
+- **Thin community `Community 153`** (1 nodes): `Thread with domain='juggle' also accepts domain=null (fresh) agents.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 154`** (1 nodes): `Create a new thread. Returns the UUID of the new thread.          Assigns next a`
+- **Thin community `Community 154`** (1 nodes): `Thread with domain='juggle' must NOT reuse domain='vault' agent.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 155`** (1 nodes): `Look up a thread by its UUID `id`. Returns None if not found.`
+- **Thin community `Community 155`** (1 nodes): `Juggle agent is never returned for a vault thread.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 156`** (1 nodes): `Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U`
+- **Thin community `Community 156`** (1 nodes): `Within matching domain agents, context_threads scoring still applies.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 157`** (1 nodes): `Update any column(s) on a thread row.`
+- **Thin community `Community 157`** (1 nodes): `Return True if session.active == '1'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 158`** (1 nodes): `Transition a thread to a new state ({'active','running','closed','archived'}).`
+- **Thin community `Community 158`** (1 nodes): `Return a value from the settings table, or default if not found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 159`** (1 nodes): `Update last_active_at to now without changing status.`
+- **Thin community `Community 159`** (1 nodes): `Public helper to write a session key (for tests).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 160`** (1 nodes): `Return all threads matching the given status. Order: last_active_at DESC.`
+- **Thin community `Community 160`** (1 nodes): `Create a new thread. Returns the UUID of the new thread.          Assigns next a`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 161`** (1 nodes): `Load messages newest-first until token budget is exhausted         (token estima`
+- **Thin community `Community 161`** (1 nodes): `Look up a thread by its UUID `id`. Returns None if not found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 162`** (1 nodes): `Count user messages for a thread, optionally excluding junk.`
+- **Thin community `Community 162`** (1 nodes): `Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 163`** (1 nodes): `Return the last user message and last assistant message for a thread.          R`
+- **Thin community `Community 163`** (1 nodes): `Update any column(s) on a thread row.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 164`** (1 nodes): `Return the last n Q/A pairs for a thread, most recent first.          Each item:`
+- **Thin community `Community 164`** (1 nodes): `Transition a thread to a new state ({'active','running','closed','archived'}).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 165`** (1 nodes): `Return threads where substantive user message delta >= threshold.          Uses`
+- **Thin community `Community 165`** (1 nodes): `Update last_active_at to now without changing status.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 166`** (1 nodes): `Insert a notifications_v2 row. Returns new id.`
+- **Thin community `Community 166`** (1 nodes): `Return all threads matching the given status. Order: last_active_at DESC.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 167`** (1 nodes): `Delete notifications_v2 whose session_id != current. Returns rows deleted.`
+- **Thin community `Community 167`** (1 nodes): `Load messages newest-first until token budget is exhausted         (token estima`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 168`** (1 nodes): `Open action items ordered by (priority: high > normal > low), then created_at DE`
+- **Thin community `Community 168`** (1 nodes): `Count user messages for a thread, optionally excluding junk.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 169`** (1 nodes): `Dismiss all open action items for thread_id. Returns count dismissed.`
+- **Thin community `Community 169`** (1 nodes): `Return the last user message and last assistant message for a thread.          R`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 170`** (1 nodes): `Set status='archived', show_in_list=0. Preserves user_label.`
+- **Thin community `Community 170`** (1 nodes): `Return the last n Q/A pairs for a thread, most recent first.          Each item:`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 171`** (1 nodes): `Unarchive: status=active, show_in_list=1, user_label preserved.`
+- **Thin community `Community 171`** (1 nodes): `Return threads where substantive user message delta >= threshold.          Uses`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 172`** (1 nodes): `Create a new agent record. Returns the agent UUID.`
+- **Thin community `Community 172`** (1 nodes): `Insert a notifications_v2 row. Returns new id.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 173`** (1 nodes): `Look up an agent by UUID. Returns None if not found.`
+- **Thin community `Community 173`** (1 nodes): `Delete notifications_v2 whose session_id != current. Returns rows deleted.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 174`** (1 nodes): `Return all agents ordered by creation time.`
+- **Thin community `Community 174`** (1 nodes): `Open action items ordered by (priority: high > normal > low), then created_at DE`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 175`** (1 nodes): `Update any column(s) on an agent row. Serializes list values to JSON.`
+- **Thin community `Community 175`** (1 nodes): `Dismiss all open action items for thread_id. Returns count dismissed.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 176`** (1 nodes): `Delete an agent record.`
+- **Thin community `Community 176`** (1 nodes): `Set status='archived', show_in_list=0. Preserves user_label.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 177`** (1 nodes): `Return the best idle agent for a given thread using scoring.          Scoring (h`
+- **Thin community `Community 177`** (1 nodes): `Unarchive: status=active, show_in_list=1, user_label preserved.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 178`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
+- **Thin community `Community 178`** (1 nodes): `Create a new agent record. Returns the agent UUID.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 179`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
+- **Thin community `Community 179`** (1 nodes): `Look up an agent by UUID. Returns None if not found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 180`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
+- **Thin community `Community 180`** (1 nodes): `Return all agents ordered by creation time.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 181`** (1 nodes): `Open via Obsidian (vault files) or macOS system open (non-vault files).`
+- **Thin community `Community 181`** (1 nodes): `Update any column(s) on an agent row. Serializes list values to JSON.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 182`** (1 nodes): `Entry point called by juggle_cli.py.`
+- **Thin community `Community 182`** (1 nodes): `Delete an agent record.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 183`** (1 nodes): `Returns (vault_path, vault_name) from juggle settings.`
+- **Thin community `Community 183`** (1 nodes): `Return the best idle agent for a given thread using scoring.          Scoring (h`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 184`** (1 nodes): `Insert domain name into domains table. No-op if already exists.`
+- **Thin community `Community 184`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 185`** (1 nodes): `Return all registered domain names.`
+- **Thin community `Community 185`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 186`** (1 nodes): `Return True if name is a registered domain.`
+- **Thin community `Community 186`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 187`** (1 nodes): `Insert domain name into domains table. No-op if already exists.`
+- **Thin community `Community 187`** (1 nodes): `Open via Obsidian (vault files) or macOS system open (non-vault files).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 188`** (1 nodes): `Return all path→domain mappings.`
+- **Thin community `Community 188`** (1 nodes): `Entry point called by juggle_cli.py.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 189`** (1 nodes): `Return first domain whose path_fragment appears in prompt, or None.`
+- **Thin community `Community 189`** (1 nodes): `Returns (vault_path, vault_name) from juggle settings.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 190`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
+- **Thin community `Community 190`** (1 nodes): `Insert domain name into domains table. No-op if already exists.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 191`** (1 nodes): `Render a structured context briefing for a thread. Template rendering — no LLM c`
+- **Thin community `Community 191`** (1 nodes): `Return all registered domain names.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 192`** (1 nodes): `Return a sort key tuple for cmd_show_topics ordering.`
+- **Thin community `Community 192`** (1 nodes): `Return True if name is a registered domain.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 193`** (1 nodes): `Find 'running' threads with no busy agent; convert each to closed + action_item.`
+- **Thin community `Community 193`** (1 nodes): `Insert domain name into domains table. No-op if already exists.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 194`** (1 nodes): `Parse --since value to UTC ISO timestamp. Accepts 'today', 'yesterday', or ISO.`
+- **Thin community `Community 194`** (1 nodes): `Return all path→domain mappings.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 195`** (1 nodes): `Simple status icon for digest output.`
+- **Thin community `Community 195`** (1 nodes): `Return first domain whose path_fragment appears in prompt, or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 196`** (1 nodes): `Summarize topics, decisions, blockers, and agent activity since cutoff.`
+- **Thin community `Community 196`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 197`** (1 nodes): `Switch to the highest-priority action item (blocker > review > idle OQ > open qu`
+- **Thin community `Community 197`** (1 nodes): `Render a structured context briefing for a thread. Template rendering — no LLM c`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 198`** (1 nodes): `Insert domain name into domains table. No-op if already exists.`
+- **Thin community `Community 198`** (1 nodes): `Return a sort key tuple for cmd_show_topics ordering.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 199`** (1 nodes): `Return all registered domain names.`
+- **Thin community `Community 199`** (1 nodes): `Find 'running' threads with no busy agent; convert each to closed + action_item.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 200`** (1 nodes): `Return True if name is a registered domain.`
+- **Thin community `Community 200`** (1 nodes): `Parse --since value to UTC ISO timestamp. Accepts 'today', 'yesterday', or ISO.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 201`** (1 nodes): `Insert or replace a path_fragment → domain mapping.`
+- **Thin community `Community 201`** (1 nodes): `Simple status icon for digest output.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 202`** (1 nodes): `Return all path→domain mappings.`
+- **Thin community `Community 202`** (1 nodes): `Summarize topics, decisions, blockers, and agent activity since cutoff.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 203`** (1 nodes): `Return first domain whose path_fragment appears in prompt, or None.`
+- **Thin community `Community 203`** (1 nodes): `Switch to the highest-priority action item (blocker > review > idle OQ > open qu`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 204`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
+- **Thin community `Community 204`** (1 nodes): `Insert domain name into domains table. No-op if already exists.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 205`** (1 nodes): `Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.`
+- **Thin community `Community 205`** (1 nodes): `Return all registered domain names.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 206`** (1 nodes): `Parse last_active ISO timestamp, return seconds since now, or None.`
+- **Thin community `Community 206`** (1 nodes): `Return True if name is a registered domain.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 207`** (1 nodes): `Create tables if not exist, run schema migrations, enable WAL mode.`
+- **Thin community `Community 207`** (1 nodes): `Insert or replace a path_fragment → domain mapping.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 208`** (1 nodes): `Apply incremental schema migrations.`
+- **Thin community `Community 208`** (1 nodes): `Return all path→domain mappings.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 209`** (1 nodes): `Return True if session.active == '1'.`
+- **Thin community `Community 209`** (1 nodes): `Return first domain whose path_fragment appears in prompt, or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 210`** (1 nodes): `Return a value from the settings table, or default if not found.`
+- **Thin community `Community 210`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 211`** (1 nodes): `Public helper to write a session key (for tests).`
+- **Thin community `Community 211`** (1 nodes): `Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 212`** (1 nodes): `Create a new thread. Returns the UUID of the new thread.          Assigns next a`
+- **Thin community `Community 212`** (1 nodes): `Parse last_active ISO timestamp, return seconds since now, or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 213`** (1 nodes): `Look up a thread by its UUID `id`. Returns None if not found.`
+- **Thin community `Community 213`** (1 nodes): `Create tables if not exist, run schema migrations, enable WAL mode.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 214`** (1 nodes): `Update any column(s) on a thread row.`
+- **Thin community `Community 214`** (1 nodes): `Apply incremental schema migrations.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 215`** (1 nodes): `Transition a thread to a new state ({'active','running','closed','archived'}).`
+- **Thin community `Community 215`** (1 nodes): `Return True if session.active == '1'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 216`** (1 nodes): `Update last_active_at to now without changing status.`
+- **Thin community `Community 216`** (1 nodes): `Return a value from the settings table, or default if not found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 217`** (1 nodes): `Return all threads matching the given status. Order: last_active_at DESC.`
+- **Thin community `Community 217`** (1 nodes): `Public helper to write a session key (for tests).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 218`** (1 nodes): `Load messages newest-first until token budget is exhausted         (token estima`
+- **Thin community `Community 218`** (1 nodes): `Create a new thread. Returns the UUID of the new thread.          Assigns next a`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 219`** (1 nodes): `Count user messages for a thread, optionally excluding junk.`
+- **Thin community `Community 219`** (1 nodes): `Look up a thread by its UUID `id`. Returns None if not found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 220`** (1 nodes): `Return the last user message and last assistant message for a thread.          R`
+- **Thin community `Community 220`** (1 nodes): `Update any column(s) on a thread row.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 221`** (1 nodes): `Return the last n Q/A pairs for a thread, most recent first.          Each item:`
+- **Thin community `Community 221`** (1 nodes): `Transition a thread to a new state ({'active','running','closed','archived'}).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 222`** (1 nodes): `Return threads where substantive user message delta >= threshold.          Uses`
+- **Thin community `Community 222`** (1 nodes): `Update last_active_at to now without changing status.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 223`** (1 nodes): `Insert a notifications_v2 row. Returns new id.`
+- **Thin community `Community 223`** (1 nodes): `Return all threads matching the given status. Order: last_active_at DESC.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 224`** (1 nodes): `Delete notifications_v2 whose session_id != current. Returns rows deleted.`
+- **Thin community `Community 224`** (1 nodes): `Load messages newest-first until token budget is exhausted         (token estima`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 225`** (1 nodes): `Open action items ordered by (priority: high > normal > low), then created_at DE`
+- **Thin community `Community 225`** (1 nodes): `Count user messages for a thread, optionally excluding junk.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 226`** (1 nodes): `Dismiss all open action items for thread_id. Returns count dismissed.`
+- **Thin community `Community 226`** (1 nodes): `Return the last user message and last assistant message for a thread.          R`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 227`** (1 nodes): `Set status='archived', show_in_list=0. Preserves user_label.`
+- **Thin community `Community 227`** (1 nodes): `Return the last n Q/A pairs for a thread, most recent first.          Each item:`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 228`** (1 nodes): `Create a new agent record. Returns the agent UUID.`
+- **Thin community `Community 228`** (1 nodes): `Return threads where substantive user message delta >= threshold.          Uses`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 229`** (1 nodes): `Look up an agent by UUID. Returns None if not found.`
+- **Thin community `Community 229`** (1 nodes): `Insert a notifications_v2 row. Returns new id.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 230`** (1 nodes): `Return all agents ordered by creation time.`
+- **Thin community `Community 230`** (1 nodes): `Delete notifications_v2 whose session_id != current. Returns rows deleted.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 231`** (1 nodes): `Update any column(s) on an agent row. Serializes list values to JSON.`
+- **Thin community `Community 231`** (1 nodes): `Open action items ordered by (priority: high > normal > low), then created_at DE`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 232`** (1 nodes): `Delete an agent record.`
+- **Thin community `Community 232`** (1 nodes): `Dismiss all open action items for thread_id. Returns count dismissed.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 233`** (1 nodes): `Return the best idle agent for a given thread using scoring.          Domain fil`
+- **Thin community `Community 233`** (1 nodes): `Set status='archived', show_in_list=0. Preserves user_label.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 234`** (1 nodes): `Return all registered domain names.`
+- **Thin community `Community 234`** (1 nodes): `Create a new agent record. Returns the agent UUID.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 235`** (1 nodes): `Return True if name is a registered domain.`
+- **Thin community `Community 235`** (1 nodes): `Look up an agent by UUID. Returns None if not found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 236`** (1 nodes): `Return all path→domain mappings.`
+- **Thin community `Community 236`** (1 nodes): `Return all agents ordered by creation time.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 237`** (1 nodes): `Return first domain whose path_fragment appears in prompt, or None.`
+- **Thin community `Community 237`** (1 nodes): `Update any column(s) on an agent row. Serializes list values to JSON.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 238`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
+- **Thin community `Community 238`** (1 nodes): `Delete an agent record.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 239`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
+- **Thin community `Community 239`** (1 nodes): `Return the best idle agent for a given thread using scoring.          Domain fil`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 240`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
+- **Thin community `Community 240`** (1 nodes): `Return all registered domain names.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 241`** (1 nodes): `Shortcut: get a top-level setting value.`
+- **Thin community `Community 241`** (1 nodes): `Return True if name is a registered domain.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 242`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
+- **Thin community `Community 242`** (1 nodes): `Return all path→domain mappings.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 243`** (1 nodes): `Create the juggle tmux session + window 0 if not already running.`
+- **Thin community `Community 243`** (1 nodes): `Return first domain whose path_fragment appears in prompt, or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 244`** (1 nodes): `Return the target string for the first window (respects base-index).`
+- **Thin community `Community 244`** (1 nodes): `Return threads that are candidates for archiving.          A thread qualifies if`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 245`** (1 nodes): `Split the first window to create a new pane. Returns pane_id like '%5'.`
+- **Thin community `Community 245`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 246`** (1 nodes): `Send the 'claude' command to a pane.          Prefixes with env -u CLAUDE_PLUGIN`
+- **Thin community `Community 246`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 247`** (1 nodes): `Return True if pane_id exists in the juggle session.`
+- **Thin community `Community 247`** (1 nodes): `Shortcut: get a top-level setting value.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 248`** (1 nodes): `Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.`
+- **Thin community `Community 248`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 249`** (1 nodes): `Spawn a new claude pane, register in DB, return agent dict.          db must be`
+- **Thin community `Community 249`** (1 nodes): `Create the juggle tmux session + window 0 if not already running.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 250`** (1 nodes): `Return Unix timestamp of pane's last activity, or 0 on failure.`
+- **Thin community `Community 250`** (1 nodes): `Return the target string for the first window (respects base-index).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 251`** (1 nodes): `Kill the agent's pane and remove it from the DB.`
+- **Thin community `Community 251`** (1 nodes): `Split the first window to create a new pane. Returns pane_id like '%5'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 252`** (1 nodes): `Return True if any child process of the pane has JUGGLE_IS_AGENT=1.`
+- **Thin community `Community 252`** (1 nodes): `Send the 'claude' command to a pane.          Prefixes with env -u CLAUDE_PLUGIN`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 253`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
+- **Thin community `Community 253`** (1 nodes): `Return True if pane_id exists in the juggle session.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 254`** (1 nodes): `Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.`
+- **Thin community `Community 254`** (1 nodes): `Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 255`** (1 nodes): `Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.`
+- **Thin community `Community 255`** (1 nodes): `Spawn a new claude pane, register in DB, return agent dict.          db must be`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 256`** (1 nodes): `Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.`
+- **Thin community `Community 256`** (1 nodes): `Return Unix timestamp of pane's last activity, or 0 on failure.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 257`** (1 nodes): `Spawn a new claude pane, register in DB, return agent dict.          db must be`
+- **Thin community `Community 257`** (1 nodes): `Kill the agent's pane and remove it from the DB.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 258`** (1 nodes): `Return Unix timestamp of pane's last activity, or 0 on failure.`
+- **Thin community `Community 258`** (1 nodes): `Return True if any child process of the pane has JUGGLE_IS_AGENT=1.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 259`** (1 nodes): `Kill the agent's pane and remove it from the DB.`
+- **Thin community `Community 259`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 260`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
+- **Thin community `Community 260`** (1 nodes): `Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 261`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
+- **Thin community `Community 261`** (1 nodes): `Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 262`** (1 nodes): `Trim text to at most `limit` chars while preserving the header/footer lines`
+- **Thin community `Community 262`** (1 nodes): `Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 263`** (1 nodes): `Module-level convenience function for use by the UserPromptSubmit hook.      Ret`
+- **Thin community `Community 263`** (1 nodes): `Spawn a new claude pane, register in DB, return agent dict.          db must be`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 264`** (1 nodes): `Return emoji state string for a thread dict.      Returns one of: "👉", "🏃‍♂️", "`
+- **Thin community `Community 264`** (1 nodes): `Return Unix timestamp of pane's last activity, or 0 on failure.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 265`** (1 nodes): `Return up to 2 Hindsight snippet lines for a topic. Empty list on any failure.`
+- **Thin community `Community 265`** (1 nodes): `Kill the agent's pane and remove it from the DB.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 266`** (1 nodes): `Render the topics tree as a string. Returns 'No topics.' if no visible threads.`
+- **Thin community `Community 266`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 267`** (1 nodes): `Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou`
+- **Thin community `Community 267`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 268`** (1 nodes): `Full enriched startup string: topics tree + per-thread Hindsight recalls.      C`
+- **Thin community `Community 268`** (1 nodes): `Trim text to at most `limit` chars while preserving the header/footer lines`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 269`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
+- **Thin community `Community 269`** (1 nodes): `Module-level convenience function for use by the UserPromptSubmit hook.      Ret`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 270`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
+- **Thin community `Community 270`** (1 nodes): `Return emoji state string for a thread dict.      Returns one of: "👉", "🏃‍♂️", "`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 271`** (1 nodes): `Shortcut: get a top-level setting value.`
+- **Thin community `Community 271`** (1 nodes): `Return up to 2 Hindsight snippet lines for a topic. Empty list on any failure.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 272`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
+- **Thin community `Community 272`** (1 nodes): `Render the topics tree as a string. Returns 'No topics.' if no visible threads.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 273`** (1 nodes): `RRF fusion of vec0 KNN and FTS5. Returns top-k results.`
+- **Thin community `Community 273`** (1 nodes): `Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 274`** (1 nodes): `Returns (vault_path, vault_name) from juggle settings.`
+- **Thin community `Community 274`** (1 nodes): `Full enriched startup string: topics tree + per-thread Hindsight recalls.      C`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 275`** (1 nodes): `Entry point called by juggle_cli.py.`
+- **Thin community `Community 275`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 276`** (1 nodes): `Entry point called by juggle_cli.py.`
+- **Thin community `Community 276`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 277`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
+- **Thin community `Community 277`** (1 nodes): `Shortcut: get a top-level setting value.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 278`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
+- **Thin community `Community 278`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 279`** (1 nodes): `Open via Obsidian (vault files) or macOS system open (non-vault files).`
+- **Thin community `Community 279`** (1 nodes): `RRF fusion of vec0 KNN and FTS5. Returns top-k results.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 280`** (1 nodes): `Entry point called by juggle_cli.py.`
+- **Thin community `Community 280`** (1 nodes): `Returns (vault_path, vault_name) from juggle settings.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 281`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
+- **Thin community `Community 281`** (1 nodes): `Entry point called by juggle_cli.py.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 282`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
+- **Thin community `Community 282`** (1 nodes): `Entry point called by juggle_cli.py.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 283`** (1 nodes): `Shortcut: get a top-level setting value.`
+- **Thin community `Community 283`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 284`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
+- **Thin community `Community 284`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 285`** (1 nodes): `Entry point called by juggle_cli.py.`
+- **Thin community `Community 285`** (1 nodes): `Open via Obsidian (vault files) or macOS system open (non-vault files).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 286`** (1 nodes): `Entry point called by juggle_cli.py.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 287`** (1 nodes): `Entry point called by juggle_cli.py.`
+- **Thin community `Community 287`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 288`** (1 nodes): `Entry point called by juggle_cli.py.`
+- **Thin community `Community 288`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 289`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
+- **Thin community `Community 289`** (1 nodes): `Shortcut: get a top-level setting value.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 290`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
+- **Thin community `Community 290`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 291`** (1 nodes): `Open via Obsidian (vault files) or macOS system open (non-vault files).`
+- **Thin community `Community 291`** (1 nodes): `Entry point called by juggle_cli.py.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 292`** (1 nodes): `Insert article; skip if URL exists. Returns new row id or None.`
+- **Thin community `Community 292`** (1 nodes): `Entry point called by juggle_cli.py.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 293`** (1 nodes): `RRF fusion of vec0 KNN and FTS5. Returns top-k results.`
+- **Thin community `Community 293`** (1 nodes): `Entry point called by juggle_cli.py.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 294`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
+- **Thin community `Community 294`** (1 nodes): `Entry point called by juggle_cli.py.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 295`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
+- **Thin community `Community 295`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 296`** (1 nodes): `Shortcut: get a top-level setting value.`
+- **Thin community `Community 296`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 297`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
+- **Thin community `Community 297`** (1 nodes): `Open via Obsidian (vault files) or macOS system open (non-vault files).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 298`** (1 nodes): `Return 'wide', 'medium', or 'narrow' based on terminal width.`
+- **Thin community `Community 298`** (1 nodes): `Insert article; skip if URL exists. Returns new row id or None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 299`** (1 nodes): `Build a Rich Layout tree for the given breakpoint.      Wide (>=120):         ro`
+- **Thin community `Community 299`** (1 nodes): `RRF fusion of vec0 KNN and FTS5. Returns top-k results.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 300`** (1 nodes): `Render topics panel.      Wide: one row per topic with glyph + [label] + title.`
+- **Thin community `Community 300`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 301`** (1 nodes): `Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)`
+- **Thin community `Community 301`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 302`** (1 nodes): `Render agents panel. Single-line per agent: glyph + [label] + id_short + role +`
+- **Thin community `Community 302`** (1 nodes): `Shortcut: get a top-level setting value.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 303`** (1 nodes): `Render notifications panel. Input is expected newest-first (from snapshot).`
+- **Thin community `Community 303`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 304`** (1 nodes): `Populate layout panels from state. Mutates layout in place.      If state is Non`
+- **Thin community `Community 304`** (1 nodes): `Return 'wide', 'medium', or 'narrow' based on terminal width.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 305`** (1 nodes): `Render notifications panel. Input is expected newest-first (from snapshot).`
+- **Thin community `Community 305`** (1 nodes): `Build a Rich Layout tree for the given breakpoint.      Wide (>=120):         ro`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 306`** (1 nodes): `Populate layout panels from state. Mutates layout in place.      If state is Non`
+- **Thin community `Community 306`** (1 nodes): `Render topics panel.      Wide: one row per topic with glyph + [label] + title.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 307`** (1 nodes): `Return 'wide', 'medium', or 'narrow' based on terminal width.`
+- **Thin community `Community 307`** (1 nodes): `Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 308`** (1 nodes): `Build a Rich Layout tree for the given breakpoint.      Wide (>=120):         ro`
+- **Thin community `Community 308`** (1 nodes): `Render agents panel. Single-line per agent: glyph + [label] + id_short + role +`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 309`** (1 nodes): `Render topics panel.      Wide: one row per topic with glyph + [label] + title.`
+- **Thin community `Community 309`** (1 nodes): `Render notifications panel. Input is expected newest-first (from snapshot).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 310`** (1 nodes): `Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)`
+- **Thin community `Community 310`** (1 nodes): `Populate layout panels from state. Mutates layout in place.      If state is Non`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 311`** (1 nodes): `Render agents panel. Single-line per agent: glyph + [label] + id_short + role +`
+- **Thin community `Community 311`** (1 nodes): `Render notifications panel. Input is expected newest-first (from snapshot).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 312`** (1 nodes): `Render notifications panel. Input is expected newest-first (from snapshot).`
+- **Thin community `Community 312`** (1 nodes): `Populate layout panels from state. Mutates layout in place.      If state is Non`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 313`** (1 nodes): `Populate layout panels from state. Mutates layout in place.      If state is Non`
+- **Thin community `Community 313`** (1 nodes): `Return 'wide', 'medium', or 'narrow' based on terminal width.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 314`** (1 nodes): `Convert seconds to compact age string: '12s', '5m', '2h', '3d'.`
+- **Thin community `Community 314`** (1 nodes): `Build a Rich Layout tree for the given breakpoint.      Wide (>=120):         ro`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 315`** (1 nodes): `Compute display-priority tier for a thread. Lower = higher priority.`
+- **Thin community `Community 315`** (1 nodes): `Render topics panel.      Wide: one row per topic with glyph + [label] + title.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 316`** (1 nodes): `Return seconds since last_active ISO timestamp, or 0 if unparseable.`
+- **Thin community `Community 316`** (1 nodes): `Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 317`** (1 nodes): `Read DB state into a frozen CockpitState. Only function that touches DB.`
+- **Thin community `Community 317`** (1 nodes): `Render agents panel. Single-line per agent: glyph + [label] + id_short + role +`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 318`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
+- **Thin community `Community 318`** (1 nodes): `Render notifications panel. Input is expected newest-first (from snapshot).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 319`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
+- **Thin community `Community 319`** (1 nodes): `Populate layout panels from state. Mutates layout in place.      If state is Non`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 320`** (1 nodes): `Clamp pane offset to [0, max_offset].`
+- **Thin community `Community 320`** (1 nodes): `Convert seconds to compact age string: '12s', '5m', '2h', '3d'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 321`** (1 nodes): `One cockpit tick: snapshot DB → pick breakpoint → render into layout.      Retur`
+- **Thin community `Community 321`** (1 nodes): `Compute display-priority tier for a thread. Lower = higher priority.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 322`** (1 nodes): `Reap agents, throttled to once per throttle_secs.`
+- **Thin community `Community 322`** (1 nodes): `Return seconds since last_active ISO timestamp, or 0 if unparseable.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 323`** (1 nodes): `Create a JuggleDB with a persistent connection for cockpit use.      Normal Jugg`
+- **Thin community `Community 323`** (1 nodes): `Read DB state into a frozen CockpitState. Only function that touches DB.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 324`** (1 nodes): `Start the cockpit refresh loop using Rich Live.`
+- **Thin community `Community 324`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 325`** (1 nodes): `Hard-block Edit/Write/NotebookEdit in the orchestrator main thread.`
+- **Thin community `Community 325`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 326`** (1 nodes): `Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls.`
+- **Thin community `Community 326`** (1 nodes): `Clamp pane offset to [0, max_offset].`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 327`** (1 nodes): `Send the 'claude' command to a pane.          Prefixes with env -u CLAUDE_PLUGIN`
+- **Thin community `Community 327`** (1 nodes): `One cockpit tick: snapshot DB → pick breakpoint → render into layout.      Retur`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 328`** (1 nodes): `Return True if pane_id exists in the juggle session.`
+- **Thin community `Community 328`** (1 nodes): `Reap agents, throttled to once per throttle_secs.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 329`** (1 nodes): `Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.`
+- **Thin community `Community 329`** (1 nodes): `Create a JuggleDB with a persistent connection for cockpit use.      Normal Jugg`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 330`** (1 nodes): `Spawn a new claude pane, register in DB, return agent dict.          db must be`
+- **Thin community `Community 330`** (1 nodes): `Start the cockpit refresh loop using Rich Live.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 331`** (1 nodes): `Kill the agent's pane and remove it from the DB.`
+- **Thin community `Community 331`** (1 nodes): `Hard-block Edit/Write/NotebookEdit in the orchestrator main thread.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 332`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
+- **Thin community `Community 332`** (1 nodes): `Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 333`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
+- **Thin community `Community 333`** (1 nodes): `Send the 'claude' command to a pane.          Prefixes with env -u CLAUDE_PLUGIN`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 334`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
+- **Thin community `Community 334`** (1 nodes): `Return True if pane_id exists in the juggle session.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 335`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
+- **Thin community `Community 335`** (1 nodes): `Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 336`** (1 nodes): `Calls nvim --server --remote when socket exists.`
+- **Thin community `Community 336`** (1 nodes): `Spawn a new claude pane, register in DB, return agent dict.          db must be`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 337`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
+- **Thin community `Community 337`** (1 nodes): `Kill the agent's pane and remove it from the DB.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 338`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
+- **Thin community `Community 338`** (1 nodes): `Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 339`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
+- **Thin community `Community 339`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 340`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
+- **Thin community `Community 340`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 341`** (1 nodes): `Shortcut: get a top-level setting value.`
+- **Thin community `Community 341`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 342`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
+- **Thin community `Community 342`** (1 nodes): `Calls nvim --server --remote when socket exists.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 343`** (1 nodes): `Return HindsightClient or None if disabled/unconfigured.`
+- **Thin community `Community 343`** (1 nodes): `Record pending user decisions in current thread's open_questions.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 344`** (1 nodes): `Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -`
+- **Thin community `Community 344`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 345`** (1 nodes): `Return a human-friendly relative time string for an ISO-8601 UTC timestamp.`
+- **Thin community `Community 345`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 346`** (1 nodes): `Return the tail of text, capped at max_chars.`
+- **Thin community `Community 346`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 347`** (1 nodes): `Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la`
+- **Thin community `Community 347`** (1 nodes): `Shortcut: get a top-level setting value.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 348`** (1 nodes): `Generate a 5-10 word title for a thread via claude -p. Stores result in DB.`
+- **Thin community `Community 348`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 349`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
+- **Thin community `Community 349`** (1 nodes): `Return HindsightClient or None if disabled/unconfigured.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 350`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
+- **Thin community `Community 350`** (1 nodes): `Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 351`** (1 nodes): `Shortcut: get a top-level setting value.`
+- **Thin community `Community 351`** (1 nodes): `Return a human-friendly relative time string for an ISO-8601 UTC timestamp.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 352`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
+- **Thin community `Community 352`** (1 nodes): `Return the tail of text, capped at max_chars.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 353`** (1 nodes): `Return pane names whose item count exceeds estimated visible rows.      Uses lay`
+- **Thin community `Community 353`** (1 nodes): `Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 354`** (1 nodes): `Thread-safe per-pane scroll offsets + active pane, driven by keyboard.      Key`
+- **Thin community `Community 354`** (1 nodes): `Generate a 5-10 word title for a thread via claude -p. Stores result in DB.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 355`** (1 nodes): `Return (offsets_copy, active_pane) atomically.`
+- **Thin community `Community 355`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 356`** (1 nodes): `Update which panes have overflow content. Resets active if it drops out.`
+- **Thin community `Community 356`** (1 nodes): `Return merged settings dict. Cached for process lifetime.      Load order: DEFAU`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 357`** (1 nodes): `Clamp pane offset to [0, max_offset].`
+- **Thin community `Community 357`** (1 nodes): `Shortcut: get a top-level setting value.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 358`** (1 nodes): `One cockpit tick: snapshot DB → pick breakpoint → render into layout.      Retur`
+- **Thin community `Community 358`** (1 nodes): `Shortcut: get a nested setting value from a named section.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 359`** (1 nodes): `Reap agents, throttled to once per throttle_secs.`
+- **Thin community `Community 359`** (1 nodes): `Return pane names whose item count exceeds estimated visible rows.      Uses lay`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 360`** (1 nodes): `Create a JuggleDB with a persistent connection for cockpit use.      Normal Jugg`
+- **Thin community `Community 360`** (1 nodes): `Thread-safe per-pane scroll offsets + active pane, driven by keyboard.      Key`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 361`** (1 nodes): `Start the cockpit refresh loop using Rich Live.`
+- **Thin community `Community 361`** (1 nodes): `Return (offsets_copy, active_pane) atomically.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 362`** (1 nodes): `Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls.`
+- **Thin community `Community 362`** (1 nodes): `Update which panes have overflow content. Resets active if it drops out.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 363`** (1 nodes): `Clamp pane offset to [0, max_offset].`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 364`** (1 nodes): `One cockpit tick: snapshot DB → pick breakpoint → render into layout.      Retur`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 365`** (1 nodes): `Reap agents, throttled to once per throttle_secs.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 366`** (1 nodes): `Create a JuggleDB with a persistent connection for cockpit use.      Normal Jugg`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 367`** (1 nodes): `Start the cockpit refresh loop using Rich Live.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 368`** (1 nodes): `Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `JuggleDB` connect `Community 0` to `Community 1`, `Community 2`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 9`, `Community 11`, `Community 12`, `Community 16`, `Community 17`, `Community 19`, `Community 20`, `Community 23`, `Community 25`, `Community 26`, `Community 27`, `Community 29`?**
+- **Why does `JuggleDB` connect `Community 0` to `Community 1`, `Community 2`, `Community 4`, `Community 5`, `Community 6`, `Community 8`, `Community 9`, `Community 11`, `Community 14`, `Community 16`, `Community 17`, `Community 18`, `Community 20`, `Community 21`, `Community 24`, `Community 25`, `Community 27`, `Community 28`, `Community 29`, `Community 31`?**
   _High betweenness centrality (0.353) - this node is a cross-community bridge._
-- **Why does `get_db()` connect `Community 1` to `Community 0`, `Community 11`, `Community 6`?**
+- **Why does `get_db()` connect `Community 1` to `Community 0`, `Community 9`, `Community 6`?**
   _High betweenness centrality (0.141) - this node is a cross-community bridge._
-- **Why does `get_settings()` connect `Community 8` to `Community 1`, `Community 4`, `Community 5`, `Community 11`, `Community 13`, `Community 18`?**
+- **Why does `get_settings()` connect `Community 7` to `Community 1`, `Community 4`, `Community 5`, `Community 9`, `Community 12`, `Community 19`?**
   _High betweenness centrality (0.138) - this node is a cross-community bridge._
 - **Are the 76 inferred relationships involving `JuggleDB` (e.g. with `active_db()` and `db()`) actually correct?**
   _`JuggleDB` has 76 INFERRED edges - model-reasoned connections that need verification._

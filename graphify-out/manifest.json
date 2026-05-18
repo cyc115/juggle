@@ -268,12 +268,12 @@
     "hash": "47c1bc7dc00352676f3e0ae1a4fed795"
   },
   "/Users/mikechen/github/juggle/src/juggle_schedule_autofix.py": {
-    "mtime": 1779091050.2902167,
-    "hash": "a79239b578d3965e530396b55459080b"
+    "mtime": 1779091258.0290096,
+    "hash": "fa770e31a0b4f3de1e92da9a70637a1c"
   },
   "/Users/mikechen/github/juggle/src/juggle_schedule_reflect.py": {
-    "mtime": 1779091050.2898495,
-    "hash": "aa4888e115ff86f26f5130477fec62b1"
+    "mtime": 1779091275.742163,
+    "hash": "0eecfe023dca3313ac940b8d6ee3c38e"
   },
   "/Users/mikechen/github/juggle/src/juggle_migrate_lifecycle.py": {
     "mtime": 1776558919.4602594,
@@ -332,8 +332,12 @@
     "hash": "84011789e25fb3fe131fc1217faa0446"
   },
   "/Users/mikechen/github/juggle/src/juggle_schedule_dogfood.py": {
-    "mtime": 1779090625.6980906,
-    "hash": "e46be95b6ce9f76c0557f9a4c8935f46"
+    "mtime": 1779091268.0775673,
+    "hash": "1f60cd7c1cb2d710e318a985b405a75e"
+  },
+  "/Users/mikechen/github/juggle/CHANGELOG.md": {
+    "mtime": 1779091332.986322,
+    "hash": "cf424a0a24bc411fe497057c3b0bd01e"
   },
   "/Users/mikechen/github/juggle/README.md": {
     "mtime": 1779086819.3803039,
@@ -392,24 +396,24 @@
     "hash": "a8f7e340fa57d76706859a50ae9e22ed"
   },
   "/Users/mikechen/github/juggle/docs/architecture.md": {
-    "mtime": 1775422292.6898987,
-    "hash": "94f94b60bee4ada8923e99b566ebefaf"
+    "mtime": 1779091180.1468818,
+    "hash": "bcde3700241668a149f2aa3c9de643a4"
   },
   "/Users/mikechen/github/juggle/docs/topic-lifecycle.md": {
-    "mtime": 1776559031.2156327,
-    "hash": "4cf2cc60cef22dfc5906376bd9a44da2"
+    "mtime": 1779091231.7054899,
+    "hash": "be4b699acbce485933f620dc3d6e8ca0"
   },
   "/Users/mikechen/github/juggle/docs/agent-context-injection.md": {
     "mtime": 1778987359.5477846,
     "hash": "f129629b6790557c1729f800a42d16d7"
   },
   "/Users/mikechen/github/juggle/docs/superpowers/plans/2026-05-13-research-kb.md": {
-    "mtime": 1778731478.4631894,
-    "hash": "7b40f9e8bc74bc20bcc8f7bd80d32518"
+    "mtime": 1779091287.3901095,
+    "hash": "cd11c3ee52f7fcf4b826c22559788e90"
   },
   "/Users/mikechen/github/juggle/docs/superpowers/specs/2026-05-13-research-kb-design.md": {
-    "mtime": 1778730969.3410087,
-    "hash": "0106e1209ec0f3249f723ebd91a7b568"
+    "mtime": 1779091309.2677455,
+    "hash": "65c7284d54dd1c5d52d2f44f6bf540ff"
   },
   "/Users/mikechen/github/juggle/docs/superpowers/specs/2026-05-17-juggle-agent-watchdog.md": {
     "mtime": 1779071673.4273508,
