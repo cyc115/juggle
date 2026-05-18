@@ -34,7 +34,10 @@ CREATE TABLE IF NOT EXISTS threads (
   summarized_msg_count INTEGER NOT NULL DEFAULT 0,
   title           TEXT DEFAULT '',
   created_at      TEXT NOT NULL,
-  last_active     TEXT NOT NULL
+  last_active     TEXT NOT NULL,
+  last_dispatched_task  TEXT,
+  last_dispatched_role  TEXT,
+  last_dispatched_model TEXT
 );
 """
 
@@ -68,14 +71,22 @@ CREATE TABLE IF NOT EXISTS session (
 
 CREATE_AGENTS = """
 CREATE TABLE IF NOT EXISTS agents (
-  id              TEXT PRIMARY KEY,
-  role            TEXT NOT NULL,
-  pane_id         TEXT NOT NULL,
-  assigned_thread TEXT,
-  status          TEXT NOT NULL DEFAULT 'idle',
-  context_threads TEXT NOT NULL DEFAULT '[]',
-  created_at      TEXT NOT NULL,
-  last_active     TEXT NOT NULL
+  id                         TEXT PRIMARY KEY,
+  role                       TEXT NOT NULL,
+  pane_id                    TEXT NOT NULL,
+  assigned_thread            TEXT,
+  status                     TEXT NOT NULL DEFAULT 'idle',
+  context_threads            TEXT NOT NULL DEFAULT '[]',
+  created_at                 TEXT NOT NULL,
+  last_active                TEXT NOT NULL,
+  watchdog_retried           INTEGER NOT NULL DEFAULT 0,
+  watchdog_threshold_minutes INTEGER,
+  model                      TEXT,
+  last_task                  TEXT,
+  busy_since                 TEXT,
+  last_send_task_pane_hash   TEXT,
+  last_send_task_at          TEXT,
+  last_activity_at           TEXT
 );
 """
 
@@ -107,6 +118,26 @@ CREATE_SETTINGS = """
 CREATE TABLE IF NOT EXISTS settings (
   key             TEXT PRIMARY KEY,
   value           TEXT NOT NULL
+);
+"""
+
+CREATE_AGENT_COMPLETIONS = """
+CREATE TABLE IF NOT EXISTS agent_completions (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  role          TEXT NOT NULL,
+  duration_secs REAL NOT NULL,
+  completed_at  TEXT NOT NULL
+);
+"""
+
+CREATE_WATCHDOG_EVENTS = """
+CREATE TABLE IF NOT EXISTS watchdog_events (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent_id      TEXT NOT NULL,
+  thread_id     TEXT,
+  event_type    TEXT NOT NULL,
+  snapshot_path TEXT,
+  created_at    TEXT NOT NULL
 );
 """
 
@@ -177,6 +208,8 @@ class JuggleDB:
             conn.execute(CREATE_NOTIFICATIONS_V2)
             conn.execute(CREATE_ACTION_ITEMS)
             conn.execute(CREATE_SETTINGS)
+            conn.execute(CREATE_AGENT_COMPLETIONS)
+            conn.execute(CREATE_WATCHDOG_EVENTS)
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_notifications_v2_session "
                 "ON notifications_v2(session_id)"
@@ -407,6 +440,50 @@ class JuggleDB:
                 conn.execute("DROP TABLE IF EXISTS domains")
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 19 skipped: %s", e)
+
+        # Migration 20: all watchdog columns on agents
+        agents_cols = {r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()}
+        try:
+            for col, defn in [
+                ("watchdog_retried",           "INTEGER NOT NULL DEFAULT 0"),
+                ("watchdog_threshold_minutes", "INTEGER"),
+                ("model",                      "TEXT"),
+                ("last_task",                  "TEXT"),
+                ("busy_since",                 "TEXT"),
+                ("last_send_task_pane_hash",   "TEXT"),
+                ("last_send_task_at",          "TEXT"),
+                ("last_activity_at",           "TEXT"),
+            ]:
+                if col not in agents_cols:
+                    conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {defn}")
+            conn.commit()
+            _log.info("Migration 20: watchdog columns added to agents")
+        except sqlite3.OperationalError as e:
+            _log.warning("Migration 20 (watchdog agent cols) skipped: %s", e)
+
+        # Migration 21: agent_completions table + index
+        try:
+            conn.execute(CREATE_AGENT_COMPLETIONS)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_completions_role_date "
+                "ON agent_completions(role, completed_at)"
+            )
+            conn.commit()
+            _log.info("Migration 21: agent_completions table created")
+        except sqlite3.OperationalError as e:
+            _log.warning("Migration 21 (agent_completions) skipped: %s", e)
+
+        # Migration 22: watchdog_events table + threads dispatch payload columns
+        try:
+            conn.execute(CREATE_WATCHDOG_EVENTS)
+            threads_cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
+            for col in ("last_dispatched_task", "last_dispatched_role", "last_dispatched_model"):
+                if col not in threads_cols:
+                    conn.execute(f"ALTER TABLE threads ADD COLUMN {col} TEXT")
+            conn.commit()
+            _log.info("Migration 22: watchdog_events + threads dispatch payload columns created")
+        except sqlite3.OperationalError as e:
+            _log.warning("Migration 22 (watchdog_events + threads) skipped: %s", e)
 
     # ------------------------------------------------------------------
     # Session helpers
@@ -1011,6 +1088,60 @@ class JuggleDB:
                 (thread_id,)
             ).fetchone()
             return dict(row) if row else None
+
+    def insert_agent_completion(self, role: str, duration_secs: float) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO agent_completions (role, duration_secs, completed_at) VALUES (?, ?, ?)",
+                (role, duration_secs, now),
+            )
+            conn.commit()
+
+    def get_median_duration_secs(
+        self, role: str, days: int = 30, min_samples: int = 10
+    ) -> float | None:
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT duration_secs FROM agent_completions "
+                "WHERE role = ? AND completed_at > ? ORDER BY duration_secs",
+                (role, cutoff),
+            ).fetchall()
+        vals = [r["duration_secs"] for r in rows]
+        if len(vals) < min_samples:
+            return None
+        mid = len(vals) // 2
+        if len(vals) % 2 == 0:
+            return (vals[mid - 1] + vals[mid]) / 2.0
+        return vals[mid]
+
+    def add_watchdog_event(
+        self,
+        agent_id: str,
+        thread_id: str | None,
+        event_type: str,
+        snapshot_path: str | None = None,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO watchdog_events (agent_id, thread_id, event_type, snapshot_path, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (agent_id, thread_id, event_type, snapshot_path, now),
+            )
+            conn.commit()
+
+    def cleanup_watchdog_events(self, days: int = 30) -> int:
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM watchdog_events WHERE created_at < ?", (cutoff,)
+            )
+            conn.commit()
+        return cur.rowcount
 
     def get_archive_candidates(self) -> list[dict]:
         """Return threads that are candidates for archiving.
