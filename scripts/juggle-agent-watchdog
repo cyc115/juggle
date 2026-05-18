@@ -159,22 +159,23 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_sigterm)
     signal.signal(signal.SIGINT, _handle_sigterm)
 
-    db = JuggleDB(str(DB_PATH))
-    db.init_db()
-    db.cleanup_watchdog_events()
+    try:
+        db = JuggleDB(str(DB_PATH))
+        db.init_db()
+        db.cleanup_watchdog_events()
 
-    mgr = JuggleTmuxManager()
-    _log.info("Watchdog started (PID=%d, interval=%ds)", os.getpid(), _POLL_INTERVAL)
+        mgr = JuggleTmuxManager()
+        _log.info("Watchdog started (PID=%d, interval=%ds)", os.getpid(), _POLL_INTERVAL)
 
-    while _running:
-        try:
-            _poll_once(db, mgr)
-        except Exception:
-            _log.exception("Watchdog: unhandled error in poll — continuing")
-        time.sleep(_POLL_INTERVAL)
-
-    pid_file.unlink(missing_ok=True)
-    _log.info("Watchdog stopped.")
+        while _running:
+            try:
+                _poll_once(db, mgr)
+            except Exception:
+                _log.exception("Watchdog: unhandled error in poll — continuing")
+            time.sleep(_POLL_INTERVAL)
+    finally:
+        pid_file.unlink(missing_ok=True)
+        _log.info("Watchdog stopped.")
 
 
 if __name__ == "__main__":

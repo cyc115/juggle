@@ -207,16 +207,17 @@ def execute_recovery(
     """Decommission a stalled/crashed agent and (if eligible) re-dispatch it."""
     agent_id = agent["id"]
 
-    # DA-6: Recheck agent status from DB to guard against TOCTOU race
+    # DA-6: Recheck agent status from DB to guard against TOCTOU race; use live
+    # record for all subsequent reads so a concurrent release can't mislead us.
     live = db.get_agent(agent_id)
     if live is None or live.get("status") != "busy":
         _log.info("Watchdog: recovery aborted for %s — agent no longer busy", agent_id[:8])
         return
 
-    thread_id = agent.get("assigned_thread")
-    role = agent.get("role", "researcher")
-    model = agent.get("model")
-    last_task = agent.get("last_task")
+    thread_id = live.get("assigned_thread")
+    role = live.get("role", "researcher")
+    model = live.get("model")
+    last_task = live.get("last_task")
     label = _get_thread_label(db, thread_id) if thread_id else agent_id[:8]
 
     snap_path = write_recovery_snapshot(agent_id, pane_content, recovery_dir)
@@ -233,7 +234,7 @@ def execute_recovery(
 
     # Kill pane (best-effort) then delete agent from DB directly
     try:
-        mgr.kill_pane(agent["pane_id"])
+        mgr.kill_pane(live["pane_id"])
     except Exception:
         pass
     db.delete_agent(agent_id)
@@ -241,7 +242,7 @@ def execute_recovery(
     if thread_id:
         db.update_thread(thread_id, status="failed")
 
-    if agent.get("watchdog_retried", 0) == 1:
+    if live.get("watchdog_retried", 0) >= 1:
         if thread_id:
             db.add_action_item(
                 thread_id=thread_id,
