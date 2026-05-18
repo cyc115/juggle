@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(SRC_DIR))
 
-from juggle_schedule_common import (
+from juggle_schedule_common import (  # noqa: E402
     CostCapExceeded,
     CostTracker,
     JUGGLE_REPO,

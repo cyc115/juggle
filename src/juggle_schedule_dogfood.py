@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(SRC_DIR))
 
-from juggle_schedule_common import (
+from juggle_schedule_common import (  # noqa: E402
     CostCapExceeded,
     CostTracker,
     JUGGLE_REPO,
@@ -349,7 +349,7 @@ def run(dry_run: bool = False) -> int:
     report_content = _build_report(since_date, agent_output, cost_tracker.total)
 
     out_path = REPORTS_DIR / f"dogfood-{today}.md"
-    tmp_path = Path(f"/tmp/schedule-dogfood-sample-report.md") if dry_run else None
+    tmp_path = Path("/tmp/schedule-dogfood-sample-report.md") if dry_run else None
     write_report(out_path, report_content, dry_run=dry_run, tmp_override=tmp_path)
 
     if dry_run:

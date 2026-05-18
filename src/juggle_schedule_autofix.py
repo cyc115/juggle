@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(SRC_DIR))
 
-from juggle_schedule_common import (
+from juggle_schedule_common import (  # noqa: E402
     CostCapExceeded,
     CostTracker,
     JUGGLE_REPO,
@@ -64,7 +64,7 @@ def fx1_ruff(branch: str, dry_run: bool, pr_sections: dict) -> None:
             pr_sections["FX-1"] = {"status": "tool unavailable", "files": 0, "lines": ""}
             return
 
-    result = subprocess.run(
+    subprocess.run(
         ruff_cmd + ["check", "--fix", "--select", "F401,F841,E501", str(JUGGLE_REPO / "src")],
         capture_output=True, text=True, cwd=str(JUGGLE_REPO)
     )
@@ -177,11 +177,6 @@ def fx3_test_gaps(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
 
     # Find 0%-covered functions via coverage (or just find functions without tests)
     try:
-        cov_result = subprocess.run(
-            [sys.executable, "-m", "pytest", "--co", "-q", "--tb=no",
-             "src/", "--ignore=src/__pycache__"],
-            capture_output=True, text=True, cwd=str(JUGGLE_REPO), timeout=60
-        )
         src_functions = _find_untested_functions()
     except Exception as e:
         logger.warning("FX-3 coverage detection failed: %s", e)
@@ -193,10 +188,10 @@ def fx3_test_gaps(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
         return
 
     prompt = (
-        f"Generate pytest test cases for these Python functions that have no existing tests. "
-        f"Each test should be simple, fast, and not require external services. "
-        f"Mark any test you're uncertain about with @pytest.mark.skip(reason='auto-generated, needs review').\n\n"
-        f"Functions to test:\n" + "\n".join(src_functions[:10])  # cap at 10
+        "Generate pytest test cases for these Python functions that have no existing tests. "
+        "Each test should be simple, fast, and not require external services. "
+        "Mark any test you're uncertain about with @pytest.mark.skip(reason='auto-generated, needs review').\n\n"
+        "Functions to test:\n" + "\n".join(src_functions[:10])  # cap at 10
     )
     try:
         test_code = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=90)
@@ -534,7 +529,6 @@ def is2_skill_audit(issues_to_file: list) -> None:
         return
 
     invoked_skills: set[str] = set()
-    cutoff = days_ago_iso(30)
     for jsonl in claude_projects.glob("**/*.jsonl"):
         try:
             for line in jsonl.read_text(errors="ignore").splitlines():
@@ -795,11 +789,10 @@ def run(dry_run: bool = False) -> int:
 
 def _handle_cost_cap(exc, pr_sections, branch, today, all_sections, issues_filed, dry_run):
     logger.error("cost cap exceeded: %s", exc)
-    pr_body = _build_pr_description(today, pr_sections, issues_filed, "", "")
     if not dry_run:
         gh_create_issue(
             f"autofix: cost cap exceeded — {today}",
-            f"Run hit ${2.00:.2f} cap.\n\nPartial PR may have been created.\n\n{str(exc)}",
+            f"Run hit ${2.00:.2f} cap.\n\nPartial PR may have been created.\n\n{exc}",
             ["autofix"],
         )
 
