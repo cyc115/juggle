@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.2, pytest-9.0.3, pluggy-1.6.0 -- /opt/homebrew/opt/python@3.14/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/mikechen/github/juggle
+plugins: asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 5 items
+
+tests/watchdog/test_baseline.py::test_working_control PASSED             [ 20%]
+tests/watchdog/test_baseline.py::test_recoverable_prompt_gap PASSED      [ 40%]
+tests/watchdog/test_baseline.py::test_stalled_silent_gap PASSED          [ 60%]
+tests/watchdog/test_baseline.py::test_crashed_gap PASSED                 [ 80%]
+tests/watchdog/test_baseline.py::test_stuck_at_prompt_gap PASSED         [100%]
+
+============================== 5 passed in 20.31s ==============================
