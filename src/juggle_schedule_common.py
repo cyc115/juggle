@@ -147,8 +147,8 @@ def gh_create_issue(title: str, body: str, labels: list[str] | None = None,
         url = result.stdout.strip()
         logger.info("created issue: %s", url)
         return url
-    except subprocess.CalledProcessError as e:
-        logger.error("gh_create_issue failed: %s", e.stderr)
+    except Exception as e:
+        logger.error("gh_create_issue failed: %s", e)
         return None
 
 

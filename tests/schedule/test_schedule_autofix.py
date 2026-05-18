@@ -23,7 +23,7 @@ def test_existing_pr_blocks_run(tmp_path):
     mock_db.add_action_item = MagicMock()
     mock_thread = [{"id": "abc123"}]
 
-    with patch.object(common, "gh_pr_list_head", return_value=existing_prs), \
+    with patch("juggle_schedule_autofix.gh_pr_list_head", return_value=existing_prs), \
          patch.object(autofix, "get_db", return_value=mock_db), \
          patch.object(autofix, "db_query", return_value=mock_thread), \
          patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
@@ -38,7 +38,7 @@ def test_existing_pr_blocks_run(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_dry_run_writes_pr_description(tmp_path):
-    with patch.object(common, "gh_pr_list_head", return_value=[]), \
+    with patch("juggle_schedule_autofix.gh_pr_list_head", return_value=[]), \
          patch.object(autofix, "get_db", return_value=MagicMock()), \
          patch.object(autofix, "db_query", return_value=[]), \
          patch.object(autofix, "fx1_ruff", lambda *a, **kw: None), \
