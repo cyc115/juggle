@@ -39,8 +39,9 @@ def _agent_status(db, agent_id) -> str:
         return row[0] if row else "missing"
 
 
-def test_working_control(tmux_pane, fake_agent, test_db):  # noqa: ARG001
+def test_working_control(tmux_pane, fake_agent, test_db):
     """Control: working agent emits output. No intervention expected."""
+    _ = fake_agent, test_db  # fixtures needed for DB setup; not queried in control case
     _send(tmux_pane, f"bash {FIXTURE_DIR}/working.sh")
     time.sleep(WAIT_SECS)
     content = _capture(tmux_pane)
