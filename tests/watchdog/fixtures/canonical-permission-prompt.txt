@@ -1,0 +1,11 @@
+# PLACEHOLDER — replace with actual Claude permission dialog text
+#
+# To capture: run claude in a real juggle pane, trigger a bash command,
+# then: tmux capture-pane -pt <pane_id> > tests/watchdog/fixtures/canonical-permission-prompt.txt
+#
+# The watchdog's classify_pane() regex must match BOTH this file AND recoverable-prompt.sh output.
+#
+# Expected pattern: lines matching r'^\s*[12]\.\s+Yes' after ANSI stripping.
+1. Yes
+2. Yes, allow all
+3. No
