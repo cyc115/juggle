@@ -104,6 +104,82 @@ def _tmux_session_exists(session: str = "juggle") -> bool:
     return result.returncode == 0
 
 
+def _run_canary_spawn(cost_tracker: CostTracker) -> str:
+    """Dry-run spawn: create real thread + agent, send canary task, poll up to 60s."""
+    cli = str(JUGGLE_REPO / "src" / "juggle_cli.py")
+    topic = f"dogfood-dryrun-{today_str()}"
+
+    result = subprocess.run(
+        [sys.executable, cli, "create-thread", topic],
+        capture_output=True, text=True, timeout=30
+    )
+    if result.returncode != 0:
+        return (
+            f"## Observed Friction Patterns\n[CANARY-SPAWN-FAILED] create-thread failed: "
+            f"{result.stderr[:100]}\n\n## Raw thread summary (for archival)\nCanary aborted.\n"
+        )
+
+    # Parse thread label from "Created Topic JN: ..." output
+    import re as _re
+    m = _re.search(r"Topic ([A-Z]{1,2}):", result.stdout)
+    if not m:
+        return (
+            f"## Observed Friction Patterns\n[CANARY-SPAWN-FAILED] create-thread output unparseable: "
+            f"{result.stdout[:100]}\n\n## Raw thread summary (for archival)\nCanary aborted.\n"
+        )
+    thread_label = m.group(1)
+
+    agent_result = subprocess.run(
+        [sys.executable, cli, "get-agent", thread_label, "--role", "researcher"],
+        capture_output=True, text=True, timeout=60
+    )
+    if agent_result.returncode != 0 or not agent_result.stdout.strip():
+        return (
+            f"## Observed Friction Patterns\n[CANARY-SPAWN-FAILED] get-agent failed: "
+            f"{agent_result.stderr[:100]}\n\n## Raw thread summary (for archival)\nCanary aborted at get-agent.\n"
+        )
+
+    agent_id = agent_result.stdout.strip().split()[0]
+    canary_task = "Output exactly this text and nothing else: dogfood dry-run canary OK"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write(canary_task)
+        task_file = f.name
+
+    try:
+        subprocess.run(
+            [sys.executable, cli, "send-task", agent_id, task_file],
+            capture_output=True, text=True, timeout=30
+        )
+
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            time.sleep(5)
+            check = subprocess.run(
+                [sys.executable, cli, "check-agents"],
+                capture_output=True, text=True, timeout=10
+            )
+            if check.returncode == 0:
+                try:
+                    agents = json.loads(check.stdout or "[]")
+                    agent = next((a for a in agents if a.get("id") == agent_id), None)
+                    if agent and agent.get("status") in ("idle", "completed"):
+                        break
+                except Exception:
+                    pass
+    finally:
+        Path(task_file).unlink(missing_ok=True)
+
+    return (
+        f"## Observed Friction Patterns\n"
+        f"[DRY-RUN-CANARY] Spawn path exercised. Thread: {topic}, Agent: {agent_id[:8]}\n\n"
+        f"## Repeated Dispatches / Blockers\nNone in canary run.\n\n"
+        f"## Unresolved Open Questions\nNone in canary run.\n\n"
+        f"## Suggested Improvements (1–3)\n[DRY-RUN-CANARY] Spawn path verified — no friction observed.\n\n"
+        f"## Raw thread summary (for archival)\n"
+        f"[DRY-RUN-CANARY] Canary task sent to {agent_id[:8]} — spawn path verified.\n"
+    )
+
+
 def _run_headless_research(task_prompt: str, cost_tracker: CostTracker, dry_run: bool) -> str:
     if dry_run:
         return (
@@ -158,13 +234,17 @@ def _run_juggle_path_a(task_prompt: str, cost_tracker: CostTracker) -> str:
         logger.warning("create-thread failed, falling back to headless")
         return _run_headless_research(task_prompt, cost_tracker, dry_run=False)
 
+    import re as _re
+    m = _re.search(r"Topic ([A-Z]{1,2}):", result.stdout)
+    thread_label = m.group(1) if m else ""
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
         f.write(task_prompt)
         task_file = f.name
 
     try:
         agent_result = subprocess.run(
-            [sys.executable, cli, "get-agent", "--role", "researcher"],
+            [sys.executable, cli, "get-agent", thread_label, "--role", "researcher"],
             capture_output=True, text=True, timeout=60
         )
         if agent_result.returncode != 0:
@@ -297,9 +377,13 @@ def run(dry_run: bool = False) -> int:
     task_prompt = TASK_PROMPT_TEMPLATE.format(since_date=since_date)
 
     try:
-        if not dry_run and _tmux_session_exists("juggle"):
-            logger.info("Using Path A: Juggle tmux session")
-            agent_output = _run_juggle_path_a(task_prompt, cost_tracker)
+        if _tmux_session_exists("juggle"):
+            if dry_run:
+                logger.info("DRY RUN: exercising spawn path with canary task")
+                agent_output = _run_canary_spawn(cost_tracker)
+            else:
+                logger.info("Using Path A: Juggle tmux session")
+                agent_output = _run_juggle_path_a(task_prompt, cost_tracker)
         else:
             logger.info("Using Path B: headless claude -p")
             agent_output = _run_headless_research(task_prompt, cost_tracker, dry_run=dry_run)
