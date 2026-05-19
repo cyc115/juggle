@@ -10,7 +10,7 @@ import json
 import logging
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -61,9 +61,26 @@ def fx1_ruff(branch: str, dry_run: bool, pr_sections: dict) -> None:
             pr_sections["FX-1"] = {"status": "tool unavailable", "files": 0, "lines": ""}
             return
 
-    src_dir = str(JUGGLE_REPO / "src")
+    # Scope ruff to Python files changed in the last 7 days, not the entire src/
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    try:
+        git_out = subprocess.check_output(
+            ["git", "log", f"--since={since}", "--name-only", "--pretty=format:", "--all"],
+            text=True, cwd=str(JUGGLE_REPO)
+        )
+        changed = sorted({
+            f for f in git_out.split()
+            if f.endswith(".py") and (JUGGLE_REPO / f).exists()
+        })
+    except Exception:
+        changed = []
+
+    if not changed:
+        pr_sections["FX-1"] = {"status": "no findings this week", "files": 0, "lines": ""}
+        return
+
     subprocess.run(
-        ruff_cmd + ["check", "--fix", "--select", "F401,F841,E501", src_dir],
+        ruff_cmd + ["check", "--fix", "--select", "F401,F841,E501"] + changed,
         capture_output=True, text=True, cwd=str(JUGGLE_REPO)
     )
     diff = _git_diff_stat()

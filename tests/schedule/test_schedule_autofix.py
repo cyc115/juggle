@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
@@ -154,3 +153,49 @@ def test_read_dogfood_snippet_reads_recent_report(tmp_path):
         snippet = autofix._read_dogfood_snippet()
 
     assert len(snippet) > 0
+
+
+# ---------------------------------------------------------------------------
+# Bug 1 regression: FX-1 scoped to changed-files-this-week, not entire src/
+# ---------------------------------------------------------------------------
+
+def test_fx1_ruff_scoped_to_changed_files(tmp_path):
+    """FX-1 must invoke ruff with specific changed files, not the entire src/ dir."""
+    ruff_invocations = []
+
+    def fake_check_output(cmd, **kwargs):
+        # Simulate git log returning 2 changed .py files
+        if "git" in cmd[0] and "log" in cmd:
+            return "src/juggle_db.py\nsrc/juggle_cli.py\n"
+        return ""
+
+    def fake_subprocess_run(cmd, **kwargs):
+        ruff_invocations.append(list(cmd))
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    # Make the changed files actually exist
+    (tmp_path / "src").mkdir()
+    db_file = tmp_path / "src" / "juggle_db.py"
+    cli_file = tmp_path / "src" / "juggle_cli.py"
+    db_file.write_text("# db")
+    cli_file.write_text("# cli")
+
+    pr_sections = {}
+    with patch("juggle_schedule_autofix.subprocess.check_output", side_effect=fake_check_output), \
+         patch("juggle_schedule_autofix.subprocess.run", side_effect=fake_subprocess_run), \
+         patch.object(autofix, "JUGGLE_REPO", tmp_path), \
+         patch.object(autofix, "_git_diff_stat", return_value={}):
+        autofix.fx1_ruff("test-branch", dry_run=True, pr_sections=pr_sections)
+
+    # Find the ruff --fix invocation
+    ruff_calls = [c for c in ruff_invocations if "check" in c and "--fix" in c]
+    assert ruff_calls, "ruff --fix was never called"
+    ruff_cmd = ruff_calls[0]
+
+    # Must NOT contain the full src/ directory
+    assert not any(arg.endswith("/src") or arg == "src" for arg in ruff_cmd), \
+        f"FX-1 ran ruff on entire src/ dir: {ruff_cmd}"
+
+    # Must contain specific file paths (not src/ glob)
+    file_args = [a for a in ruff_cmd if a.endswith(".py")]
+    assert len(file_args) >= 1, f"No .py files in ruff invocation: {ruff_cmd}"

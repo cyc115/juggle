@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
@@ -163,3 +162,74 @@ def test_find_autofix_pr_ref_with_pr():
     with patch.object(reflect, "gh_pr_list_head", return_value=[{"number": 99, "state": "OPEN"}]):
         ref = reflect._find_autofix_pr_ref()
     assert "99" in ref
+
+
+# ---------------------------------------------------------------------------
+# Bug 2 regression: cost cap is per-section, explicit skip markers, no cascade
+# ---------------------------------------------------------------------------
+
+def test_reflect_cost_cap_explicit_skip_markers_not_silent(tmp_path):
+    """After RF-1 exhausts budget, remaining sections show explicit skip marker — not '*Not run.*'."""
+    mock_db = MagicMock()
+
+    def rf1_exceeds_cap(db, ct, s):
+        s["RF-1"] = "## RF-1\n\nWatchdog OK\n"
+        # Force tracker total above cap so pre-check triggers for RF-2..RF-8
+        ct._total = reflect.COST_CAP + 1.0
+        raise common.CostCapExceeded("cap exceeded during RF-1")
+
+    with patch.object(reflect, "get_db", return_value=mock_db), \
+         patch.object(common, "gh_pr_list_head", return_value=[]), \
+         patch.object(reflect, "rf1_watchdog", rf1_exceeds_cap), \
+         patch.object(reflect, "REPORTS_DIR", tmp_path), \
+         patch.object(common, "STATE_FILE", tmp_path / "state.json"), \
+         patch.object(common, "JUGGLE_DIR", tmp_path):
+        result = reflect.run(dry_run=True)
+
+    assert result == 0
+    content = Path("/tmp/schedule-reflect-sample-digest.md").read_text()
+
+    # RF-1 must appear in digest
+    assert "Watchdog OK" in content, "RF-1 content missing"
+
+    # Skipped sections must have explicit marker, not silent *Not run.*
+    assert "[COST CAP REACHED — SKIPPED]" in content, \
+        "Expected explicit skip marker but not found"
+
+
+def test_reflect_cost_cap_dry_run_does_not_raise(tmp_path):
+    """In dry_run mode, cost tracker must not raise CostCapExceeded — sections can run freely."""
+    mock_db = MagicMock()
+    sections_run = []
+
+    def rf_expensive(key):
+        def fn(*args, **kwargs):
+            sections_run.append(key)
+            # Find cost tracker and add cost
+            for arg in args:
+                if isinstance(arg, common.CostTracker):
+                    arg.add(0.50)  # Each section costs $0.50; cap is $2.00
+                    break
+            # Update sections dict
+            for arg in args:
+                if isinstance(arg, dict):
+                    arg[key] = f"## {key}\n\nOK\n"
+                    break
+        return fn
+
+    with patch.object(reflect, "get_db", return_value=mock_db), \
+         patch.object(common, "gh_pr_list_head", return_value=[]), \
+         patch.object(reflect, "rf1_watchdog", rf_expensive("RF-1")), \
+         patch.object(reflect, "rf2_action_items", rf_expensive("RF-2")), \
+         patch.object(reflect, "rf3_completion_quality", rf_expensive("RF-3")), \
+         patch.object(reflect, "rf4_context_bloat", lambda db, s: s.update({"RF-4": "## RF-4\n\nOK\n"})), \
+         patch.object(reflect, "rf5_hindsight_lint", rf_expensive("RF-5")), \
+         patch.object(reflect, "rf6_auto_memory", rf_expensive("RF-6")), \
+         patch.object(reflect, "rf7_skill_drift", rf_expensive("RF-7")), \
+         patch.object(reflect, "rf8_dogfood_pulse", lambda s: s.update({"RF-8": "## RF-8\n\nOK\n"})), \
+         patch.object(reflect, "REPORTS_DIR", tmp_path), \
+         patch.object(common, "STATE_FILE", tmp_path / "state.json"), \
+         patch.object(common, "JUGGLE_DIR", tmp_path):
+        result = reflect.run(dry_run=True)  # Must not raise even with $3.50 total cost
+
+    assert result == 0

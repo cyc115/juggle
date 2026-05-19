@@ -446,12 +446,15 @@ def run(dry_run: bool = False) -> int:
         (lambda: rf7_skill_drift(db, cost_tracker, sections), "RF-7"),
         (lambda: rf8_dogfood_pulse(sections), "RF-8"),
     ]:
+        # Pre-check: if budget is exhausted, mark remaining sections explicitly
+        if cost_tracker.total >= COST_CAP:
+            sections.setdefault(key, f"## {key}\n\n*[COST CAP REACHED — SKIPPED]*\n")
+            continue
         try:
             fn()
         except CostCapExceeded as e:
-            logger.error("Cost cap hit at %s: %s", key, e)
+            logger.error("Cost cap hit during %s: %s", key, e)
             sections.setdefault(key, f"## {key}\n\n*[COST CAP]*\n")
-            break
 
     digest = _build_digest(today, sections, autofix_ref)
     out_path = REPORTS_DIR / f"reflect-{today}.md"
