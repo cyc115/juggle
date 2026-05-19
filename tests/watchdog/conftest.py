@@ -55,8 +55,8 @@ def fake_agent(tmux_pane, test_db):
     with test_db._connect() as conn:
         conn.execute(
             "INSERT INTO agents (id, role, pane_id, assigned_thread, status, "
-            "context_threads, created_at, last_active) VALUES (?,?,?,?,?,?,?,?)",
-            (agent_id, "coder", tmux_pane, tid, "busy", "[]", now, now),
+            "context_threads, created_at, last_active, last_send_task_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (agent_id, "coder", tmux_pane, tid, "busy", "[]", now, now, now),
         )
     yield {"agent_id": agent_id, "thread_id": tid, "pane_id": tmux_pane}
     with test_db._connect() as conn:

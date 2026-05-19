@@ -10,17 +10,13 @@ Agent completion protocol (embed in all dispatched prompts):
 
 import json
 import re
-import shutil
 import sys
 import threading
-import time
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from juggle_cli_common import (
     SRC_DIR,
-    JUGGLE_IDLE_THRESHOLD_SECS,
     _get_hindsight_client,
     _last_sentences,
     _resolve_thread,
@@ -475,7 +471,6 @@ def cmd_get_agent(args):
     from juggle_db import MAX_BACKGROUND_AGENTS
 
     thread_uuid = _resolve_thread(db, args.thread_id)
-    thread = db.get_thread(thread_uuid)
     mgr = JuggleTmuxManager()
 
     # Purge stale agents
@@ -571,6 +566,17 @@ def cmd_release_agent(args):
                      agent_snap.get("model"), assigned),
                 )
                 conn.commit()
+
+    # Bug 3: clear task state so a re-pooled agent doesn't carry stale
+    # last_task into its next assignment — prevents watchdog from replaying
+    # a previous thread's task during recovery.
+    db.update_agent(
+        agent_id,
+        last_task=None,
+        last_send_task_pane_hash=None,
+        last_send_task_at=None,
+        watchdog_retried=0,
+    )
 
     # Reconcile: if the agent's thread is still "background", it was released
     # without completing — mark the thread as failed so it doesn't appear stuck.
