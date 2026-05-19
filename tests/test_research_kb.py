@@ -2,7 +2,6 @@
 """Tests for juggle_research_kb — DB init and hybrid search."""
 import sys
 import sqlite3
-import tempfile
 from pathlib import Path
 
 import pytest

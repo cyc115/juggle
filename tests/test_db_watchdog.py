@@ -183,7 +183,6 @@ def test_complete_agent_inserts_completion(tmp_path):
 def test_release_agent_copies_dispatch_payload(tmp_path):
     """release-agent copies last_task/role/model to thread before decommissioning agent."""
     import argparse
-    import importlib
 
     d = JuggleDB(str(tmp_path / "test.db"))
     d.init_db()

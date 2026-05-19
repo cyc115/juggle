@@ -1,7 +1,5 @@
 """Conftest for schedule tests — isolates DB, state file, and reports dir."""
-import os
 import pytest
-from pathlib import Path
 
 
 @pytest.fixture(autouse=True)

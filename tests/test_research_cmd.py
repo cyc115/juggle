@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Tests for juggle_cmd_research — search and synthesis."""
-import json
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch

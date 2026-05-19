@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import glob
-import json
 import os
 import plistlib
 import subprocess
@@ -229,7 +228,6 @@ _ARCHIVED_DISPLAY_LIMIT = 10  # spec: most-recent N, default 10
 
 def snapshot(db) -> CockpitState:
     """Read DB state into a frozen CockpitState. Only function that touches DB."""
-    import json as _json
     from datetime import datetime, timezone, timedelta
 
     conn = db._connect()

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Tests for juggle_research_ingest — HN and PDF ingestion."""
-import json
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
