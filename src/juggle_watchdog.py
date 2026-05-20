@@ -381,6 +381,14 @@ def execute_recovery(
     except RuntimeError as exc:
         _log.error("Watchdog: [RECOVERY-COLD-START-FAILED] send_task raised for agent %s: %s",
                    new_agent_id[:8], exc)
+        # Rollback: thread is not actually being recovered if the agent can't start.
+        if thread_id:
+            db.update_thread(thread_id, status="failed")
+        db.delete_agent(new_agent_id)
+        try:
+            mgr.kill_pane(new_pane_id)
+        except Exception:
+            pass
         if thread_id:
             db.add_action_item(
                 thread_id=thread_id,

@@ -154,3 +154,71 @@ def test_execute_recovery_proceeds_for_dead_pane(tmp_path):
     # Should kill and spawn for dead pane
     mgr.kill_pane.assert_called_once()
     mgr.spawn_agent.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Issue #2 — cold-start failure rollback
+# ---------------------------------------------------------------------------
+
+def test_execute_recovery_cold_start_failure_rolls_back_thread(tmp_path):
+    """send_task raising must roll thread back to failed, delete recovery agent, kill pane."""
+    from juggle_watchdog import execute_recovery
+
+    new_agent = {"id": "c" * 32, "pane_id": "%8"}
+    db = MagicMock()
+    db.get_agent.return_value = _make_live_agent()
+    db.get_thread.return_value = {"user_label": "lbl", "label": "lbl"}
+    mgr = MagicMock()
+    mgr.verify_pane.return_value = False  # dead pane → proceed to recovery
+    mgr.spawn_agent.return_value = new_agent
+    mgr.send_task.side_effect = RuntimeError("Claude UI not ready in pane %8 after 30s")
+
+    execute_recovery(
+        db, mgr, _make_live_agent(), "",
+        recovery_dir=tmp_path, session_id="sess",
+    )
+
+    # Thread must be rolled back to failed (not left in background)
+    db.update_thread.assert_any_call("thread-xyz", status="failed")
+    # Recovery agent must be decommissioned
+    db.delete_agent.assert_any_call("c" * 32)
+    # Recovery pane must be killed
+    mgr.kill_pane.assert_any_call("%8")
+    # Action item must be filed
+    db.add_action_item.assert_called()
+    call_kwargs = db.add_action_item.call_args[1]
+    assert call_kwargs["priority"] == "high"
+    assert "RECOVERY-COLD-START-FAILED" in call_kwargs["message"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #3 — retry_blocked files high-priority action item
+# ---------------------------------------------------------------------------
+
+def test_execute_recovery_retry_blocked_files_high_priority_action_item(tmp_path):
+    """retry_blocked (watchdog_retried>=1) must file a high-priority action item."""
+    from juggle_watchdog import execute_recovery
+
+    live = _make_live_agent()
+    live["watchdog_retried"] = 1  # 2nd attempt — triggers retry_blocked
+    db = MagicMock()
+    db.get_agent.return_value = live
+    db.get_thread.return_value = {"user_label": "lbl", "label": "lbl"}
+    mgr = MagicMock()
+    mgr.verify_pane.return_value = False  # dead pane
+
+    execute_recovery(
+        db, mgr, live, "",
+        recovery_dir=tmp_path, session_id="sess",
+    )
+
+    # Must NOT spawn a new agent
+    mgr.spawn_agent.assert_not_called()
+    # Must file a high-priority action item
+    db.add_action_item.assert_called()
+    call_kwargs = db.add_action_item.call_args[1]
+    assert call_kwargs["priority"] == "high"
+    # Must log the watchdog event
+    db.add_watchdog_event.assert_called()
+    event_kwargs = db.add_watchdog_event.call_args[1]
+    assert event_kwargs["event_type"] == "retry_blocked"
