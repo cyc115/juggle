@@ -1,7 +1,7 @@
 ╭────────────────────── Action Items ──────────────────────╮╭─────────────── Agents ───────────────╮
-│ 5m  ❓ [K] approve plan v3                               ││ 🟢 [K] abcd1234 coder   12m          │
-│ 10m ⚠️ [J] BLOCKER: missing token                        ││ 🟡 [J] ef567890 planner 3h           │
-│                                                          ││                                      │
+│ 5m  ❓ [K] approve plan v3                               ││ Active                               │
+│ 10m ⚠️ [J] BLOCKER: missing token                        ││ 🟢 [K] coder   12m                   │
+│                                                          ││ 🟡 [J] planner 3h                    │
 │                                                          ││                                      │
 │                                                          ││                                      │
 │                                                          ││                                      │

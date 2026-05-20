@@ -50,7 +50,9 @@ class TestLoadState:
         state_file = tmp_path / "state.json"
 
         with patch.object(jsc, "STATE_FILE", state_file):
-            with patch.object(Path, "read_text", side_effect=OSError("permission denied")):
+            with patch.object(
+                Path, "read_text", side_effect=OSError("permission denied")
+            ):
                 state = jsc.load_state()
                 assert state == {}
 
@@ -140,7 +142,7 @@ class TestMarkRunComplete:
         state_file = tmp_path / "state.json"
         initial_state = {
             "routine1": {"last_success": "2026-01-01T00:00:00+00:00"},
-            "routine2": {"last_success": "2026-02-01T00:00:00+00:00"}
+            "routine2": {"last_success": "2026-02-01T00:00:00+00:00"},
         }
         state_file.write_text(json.dumps(initial_state))
 
@@ -180,7 +182,9 @@ class TestLastRunTs:
     def test_last_run_ts_returns_none_for_invalid_timestamp(self, tmp_path):
         """Returns None when timestamp is invalid"""
         state_file = tmp_path / "state.json"
-        state_file.write_text(json.dumps({"routine1": {"last_success": "not-a-timestamp"}}))
+        state_file.write_text(
+            json.dumps({"routine1": {"last_success": "not-a-timestamp"}})
+        )
 
         with patch.object(jsc, "STATE_FILE", state_file):
             result = jsc.last_run_ts("routine1")
@@ -269,7 +273,12 @@ class TestGhIssueExists:
 
     def test_gh_issue_exists_returns_false_for_partial_title_match(self):
         """Returns False for partial title match (requires exact match)"""
-        issues = [{"title": "Test Issue Extended", "createdAt": datetime.now(timezone.utc).isoformat()}]
+        issues = [
+            {
+                "title": "Test Issue Extended",
+                "createdAt": datetime.now(timezone.utc).isoformat(),
+            }
+        ]
         with patch.object(jsc, "gh_run") as mock_gh:
             mock_gh.return_value = MagicMock(stdout=json.dumps(issues))
             result = jsc.gh_issue_exists("Test Issue")
@@ -277,7 +286,11 @@ class TestGhIssueExists:
 
     def test_gh_issue_exists_respects_days_cutoff(self):
         """Returns False when issue is older than cutoff"""
-        old_time = (datetime.now(timezone.utc) - timedelta(days=40)).isoformat().replace("+00:00", "Z")
+        old_time = (
+            (datetime.now(timezone.utc) - timedelta(days=40))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
         issues = [{"title": "Test Issue", "createdAt": old_time}]
 
         with patch.object(jsc, "gh_run") as mock_gh:
@@ -360,7 +373,9 @@ class TestGhCreateIssue:
         """Continues even if label creation fails"""
         with patch.object(jsc, "gh_run") as mock_gh:
             mock_gh.return_value = MagicMock(stdout="https://github.com/issue/1")
-            with patch.object(jsc, "_ensure_gh_label", side_effect=Exception("label failed")):
+            with patch.object(
+                jsc, "_ensure_gh_label", side_effect=Exception("label failed")
+            ):
                 # Should not raise
                 result = jsc.gh_create_issue("Title", "Body", labels=["test"])
                 assert result is not None
@@ -371,7 +386,15 @@ class TestGhPrListHead:
 
     def test_gh_pr_list_head_returns_parsed_json(self):
         """Returns parsed JSON from gh pr list"""
-        prs = [{"number": 1, "title": "PR 1", "state": "open", "url": "https://...", "headRefName": "feature"}]
+        prs = [
+            {
+                "number": 1,
+                "title": "PR 1",
+                "state": "open",
+                "url": "https://...",
+                "headRefName": "feature",
+            }
+        ]
         with patch.object(jsc, "gh_run") as mock_gh:
             mock_gh.return_value = MagicMock(stdout=json.dumps(prs))
             result = jsc.gh_pr_list_head("feature/")
@@ -416,8 +439,7 @@ class TestClaudeP:
         """Calls subprocess.run with claude -p"""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=json.dumps({"result": "output"})
+                returncode=0, stdout=json.dumps({"result": "output"})
             )
             jsc.claude_p("test prompt")
 
@@ -431,8 +453,7 @@ class TestClaudeP:
         expected = "test output"
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=json.dumps({"result": expected})
+                returncode=0, stdout=json.dumps({"result": expected})
             )
             result = jsc.claude_p("prompt")
             assert result == expected
@@ -442,8 +463,7 @@ class TestClaudeP:
         expected = "content output"
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=json.dumps({"content": expected})
+                returncode=0, stdout=json.dumps({"content": expected})
             )
             result = jsc.claude_p("prompt")
             assert result == expected
@@ -459,8 +479,7 @@ class TestClaudeP:
         """Passes model to claude command"""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=json.dumps({"result": "output"})
+                returncode=0, stdout=json.dumps({"result": "output"})
             )
             jsc.claude_p("prompt", model="claude-haiku-4-5-20251001")
 
@@ -474,10 +493,12 @@ class TestClaudeP:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=json.dumps({
-                    "result": "output",
-                    "usage": {"input_tokens": 1000, "output_tokens": 500}
-                })
+                stdout=json.dumps(
+                    {
+                        "result": "output",
+                        "usage": {"input_tokens": 1000, "output_tokens": 500},
+                    }
+                ),
             )
             jsc.claude_p("prompt", cost_tracker=tracker)
             assert tracker.total > 0
@@ -486,10 +507,7 @@ class TestClaudeP:
         """Falls back to plain text if JSON parse fails"""
         expected_text = "plain text output"
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=expected_text
-            )
+            mock_run.return_value = MagicMock(returncode=0, stdout=expected_text)
             result = jsc.claude_p("prompt")
             assert result == expected_text
 
@@ -497,8 +515,7 @@ class TestClaudeP:
         """Passes timeout to subprocess.run"""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=json.dumps({"result": "output"})
+                returncode=0, stdout=json.dumps({"result": "output"})
             )
             jsc.claude_p("prompt", timeout=60)
 
@@ -546,6 +563,7 @@ class TestGetDb:
 # ============================================================================
 # Integration tests (may require real state file or services)
 # ============================================================================
+
 
 class TestStateIntegration:
     """Integration tests for state management"""
@@ -606,7 +624,9 @@ class TestCostTracker:
         """Estimates cost from tokens for Haiku"""
         tracker = jsc.CostTracker(1.0, "test")
         # Haiku: input $0.80/M, output $4/M
-        cost = tracker.estimate_from_tokens(1_000_000, 1_000_000, "claude-haiku-4-5-20251001")
+        cost = tracker.estimate_from_tokens(
+            1_000_000, 1_000_000, "claude-haiku-4-5-20251001"
+        )
         expected = 0.80 + 4.0  # $4.80
         assert cost == expected
 

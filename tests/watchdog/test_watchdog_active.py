@@ -1,6 +1,7 @@
 """Active suite: watchdog detects + handles all 5 states.
 Skipped automatically when src/juggle_watchdog.py is not yet implemented.
 """
+
 import sqlite3
 import subprocess
 import time
@@ -13,7 +14,9 @@ SNAPSHOT_DIR = Path.home() / ".juggle" / "watchdog" / "snapshots"
 TEST_SESSION = "juggle-watchdog-test"
 
 # Skips the entire module gracefully until juggle_watchdog ships.
-_watchdog = pytest.importorskip("juggle_watchdog", reason="juggle_watchdog not yet implemented")
+_watchdog = pytest.importorskip(
+    "juggle_watchdog", reason="juggle_watchdog not yet implemented"
+)
 inspect_agent = _watchdog.inspect_agent
 
 
@@ -32,7 +35,8 @@ def _action_items(db, tid) -> list:
     with db._connect() as c:
         c.row_factory = sqlite3.Row
         return c.execute(
-            "SELECT * FROM action_items WHERE thread_id=? AND dismissed_at IS NULL", (tid,)
+            "SELECT * FROM action_items WHERE thread_id=? AND dismissed_at IS NULL",
+            (tid,),
         ).fetchall()
 
 

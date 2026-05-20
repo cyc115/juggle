@@ -1,4 +1,5 @@
 """Tests for memory-related CLI subcommands: recall, recall-if-cold, retain."""
+
 import json
 import os
 import subprocess
@@ -40,8 +41,17 @@ class MockHindsightHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(resp).encode())
         elif "/memories/recall" in self.path:
-            resp = {"results": [{"id": "f1", "text": "Mike prefers TDD", "type": "world",
-                                 "context": "preferences", "entities": []}]}
+            resp = {
+                "results": [
+                    {
+                        "id": "f1",
+                        "text": "Mike prefers TDD",
+                        "type": "world",
+                        "context": "preferences",
+                        "entities": [],
+                    }
+                ]
+            }
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -90,7 +100,9 @@ def env(tmp_path, mock_server):
 def run_cli(args, env):
     return subprocess.run(
         [sys.executable, CLI] + args,
-        capture_output=True, text=True, env=env,
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
@@ -114,6 +126,7 @@ def test_recall_stores_memory_context(env):
 
 def test_recall_if_cold_first_time(env):
     import sqlite3
+
     label = setup_thread(env)
     # create-thread auto-recalls; reset so we can test recall-if-cold triggers
     db_path = env["_JUGGLE_TEST_DB"]
@@ -146,7 +159,10 @@ def test_retain_success(env):
 
 def test_retain_with_context(env):
     label = setup_thread(env)
-    r = run_cli(["retain", label, "User prefers explicit types", "--context", "preferences"], env)
+    r = run_cli(
+        ["retain", label, "User prefers explicit types", "--context", "preferences"],
+        env,
+    )
     assert r.returncode == 0
 
 
@@ -156,7 +172,11 @@ def test_recall_disabled(tmp_path):
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config))
     db_path = tmp_path / "test.db"
-    e = {**os.environ, "_JUGGLE_TEST_DB": str(db_path), "_JUGGLE_CONFIG_PATH": str(config_path)}
+    e = {
+        **os.environ,
+        "_JUGGLE_TEST_DB": str(db_path),
+        "_JUGGLE_CONFIG_PATH": str(config_path),
+    }
     run_cli(["start"], e)
     run_cli(["create-thread", "test"], e)
     r = run_cli(["recall", "B", "anything"], e)
@@ -170,7 +190,11 @@ def test_retain_disabled(tmp_path):
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config))
     db_path = tmp_path / "test.db"
-    e = {**os.environ, "_JUGGLE_TEST_DB": str(db_path), "_JUGGLE_CONFIG_PATH": str(config_path)}
+    e = {
+        **os.environ,
+        "_JUGGLE_TEST_DB": str(db_path),
+        "_JUGGLE_CONFIG_PATH": str(config_path),
+    }
     run_cli(["start"], e)
     run_cli(["create-thread", "test"], e)
     r = run_cli(["retain", "B", "anything"], e)

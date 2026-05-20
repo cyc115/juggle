@@ -22,7 +22,9 @@ def test_cmd_get_context_calls_build_context_string(tmp_path):
 
     with patch("juggle_cmd_context.DB_PATH", mock_db_path):
         with patch("juggle_cmd_context.SRC_DIR", tmp_path):
-            with patch("juggle_context.build_context_string", return_value="context output") as mock_build:
+            with patch(
+                "juggle_context.build_context_string", return_value="context output"
+            ) as mock_build:
                 with patch("builtins.print") as mock_print:
                     cmd_get_context(None)
 

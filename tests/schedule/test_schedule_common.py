@@ -1,4 +1,5 @@
 """Tests for juggle_schedule_common shared infrastructure."""
+
 import json
 import sys
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ import juggle_schedule_common as common
 # State / idempotency
 # ---------------------------------------------------------------------------
 
+
 def test_load_state_empty(tmp_path):
     with patch.object(common, "STATE_FILE", tmp_path / "nonexistent.json"):
         assert common.load_state() == {}
@@ -23,8 +25,10 @@ def test_load_state_empty(tmp_path):
 
 def test_save_and_load_state(tmp_path):
     state_file = tmp_path / "state.json"
-    with patch.object(common, "STATE_FILE", state_file), \
-         patch.object(common, "JUGGLE_DIR", tmp_path):
+    with (
+        patch.object(common, "STATE_FILE", state_file),
+        patch.object(common, "JUGGLE_DIR", tmp_path),
+    ):
         common.save_state({"dogfood": {"last_success": "2026-05-18T03:00:00+00:00"}})
         loaded = common.load_state()
         assert "dogfood" in loaded
@@ -32,8 +36,10 @@ def test_save_and_load_state(tmp_path):
 
 def test_mark_run_complete_writes_state(tmp_path):
     state_file = tmp_path / "state.json"
-    with patch.object(common, "STATE_FILE", state_file), \
-         patch.object(common, "JUGGLE_DIR", tmp_path):
+    with (
+        patch.object(common, "STATE_FILE", state_file),
+        patch.object(common, "JUGGLE_DIR", tmp_path),
+    ):
         common.mark_run_complete("dogfood")
         state = json.loads(state_file.read_text())
         assert "dogfood" in state
@@ -73,8 +79,10 @@ def test_mark_run_complete_overwrites_existing(tmp_path):
     state_file = tmp_path / "state.json"
     old_ts = "2026-05-10T00:00:00+00:00"
     state_file.write_text(json.dumps({"dogfood": {"last_success": old_ts}}))
-    with patch.object(common, "STATE_FILE", state_file), \
-         patch.object(common, "JUGGLE_DIR", tmp_path):
+    with (
+        patch.object(common, "STATE_FILE", state_file),
+        patch.object(common, "JUGGLE_DIR", tmp_path),
+    ):
         common.mark_run_complete("dogfood")
         state = json.loads(state_file.read_text())
         assert state["dogfood"]["last_success"] != old_ts
@@ -83,6 +91,7 @@ def test_mark_run_complete_overwrites_existing(tmp_path):
 # ---------------------------------------------------------------------------
 # CostTracker
 # ---------------------------------------------------------------------------
+
 
 def test_cost_tracker_accumulates():
     ct = common.CostTracker(cap_usd=1.0, routine="test")
@@ -120,6 +129,7 @@ def test_cost_tracker_haiku_cheaper_than_sonnet():
 # gh_issue_exists
 # ---------------------------------------------------------------------------
 
+
 def test_gh_issue_exists_false_on_error():
     with patch("juggle_schedule_common.gh_run", side_effect=Exception("network")):
         assert common.gh_issue_exists("some title") is False
@@ -127,16 +137,18 @@ def test_gh_issue_exists_false_on_error():
 
 def test_gh_issue_exists_false_when_no_match():
     mock_result = MagicMock()
-    mock_result.stdout = json.dumps([{"title": "other title", "createdAt": "2026-05-18T00:00:00Z"}])
+    mock_result.stdout = json.dumps(
+        [{"title": "other title", "createdAt": "2026-05-18T00:00:00Z"}]
+    )
     with patch("juggle_schedule_common.gh_run", return_value=mock_result):
         assert common.gh_issue_exists("some title") is False
 
 
 def test_gh_issue_exists_true_when_match():
     mock_result = MagicMock()
-    mock_result.stdout = json.dumps([
-        {"title": "exact match", "createdAt": datetime.now(timezone.utc).isoformat()}
-    ])
+    mock_result.stdout = json.dumps(
+        [{"title": "exact match", "createdAt": datetime.now(timezone.utc).isoformat()}]
+    )
     with patch("juggle_schedule_common.gh_run", return_value=mock_result):
         assert common.gh_issue_exists("exact match", days=30) is True
 
@@ -154,7 +166,9 @@ def test_gh_issue_exists_respects_days_window():
 
 def test_gh_issue_exists_invalid_date():
     mock_result = MagicMock()
-    mock_result.stdout = json.dumps([{"title": "exact match", "createdAt": "not-a-date"}])
+    mock_result.stdout = json.dumps(
+        [{"title": "exact match", "createdAt": "not-a-date"}]
+    )
     with patch("juggle_schedule_common.gh_run", return_value=mock_result):
         assert common.gh_issue_exists("exact match") is False
 
@@ -162,6 +176,7 @@ def test_gh_issue_exists_invalid_date():
 # ---------------------------------------------------------------------------
 # gh_create_issue
 # ---------------------------------------------------------------------------
+
 
 def test_gh_create_issue_dry_run_returns_none():
     assert common.gh_create_issue("title", "body", dry_run=True) is None
@@ -179,8 +194,13 @@ def test_gh_create_issue_label_creation_failure():
     """gh_create_issue should handle _ensure_gh_label failures gracefully."""
     mock_result = MagicMock()
     mock_result.stdout = "https://github.com/owner/repo/issues/42"
-    with patch("juggle_schedule_common.gh_run", return_value=mock_result), \
-         patch("juggle_schedule_common._ensure_gh_label", side_effect=Exception("label error")):
+    with (
+        patch("juggle_schedule_common.gh_run", return_value=mock_result),
+        patch(
+            "juggle_schedule_common._ensure_gh_label",
+            side_effect=Exception("label error"),
+        ),
+    ):
         result = common.gh_create_issue("issue", "body", labels=["bug"])
         assert result is not None
 
@@ -201,6 +221,7 @@ def test_gh_create_issue_strips_output():
 # ---------------------------------------------------------------------------
 # gh_pr_list_head
 # ---------------------------------------------------------------------------
+
 
 def test_gh_pr_list_head_success():
     mock_result = MagicMock()
@@ -234,10 +255,13 @@ def test_gh_pr_list_head_empty_stdout():
 # claude_p
 # ---------------------------------------------------------------------------
 
+
 def test_claude_p_success():
     mock_result = MagicMock()
     mock_result.returncode = 0
-    mock_result.stdout = json.dumps({"result": "hello world", "usage": {"input_tokens": 10, "output_tokens": 5}})
+    mock_result.stdout = json.dumps(
+        {"result": "hello world", "usage": {"input_tokens": 10, "output_tokens": 5}}
+    )
     with patch("subprocess.run", return_value=mock_result):
         assert common.claude_p("test prompt") == "hello world"
 
@@ -245,7 +269,12 @@ def test_claude_p_success():
 def test_claude_p_with_cost_tracker():
     mock_result = MagicMock()
     mock_result.returncode = 0
-    mock_result.stdout = json.dumps({"result": "out", "usage": {"input_tokens": 1_000_000, "output_tokens": 100_000}})
+    mock_result.stdout = json.dumps(
+        {
+            "result": "out",
+            "usage": {"input_tokens": 1_000_000, "output_tokens": 100_000},
+        }
+    )
     ct = common.CostTracker(cap_usd=10.0, routine="test")
     with patch("subprocess.run", return_value=mock_result):
         common.claude_p("test", cost_tracker=ct)
@@ -280,6 +309,7 @@ def test_claude_p_content_field_fallback():
 # today_str / days_ago_iso
 # ---------------------------------------------------------------------------
 
+
 def test_today_str_format():
     s = common.today_str()
     parts = s.split("-")
@@ -296,6 +326,7 @@ def test_days_ago_iso_is_past():
 # ---------------------------------------------------------------------------
 # write_report
 # ---------------------------------------------------------------------------
+
 
 def test_write_report_dry_run(tmp_path):
     out = tmp_path / "report.md"
@@ -315,6 +346,7 @@ def test_write_report_live(tmp_path):
 # ---------------------------------------------------------------------------
 # gh_run
 # ---------------------------------------------------------------------------
+
 
 def test_gh_run_calls_gh_prefix():
     with patch("subprocess.run") as mock_run:

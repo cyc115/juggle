@@ -22,10 +22,7 @@ def test_record_pending_decision_adds_entry():
 
     args = mock.MagicMock()
     args.tool_use_id = "tool123"
-    args.questions_json = json.dumps([
-        {"q": "Which model?"},
-        {"q": "Batch size?"}
-    ])
+    args.questions_json = json.dumps([{"q": "Which model?"}, {"q": "Batch size?"}])
 
     with mock.patch("juggle_cli.get_db", return_value=mock_db):
         cmd_record_pending_decision(args)
@@ -50,7 +47,7 @@ def test_clear_pending_decision_removes_entries():
             {"id": "tool123:0", "text": "Q1"},
             {"id": "tool456:0", "text": "Q2"},
             {"id": "tool123:1", "text": "Q3"},
-        ]
+        ],
     }
     mock_db.get_current_thread.return_value = "thread-1"
     mock_db.get_thread.return_value = mock_thread

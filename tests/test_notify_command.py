@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import pytest
 from unittest.mock import patch, MagicMock
@@ -7,6 +8,7 @@ from unittest.mock import patch, MagicMock
 
 def test_notify_inserts_notification_v2(tmp_path):
     from juggle_db import JuggleDB
+
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db.init_db()
     tid = db.create_thread("test", session_id="s1")
@@ -14,7 +16,9 @@ def test_notify_inserts_notification_v2(tmp_path):
 
     # Simulate session_id in DB
     with db._connect() as conn:
-        conn.execute("INSERT OR REPLACE INTO session (key, value) VALUES ('session_id', 'sess-abc')")
+        conn.execute(
+            "INSERT OR REPLACE INTO session (key, value) VALUES ('session_id', 'sess-abc')"
+        )
         conn.commit()
 
     args = MagicMock()
@@ -23,6 +27,7 @@ def test_notify_inserts_notification_v2(tmp_path):
 
     with patch("juggle_cli_common.get_db", return_value=db):
         from juggle_cmd_agents import cmd_notify
+
         cmd_notify(args)
 
     notifs = db.get_notifications_for_session("sess-abc")

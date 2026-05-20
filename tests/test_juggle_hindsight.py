@@ -1,4 +1,5 @@
 """Tests for juggle_hindsight.py — Hindsight HTTP API client."""
+
 import json
 import os
 import sys
@@ -44,8 +45,13 @@ class MockHindsightHandler(BaseHTTPRequestHandler):
                 return
             response = {
                 "results": [
-                    {"id": "f1", "text": "Test recalled fact", "type": "world",
-                     "context": "test", "entities": []}
+                    {
+                        "id": "f1",
+                        "text": "Test recalled fact",
+                        "type": "world",
+                        "context": "test",
+                        "entities": [],
+                    }
                 ]
             }
             self.send_response(200)

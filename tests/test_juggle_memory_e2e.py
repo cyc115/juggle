@@ -1,4 +1,5 @@
 """End-to-end test: create thread → auto-recall → do work → retain → recall again."""
+
 import json
 import os
 import subprocess
@@ -18,6 +19,7 @@ if SRC_DIR not in sys.path:
 
 class StatefulMockHandler(BaseHTTPRequestHandler):
     """Mock that tracks retained content and returns it on recall."""
+
     retained = []
 
     def log_message(self, *args):
@@ -38,16 +40,27 @@ class StatefulMockHandler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(content_len)) if content_len else {}
 
         if "/reflect" in self.path:
-            text = " | ".join(StatefulMockHandler.retained) if StatefulMockHandler.retained else ""
+            text = (
+                " | ".join(StatefulMockHandler.retained)
+                if StatefulMockHandler.retained
+                else ""
+            )
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"text": text}).encode())
 
         elif "/memories/recall" in self.path:
-            results = [{"id": f"f{i}", "text": c, "type": "world",
-                        "context": "", "entities": []}
-                       for i, c in enumerate(StatefulMockHandler.retained)]
+            results = [
+                {
+                    "id": f"f{i}",
+                    "text": c,
+                    "type": "world",
+                    "context": "",
+                    "entities": [],
+                }
+                for i, c in enumerate(StatefulMockHandler.retained)
+            ]
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -85,7 +98,9 @@ def mock_server():
 def run_cli(args, env):
     return subprocess.run(
         [sys.executable, CLI] + args,
-        capture_output=True, text=True, env=env,
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
@@ -119,7 +134,9 @@ def test_full_memory_lifecycle(tmp_path, mock_server):
     assert r.returncode == 0
 
     # Retain something
-    r = run_cli(["retain", "B", "send_task fixed by adding Enter keypress after paste"], env)
+    r = run_cli(
+        ["retain", "B", "send_task fixed by adding Enter keypress after paste"], env
+    )
     assert r.returncode == 0
 
     # Create second thread — auto-recall should find the retained content

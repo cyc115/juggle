@@ -1,4 +1,5 @@
 """Tests for juggle doctor config migration helper."""
+
 import sys
 from pathlib import Path
 

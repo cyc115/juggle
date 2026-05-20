@@ -1,5 +1,6 @@
 """Tests for watchdog policy: alive_slow vs dead vs never_fired classification,
 nudge_and_notify behavior, and execute_recovery short-circuit."""
+
 from __future__ import annotations
 
 import sys
@@ -13,15 +14,25 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 # _classify_agent_state
 # ---------------------------------------------------------------------------
 
+
 def test_classify_pane_gone_is_dead():
     from juggle_watchdog import _classify_agent_state
+
     assert _classify_agent_state("", pane_exists=False) == "dead"
 
 
 def test_classify_claude_ui_marker_is_alive_slow():
     from juggle_watchdog import _classify_agent_state
-    for marker in ("Welcome", "Bypass permissions", "INSERT", "Cogitated",
-                   "Working", "shortcuts", "claude.ai/code"):
+
+    for marker in (
+        "Welcome",
+        "Bypass permissions",
+        "INSERT",
+        "Cogitated",
+        "Working",
+        "shortcuts",
+        "claude.ai/code",
+    ):
         content = f"some output\n{marker}\nmore lines"
         assert _classify_agent_state(content, pane_exists=True) == "alive_slow", (
             f"Expected alive_slow for marker {marker!r}"
@@ -30,18 +41,21 @@ def test_classify_claude_ui_marker_is_alive_slow():
 
 def test_classify_shell_prompt_no_claude_ui_is_never_fired():
     from juggle_watchdog import _classify_agent_state
+
     content = "Last login: Mon May 19 12:00:00\nmikechen@host:~$ "
     assert _classify_agent_state(content, pane_exists=True) == "never_fired"
 
 
 def test_classify_empty_pane_existing_is_never_fired():
     from juggle_watchdog import _classify_agent_state
+
     assert _classify_agent_state("", pane_exists=True) == "never_fired"
 
 
 # ---------------------------------------------------------------------------
 # nudge_and_notify — must NOT call kill_pane
 # ---------------------------------------------------------------------------
+
 
 def _make_db_mock(thread_id="thread-abc"):
     db = MagicMock()
@@ -61,6 +75,7 @@ def _make_agent(pane_id="%42", thread_id="thread-abc"):
 
 def test_nudge_and_notify_does_not_call_kill_pane():
     from juggle_watchdog import nudge_and_notify
+
     db = _make_db_mock()
     mgr = MagicMock()
 
@@ -71,6 +86,7 @@ def test_nudge_and_notify_does_not_call_kill_pane():
 
 def test_nudge_and_notify_sends_enter():
     from juggle_watchdog import nudge_and_notify
+
     db = _make_db_mock()
     mgr = MagicMock()
 
@@ -81,6 +97,7 @@ def test_nudge_and_notify_sends_enter():
 
 def test_nudge_and_notify_files_action_item():
     from juggle_watchdog import nudge_and_notify
+
     db = _make_db_mock()
     mgr = MagicMock()
 
@@ -95,6 +112,7 @@ def test_nudge_and_notify_files_action_item():
 # ---------------------------------------------------------------------------
 # execute_recovery — short-circuits for alive_slow (no snapshot, no spawn, no kill)
 # ---------------------------------------------------------------------------
+
 
 def _make_live_agent(pane_id="%7"):
     return {
@@ -112,6 +130,7 @@ def _make_live_agent(pane_id="%7"):
 
 def test_execute_recovery_short_circuits_for_alive_slow(tmp_path):
     from juggle_watchdog import execute_recovery
+
     db = MagicMock()
     db.get_agent.return_value = _make_live_agent()
     db.get_thread.return_value = {"user_label": "lbl", "label": "lbl"}
@@ -121,8 +140,12 @@ def test_execute_recovery_short_circuits_for_alive_slow(tmp_path):
     pane_content = "Cogitated for 5 minutes\nsome deep thinking"
 
     execute_recovery(
-        db, mgr, _make_live_agent(), pane_content,
-        recovery_dir=tmp_path, session_id="sess",
+        db,
+        mgr,
+        _make_live_agent(),
+        pane_content,
+        recovery_dir=tmp_path,
+        session_id="sess",
     )
 
     # Must not kill or spawn
@@ -136,6 +159,7 @@ def test_execute_recovery_short_circuits_for_alive_slow(tmp_path):
 
 def test_execute_recovery_proceeds_for_dead_pane(tmp_path):
     from juggle_watchdog import execute_recovery
+
     db = MagicMock()
     db.get_agent.return_value = _make_live_agent()
     db.get_thread.return_value = {"user_label": "lbl", "label": "lbl"}
@@ -147,8 +171,12 @@ def test_execute_recovery_proceeds_for_dead_pane(tmp_path):
     mgr.spawn_agent.return_value = new_agent
 
     execute_recovery(
-        db, mgr, _make_live_agent(), "",
-        recovery_dir=tmp_path, session_id="sess",
+        db,
+        mgr,
+        _make_live_agent(),
+        "",
+        recovery_dir=tmp_path,
+        session_id="sess",
     )
 
     # Should kill and spawn for dead pane
@@ -159,6 +187,7 @@ def test_execute_recovery_proceeds_for_dead_pane(tmp_path):
 # ---------------------------------------------------------------------------
 # Issue #2 — cold-start failure rollback
 # ---------------------------------------------------------------------------
+
 
 def test_execute_recovery_cold_start_failure_rolls_back_thread(tmp_path):
     """send_task raising must roll thread back to failed, delete recovery agent, kill pane."""
@@ -174,8 +203,12 @@ def test_execute_recovery_cold_start_failure_rolls_back_thread(tmp_path):
     mgr.send_task.side_effect = RuntimeError("Claude UI not ready in pane %8 after 30s")
 
     execute_recovery(
-        db, mgr, _make_live_agent(), "",
-        recovery_dir=tmp_path, session_id="sess",
+        db,
+        mgr,
+        _make_live_agent(),
+        "",
+        recovery_dir=tmp_path,
+        session_id="sess",
     )
 
     # Thread must be rolled back to failed (not left in background)
@@ -195,6 +228,7 @@ def test_execute_recovery_cold_start_failure_rolls_back_thread(tmp_path):
 # Issue #3 — retry_blocked files high-priority action item
 # ---------------------------------------------------------------------------
 
+
 def test_execute_recovery_retry_blocked_files_high_priority_action_item(tmp_path):
     """retry_blocked (watchdog_retried>=1) must file a high-priority action item."""
     from juggle_watchdog import execute_recovery
@@ -208,8 +242,12 @@ def test_execute_recovery_retry_blocked_files_high_priority_action_item(tmp_path
     mgr.verify_pane.return_value = False  # dead pane
 
     execute_recovery(
-        db, mgr, live, "",
-        recovery_dir=tmp_path, session_id="sess",
+        db,
+        mgr,
+        live,
+        "",
+        recovery_dir=tmp_path,
+        session_id="sess",
     )
 
     # Must NOT spawn a new agent

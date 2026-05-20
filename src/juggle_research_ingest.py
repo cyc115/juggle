@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Research KB ingestion — HN via BigQuery bq CLI, PDFs via pypdf."""
+
 import asyncio
 import json
 import os
@@ -27,7 +28,9 @@ def parse_bq_row(row: dict) -> Optional[dict]:
     if not row.get("url"):
         return None
     ts = int(row.get("time") or 0)
-    date = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else None
+    date = (
+        datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else None
+    )
     return {
         "title": row.get("title", ""),
         "url": row["url"],
@@ -56,7 +59,10 @@ async def embed_batch(texts: list[str], model: str, api_key: str) -> list[list[f
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/embeddings",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
             json={"model": model, "input": texts},
             timeout=60.0,
         )
@@ -88,7 +94,7 @@ async def embed_pending(kb, model: str, api_key: str, batch_size: int = 100) -> 
 
     total = 0
     for i in range(0, len(rows), batch_size):
-        batch = rows[i:i + batch_size]
+        batch = rows[i : i + batch_size]
         texts = [f"{r[1]}. {r[2] or ''}" for r in batch]
         embeddings = await embed_batch(texts, model, api_key)
         for (article_id, _, _), emb in zip(batch, embeddings):
@@ -105,10 +111,9 @@ def should_ingest_pdf(kb, path: str) -> bool:
 
 async def ingest_pdf(kb, pdf_path: str, model: str, api_key: str) -> int:
     from pypdf import PdfReader
+
     reader = PdfReader(pdf_path)
-    full_text = "\n".join(
-        page.extract_text() or "" for page in reader.pages
-    )
+    full_text = "\n".join(page.extract_text() or "" for page in reader.pages)
     chunks = chunk_text(full_text, max_tokens=512)
     if not chunks:
         return 0
@@ -120,7 +125,7 @@ async def ingest_pdf(kb, pdf_path: str, model: str, api_key: str) -> int:
     for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
         url = f"file://{pdf_path}#chunk{i}"
         row_id = kb.insert_article(
-            title=f"{filename} (chunk {i+1}/{len(chunks)})",
+            title=f"{filename} (chunk {i + 1}/{len(chunks)})",
             url=url,
             score=None,
             date=None,
@@ -137,10 +142,14 @@ async def ingest_pdf(kb, pdf_path: str, model: str, api_key: str) -> int:
     return count
 
 
-async def run_hn_ingest(kb, score_threshold: int, model: str, api_key: str,
-                        years_back: int = 5) -> None:
+async def run_hn_ingest(
+    kb, score_threshold: int, model: str, api_key: str, years_back: int = 5
+) -> None:
     from datetime import timedelta
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=365 * years_back)).strftime("%Y-%m-%d")
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=365 * years_back)).strftime(
+        "%Y-%m-%d"
+    )
     query = (
         f"SELECT title, url, score, time, text "
         f"FROM `bigquery-public-data.hacker_news.full` "
@@ -150,8 +159,17 @@ async def run_hn_ingest(kb, score_threshold: int, model: str, api_key: str,
     )
     print(f"Running BigQuery export (score>={score_threshold}, since {cutoff})...")
     result = subprocess.run(
-        ["bq", "query", "--format=json", "--nouse_legacy_sql", "--max_rows=100000", query],
-        capture_output=True, text=True, timeout=300,
+        [
+            "bq",
+            "query",
+            "--format=json",
+            "--nouse_legacy_sql",
+            "--max_rows=100000",
+            query,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
     )
     if result.returncode != 0:
         print(f"BigQuery error: {result.stderr}", file=sys.stderr)
@@ -205,6 +223,11 @@ async def main(args) -> None:
 
 if __name__ == "__main__":
     import argparse
-    p = argparse.ArgumentParser(description="Ingest HN articles and PDFs into research KB")
-    p.add_argument("--pdf-only", action="store_true", help="Skip HN ingest, only process PDFs")
+
+    p = argparse.ArgumentParser(
+        description="Ingest HN articles and PDFs into research KB"
+    )
+    p.add_argument(
+        "--pdf-only", action="store_true", help="Skip HN ingest, only process PDFs"
+    )
     asyncio.run(main(p.parse_args()))

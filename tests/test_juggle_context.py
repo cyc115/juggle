@@ -1,4 +1,5 @@
 """Tests for juggle_context.py ContextBuilder."""
+
 import sys
 from pathlib import Path
 import pytest
@@ -29,7 +30,9 @@ def test_no_stale_flag_when_fresh(active_db):
 def test_stale_flag_emitted_at_threshold(active_db):
     # v2 context no longer injects SUMMARY STALE — this is handled by render_topics_tree
     for i in range(3):
-        active_db.add_message(active_db.get_current_thread(), "user", f"real question {i}")
+        active_db.add_message(
+            active_db.get_current_thread(), "user", f"real question {i}"
+        )
     ctx = ContextBuilder(active_db).build()
     # New format: Q&A history rendered in Tier 1 block instead
     assert "JUGGLE ACTIVE" in ctx
@@ -37,7 +40,9 @@ def test_stale_flag_emitted_at_threshold(active_db):
 
 def test_stale_flag_not_emitted_after_count_updated(active_db):
     for i in range(3):
-        active_db.add_message(active_db.get_current_thread(), "user", f"real question {i}")
+        active_db.add_message(
+            active_db.get_current_thread(), "user", f"real question {i}"
+        )
     active_db.update_thread(active_db.get_current_thread(), summarized_msg_count=3)
     ctx = ContextBuilder(active_db).build()
     assert "SUMMARY STALE" not in ctx
@@ -46,7 +51,11 @@ def test_stale_flag_not_emitted_after_count_updated(active_db):
 def test_junk_messages_not_counted(active_db):
     active_db.add_message(active_db.get_current_thread(), "user", "real question one")
     active_db.add_message(active_db.get_current_thread(), "user", "/juggle:show-topics")
-    active_db.add_message(active_db.get_current_thread(), "user", "<task-notification>...</task-notification>")
+    active_db.add_message(
+        active_db.get_current_thread(),
+        "user",
+        "<task-notification>...</task-notification>",
+    )
     # Only 1 substantive message — below threshold
     ctx = ContextBuilder(active_db).build()
     assert "SUMMARY STALE" not in ctx
@@ -55,6 +64,7 @@ def test_junk_messages_not_counted(active_db):
 # ---------------------------------------------------------------------------
 # New format tests: summary-only injection (no "Recent conversation" block)
 # ---------------------------------------------------------------------------
+
 
 def test_no_recent_conversation_block(active_db):
     """The old 'Recent conversation' block must not appear in output."""
@@ -66,7 +76,9 @@ def test_no_recent_conversation_block(active_db):
 
 def test_summary_appears_under_topic(active_db):
     """Thread summary is shown inline under the topic label in the Topics list."""
-    active_db.update_thread(active_db.get_current_thread(), summary="We discussed the auth flow.")
+    active_db.update_thread(
+        active_db.get_current_thread(), summary="We discussed the auth flow."
+    )
     ctx = ContextBuilder(active_db).build()
     # Articles stripped in v2 renderer: "the auth flow" → "auth flow"
     assert "Summary: We discussed" in ctx
@@ -111,7 +123,11 @@ def test_archived_thread_suffix(active_db):
 def test_key_decisions_in_tier1_block(active_db):
     """Key decisions ARE injected for Tier 1 (active) threads in v2."""
     import json
-    active_db.update_thread(active_db.get_current_thread(), key_decisions=json.dumps(["Use Postgres", "Auth via JWT"]))
+
+    active_db.update_thread(
+        active_db.get_current_thread(),
+        key_decisions=json.dumps(["Use Postgres", "Auth via JWT"]),
+    )
     ctx = ContextBuilder(active_db).build()
     assert "Key decisions:" in ctx
 
@@ -119,7 +135,11 @@ def test_key_decisions_in_tier1_block(active_db):
 def test_open_questions_in_tier1_block(active_db):
     """Open questions ARE injected for Tier 1 (active) threads in v2."""
     import json
-    active_db.update_thread(active_db.get_current_thread(), open_questions=json.dumps(["Should we cache?", "Rate limit?"]))
+
+    active_db.update_thread(
+        active_db.get_current_thread(),
+        open_questions=json.dumps(["Should we cache?", "Rate limit?"]),
+    )
     ctx = ContextBuilder(active_db).build()
     assert "Open questions:" in ctx
 

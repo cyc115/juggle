@@ -1,4 +1,5 @@
 """Tests for JuggleTmuxManager — subprocess calls are mocked."""
+
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 @pytest.fixture
 def mgr():
     from juggle_tmux import JuggleTmuxManager
+
     return JuggleTmuxManager(session_name="juggle-test")
 
 
@@ -62,6 +64,7 @@ def test_spawn_pane_returns_pane_id(mgr):
 def test_start_claude_sets_juggle_is_agent(mgr):
     """Agent panes must be launched with JUGGLE_IS_AGENT=1 so PreToolUse hooks can skip blocking."""
     from pathlib import Path as _Path
+
     launch_cmd_content = []
 
     def capture_tmux(*args):
@@ -79,7 +82,9 @@ def test_start_claude_sets_juggle_is_agent(mgr):
     with patch.object(mgr, "_run_tmux", side_effect=capture_tmux):
         mgr.start_claude_in_pane("%5")
 
-    assert launch_cmd_content, "load-buffer was never called — command not written to temp file"
+    assert launch_cmd_content, (
+        "load-buffer was never called — command not written to temp file"
+    )
     cmd = launch_cmd_content[0]
     assert cmd.startswith("env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1 "), (
         f"Expected cmd to start with env prefix, got: {cmd!r}"
@@ -112,8 +117,10 @@ def test_start_claude_large_command_no_truncation(mgr):
             "disallowed_tools_by_role": {},
         }
     }
-    with patch("juggle_tmux._get_settings", return_value=fake_settings), \
-         patch.object(mgr, "_run_tmux", side_effect=capture_tmux):
+    with (
+        patch("juggle_tmux._get_settings", return_value=fake_settings),
+        patch.object(mgr, "_run_tmux", side_effect=capture_tmux),
+    ):
         mgr.start_claude_in_pane("%5")
 
     assert written_content, "load-buffer was never called"
@@ -148,11 +155,13 @@ def test_kill_pane_calls_tmux(mgr):
 
 def test_send_task_loads_and_pastes(mgr):
     """send_task issues load-buffer, paste-buffer, and send-keys C-m."""
-    with patch.object(mgr, "wait_for_ready_to_paste", return_value=True), \
-         patch.object(mgr, "wait_for_submission", return_value=True), \
-         patch("subprocess.run") as mock_run, \
-         patch("time.sleep"), \
-         patch("juggle_tmux.uuid"):
+    with (
+        patch.object(mgr, "wait_for_ready_to_paste", return_value=True),
+        patch.object(mgr, "wait_for_submission", return_value=True),
+        patch("subprocess.run") as mock_run,
+        patch("time.sleep"),
+        patch("juggle_tmux.uuid"),
+    ):
         mock_run.return_value = _ok()
         mgr.send_task("%3", "do something")
     calls = [c.args[0] for c in mock_run.call_args_list]
@@ -163,6 +172,7 @@ def test_send_task_loads_and_pastes(mgr):
 
 # --- wait_for_ready_to_paste ---------------------------------------------
 
+
 def test_wait_for_ready_to_paste_returns_true_when_marker_appears(mgr):
     """Returns True once capture-pane output contains a readiness marker."""
     captures = [
@@ -171,8 +181,10 @@ def test_wait_for_ready_to_paste_returns_true_when_marker_appears(mgr):
         MagicMock(stdout=""),
         MagicMock(stdout="some chatter\nbypass permissions on (shift+tab to cycle)\n"),
     ]
-    with patch.object(mgr, "_run_tmux", side_effect=captures) as mock_tmux, \
-         patch("time.sleep"):
+    with (
+        patch.object(mgr, "_run_tmux", side_effect=captures) as mock_tmux,
+        patch("time.sleep"),
+    ):
         result = mgr.wait_for_ready_to_paste("%3", timeout=10)
     assert result is True
     assert mock_tmux.call_count == 4
@@ -188,20 +200,24 @@ def test_wait_for_ready_to_paste_recognises_effort_marker(mgr):
         MagicMock(stdout=""),
         MagicMock(stdout="model: claude-opus  /effort high  /context 200k"),
     ]
-    with patch.object(mgr, "_run_tmux", side_effect=captures), \
-         patch("time.sleep"):
+    with patch.object(mgr, "_run_tmux", side_effect=captures), patch("time.sleep"):
         assert mgr.wait_for_ready_to_paste("%3", timeout=5) is True
 
 
 def test_wait_for_ready_to_paste_returns_false_after_timeout(mgr):
     """Returns False if no readiness marker appears before timeout."""
-    with patch.object(mgr, "_run_tmux", return_value=MagicMock(stdout="zsh:1: command not found")), \
-         patch("time.sleep"):
+    with (
+        patch.object(
+            mgr, "_run_tmux", return_value=MagicMock(stdout="zsh:1: command not found")
+        ),
+        patch("time.sleep"),
+    ):
         result = mgr.wait_for_ready_to_paste("%3", timeout=2)
     assert result is False
 
 
 # --- wait_for_submission --------------------------------------------------
+
 
 def test_wait_for_submission_returns_true_when_cleared(mgr):
     """If the pasted prompt disappears from the input box, treat as submitted."""
@@ -209,14 +225,18 @@ def test_wait_for_submission_returns_true_when_cleared(mgr):
     head = prompt[:40]
     captures = [
         MagicMock(stdout=f"> {head} more stuff\n"),  # iter 0: still in input
-        MagicMock(stdout="(empty input box)\n>\n"),   # iter 1: cleared
+        MagicMock(stdout="(empty input box)\n>\n"),  # iter 1: cleared
     ]
-    with patch.object(mgr, "_run_tmux", side_effect=captures) as mock_tmux, \
-         patch("time.sleep"):
+    with (
+        patch.object(mgr, "_run_tmux", side_effect=captures) as mock_tmux,
+        patch("time.sleep"),
+    ):
         result = mgr.wait_for_submission("%3", prompt, timeout=10, max_enter_retries=3)
     assert result is True
     send_key_calls = [c for c in mock_tmux.call_args_list if c.args[0] == "send-keys"]
-    assert len(send_key_calls) == 0, "should not retry Enter when cleared on first non-stuck poll"
+    assert len(send_key_calls) == 0, (
+        "should not retry Enter when cleared on first non-stuck poll"
+    )
 
 
 def test_wait_for_submission_returns_true_when_processing_marker_present(mgr):
@@ -226,8 +246,7 @@ def test_wait_for_submission_returns_true_when_processing_marker_present(mgr):
         MagicMock(stdout=f"> {prompt}\n"),
         MagicMock(stdout="✻ Thinking… (esc to interrupt)\n"),
     ]
-    with patch.object(mgr, "_run_tmux", side_effect=captures), \
-         patch("time.sleep"):
+    with patch.object(mgr, "_run_tmux", side_effect=captures), patch("time.sleep"):
         assert mgr.wait_for_submission("%3", prompt, timeout=10) is True
 
 
@@ -251,11 +270,12 @@ def test_wait_for_submission_retries_enter_when_stuck(mgr):
             return MagicMock(stdout="")
         return MagicMock(stdout="")
 
-    with patch.object(mgr, "_run_tmux", side_effect=fake_run_tmux), \
-         patch("time.sleep"):
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run_tmux), patch("time.sleep"):
         result = mgr.wait_for_submission("%3", prompt, timeout=10, max_enter_retries=3)
     assert result is True
-    assert len(send_key_calls) == 1, f"expected exactly 1 Enter retry, got {len(send_key_calls)}"
+    assert len(send_key_calls) == 1, (
+        f"expected exactly 1 Enter retry, got {len(send_key_calls)}"
+    )
     # The retry should be a C-m to the target pane
     assert send_key_calls[0][-1] == "C-m"
     assert "%3" in send_key_calls[0]
@@ -267,6 +287,7 @@ def test_wait_for_submission_returns_false_after_max_retries(mgr):
     stuck = MagicMock(stdout=f"> {prompt} (still here)\n")
 
     send_key_calls = []
+
     def fake_run_tmux(*args):
         if args[0] == "capture-pane":
             return stuck
@@ -275,14 +296,16 @@ def test_wait_for_submission_returns_false_after_max_retries(mgr):
             return MagicMock(stdout="")
         return MagicMock(stdout="")
 
-    with patch.object(mgr, "_run_tmux", side_effect=fake_run_tmux), \
-         patch("time.sleep"):
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run_tmux), patch("time.sleep"):
         result = mgr.wait_for_submission("%3", prompt, timeout=6, max_enter_retries=3)
     assert result is False
-    assert len(send_key_calls) == 3, f"expected 3 retries (max), got {len(send_key_calls)}"
+    assert len(send_key_calls) == 3, (
+        f"expected 3 retries (max), got {len(send_key_calls)}"
+    )
 
 
 # --- send_task (refactored) ----------------------------------------------
+
 
 def test_send_task_calls_wait_for_ready_then_wait_for_submission(mgr):
     """send_task must verify readiness before paste and submission after Enter."""
@@ -298,10 +321,12 @@ def test_send_task_calls_wait_for_ready_then_wait_for_submission(mgr):
         call_order.append("submit")
         return True
 
-    with patch.object(mgr, "wait_for_ready_to_paste", side_effect=_ready), \
-         patch.object(mgr, "wait_for_submission", side_effect=_submit), \
-         patch("subprocess.run", return_value=_ok()), \
-         patch("time.sleep"):
+    with (
+        patch.object(mgr, "wait_for_ready_to_paste", side_effect=_ready),
+        patch.object(mgr, "wait_for_submission", side_effect=_submit),
+        patch("subprocess.run", return_value=_ok()),
+        patch("time.sleep"),
+    ):
         mgr.send_task("%3", "task body")
     assert call_order == ["ready", "submit"], (
         f"expected wait_for_ready before wait_for_submission; got {call_order}"
@@ -310,9 +335,11 @@ def test_send_task_calls_wait_for_ready_then_wait_for_submission(mgr):
 
 def test_send_task_raises_when_pane_not_ready(mgr):
     """If wait_for_ready_to_paste returns False, send_task raises RuntimeError."""
-    with patch.object(mgr, "wait_for_ready_to_paste", return_value=False), \
-         patch.object(mgr, "wait_for_submission") as mock_submit, \
-         patch("subprocess.run", return_value=_ok()):
+    with (
+        patch.object(mgr, "wait_for_ready_to_paste", return_value=False),
+        patch.object(mgr, "wait_for_submission") as mock_submit,
+        patch("subprocess.run", return_value=_ok()),
+    ):
         with pytest.raises(RuntimeError, match="not ready"):
             mgr.send_task("%3", "task body")
     mock_submit.assert_not_called()
@@ -321,25 +348,34 @@ def test_send_task_raises_when_pane_not_ready(mgr):
 def test_send_task_warns_but_does_not_raise_when_submission_unverified(mgr, caplog):
     """If wait_for_submission returns False, send_task logs a warning and returns."""
     import logging
+
     caplog.set_level(logging.WARNING)
-    with patch.object(mgr, "wait_for_ready_to_paste", return_value=True), \
-         patch.object(mgr, "wait_for_submission", return_value=False), \
-         patch("subprocess.run", return_value=_ok()), \
-         patch("time.sleep"):
+    with (
+        patch.object(mgr, "wait_for_ready_to_paste", return_value=True),
+        patch.object(mgr, "wait_for_submission", return_value=False),
+        patch("subprocess.run", return_value=_ok()),
+        patch("time.sleep"),
+    ):
         # Should not raise
         mgr.send_task("%3", "task body")
-    assert any("submission not verified" in r.message.lower() or "submission" in r.message.lower()
-               for r in caplog.records), f"expected a warning log; got {[r.message for r in caplog.records]}"
+    assert any(
+        "submission not verified" in r.message.lower()
+        or "submission" in r.message.lower()
+        for r in caplog.records
+    ), f"expected a warning log; got {[r.message for r in caplog.records]}"
 
 
 def test_spawn_agent_creates_db_record(mgr, tmp_path):
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(tmp_path / "test.db"))
     db.init_db()
 
-    with patch.object(mgr, "ensure_session"), \
-         patch.object(mgr, "spawn_pane", return_value="%7"), \
-         patch.object(mgr, "start_claude_in_pane"):
+    with (
+        patch.object(mgr, "ensure_session"),
+        patch.object(mgr, "spawn_pane", return_value="%7"),
+        patch.object(mgr, "start_claude_in_pane"),
+    ):
         agent = mgr.spawn_agent(db, role="coder")
 
     assert agent["role"] == "coder"
@@ -349,6 +385,7 @@ def test_spawn_agent_creates_db_record(mgr, tmp_path):
 
 def test_decommission_agent_kills_pane_and_deletes(mgr, tmp_path):
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(tmp_path / "test.db"))
     db.init_db()
     agent_id = db.create_agent(role="coder", pane_id="%3")
@@ -374,5 +411,7 @@ def test_get_pane_last_used_returns_zero_on_empty(mgr):
 
 
 def test_get_pane_last_used_returns_zero_on_non_int(mgr):
-    with patch.object(mgr, "_run_tmux", MagicMock(return_value=MagicMock(stdout="not-a-number"))):
+    with patch.object(
+        mgr, "_run_tmux", MagicMock(return_value=MagicMock(stdout="not-a-number"))
+    ):
         assert mgr.get_pane_last_used("%5") == 0

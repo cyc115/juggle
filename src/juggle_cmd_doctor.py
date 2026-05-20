@@ -65,6 +65,7 @@ def cmd_doctor(args) -> int:
                     shutil.copy2(CONFIG_PATH, BACKUP_PATH)
                 CONFIG_PATH.write_text(json.dumps(new_cfg, indent=2))
                 from juggle_settings import get_settings
+
                 get_settings.cache_clear()
             print(f"config: {len(changes)} change(s):")
             for c in changes:
@@ -80,20 +81,25 @@ def cmd_doctor(args) -> int:
 
     if Path(DB_PATH).exists():
         conn = sqlite3.connect(str(DB_PATH))
-        thread_cols = {row[1] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
-        tables = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
+        thread_cols = {
+            row[1] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
         conn.close()
         stale = (
-            "domain" in thread_cols
-            or "domains" in tables
-            or "domain_paths" in tables
+            "domain" in thread_cols or "domains" in tables or "domain_paths" in tables
         )
         if stale:
             if not dry:
                 JuggleDB(DB_PATH).init_db()
-                print("db: ran Migrations 17–19 (dropped domain column + domain tables)")
+                print(
+                    "db: ran Migrations 17–19 (dropped domain column + domain tables)"
+                )
             else:
                 print("db: would run Migrations 17–19 (stale schema detected)")
         else:

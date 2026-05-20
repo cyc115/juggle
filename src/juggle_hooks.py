@@ -22,7 +22,9 @@ from juggle_db import JuggleDB
 from juggle_context import build_context_string
 from juggle_settings import get_settings as _get_settings
 
-_DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA", _get_settings()["paths"]["data_dir"]))
+_DATA_DIR = Path(
+    os.environ.get("CLAUDE_PLUGIN_DATA", _get_settings()["paths"]["data_dir"])
+)
 DB_PATH = _DATA_DIR / "juggle.db"
 
 logging.basicConfig(
@@ -50,7 +52,9 @@ def get_db() -> JuggleDB:
 
 def _get_session_id(db) -> str:
     with db._connect() as conn:
-        row = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+        row = conn.execute(
+            "SELECT value FROM session WHERE key = 'session_id'"
+        ).fetchone()
     return row["value"] if row else ""
 
 
@@ -90,19 +94,26 @@ def _classify_context(text: str) -> str:
     return "conversation"
 
 
-def _retain_conversation_turn(role: str, content: str, topic: str, context_override: str | None = None) -> None:
+def _retain_conversation_turn(
+    role: str, content: str, topic: str, context_override: str | None = None
+) -> None:
     """Fire-and-forget: retain a conversation turn to Hindsight."""
     if len(content.strip()) < 20:
         return
     try:
         from juggle_hindsight import HindsightClient
+
         client = HindsightClient.from_config()
         if client is None:
             return
         text = f"[{topic}] ({role}) {content}"
         if len(text) > 10_000:
             text = text[:10_000]
-        context = context_override if context_override is not None else _classify_context(content)
+        context = (
+            context_override
+            if context_override is not None
+            else _classify_context(content)
+        )
         client.retain(text, context=context)
     except Exception:
         pass
@@ -133,8 +144,14 @@ _SAFE_APPROVE_PATTERNS = [
 
 # Keywords that indicate a destructive action — never auto-approve if present.
 _DESTRUCTIVE_KEYWORDS = [
-    "delete", "force", "reset", "remove", "drop", "destroy",
-    "push to main", "push to master",
+    "delete",
+    "force",
+    "reset",
+    "remove",
+    "drop",
+    "destroy",
+    "push to main",
+    "push to master",
 ]
 
 
@@ -143,28 +160,41 @@ def auto_approve_blocked_agents() -> None:
     try:
         db = get_db()
         agents = db.get_all_agents()
-        busy_panes = [a["pane_id"] for a in agents if a.get("status") not in ("idle",) and a.get("pane_id")]
+        busy_panes = [
+            a["pane_id"]
+            for a in agents
+            if a.get("status") not in ("idle",) and a.get("pane_id")
+        ]
         for pane_id in busy_panes:
             result = subprocess.run(
                 ["tmux", "capture-pane", "-t", pane_id, "-p", "-S", "-20"],
-                capture_output=True, text=True
+                capture_output=True,
+                text=True,
             )
             if result.returncode != 0:
                 continue
             output = result.stdout
 
             if "allow Claude to edit its own settings" in output:
-                subprocess.run(["tmux", "send-keys", "-t", pane_id, "2", "Enter"], capture_output=True)
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", pane_id, "2", "Enter"],
+                    capture_output=True,
+                )
                 logging.info("auto-approved settings-edit prompt in pane %s", pane_id)
                 continue
 
             output_lower = output.lower()
             if any(kw in output_lower for kw in _DESTRUCTIVE_KEYWORDS):
-                logging.info("skipped auto-approve (destructive keyword) in pane %s", pane_id)
+                logging.info(
+                    "skipped auto-approve (destructive keyword) in pane %s", pane_id
+                )
                 continue
 
             if any(re.search(p, output, re.IGNORECASE) for p in _SAFE_APPROVE_PATTERNS):
-                subprocess.run(["tmux", "send-keys", "-t", pane_id, "1", "Enter"], capture_output=True)
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", pane_id, "1", "Enter"],
+                    capture_output=True,
+                )
                 logging.info("auto-approved prompt in pane %s", pane_id)
     except Exception as exc:
         logging.warning("auto_approve_blocked_agents error: %s", exc)
@@ -197,7 +227,9 @@ def handle_user_prompt_submit(data: dict) -> None:
                 db.add_message(thread_id, "user", prompt)
                 thread = db.get_thread(thread_id)
                 topic = thread.get("topic", "") if thread else ""
-                forced_ctx = "preferences" if _CORRECTION_PATTERNS.search(prompt) else None
+                forced_ctx = (
+                    "preferences" if _CORRECTION_PATTERNS.search(prompt) else None
+                )
                 threading.Thread(
                     target=_retain_conversation_turn,
                     args=("user", prompt, topic, forced_ctx),
@@ -251,7 +283,10 @@ def handle_stop(data: dict) -> None:
                 ).start()
 
                 # Violation: orchestrator asked for permission instead of acting
-                if any(re.search(p, last_msg, re.IGNORECASE) for p in _PERMISSION_ASKING_PATTERNS):
+                if any(
+                    re.search(p, last_msg, re.IGNORECASE)
+                    for p in _PERMISSION_ASKING_PATTERNS
+                ):
                     db.add_notification_v2(
                         thread_id,
                         "⚠️ ORCHESTRATOR: You asked for permission instead of acting. "
@@ -259,7 +294,9 @@ def handle_stop(data: dict) -> None:
                         "decisions via AskUserQuestion.",
                         session_id=_get_session_id(db),
                     )
-                    logging.warning("Stop: permission-asking detected in thread %s", thread_id)
+                    logging.warning(
+                        "Stop: permission-asking detected in thread %s", thread_id
+                    )
     except Exception as exc:
         logging.error("Stop handler error: %s", exc, exc_info=True)
 
@@ -281,6 +318,7 @@ def handle_session_start(data: dict) -> None:
         if reason not in ("new",):
             db = get_db()
             from juggle_context import build_startup_output
+
             additional_context = build_startup_output(db)
             output = {
                 "hookSpecificOutput": {
@@ -299,7 +337,10 @@ def handle_session_start(data: dict) -> None:
 # Each entry: (compiled regex, human-readable label).
 _BASH_WRITE_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\bsed\s+(-[^\s]*i[^\s]*\s|--in-place)"), "sed -i (in-place edit)"),
-    (re.compile(r"\bgit\s+(add|commit|push|reset|rebase|merge|rm|mv)\b"), "git write operation"),
+    (
+        re.compile(r"\bgit\s+(add|commit|push|reset|rebase|merge|rm|mv)\b"),
+        "git write operation",
+    ),
     (re.compile(r"\brm\s+"), "rm (file deletion)"),
     (re.compile(r"\bpatch\b"), "patch"),
     (re.compile(r"\btee\s+\S"), "tee (file write)"),
@@ -307,7 +348,10 @@ _BASH_WRITE_PATTERNS: list[tuple[re.Pattern, str]] = [
     # Redirect to file: `>` or `>>` not preceded by a digit/& (fd redirects like 2>, &>)
     # and not targeting /dev/* or a file descriptor (&1, &2).
     # Lookahead includes \s* to prevent backtracking from defeating the /dev/ exclusion.
-    (re.compile(r"(?<![0-9&|])\s*>{1,2}(?!\s*(?:/dev/|&|\d))"), "output redirect (> or >>)"),
+    (
+        re.compile(r"(?<![0-9&|])\s*>{1,2}(?!\s*(?:/dev/|&|\d))"),
+        "output redirect (> or >>)",
+    ),
 ]
 
 
@@ -342,7 +386,11 @@ def handle_pre_tool_use(data: dict) -> None:
                 f"🚫 {tool_name} blocked in juggle orchestrator session [{session_id}]. "
                 "File edits must go through an agent. Use get-agent + send-task to dispatch."
             )
-            logging.info("PreToolUse: blocked %s in orchestrator session %s", tool_name, session_id)
+            logging.info(
+                "PreToolUse: blocked %s in orchestrator session %s",
+                tool_name,
+                session_id,
+            )
             output = {
                 "hookSpecificOutput": {"permissionDecision": "deny"},
                 "systemMessage": msg,
@@ -359,7 +407,11 @@ def handle_pre_tool_use(data: dict) -> None:
                     f"detected file-write pattern '{matched}'. "
                     "File modifications must go through an agent. Use get-agent + send-task to dispatch."
                 )
-                logging.info("PreToolUse: blocked Bash(%s) in orchestrator session %s", matched, session_id)
+                logging.info(
+                    "PreToolUse: blocked Bash(%s) in orchestrator session %s",
+                    matched,
+                    session_id,
+                )
                 output = {
                     "hookSpecificOutput": {"permissionDecision": "deny"},
                     "systemMessage": msg,
@@ -381,11 +433,13 @@ def handle_pre_tool_use(data: dict) -> None:
                         current = json.loads(current)
 
                     for i, q in enumerate(questions):
-                        current.append({
-                            "id": f"{tool_use_id}:{i}",
-                            "text": q.get("question", ""),
-                            "source": "askuser",
-                        })
+                        current.append(
+                            {
+                                "id": f"{tool_use_id}:{i}",
+                                "text": q.get("question", ""),
+                                "source": "askuser",
+                            }
+                        )
 
                     db.update_thread(thread_id, open_questions=current)
 
@@ -444,7 +498,11 @@ def handle_post_tool_use(data: dict) -> None:
                     if isinstance(open_questions, str):
                         open_questions = json.loads(open_questions)
 
-                    open_questions = [q for q in open_questions if not q.get("id", "").startswith(tool_use_id)]
+                    open_questions = [
+                        q
+                        for q in open_questions
+                        if not q.get("id", "").startswith(tool_use_id)
+                    ]
 
                     db.update_thread(thread_id, open_questions=open_questions)
 
@@ -494,8 +552,12 @@ def handle_post_tool_use(data: dict) -> None:
                 f"Strip JUGGLE blocks before dispatching agents."
             )
             current = db.get_current_thread()
-            db.add_notification_v2(thread_id or current or "", warning, session_id=_get_session_id(db))
-            logging.warning("JUGGLE ACTIVE leaked into sub-agent prompt for thread %s", thread_id)
+            db.add_notification_v2(
+                thread_id or current or "", warning, session_id=_get_session_id(db)
+            )
+            logging.warning(
+                "JUGGLE ACTIVE leaked into sub-agent prompt for thread %s", thread_id
+            )
 
     except Exception as exc:
         logging.error("PostToolUse handler error: %s", exc, exc_info=True)

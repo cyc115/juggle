@@ -1,4 +1,5 @@
 """Tests for Task 1 schema additions (notifications_v2, action_items, threads columns)."""
+
 import tempfile
 from pathlib import Path
 
@@ -17,19 +18,35 @@ def db(tmp_path):
 
 def test_notifications_v2_table_exists(db):
     with db._connect() as conn:
-        cols = {r["name"] for r in conn.execute("PRAGMA table_info(notifications_v2)").fetchall()}
+        cols = {
+            r["name"]
+            for r in conn.execute("PRAGMA table_info(notifications_v2)").fetchall()
+        }
     assert cols == {"id", "thread_id", "message", "created_at", "session_id"}
 
 
 def test_action_items_table_exists(db):
     with db._connect() as conn:
-        cols = {r["name"] for r in conn.execute("PRAGMA table_info(action_items)").fetchall()}
-    assert cols == {"id", "thread_id", "message", "type", "priority", "created_at", "dismissed_at"}
+        cols = {
+            r["name"]
+            for r in conn.execute("PRAGMA table_info(action_items)").fetchall()
+        }
+    assert cols == {
+        "id",
+        "thread_id",
+        "message",
+        "type",
+        "priority",
+        "created_at",
+        "dismissed_at",
+    }
 
 
 def test_threads_has_user_label_and_last_active_at(db):
     with db._connect() as conn:
-        cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
     assert "user_label" in cols
     assert "last_active_at" in cols
 

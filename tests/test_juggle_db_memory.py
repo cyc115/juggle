@@ -1,4 +1,5 @@
 """Tests for memory-related DB columns on threads."""
+
 import sys
 from pathlib import Path
 
@@ -32,7 +33,9 @@ def test_thread_has_memory_context_default_empty(db):
 
 def test_update_memory_context(db):
     tid = db.create_thread("test topic", session_id="")
-    db.update_thread(tid, memory_context="recalled fact 1\nrecalled fact 2", memory_loaded=1)
+    db.update_thread(
+        tid, memory_context="recalled fact 1\nrecalled fact 2", memory_loaded=1
+    )
     thread = db.get_thread(tid)
     assert thread["memory_context"] == "recalled fact 1\nrecalled fact 2"
     assert thread["memory_loaded"] == 1

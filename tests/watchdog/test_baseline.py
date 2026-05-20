@@ -1,4 +1,5 @@
 """Baseline: confirms detection gaps without watchdog daemon. All 5 MUST pass."""
+
 import subprocess
 import time
 from pathlib import Path

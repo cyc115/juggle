@@ -1,4 +1,5 @@
 """Tests for Task 4 user label resolver + Excel-style allocation."""
+
 import pytest
 from juggle_db import JuggleDB, _next_excel_label
 from juggle_cli_common import _resolve_thread

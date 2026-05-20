@@ -22,6 +22,7 @@ from juggle_settings import get_settings as _get_settings
 def cmd_get_context(_):
     sys.path.insert(0, str(SRC_DIR))
     from juggle_context import build_context_string
+
     result = build_context_string(db_path=str(DB_PATH))
     print(result)
 
@@ -77,9 +78,15 @@ def cmd_recall_if_cold(args):
 def cmd_recall_bg(args):
     """Fire recall as a detached background process. Returns immediately."""
     import subprocess
+
     subprocess.Popen(
-        [sys.executable, str(Path(__file__).parent / "juggle_cli.py"),
-         "recall", args.thread_id, args.query],
+        [
+            sys.executable,
+            str(Path(__file__).parent / "juggle_cli.py"),
+            "recall",
+            args.thread_id,
+            args.query,
+        ],
         start_new_session=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -105,7 +112,9 @@ def cmd_grep_vault(args):
         try:
             proc = subprocess.run(
                 ["grep", "-ril", "--include=*.md", term, vault],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             for line in proc.stdout.strip().split("\n"):
                 if line and line not in results:
@@ -122,7 +131,9 @@ def _parse_cutoff(since: str) -> str:
     if since == "today":
         start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
     elif since == "yesterday":
-        start = (now_local - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start = (now_local - timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
     else:
         try:
             start = datetime.fromisoformat(since)
@@ -139,8 +150,11 @@ def _state_icon(status: str, agent_result: str | None) -> str:
     if agent_result and agent_result.startswith("⚠️ BLOCKER:"):
         return "⚠️"
     return {
-        "active": "👉", "background": "🏃", "done": "✅",
-        "failed": "❌", "archived": "🗄️",
+        "active": "👉",
+        "background": "🏃",
+        "done": "✅",
+        "failed": "❌",
+        "archived": "🗄️",
     }.get(status, "💤")
 
 
@@ -151,9 +165,13 @@ def cmd_digest(args):
 
     all_threads = db.get_all_threads()
     active_threads = [
-        t for t in all_threads
+        t
+        for t in all_threads
         if t.get("status") != "archived"
-        and ((t.get("last_active") or "") >= cutoff or (t.get("created_at") or "") >= cutoff)
+        and (
+            (t.get("last_active") or "") >= cutoff
+            or (t.get("created_at") or "") >= cutoff
+        )
     ]
 
     current_id = db.get_current_thread()
@@ -167,8 +185,12 @@ def cmd_digest(args):
     # TOPICS
     new_count = sum(1 for t in active_threads if (t.get("created_at") or "") >= cutoff)
     done_count = sum(1 for t in active_threads if t.get("status") == "done")
-    running_count = sum(1 for t in active_threads if t.get("status") in ("active", "background"))
-    lines.append(f"\n📦 TOPICS  ({running_count} active, {done_count} completed, {new_count} new)")
+    running_count = sum(
+        1 for t in active_threads if t.get("status") in ("active", "background")
+    )
+    lines.append(
+        f"\n📦 TOPICS  ({running_count} active, {done_count} completed, {new_count} new)"
+    )
 
     for t in active_threads:
         label = t.get("label") or t["id"][:4]
@@ -215,7 +237,7 @@ def cmd_digest(args):
         ar = t.get("agent_result") or ""
         if ar.startswith("⚠️ BLOCKER:"):
             label = t.get("label") or t["id"][:4]
-            blockers.append(f"  [{label}] {ar[len('⚠️ BLOCKER:'):].strip()}")
+            blockers.append(f"  [{label}] {ar[len('⚠️ BLOCKER:') :].strip()}")
 
     if blockers:
         lines.append("\n⚠️ BLOCKERS REMAINING")
@@ -274,7 +296,8 @@ def cmd_next_action(args):
 
     all_threads = db.get_all_threads()
     visible = [
-        t for t in all_threads
+        t
+        for t in all_threads
         if t.get("show_in_list", 1) != 0 and t.get("status") != "archived"
     ]
 
@@ -287,7 +310,7 @@ def cmd_next_action(args):
     for t in visible:
         ar = t.get("agent_result") or ""
         if ar.startswith("⚠️ BLOCKER:"):
-            blocker_text = ar[len("⚠️ BLOCKER:"):].strip()
+            blocker_text = ar[len("⚠️ BLOCKER:") :].strip()
             label = t.get("label") or "?"
             target_thread = t
             action_line = f"⚠️ [{label}] BLOCKER: {blocker_text}"
@@ -340,5 +363,8 @@ def cmd_next_action(args):
 
     from juggle_cmd_threads import cmd_switch_thread
     import argparse
-    switch_args = argparse.Namespace(thread_id=target_thread.get("label") or target_thread["id"])
+
+    switch_args = argparse.Namespace(
+        thread_id=target_thread.get("label") or target_thread["id"]
+    )
     cmd_switch_thread(switch_args)

@@ -1,4 +1,5 @@
 """Tests for A1–A3 auto-action-item generation (v1.21.2)."""
+
 import argparse
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ def db(tmp_path, monkeypatch):
     d.init_db()
     import juggle_cli_common as common
     import juggle_cmd_agents
+
     monkeypatch.setattr(common, "get_db", lambda: d)
     monkeypatch.setattr(juggle_cmd_agents, "get_db", lambda: d)
     return d
@@ -24,6 +26,7 @@ def db(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # A1: release-agent files failure action item (priority=high)
 # ---------------------------------------------------------------------------
+
 
 def test_release_agent_files_failure_action_item(db):
     from juggle_cmd_agents import cmd_release_agent
@@ -49,6 +52,7 @@ def test_release_agent_files_failure_action_item(db):
 # ---------------------------------------------------------------------------
 # A3: complete-agent role=planner files decision action item
 # ---------------------------------------------------------------------------
+
 
 def test_complete_agent_planner_files_decision_action_item(db):
     from juggle_cmd_agents import cmd_complete_agent
@@ -77,6 +81,7 @@ def test_complete_agent_planner_files_decision_action_item(db):
 # A2: complete-agent role=coder keyword detection
 # ---------------------------------------------------------------------------
 
+
 def test_complete_agent_coder_draft_keyword_files_manual_step(db):
     from juggle_cmd_agents import cmd_complete_agent
 
@@ -94,8 +99,7 @@ def test_complete_agent_coder_draft_keyword_files_manual_step(db):
 
     items = db.get_open_action_items()
     assert any(
-        item["type"] == "manual_step"
-        and "Review/iterate" in item["message"]
+        item["type"] == "manual_step" and "Review/iterate" in item["message"]
         for item in items
     ), f"Expected manual_step action item, got: {items}"
 
@@ -140,20 +144,24 @@ def test_complete_agent_coder_clean_summary_files_nothing(db):
 
     items = db.get_open_action_items()
     keyword_items = [
-        i for i in items
-        if i["type"] in ("manual_step", "decision")
-        and "Review" in i["message"]
+        i
+        for i in items
+        if i["type"] in ("manual_step", "decision") and "Review" in i["message"]
     ]
-    assert keyword_items == [], f"Expected no keyword action items, got: {keyword_items}"
+    assert keyword_items == [], (
+        f"Expected no keyword action items, got: {keyword_items}"
+    )
 
 
 # ---------------------------------------------------------------------------
 # A2 false-positive regression tests (v1.21.2)
 # ---------------------------------------------------------------------------
 
+
 def _no_keyword_items(db):
     return [
-        i for i in db.get_open_action_items()
+        i
+        for i in db.get_open_action_items()
         if i["type"] in ("manual_step", "decision") and "Review" in i["message"]
     ]
 
@@ -176,7 +184,9 @@ def test_a2_partial_unique_index_no_action(db):
         open_questions=None,
     )
     cmd_complete_agent(args)
-    assert _no_keyword_items(db) == [], f"Expected no action items, got: {db.get_open_action_items()}"
+    assert _no_keyword_items(db) == [], (
+        f"Expected no action items, got: {db.get_open_action_items()}"
+    )
 
 
 def test_a2_bare_v1_version_no_action(db):
@@ -196,7 +206,9 @@ def test_a2_bare_v1_version_no_action(db):
         open_questions=None,
     )
     cmd_complete_agent(args)
-    assert _no_keyword_items(db) == [], f"Expected no action items, got: {db.get_open_action_items()}"
+    assert _no_keyword_items(db) == [], (
+        f"Expected no action items, got: {db.get_open_action_items()}"
+    )
 
 
 def test_a2_pending_review_optional_no_action(db):
@@ -213,7 +225,9 @@ def test_a2_pending_review_optional_no_action(db):
         open_questions=None,
     )
     cmd_complete_agent(args)
-    assert _no_keyword_items(db) == [], f"Expected no action items, got: {db.get_open_action_items()}"
+    assert _no_keyword_items(db) == [], (
+        f"Expected no action items, got: {db.get_open_action_items()}"
+    )
 
 
 def test_a2_real_draft_signal_files_manual_step(db):
@@ -233,8 +247,7 @@ def test_a2_real_draft_signal_files_manual_step(db):
 
     items = db.get_open_action_items()
     assert any(
-        i["type"] == "manual_step" and "Review/iterate" in i["message"]
-        for i in items
+        i["type"] == "manual_step" and "Review/iterate" in i["message"] for i in items
     ), f"Expected manual_step, got: {items}"
 
 
@@ -274,4 +287,6 @@ def test_a2_plain_done_all_tests_committed_no_action(db):
         open_questions=None,
     )
     cmd_complete_agent(args)
-    assert _no_keyword_items(db) == [], f"Expected no action items, got: {db.get_open_action_items()}"
+    assert _no_keyword_items(db) == [], (
+        f"Expected no action items, got: {db.get_open_action_items()}"
+    )

@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import pytest
 from unittest.mock import patch, MagicMock
@@ -7,10 +8,14 @@ from unittest.mock import patch, MagicMock
 
 def _make_db(tmp_path, session_id="sess-1"):
     from juggle_db import JuggleDB
+
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db.init_db()
     with db._connect() as conn:
-        conn.execute("INSERT OR REPLACE INTO session (key, value) VALUES ('session_id', ?)", (session_id,))
+        conn.execute(
+            "INSERT OR REPLACE INTO session (key, value) VALUES ('session_id', ?)",
+            (session_id,),
+        )
         conn.commit()
     return db
 
@@ -30,6 +35,7 @@ def test_unrecoverable_creates_high_action_item_and_notification(tmp_path):
 
     with patch("juggle_cli_common.get_db", return_value=db):
         from juggle_cmd_agents import cmd_fail_agent
+
         cmd_fail_agent(args)
 
     # Old action item dismissed
@@ -58,6 +64,7 @@ def test_recovery_dispatched_notifies_no_action_item(tmp_path):
 
     with patch("juggle_cli_common.get_db", return_value=db):
         from juggle_cmd_agents import cmd_fail_agent
+
         cmd_fail_agent(args)
 
     # Old action item dismissed, no new one

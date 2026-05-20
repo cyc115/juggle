@@ -17,6 +17,7 @@ def test_db_path_ignores_claude_plugin_data():
     with mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": "/tmp/fake/path"}):
         import importlib
         import juggle_cli_common
+
         importlib.reload(juggle_cli_common)
         from juggle_cli_common import DB_PATH as mocked_db_path
 
@@ -27,6 +28,7 @@ def test_db_path_ignores_claude_plugin_data():
 def test_db_path_resolves_absolute():
     """Verify DB_PATH is absolute and properly expanded."""
     from juggle_cli_common import DB_PATH
+
     db_path = Path(DB_PATH)
     assert db_path.is_absolute(), f"DB_PATH not absolute: {db_path}"
     assert str(db_path).endswith("juggle.db")

@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12,<3.14"
+# dependencies = []
+# ///
 """Consolidate orphan Juggle DBs into the canonical ~/.claude/juggle/juggle.db.
 
 Root cause: earlier versions of juggle_settings.py honored CLAUDE_PLUGIN_DATA,
@@ -28,7 +32,9 @@ def get_schema(db_path: str, table: str) -> str:
     """Get CREATE TABLE statement for a table."""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table}'")
+    cursor.execute(
+        f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table}'"
+    )
     result = cursor.fetchone()
     conn.close()
     return result[0] if result else None
@@ -39,11 +45,16 @@ def normalize_schema(schema: str) -> str:
     if not schema:
         return schema
     import re
+
     # Remove REFERENCES clauses and their content to ignore FK differences
-    normalized = re.sub(r'REFERENCES\s+"[^"]+"\([^)]*\)', 'REFERENCES threads(id)', schema)
-    normalized = re.sub(r'REFERENCES\s+\w+\([^)]*\)', 'REFERENCES threads(id)', normalized)
+    normalized = re.sub(
+        r'REFERENCES\s+"[^"]+"\([^)]*\)', "REFERENCES threads(id)", schema
+    )
+    normalized = re.sub(
+        r"REFERENCES\s+\w+\([^)]*\)", "REFERENCES threads(id)", normalized
+    )
     # Collapse multiple whitespace
-    normalized = re.sub(r'\s+', ' ', normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
     # Remove leading/trailing whitespace
     normalized = normalized.strip()
     return normalized
@@ -85,7 +96,9 @@ def get_thread_labels(db_path: str) -> Dict[str, str]:
     return labels
 
 
-def get_rows_to_migrate(src_db: str, dst_db: str, table: str, pk_col: str) -> List[Tuple]:
+def get_rows_to_migrate(
+    src_db: str, dst_db: str, table: str, pk_col: str
+) -> List[Tuple]:
     """Get rows from src that don't exist in dst (by PK)."""
     dst_ids = get_existing_ids(dst_db, table, pk_col)
 
@@ -100,7 +113,9 @@ def get_rows_to_migrate(src_db: str, dst_db: str, table: str, pk_col: str) -> Li
     return [row for row in rows if row[pk_index] not in dst_ids]
 
 
-def consolidate(src_db: str, dst_db: str, dry_run: bool = False, verbose: bool = False) -> Tuple[int, Dict[str, int], int]:
+def consolidate(
+    src_db: str, dst_db: str, dry_run: bool = False, verbose: bool = False
+) -> Tuple[int, Dict[str, int], int]:
     """Consolidate src DB into dst DB.
 
     Returns: (total_rows_migrated, per_table_counts, label_collisions)
@@ -121,7 +136,10 @@ def consolidate(src_db: str, dst_db: str, dry_run: bool = False, verbose: bool =
     dst_tables = set(get_tables(str(dst_path)))
 
     if src_tables != dst_tables:
-        print(f"Error: table mismatch. Src: {src_tables}, Dst: {dst_tables}", file=sys.stderr)
+        print(
+            f"Error: table mismatch. Src: {src_tables}, Dst: {dst_tables}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     for table in src_tables:
@@ -145,7 +163,9 @@ def consolidate(src_db: str, dst_db: str, dry_run: bool = False, verbose: bool =
 
     for table in sorted(src_tables):
         pk_col = get_primary_key(str(src_path), table)
-        rows_to_migrate = get_rows_to_migrate(str(src_path), str(dst_path), table, pk_col)
+        rows_to_migrate = get_rows_to_migrate(
+            str(src_path), str(dst_path), table, pk_col
+        )
 
         if not rows_to_migrate:
             per_table[table] = 0
@@ -180,7 +200,9 @@ def consolidate(src_db: str, dst_db: str, dry_run: bool = False, verbose: bool =
 
         if not dry_run:
             placeholders = ",".join(["?" for _ in columns])
-            insert_sql = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({placeholders})"
+            insert_sql = (
+                f"INSERT INTO {table} ({','.join(columns)}) VALUES ({placeholders})"
+            )
             for row in rows_to_migrate:
                 dst_cursor.execute(insert_sql, row)
 
@@ -201,25 +223,17 @@ def main():
     parser = argparse.ArgumentParser(
         description="Consolidate orphan Juggle DBs into canonical location."
     )
-    parser.add_argument(
-        "--src",
-        required=True,
-        help="Path to source (orphan) DB file"
-    )
+    parser.add_argument("--src", required=True, help="Path to source (orphan) DB file")
     parser.add_argument(
         "--dst",
         default="~/.claude/juggle/juggle.db",
-        help="Path to destination (canonical) DB file (default: ~/.claude/juggle/juggle.db)"
+        help="Path to destination (canonical) DB file (default: ~/.claude/juggle/juggle.db)",
     )
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview without writing"
+        "--dry-run", action="store_true", help="Preview without writing"
     )
     parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show per-table row counts"
+        "--verbose", action="store_true", help="Show per-table row counts"
     )
 
     args = parser.parse_args()
@@ -228,12 +242,16 @@ def main():
     if args.dry_run:
         print(f"[DRY RUN] Would consolidate {args.src} into {dst_path}")
 
-    total, per_table, collisions = consolidate(args.src, str(dst_path), args.dry_run, args.verbose)
+    total, per_table, collisions = consolidate(
+        args.src, str(dst_path), args.dry_run, args.verbose
+    )
 
     if total == 0:
         print(f"No new rows to migrate. (idempotent re-run)")
     else:
-        print(f"Merged {total} rows across {len([t for t in per_table if per_table[t] > 0])} tables from {args.src} into {dst_path}")
+        print(
+            f"Merged {total} rows across {len([t for t in per_table if per_table[t] > 0])} tables from {args.src} into {dst_path}"
+        )
         if collisions > 0:
             print(f"  Label collisions archived: {collisions}")
 

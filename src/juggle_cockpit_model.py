@@ -1,4 +1,5 @@
 """Juggle Cockpit Model — DB reads → typed frozen dataclasses. Zero Rich imports."""
+
 from __future__ import annotations
 
 import glob
@@ -12,44 +13,44 @@ from datetime import datetime, timezone
 
 @dataclass(frozen=True)
 class Topic:
-    id: str            # thread UUID
-    label: str         # "K"
-    status: str        # "current" | "running" | "paused" | "done" | "failed" | "archived"
+    id: str  # thread UUID
+    label: str  # "K"
+    status: str  # "current" | "running" | "paused" | "done" | "failed" | "archived"
     age_secs: int
     is_current: bool
-    title: str = ""    # display title
+    title: str = ""  # display title
 
 
 @dataclass(frozen=True)
 class Action:
-    id: str            # source identifier (open_questions item id or notifications row id)
-    topic_id: str      # thread label e.g. "K"
-    text: str          # display text — never a dict repr
-    tier: int          # 0=blocker, 1=review, 2=question, 3=nudge
+    id: str  # source identifier (open_questions item id or notifications row id)
+    topic_id: str  # thread label e.g. "K"
+    text: str  # display text — never a dict repr
+    tier: int  # 0=blocker, 1=review, 2=question, 3=nudge
     age_secs: int
 
 
 @dataclass(frozen=True)
 class Agent:
-    id_short: str      # first 8 chars of UUID
-    role: str          # "coder" | "planner" | "researcher"
-    status: str        # "busy" | "idle" | "stale"
-    topic_id: str | None   # assigned thread label or None
+    id_short: str  # first 8 chars of UUID
+    role: str  # "coder" | "planner" | "researcher"
+    status: str  # "busy" | "idle" | "stale"
+    topic_id: str | None  # assigned thread label or None
     age_secs: int
 
 
 @dataclass(frozen=True)
 class ScheduledTask:
-    label: str       # short name, e.g. "otter-daily-summary"
-    schedule: str    # "every 5m", "daily 19:00", "on-demand"
-    status: str      # "running" | "ok" | "failed" | "unknown"
+    label: str  # short name, e.g. "otter-daily-summary"
+    schedule: str  # "every 5m", "daily 19:00", "on-demand"
+    status: str  # "running" | "ok" | "failed" | "unknown"
     pid: int | None
 
 
 @dataclass(frozen=True)
 class Notification:
     text: str
-    kind: str          # "complete" | "failed" | "info" | "warning" | "error"
+    kind: str  # "complete" | "failed" | "info" | "warning" | "error"
     age_secs: int
 
 
@@ -66,6 +67,7 @@ class CockpitState:
 # ---------------------------------------------------------------------------
 # format_age
 # ---------------------------------------------------------------------------
+
 
 def _parse_schedule(data: dict) -> str:
     if "StartInterval" in data:
@@ -93,7 +95,9 @@ def _launchctl_status(label: str) -> tuple[int | None, int | None]:
     try:
         r = subprocess.run(
             ["launchctl", "list", label],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         pid: int | None = None
         exit_status: int | None = None
@@ -138,8 +142,14 @@ def fetch_scheduled_tasks() -> list[ScheduledTask]:
                     status = "ok"
                 else:
                     status = "failed"
-                short = label.removeprefix("me.mikechen.").removeprefix("com.claude.schedule.")
-                tasks.append(ScheduledTask(label=short, schedule=schedule, status=status, pid=pid))
+                short = label.removeprefix("me.mikechen.").removeprefix(
+                    "com.claude.schedule."
+                )
+                tasks.append(
+                    ScheduledTask(
+                        label=short, schedule=schedule, status=status, pid=pid
+                    )
+                )
             except Exception:
                 continue
     return tasks
@@ -209,6 +219,7 @@ def priority_tier(
 # snapshot
 # ---------------------------------------------------------------------------
 
+
 def _age_secs(last_active: str | None) -> int:
     """Return seconds since last_active ISO timestamp, or 0 if unparseable."""
     if not last_active:
@@ -238,9 +249,7 @@ def snapshot(db) -> CockpitState:
     ).fetchone()
     current_thread_id: str | None = row[0] if row else None
 
-    row = conn.execute(
-        "SELECT value FROM session WHERE key = 'session_id'"
-    ).fetchone()
+    row = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
     session_id = row[0] if row else ""
 
     # TTL for closed threads
@@ -336,13 +345,15 @@ def snapshot(db) -> CockpitState:
             ).fetchone()
             if t_row:
                 topic_label = t_row["user_label"] or (t_row["id"] or "")[:6]
-        actions.append(Action(
-            id=f"ai:{r['id']}",
-            topic_id=topic_label,
-            text=r["message"],
-            tier=_PRIO_TIER.get(r["priority"], 1),
-            age_secs=_age_secs(r["created_at"]),
-        ))
+        actions.append(
+            Action(
+                id=f"ai:{r['id']}",
+                topic_id=topic_label,
+                text=r["message"],
+                tier=_PRIO_TIER.get(r["priority"], 1),
+                age_secs=_age_secs(r["created_at"]),
+            )
+        )
 
     # --- Agents (unchanged) ---
     agent_rows = conn.execute(
@@ -371,13 +382,15 @@ def snapshot(db) -> CockpitState:
             ).fetchone()
             if tr:
                 topic_label_a = tr["user_label"] or (tr["id"] or "")[:6]
-        agents.append(Agent(
-            id_short=a_id[:8],
-            role=role,
-            status=display_status,
-            topic_id=topic_label_a,
-            age_secs=_age_secs(r["last_active"]),
-        ))
+        agents.append(
+            Agent(
+                id_short=a_id[:8],
+                role=role,
+                status=display_status,
+                topic_id=topic_label_a,
+                age_secs=_age_secs(r["last_active"]),
+            )
+        )
 
     # --- Notifications ← notifications_v2 for current session ---
     try:
@@ -392,7 +405,9 @@ def snapshot(db) -> CockpitState:
         ).fetchall()
         notifications: list[Notification] = [
             Notification(
-                text=f"[{r['user_label']}] {r['message']}" if r["user_label"] else r["message"],
+                text=f"[{r['user_label']}] {r['message']}"
+                if r["user_label"]
+                else r["message"],
                 kind="info",
                 age_secs=_age_secs(r["created_at"]),
             )

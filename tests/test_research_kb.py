@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for juggle_research_kb — DB init and hybrid search."""
+
 import sys
 import sqlite3
 from pathlib import Path
@@ -17,6 +18,7 @@ def db_path(tmp_path):
 @pytest.fixture
 def kb(db_path):
     from juggle_research_kb import ResearchKB
+
     kb = ResearchKB(db_path)
     kb.init_db()
     return kb
@@ -24,10 +26,16 @@ def kb(db_path):
 
 def test_init_db_creates_tables(db_path):
     from juggle_research_kb import ResearchKB
+
     kb = ResearchKB(db_path)
     kb.init_db()
     conn = sqlite3.connect(db_path)
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' OR type='shadow'").fetchall()}
+    tables = {
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' OR type='shadow'"
+        ).fetchall()
+    }
     assert "articles" in tables
     conn.close()
 
@@ -43,7 +51,9 @@ def test_insert_article(kb):
         body="Full body text here",
     )
     conn = sqlite3.connect(kb.db_path)
-    row = conn.execute("SELECT title, score FROM articles WHERE url=?", ("https://example.com/test",)).fetchone()
+    row = conn.execute(
+        "SELECT title, score FROM articles WHERE url=?", ("https://example.com/test",)
+    ).fetchone()
     conn.close()
     assert row == ("Test Article", 200)
 
@@ -51,21 +61,31 @@ def test_insert_article(kb):
 def test_insert_article_idempotent(kb):
     for _ in range(3):
         kb.insert_article(
-            title="Dupe", url="https://example.com/dupe",
-            score=100, date="2024-01-01", source="hn",
-            summary="s", body="b",
+            title="Dupe",
+            url="https://example.com/dupe",
+            score=100,
+            date="2024-01-01",
+            source="hn",
+            summary="s",
+            body="b",
         )
     conn = sqlite3.connect(kb.db_path)
-    count = conn.execute("SELECT count(*) FROM articles WHERE url=?", ("https://example.com/dupe",)).fetchone()[0]
+    count = conn.execute(
+        "SELECT count(*) FROM articles WHERE url=?", ("https://example.com/dupe",)
+    ).fetchone()[0]
     conn.close()
     assert count == 1
 
 
 def test_upsert_embedding(kb):
     kb.insert_article(
-        title="Vec Article", url="https://example.com/vec",
-        score=150, date="2024-01-01", source="hn",
-        summary="vec article test", body="b",
+        title="Vec Article",
+        url="https://example.com/vec",
+        score=150,
+        date="2024-01-01",
+        source="hn",
+        summary="vec article test",
+        body="b",
     )
     article_id = kb.get_article_id("https://example.com/vec")
     assert article_id is not None
@@ -81,9 +101,13 @@ def test_upsert_embedding(kb):
 
 def test_fts_search_returns_results(kb):
     kb.insert_article(
-        title="Python async programming", url="https://example.com/py",
-        score=300, date="2024-01-01", source="hn",
-        summary="Learn async in Python", body="asyncio guide",
+        title="Python async programming",
+        url="https://example.com/py",
+        score=300,
+        date="2024-01-01",
+        source="hn",
+        summary="Learn async in Python",
+        body="asyncio guide",
     )
     results = kb.fts_search("async python", limit=5)
     assert len(results) >= 1

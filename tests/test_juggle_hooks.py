@@ -1,4 +1,5 @@
 """Tests for juggle_hooks.py Stop handler and classification helpers."""
+
 import json
 import sys
 from pathlib import Path
@@ -9,33 +10,36 @@ from juggle_db import JuggleDB
 from juggle_hooks import get_classification_candidates, _bash_write_pattern
 
 
-@pytest.mark.parametrize("cmd,expected_match", [
-    ("sed -i 's/foo/bar/' file.py", True),
-    ("sed --in-place 's/x/y/' f.txt", True),
-    ("git add src/", True),
-    ("git commit -m 'fix'", True),
-    ("git push origin main", True),
-    ("git reset --hard HEAD~1", True),
-    ("rm -rf /tmp/old", True),
-    ("rm file.txt", True),
-    ("patch -p1 < changes.patch", True),
-    ("tee output.log", True),
-    ("mv old.py new.py", True),
-    ("echo hello > out.txt", True),
-    ("cat src.py >> dest.py", True),
-    # Safe commands — must NOT be blocked
-    ("git status", False),
-    ("git log --oneline -10", False),
-    ("git diff HEAD", False),
-    ("grep -r foo src/", False),
-    ("python3 juggle_cli.py start", False),
-    ("curl -sf http://localhost:18888/health", False),
-    ("cat file.py", False),
-    ("ls -la", False),
-    ("command 2> /dev/stderr", False),
-    ("command > /dev/null", False),
-    ("command 2>&1", False),
-])
+@pytest.mark.parametrize(
+    "cmd,expected_match",
+    [
+        ("sed -i 's/foo/bar/' file.py", True),
+        ("sed --in-place 's/x/y/' f.txt", True),
+        ("git add src/", True),
+        ("git commit -m 'fix'", True),
+        ("git push origin main", True),
+        ("git reset --hard HEAD~1", True),
+        ("rm -rf /tmp/old", True),
+        ("rm file.txt", True),
+        ("patch -p1 < changes.patch", True),
+        ("tee output.log", True),
+        ("mv old.py new.py", True),
+        ("echo hello > out.txt", True),
+        ("cat src.py >> dest.py", True),
+        # Safe commands — must NOT be blocked
+        ("git status", False),
+        ("git log --oneline -10", False),
+        ("git diff HEAD", False),
+        ("grep -r foo src/", False),
+        ("python3 juggle_cli.py start", False),
+        ("curl -sf http://localhost:18888/health", False),
+        ("cat file.py", False),
+        ("ls -la", False),
+        ("command 2> /dev/stderr", False),
+        ("command > /dev/null", False),
+        ("command 2>&1", False),
+    ],
+)
 def test_bash_write_pattern(cmd, expected_match):
     result = _bash_write_pattern(cmd)
     if expected_match:
@@ -61,6 +65,7 @@ def test_stop_handler_captures_assistant_message(active_db, monkeypatch):
     # Import after env is set so DB_PATH resolves correctly
     import importlib
     import juggle_hooks
+
     importlib.reload(juggle_hooks)
 
     data = {"last_assistant_message": "Here is my analysis of the auth flow."}
@@ -78,6 +83,7 @@ def test_stop_handler_ignores_short_messages(active_db, monkeypatch):
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
     import importlib
     import juggle_hooks
+
     importlib.reload(juggle_hooks)
 
     data = {"last_assistant_message": "ok"}  # too short
@@ -93,6 +99,7 @@ def test_stop_handler_missing_field_is_noop(active_db, monkeypatch):
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
     import importlib
     import juggle_hooks
+
     importlib.reload(juggle_hooks)
 
     with pytest.raises(SystemExit):
@@ -106,10 +113,12 @@ def test_stop_handler_missing_field_is_noop(active_db, monkeypatch):
 # handle_pre_tool_use tests
 # ---------------------------------------------------------------------------
 
+
 def _reload_hooks(monkeypatch, active_db):
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
     import importlib
     import juggle_hooks
+
     importlib.reload(juggle_hooks)
     return juggle_hooks
 
@@ -119,7 +128,9 @@ def test_pre_tool_use_blocks_edit_in_orchestrator(active_db, monkeypatch, capsys
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
 
     with pytest.raises(SystemExit) as exc_info:
-        juggle_hooks.handle_pre_tool_use({"tool_name": "Edit", "session_id": "deadbeef1234"})
+        juggle_hooks.handle_pre_tool_use(
+            {"tool_name": "Edit", "session_id": "deadbeef1234"}
+        )
 
     assert exc_info.value.code == 2
     stderr = capsys.readouterr().err
@@ -143,7 +154,9 @@ def test_pre_tool_use_allows_edit_in_agent_session(active_db, monkeypatch):
     monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
 
     with pytest.raises(SystemExit) as exc_info:
-        juggle_hooks.handle_pre_tool_use({"tool_name": "Edit", "session_id": "agentpane"})
+        juggle_hooks.handle_pre_tool_use(
+            {"tool_name": "Edit", "session_id": "agentpane"}
+        )
 
     assert exc_info.value.code == 0
 
@@ -156,6 +169,7 @@ def test_pre_tool_use_allows_when_juggle_inactive(tmp_path, monkeypatch):
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     import importlib
     import juggle_hooks
+
     importlib.reload(juggle_hooks)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -164,7 +178,9 @@ def test_pre_tool_use_allows_when_juggle_inactive(tmp_path, monkeypatch):
     assert exc_info.value.code == 0
 
 
-def test_pre_tool_use_allows_non_blocked_tool(active_db, monkeypatch):  # no capsys — exit 0, no output
+def test_pre_tool_use_allows_non_blocked_tool(
+    active_db, monkeypatch
+):  # no capsys — exit 0, no output
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
 
@@ -177,6 +193,7 @@ def test_pre_tool_use_allows_non_blocked_tool(active_db, monkeypatch):  # no cap
 # ---------------------------------------------------------------------------
 # Classification candidate filter tests
 # ---------------------------------------------------------------------------
+
 
 def _make_thread(tid: str, status: str) -> dict:
     return {"thread_id": tid, "topic": f"Topic {tid}", "status": status}
@@ -234,6 +251,7 @@ def test_classification_candidates_empty_input():
 # PostToolUse handler tests
 # ---------------------------------------------------------------------------
 
+
 def test_post_tool_use_forbidden_tool_warns(active_db, monkeypatch):
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
     import importlib
@@ -241,6 +259,7 @@ def test_post_tool_use_forbidden_tool_warns(active_db, monkeypatch):
     import sys as _sys
     import json
     import juggle_hooks
+
     importlib.reload(juggle_hooks)
 
     data = {"tool_name": "Read", "tool_input": {}, "tool_response": ""}
@@ -262,6 +281,7 @@ def test_post_tool_use_no_agent_task_id_tracking(active_db, monkeypatch):
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
     import importlib
     import juggle_hooks
+
     importlib.reload(juggle_hooks)
 
     thread_id = active_db.get_current_thread()

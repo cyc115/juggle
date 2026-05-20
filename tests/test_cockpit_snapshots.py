@@ -83,6 +83,7 @@ def _make_state():
             Notification(text="plan v3 ready", kind="complete", age_secs=30),
             Notification(text="agent timed out", kind="warning", age_secs=120),
         ],
+        scheduled=[],
         fetched_at=_time.time(),
     )
 

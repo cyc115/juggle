@@ -3,6 +3,7 @@
 Safe to run multiple times (idempotent). Run via:
     python -m juggle_migrate_lifecycle
 """
+
 import json
 from datetime import datetime, timezone
 
@@ -11,15 +12,24 @@ from juggle_db import JuggleDB, _next_excel_label
 
 def migrate(db: JuggleDB) -> dict:
     """Migrate legacy thread statuses. Returns a summary dict."""
-    stats = {"done": 0, "background": 0, "failed": 0, "needs_action": 0,
-             "backfill_label": 0, "backfill_last_active": 0}
+    stats = {
+        "done": 0,
+        "background": 0,
+        "failed": 0,
+        "needs_action": 0,
+        "backfill_label": 0,
+        "backfill_last_active": 0,
+    }
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
 
     # Fetch all rows under raw SQL (avoid set_thread_status which rejects legacy values)
     with db._connect() as conn:
-        rows = [dict(r) for r in conn.execute(
-            "SELECT * FROM threads ORDER BY created_at"
-        ).fetchall()]
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT * FROM threads ORDER BY created_at"
+            ).fetchall()
+        ]
 
     # --- Status remap ---
     for t in rows:
@@ -27,7 +37,11 @@ def migrate(db: JuggleDB) -> dict:
         status = t.get("status")
         open_questions_raw = t.get("open_questions") or "[]"
         try:
-            open_questions = json.loads(open_questions_raw) if isinstance(open_questions_raw, str) else (open_questions_raw or [])
+            open_questions = (
+                json.loads(open_questions_raw)
+                if isinstance(open_questions_raw, str)
+                else (open_questions_raw or [])
+            )
         except (json.JSONDecodeError, ValueError):
             open_questions = []
 
@@ -55,12 +69,15 @@ def migrate(db: JuggleDB) -> dict:
             if open_questions:
                 for q in open_questions:
                     text = q.get("text") if isinstance(q, dict) else str(q)
-                    db.add_action_item(thread_id=tid, message=text,
-                                       type_="failure", priority="high")
+                    db.add_action_item(
+                        thread_id=tid, message=text, type_="failure", priority="high"
+                    )
             else:
                 agent_result = t.get("agent_result") or "failed"
                 with db._connect() as conn:
-                    srow = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+                    srow = conn.execute(
+                        "SELECT value FROM session WHERE key = 'session_id'"
+                    ).fetchone()
                 session_id = srow["value"] if srow else ""
                 db.add_notification_v2(
                     thread_id=tid,
@@ -79,8 +96,9 @@ def migrate(db: JuggleDB) -> dict:
         elif status == "needs_action":
             for q in open_questions:
                 text = q.get("text") if isinstance(q, dict) else str(q)
-                db.add_action_item(thread_id=tid, message=text,
-                                   type_="question", priority="normal")
+                db.add_action_item(
+                    thread_id=tid, message=text, type_="question", priority="normal"
+                )
             with db._connect() as conn:
                 conn.execute(
                     "UPDATE threads SET status = 'closed', open_questions = '[]', "
@@ -92,9 +110,12 @@ def migrate(db: JuggleDB) -> dict:
 
     # --- Backfill user_label for any row lacking one (in creation order) ---
     with db._connect() as conn:
-        rows = [dict(r) for r in conn.execute(
-            "SELECT id, user_label, created_at FROM threads ORDER BY created_at"
-        ).fetchall()]
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT id, user_label, created_at FROM threads ORDER BY created_at"
+            ).fetchall()
+        ]
         used = {r["user_label"] for r in rows if r["user_label"]}
         for r in rows:
             if not r["user_label"]:

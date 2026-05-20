@@ -72,7 +72,7 @@ def _check_prior_dogfood_thread(db) -> str | None:
         rows = db_query(
             db,
             "SELECT id, topic FROM threads WHERE topic LIKE 'dogfood-%' "
-            "AND status NOT IN ('closed','archived','failed')"
+            "AND status NOT IN ('closed','archived','failed')",
         )
         if rows:
             return rows[0]["topic"]
@@ -86,7 +86,7 @@ def _check_active_session(db) -> bool:
         rows = db_query(
             db,
             "SELECT last_active_at FROM threads WHERE status = 'active' "
-            "ORDER BY last_active_at DESC LIMIT 1"
+            "ORDER BY last_active_at DESC LIMIT 1",
         )
         if not rows:
             return False
@@ -100,7 +100,9 @@ def _check_active_session(db) -> bool:
 
 
 def _tmux_session_exists(session: str = "juggle") -> bool:
-    result = subprocess.run(["tmux", "has-session", "-t", session], capture_output=True, text=True)
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session], capture_output=True, text=True
+    )
     return result.returncode == 0
 
 
@@ -111,7 +113,9 @@ def _run_canary_spawn(cost_tracker: CostTracker) -> str:
 
     result = subprocess.run(
         [sys.executable, cli, "create-thread", topic],
-        capture_output=True, text=True, timeout=30
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     if result.returncode != 0:
         return (
@@ -121,6 +125,7 @@ def _run_canary_spawn(cost_tracker: CostTracker) -> str:
 
     # Parse thread label from "Created Topic JN: ..." output
     import re as _re
+
     m = _re.search(r"Topic ([A-Z]{1,2}):", result.stdout)
     if not m:
         return (
@@ -131,7 +136,9 @@ def _run_canary_spawn(cost_tracker: CostTracker) -> str:
 
     agent_result = subprocess.run(
         [sys.executable, cli, "get-agent", thread_label, "--role", "researcher"],
-        capture_output=True, text=True, timeout=60
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     if agent_result.returncode != 0 or not agent_result.stdout.strip():
         return (
@@ -148,7 +155,9 @@ def _run_canary_spawn(cost_tracker: CostTracker) -> str:
     try:
         subprocess.run(
             [sys.executable, cli, "send-task", agent_id, task_file],
-            capture_output=True, text=True, timeout=30
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
 
         deadline = time.time() + 60
@@ -156,7 +165,9 @@ def _run_canary_spawn(cost_tracker: CostTracker) -> str:
             time.sleep(5)
             check = subprocess.run(
                 [sys.executable, cli, "check-agents"],
-                capture_output=True, text=True, timeout=10
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if check.returncode == 0:
                 try:
@@ -180,7 +191,9 @@ def _run_canary_spawn(cost_tracker: CostTracker) -> str:
     )
 
 
-def _run_headless_research(task_prompt: str, cost_tracker: CostTracker, dry_run: bool) -> str:
+def _run_headless_research(
+    task_prompt: str, cost_tracker: CostTracker, dry_run: bool
+) -> str:
     if dry_run:
         return (
             "## Observed Friction Patterns\n"
@@ -200,10 +213,14 @@ def _run_headless_research(task_prompt: str, cost_tracker: CostTracker, dry_run:
     try:
         result = subprocess.run(
             ["claude", "-p", task_prompt, "--model", model, "--output-format", "json"],
-            capture_output=True, text=True, timeout=AGENT_TIMEOUT_SECS
+            capture_output=True,
+            text=True,
+            timeout=AGENT_TIMEOUT_SECS,
         )
         if result.returncode != 0:
-            logger.warning("claude -p failed rc=%d: %s", result.returncode, result.stderr[:200])
+            logger.warning(
+                "claude -p failed rc=%d: %s", result.returncode, result.stderr[:200]
+            )
             return ""
         try:
             data = json.loads(result.stdout)
@@ -228,13 +245,16 @@ def _run_juggle_path_a(task_prompt: str, cost_tracker: CostTracker) -> str:
 
     result = subprocess.run(
         [sys.executable, cli, "create-thread", topic],
-        capture_output=True, text=True, timeout=30
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     if result.returncode != 0:
         logger.warning("create-thread failed, falling back to headless")
         return _run_headless_research(task_prompt, cost_tracker, dry_run=False)
 
     import re as _re
+
     m = _re.search(r"Topic ([A-Z]{1,2}):", result.stdout)
     thread_label = m.group(1) if m else ""
 
@@ -245,7 +265,9 @@ def _run_juggle_path_a(task_prompt: str, cost_tracker: CostTracker) -> str:
     try:
         agent_result = subprocess.run(
             [sys.executable, cli, "get-agent", thread_label, "--role", "researcher"],
-            capture_output=True, text=True, timeout=60
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         if agent_result.returncode != 0:
             return _run_headless_research(task_prompt, cost_tracker, dry_run=False)
@@ -254,14 +276,22 @@ def _run_juggle_path_a(task_prompt: str, cost_tracker: CostTracker) -> str:
         if not agent_id:
             return _run_headless_research(task_prompt, cost_tracker, dry_run=False)
 
-        subprocess.run([sys.executable, cli, "send-task", agent_id, task_file],
-                       capture_output=True, text=True, timeout=30)
+        subprocess.run(
+            [sys.executable, cli, "send-task", agent_id, task_file],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
 
         deadline = time.time() + AGENT_TIMEOUT_SECS
         while time.time() < deadline:
             time.sleep(15)
-            check = subprocess.run([sys.executable, cli, "check-agents"],
-                                    capture_output=True, text=True, timeout=10)
+            check = subprocess.run(
+                [sys.executable, cli, "check-agents"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
             if check.returncode == 0:
                 try:
                     agents = json.loads(check.stdout or "[]")
@@ -271,7 +301,10 @@ def _run_juggle_path_a(task_prompt: str, cost_tracker: CostTracker) -> str:
                 except Exception:
                     pass
 
-        rows = db_query(get_db(), "SELECT result_summary FROM agent_completions ORDER BY id DESC LIMIT 1")
+        rows = db_query(
+            get_db(),
+            "SELECT result_summary FROM agent_completions ORDER BY id DESC LIMIT 1",
+        )
         return rows[0].get("result_summary", "") if rows else ""
     finally:
         Path(task_file).unlink(missing_ok=True)
@@ -315,7 +348,9 @@ def _file_action_item(db, findings_text: str, dry_run: bool) -> None:
     try:
         tid = _find_or_create_schedule_thread(db)
         if tid:
-            db.add_action_item(thread_id=tid, message=msg, type_="decision", priority="high")
+            db.add_action_item(
+                thread_id=tid, message=msg, type_="decision", priority="high"
+            )
             logger.info("filed action item: %s", msg[:60])
     except Exception as e:
         logger.error("failed to file action item: %s", e)
@@ -323,7 +358,9 @@ def _file_action_item(db, findings_text: str, dry_run: bool) -> None:
 
 def _find_or_create_schedule_thread(db) -> str | None:
     try:
-        rows = db_query(db, "SELECT id FROM threads WHERE topic LIKE 'schedule%' LIMIT 1")
+        rows = db_query(
+            db, "SELECT id FROM threads WHERE topic LIKE 'schedule%' LIMIT 1"
+        )
         if rows:
             return rows[0]["id"]
         rows = db_query(db, "SELECT id FROM threads ORDER BY created_at DESC LIMIT 1")
@@ -334,7 +371,9 @@ def _find_or_create_schedule_thread(db) -> str | None:
     return None
 
 
-def _write_and_commit(today: str, since_date: str, agent_output: str, cost_total: float, dry_run: bool) -> None:
+def _write_and_commit(
+    today: str, since_date: str, agent_output: str, cost_total: float, dry_run: bool
+) -> None:
     content = _build_report(since_date, agent_output, cost_total)
     out_path = REPORTS_DIR / f"dogfood-{today}.md"
     tmp_path = Path("/tmp/schedule-dogfood-sample-report.md") if dry_run else None
@@ -359,7 +398,9 @@ def run(dry_run: bool = False) -> int:
         if not dry_run:
             tid = _find_or_create_schedule_thread(db)
             if tid:
-                db.add_action_item(thread_id=tid, message=msg, type_="manual_step", priority="high")
+                db.add_action_item(
+                    thread_id=tid, message=msg, type_="manual_step", priority="high"
+                )
         print(f"SKIPPED: {msg}", file=sys.stderr)
         return 1
 
@@ -370,7 +411,9 @@ def run(dry_run: bool = False) -> int:
             msg = "Dogfood routine deferred — Juggle in active use at Saturday 03:00. Run manually: schedule-dogfood"
             tid = _find_or_create_schedule_thread(db)
             if tid:
-                db.add_action_item(thread_id=tid, message=msg, type_="manual_step", priority="high")
+                db.add_action_item(
+                    thread_id=tid, message=msg, type_="manual_step", priority="high"
+                )
             print(f"ABORTED: {msg}", file=sys.stderr)
             return 1
 
@@ -386,7 +429,9 @@ def run(dry_run: bool = False) -> int:
                 agent_output = _run_juggle_path_a(task_prompt, cost_tracker)
         else:
             logger.info("Using Path B: headless claude -p")
-            agent_output = _run_headless_research(task_prompt, cost_tracker, dry_run=dry_run)
+            agent_output = _run_headless_research(
+                task_prompt, cost_tracker, dry_run=dry_run
+            )
 
         if not agent_output:
             agent_output = "No output received from research agent."
@@ -419,12 +464,15 @@ def run(dry_run: bool = False) -> int:
 
     _file_action_item(db, agent_output, dry_run)
     mark_run_complete(ROUTINE)
-    print(f"dogfood complete: reports/dogfood-{today}.md | cost=${cost_tracker.total:.4f}")
+    print(
+        f"dogfood complete: reports/dogfood-{today}.md | cost=${cost_tracker.total:.4f}"
+    )
     return 0
 
 
 if __name__ == "__main__":
     import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()

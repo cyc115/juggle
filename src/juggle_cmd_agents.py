@@ -45,7 +45,10 @@ _DRAFT_PATTERNS = [
     re.compile(r"\bpartial (result|implementation|fix|completion|work)\b", re.I),
     re.compile(r"\bin progress\b", re.I),
     re.compile(r"\binitial (draft|version|cut|pass)\b", re.I),
-    re.compile(r"\bpending (?:review|input|decision) (?:from|by|on|before|required|needed)\b", re.I),
+    re.compile(
+        r"\bpending (?:review|input|decision) (?:from|by|on|before|required|needed)\b",
+        re.I,
+    ),
     re.compile(r"\bpending user\b", re.I),
     re.compile(r"\bv1 (draft|prototype|sketch)\b", re.I),
 ]
@@ -96,6 +99,7 @@ def cmd_complete_agent(args):
     """Mark agent complete: thread → closed, create notifications_v2 row,
     convert any open_questions to action_items."""
     import juggle_cli_common as _common
+
     db = _common.get_db()
     thread_uuid = _common._resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
@@ -105,19 +109,24 @@ def cmd_complete_agent(args):
 
     # Current session id
     with db._connect() as conn:
-        srow = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+        srow = conn.execute(
+            "SELECT value FROM session WHERE key = 'session_id'"
+        ).fetchone()
     session_id = srow["value"] if srow else ""
 
     # Snapshot pre-existing open action items to dismiss after close
     items_to_dismiss = [
-        item["id"] for item in db.get_open_action_items()
+        item["id"]
+        for item in db.get_open_action_items()
         if item.get("thread_id") == thread_uuid
     ]
 
     # 1. Convert any open_questions to action_items
     oq_raw = thread.get("open_questions") or "[]"
     try:
-        open_questions = json.loads(oq_raw) if isinstance(oq_raw, str) else (oq_raw or [])
+        open_questions = (
+            json.loads(oq_raw) if isinstance(oq_raw, str) else (oq_raw or [])
+        )
     except (json.JSONDecodeError, ValueError):
         open_questions = []
     for q in open_questions:
@@ -151,7 +160,11 @@ def cmd_complete_agent(args):
             last_q = _last_sentences(raw_last_user, max_chars=80)
             last_a = _last_sentences(exchange.get("last_assistant") or "", max_chars=80)
             if last_q or last_a:
-                auto_summary = f"{last_q} -> {last_a}" if (last_q and last_a) else (last_q or last_a)
+                auto_summary = (
+                    f"{last_q} -> {last_a}"
+                    if (last_q and last_a)
+                    else (last_q or last_a)
+                )
                 db.update_thread(thread_uuid, summary=auto_summary)
 
     # 4. Transition thread to closed
@@ -216,6 +229,7 @@ def cmd_complete_agent(args):
     # 6b. Optional retain text → Hindsight
     retain_text = getattr(args, "retain_text", None)
     if retain_text:
+
         def _do_retain(text, topic):
             client = _get_hindsight_client()
             if client:
@@ -223,6 +237,7 @@ def cmd_complete_agent(args):
                     client.retain(f"[{topic}] {text}", context="learnings")
                 except Exception:
                     pass
+
         threading.Thread(
             target=_do_retain,
             args=(retain_text, thread.get("topic", "")),
@@ -238,17 +253,36 @@ def cmd_complete_agent(args):
 
 
 _TRANSIENT_PATTERNS = (
-    "etimedout", "econnrefused", "econnreset", "timeout", "timed out",
-    "rate limit", "429", "502", "503", "504",
-    "network unreachable", "temporarily unavailable",
-    "audio device", "audio busy",
+    "etimedout",
+    "econnrefused",
+    "econnreset",
+    "timeout",
+    "timed out",
+    "rate limit",
+    "429",
+    "502",
+    "503",
+    "504",
+    "network unreachable",
+    "temporarily unavailable",
+    "audio device",
+    "audio busy",
 )
 
 _PERSISTENT_HINTS = (
-    "401", "403", "unauthorized", "forbidden",
-    "filenotfounderror", "no such file", "permissionerror",
-    "syntaxerror", "typeerror", "valueerror",
-    "assertionerror", "keyerror", "attributeerror",
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+    "filenotfounderror",
+    "no such file",
+    "permissionerror",
+    "syntaxerror",
+    "typeerror",
+    "valueerror",
+    "assertionerror",
+    "keyerror",
+    "attributeerror",
 )
 
 
@@ -270,6 +304,7 @@ def _classify_failure(error: str) -> str:
 def cmd_fail_agent(args):
     """Route agent failure: transient → leave running for retry; persistent → action_item + close."""
     import juggle_cli_common as _common
+
     db = _common.get_db()
     thread_uuid = _common._resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
@@ -287,13 +322,17 @@ def cmd_fail_agent(args):
     if ft == "transient":
         db.touch_last_active(thread_uuid)
         max_retries = getattr(args, "max_retries", 0)
-        print(f"Transient failure on Topic {label}; thread stays 'running' "
-              f"(max_retries={max_retries}). Error: {args.error}")
+        print(
+            f"Transient failure on Topic {label}; thread stays 'running' "
+            f"(max_retries={max_retries}). Error: {args.error}"
+        )
         return
 
     # Fetch session_id for notifications
     with db._connect() as conn:
-        srow = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+        srow = conn.execute(
+            "SELECT value FROM session WHERE key = 'session_id'"
+        ).fetchone()
     session_id = srow["value"] if srow else ""
 
     # Dismiss pre-existing action items for this thread
@@ -315,7 +354,9 @@ def cmd_fail_agent(args):
             session_id=session_id,
         )
         db.set_thread_status(thread_uuid, "running")
-        print(f"Recovery dispatched for Topic {label}; notification logged, thread stays running.")
+        print(
+            f"Recovery dispatched for Topic {label}; notification logged, thread stays running."
+        )
     else:
         db.add_action_item(
             thread_id=thread_uuid,
@@ -329,13 +370,16 @@ def cmd_fail_agent(args):
             session_id=session_id,
         )
         db.set_thread_status(thread_uuid, "closed")
-        print(f"Unrecoverable failure on Topic {label}; HIGH action item created, thread → closed.")
+        print(
+            f"Unrecoverable failure on Topic {label}; HIGH action item created, thread → closed."
+        )
 
 
 def cmd_request_action(args):
     """Create an action_items row tied to a thread. Thread stays in current state;
     only last_active_at is touched."""
     import juggle_cli_common as _common
+
     db = _common.get_db()
     thread_uuid = _common._resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
@@ -348,7 +392,9 @@ def cmd_request_action(args):
         print(f"Error: priority must be low/normal/high, got {priority!r}")
         sys.exit(1)
     if type_ not in ("question", "manual_step", "decision", "failure"):
-        print(f"Error: type must be question/manual_step/decision/failure, got {type_!r}")
+        print(
+            f"Error: type must be question/manual_step/decision/failure, got {type_!r}"
+        )
         sys.exit(1)
     aid = db.add_action_item(
         thread_id=thread_uuid,
@@ -369,6 +415,7 @@ def cmd_request_action(args):
 def cmd_ack_action(args):
     """Dismiss an action item by id."""
     import juggle_cli_common as _common
+
     db = _common.get_db()
     db.dismiss_action_item(int(args.action_id))
     print(f"Action item #{args.action_id} dismissed.")
@@ -377,6 +424,7 @@ def cmd_ack_action(args):
 def cmd_list_actions(_):
     """Print open action items, newest high-priority first."""
     import juggle_cli_common as _common
+
     db = _common.get_db()
     items = db.get_open_action_items()
     if not items:
@@ -389,12 +437,15 @@ def cmd_list_actions(_):
             if t:
                 lbl = t.get("user_label") or it["thread_id"][:6]
                 thread_suffix = f" (thread [{lbl}])"
-        print(f"⚡ [{it['id']}] {it['priority'].upper():6} {it['message']}{thread_suffix}")
+        print(
+            f"⚡ [{it['id']}] {it['priority'].upper():6} {it['message']}{thread_suffix}"
+        )
 
 
 def cmd_notify(args):
     """Insert a notifications_v2 row for the given thread."""
     import juggle_cli_common as _common
+
     db = _common.get_db()
     thread_uuid = _common._resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
@@ -402,9 +453,13 @@ def cmd_notify(args):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
     with db._connect() as conn:
-        srow = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+        srow = conn.execute(
+            "SELECT value FROM session WHERE key = 'session_id'"
+        ).fetchone()
     session_id = srow["value"] if srow else ""
-    db.add_notification_v2(thread_id=thread_uuid, message=args.message, session_id=session_id)
+    db.add_notification_v2(
+        thread_id=thread_uuid, message=args.message, session_id=session_id
+    )
     db.touch_last_active(thread_uuid)
     label = thread.get("user_label") or thread_uuid[:6]
     print(f"Notification logged for Topic {label}.")
@@ -414,7 +469,11 @@ def cmd_check_agents(_):
     db = get_db()
     threads = db.get_all_threads()
     background = [
-        {"thread_id": t.get("user_label") or t["id"][:8], "task_id": t.get("agent_task_id", ""), "topic": t["topic"]}
+        {
+            "thread_id": t.get("user_label") or t["id"][:8],
+            "task_id": t.get("agent_task_id", ""),
+            "topic": t["topic"],
+        }
         for t in threads
         if t["status"] == "background"
     ]
@@ -426,6 +485,7 @@ def cmd_spawn_agent(args):
     db.init_db()
     sys.path.insert(0, str(SRC_DIR))
     from juggle_tmux import JuggleTmuxManager
+
     mgr = JuggleTmuxManager()
     try:
         agent = mgr.spawn_agent(db, args.role, model=getattr(args, "model", None))
@@ -452,7 +512,11 @@ def cmd_list_agents(args):
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             secs = int((now - dt).total_seconds())
-            return f"{secs}s" if secs < 60 else (f"{secs // 60}m" if secs < 3600 else f"{secs // 3600}h")
+            return (
+                f"{secs}s"
+                if secs < 60
+                else (f"{secs // 60}m" if secs < 3600 else f"{secs // 3600}h")
+            )
         except (ValueError, TypeError):
             return "-"
 
@@ -485,11 +549,14 @@ def cmd_get_agent(args):
 
     # Purge stale agents
     from juggle_tmux import reap_stale_agents
+
     reap_stale_agents(db, mgr)
 
     all_agents = db.get_all_agents()
     if len(all_agents) >= MAX_BACKGROUND_AGENTS:
-        print(f"Error: Agent pool full ({MAX_BACKGROUND_AGENTS} max). Wait for one to finish.")
+        print(
+            f"Error: Agent pool full ({MAX_BACKGROUND_AGENTS} max). Wait for one to finish."
+        )
         sys.exit(1)
 
     agent = db.get_best_agent(thread_uuid, role=args.role)
@@ -497,15 +564,21 @@ def cmd_get_agent(args):
 
     if is_new:
         try:
-            agent = mgr.spawn_agent(db, args.role or "researcher", model=getattr(args, "model", None))
-            print(f"[juggle] No idle agent available, spawned new agent {agent['id'][:8]}.", file=sys.stderr)
+            agent = mgr.spawn_agent(
+                db, args.role or "researcher", model=getattr(args, "model", None)
+            )
+            print(
+                f"[juggle] No idle agent available, spawned new agent {agent['id'][:8]}.",
+                file=sys.stderr,
+            )
         except (RuntimeError, ValueError) as e:
             print(f"Error: {e}")
             sys.exit(1)
 
     now = datetime.now(timezone.utc).isoformat()
-    _update_kw: dict = dict(status="busy", assigned_thread=thread_uuid,
-                            last_active=now, busy_since=now)
+    _update_kw: dict = dict(
+        status="busy", assigned_thread=thread_uuid, last_active=now, busy_since=now
+    )
     _model_arg = getattr(args, "model", None)
     if _model_arg:
         _update_kw["model"] = _model_arg
@@ -532,6 +605,7 @@ def cmd_release_agent(args):
     if agent["status"] == "decommission_pending":
         sys.path.insert(0, str(SRC_DIR))
         from juggle_tmux import JuggleTmuxManager
+
         JuggleTmuxManager().decommission_agent(db, agent["id"])
         print(f"Agent {agent['id'][:8]} decommissioned.")
         return
@@ -543,8 +617,10 @@ def cmd_release_agent(args):
         thread = db.get_thread(assigned)
         if thread and thread["status"] not in ("closed", "failed", "archived"):
             label = thread.get("user_label") or assigned[:8]
-            print(f"Error: Thread {label} is still active ({thread['status']}). "
-                  f"Call complete-agent or fail-agent first. Use --force to override (operator only).")
+            print(
+                f"Error: Thread {label} is still active ({thread['status']}). "
+                f"Call complete-agent or fail-agent first. Use --force to override (operator only)."
+            )
             sys.exit(1)
 
     now = datetime.now(timezone.utc).isoformat()
@@ -572,8 +648,12 @@ def cmd_release_agent(args):
                 conn.execute(
                     "UPDATE threads SET last_dispatched_task=?, last_dispatched_role=?, "
                     "last_dispatched_model=? WHERE id=?",
-                    (agent_snap.get("last_task"), agent_snap.get("role"),
-                     agent_snap.get("model"), assigned),
+                    (
+                        agent_snap.get("last_task"),
+                        agent_snap.get("role"),
+                        agent_snap.get("model"),
+                        assigned,
+                    ),
                 )
                 conn.commit()
 
@@ -596,7 +676,9 @@ def cmd_release_agent(args):
             label = thread.get("user_label") or thread.get("label") or assigned[:8]
             db.update_thread(assigned, status="failed")
             with db._connect() as conn:
-                row = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+                row = conn.execute(
+                    "SELECT value FROM session WHERE key = 'session_id'"
+                ).fetchone()
             session_id = row["value"] if row else ""
             db.add_action_item(
                 thread_id=assigned,
@@ -604,9 +686,11 @@ def cmd_release_agent(args):
                 type_="failure",
                 priority="high",
             )
-            db.add_notification_v2(assigned,
+            db.add_notification_v2(
+                assigned,
                 f"[Topic {label} failed] Agent released without completing.",
-                session_id=session_id)
+                session_id=session_id,
+            )
 
     print(f"Agent {agent_id[:8]} released.")
 
@@ -619,6 +703,7 @@ def cmd_decommission_agent(args):
         sys.exit(1)
     sys.path.insert(0, str(SRC_DIR))
     from juggle_tmux import JuggleTmuxManager
+
     JuggleTmuxManager().decommission_agent(db, args.agent_id)
     print(f"Agent {args.agent_id[:8]} decommissioned.")
 
@@ -637,6 +722,7 @@ def cmd_send_task(args):
 
     sys.path.insert(0, str(SRC_DIR))
     from juggle_tmux import JuggleTmuxManager
+
     mgr = JuggleTmuxManager()
 
     pane_id = agent["pane_id"]
@@ -683,7 +769,9 @@ def cmd_set_watchdog(args):
             if minutes <= 0:
                 raise ValueError
         except ValueError:
-            print(f"Error: value must be a positive integer or 'off', got {args.value!r}")
+            print(
+                f"Error: value must be a positive integer or 'off', got {args.value!r}"
+            )
             sys.exit(1)
         db.update_agent(args.agent_id, watchdog_threshold_minutes=minutes)
         print(f"Watchdog threshold for agent {args.agent_id[:8]} set to {minutes} min.")
@@ -694,6 +782,7 @@ def cmd_stop_watchdog(_args):
     import os
     import signal as _signal
     from juggle_settings import get_settings
+
     pid_file = Path(get_settings()["paths"]["config_dir"]) / "watchdog.pid"
     if not pid_file.exists():
         print("Watchdog is not running.")

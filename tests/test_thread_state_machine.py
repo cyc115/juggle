@@ -1,4 +1,5 @@
 """Tests for Task 2 thread state helpers."""
+
 import pytest
 from juggle_db import JuggleDB
 
@@ -38,6 +39,7 @@ def test_touch_last_active_updates_timestamp(db):
     tid = db.create_thread("t", session_id="s")
     before = db.get_thread(tid)["last_active_at"]
     import time
+
     time.sleep(0.02)
     db.touch_last_active(tid)
     assert db.get_thread(tid)["last_active_at"] >= before

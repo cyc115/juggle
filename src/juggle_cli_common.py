@@ -13,7 +13,11 @@ sys.path.insert(0, str(SRC_DIR))
 from juggle_db import DB_PATH as _DEFAULT_DB_PATH  # noqa: E402
 from juggle_settings import get_settings as _get_settings  # noqa: E402
 
-DB_PATH = Path(os.environ["_JUGGLE_TEST_DB"]) if "_JUGGLE_TEST_DB" in os.environ else _DEFAULT_DB_PATH
+DB_PATH = (
+    Path(os.environ["_JUGGLE_TEST_DB"])
+    if "_JUGGLE_TEST_DB" in os.environ
+    else _DEFAULT_DB_PATH
+)
 
 # Env var already folded into get_settings(); keep constant for importers (juggle_cmd_agents etc.)
 JUGGLE_IDLE_THRESHOLD_SECS: int = _get_settings()["tmux"]["agent_idle_detection_secs"]
@@ -24,11 +28,13 @@ JUGGLE_CONFIG_PATH = Path(_get_settings()["paths"]["config_dir"]) / "config.json
 def _get_hindsight_client():
     """Return HindsightClient or None if disabled/unconfigured."""
     from juggle_hindsight import HindsightClient
+
     return HindsightClient.from_config()
 
 
 def get_db():
     from juggle_db import JuggleDB
+
     return JuggleDB(str(DB_PATH))
 
 
@@ -141,11 +147,12 @@ def _extract_decision_prompt(last_assistant: str | None, last_user: str | None) 
 def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
     """Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words."""
     from juggle_settings import get_settings
+
     cfg = get_settings().get("title_gen", {})
     fallback = " ".join(topic.split()[:5])
     prompt = (
         f'Give a 5-10 word title for this task: "{topic}". '
-        f'Reply with the title only. No punctuation. No quotes. No explanation.'
+        f"Reply with the title only. No punctuation. No quotes. No explanation."
     )
     timeout = cfg.get("timeout_secs", 10)
 
@@ -158,11 +165,16 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
         try:
             import urllib.request
             import json as _json
-            body = _json.dumps({
-                "model": cfg.get("openrouter_model", "meta-llama/llama-3.1-8b-instruct:free"),
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 30,
-            }).encode()
+
+            body = _json.dumps(
+                {
+                    "model": cfg.get(
+                        "openrouter_model", "meta-llama/llama-3.1-8b-instruct:free"
+                    ),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 30,
+                }
+            ).encode()
             req = urllib.request.Request(
                 "https://openrouter.ai/api/v1/chat/completions",
                 data=body,
@@ -179,14 +191,18 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
                 db.update_thread(thread_uuid, title=title)
                 return title
         except Exception as e:
-            logging.warning("title_gen: tier1 openrouter failed, falling to haiku: %s", e)
+            logging.warning(
+                "title_gen: tier1 openrouter failed, falling to haiku: %s", e
+            )
 
     # Tier 2: claude -p --model haiku (~20x cheaper than Sonnet for this task)
     try:
         haiku = cfg.get("haiku_model", "claude-haiku-4-5-20251001")
         result = subprocess.run(
             ["claude", "-p", prompt, "--model", haiku],
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
         if result.returncode == 0:
             title = result.stdout.strip()
@@ -195,9 +211,15 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
                 db.update_thread(thread_uuid, title=title)
                 return title
             else:
-                logging.warning("title_gen: tier2 haiku output invalid (%d words), falling to 5-words", len(title.split()))
+                logging.warning(
+                    "title_gen: tier2 haiku output invalid (%d words), falling to 5-words",
+                    len(title.split()),
+                )
         else:
-            logging.warning("title_gen: tier2 haiku returncode=%d, falling to 5-words", result.returncode)
+            logging.warning(
+                "title_gen: tier2 haiku returncode=%d, falling to 5-words",
+                result.returncode,
+            )
     except Exception as e:
         logging.warning("title_gen: tier2 haiku failed, falling to 5-words: %s", e)
 

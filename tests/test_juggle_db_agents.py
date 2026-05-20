@@ -1,4 +1,5 @@
 """Tests for JuggleDB agents table and related methods."""
+
 import json
 import sys
 from pathlib import Path
@@ -18,14 +19,18 @@ def db(tmp_path):
 
 def test_agents_table_exists(db):
     with db._connect() as conn:
-        tables = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
     assert "agents" in tables
 
 
 def test_create_agent_returns_uuid(db):
     import re
+
     agent_id = db.create_agent(role="coder", pane_id="%3")
     assert re.match(r"^[0-9a-f-]{36}$", agent_id)
 
@@ -120,5 +125,6 @@ def test_get_best_agent_signature_has_no_domain():
     """get_best_agent must not accept a domain kwarg after 1.21.0 cleanup."""
     import inspect
     from juggle_db import JuggleDB
+
     sig = inspect.signature(JuggleDB.get_best_agent)
     assert "domain" not in sig.parameters

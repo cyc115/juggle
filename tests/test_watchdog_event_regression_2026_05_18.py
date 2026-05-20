@@ -6,6 +6,7 @@ Focused regression tests for:
 
 These tests verify event detection, snapshot creation, and action item escalation.
 """
+
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -28,11 +29,13 @@ def db(tmp_path):
 def mock_mgr():
     mgr = MagicMock()
     mgr.kill_pane = MagicMock()
-    mgr.spawn_agent = MagicMock(return_value={
-        "id": "new-agent-id",
-        "pane_id": "%99",
-        "status": "busy",
-    })
+    mgr.spawn_agent = MagicMock(
+        return_value={
+            "id": "new-agent-id",
+            "pane_id": "%99",
+            "status": "busy",
+        }
+    )
     mgr.send_task = MagicMock()
     return mgr
 
@@ -40,6 +43,7 @@ def mock_mgr():
 # =============================================================================
 # retry_blocked Event Tests (3 regression cases from 2026-05-18)
 # =============================================================================
+
 
 def test_retry_blocked_event_created_when_watchdog_retried_1(db, mock_mgr, tmp_path):
     """Regression: retry_blocked event created when agent stalls after first retry.
@@ -51,15 +55,26 @@ def test_retry_blocked_event_created_when_watchdog_retried_1(db, mock_mgr, tmp_p
     """
     thread_id = db.create_thread("retry blocked case 1", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%10")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task="implement feature", watchdog_retried=1)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="implement feature",
+        watchdog_retried=1,
+    )
 
     agent = db.get_agent(agent_id)
     pane_content = "Stalled after watchdog retry"
     recovery_dir = tmp_path / "recovery"
 
-    execute_recovery(db, mock_mgr, agent, pane_content,
-                     recovery_dir=recovery_dir, session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        pane_content,
+        recovery_dir=recovery_dir,
+        session_id="test-session",
+    )
 
     # Must NOT spawn new agent
     mock_mgr.spawn_agent.assert_not_called()
@@ -68,7 +83,7 @@ def test_retry_blocked_event_created_when_watchdog_retried_1(db, mock_mgr, tmp_p
     with db._connect() as conn:
         events = conn.execute(
             "SELECT * FROM watchdog_events WHERE agent_id=? ORDER BY created_at",
-            (agent_id,)
+            (agent_id,),
         ).fetchall()
     assert len(events) == 1
     assert events[0]["event_type"] == "retry_blocked"
@@ -77,7 +92,7 @@ def test_retry_blocked_event_created_when_watchdog_retried_1(db, mock_mgr, tmp_p
     with db._connect() as conn:
         items = conn.execute(
             "SELECT * FROM action_items WHERE thread_id=? ORDER BY created_at DESC",
-            (thread_id,)
+            (thread_id,),
         ).fetchall()
     assert len(items) > 0
     assert items[0]["priority"] == "high"
@@ -92,21 +107,31 @@ def test_retry_blocked_event_multiple_failures(db, mock_mgr, tmp_path):
     """
     thread_id = db.create_thread("retry blocked case 2", session_id="test-session")
     agent_id = db.create_agent(role="planner", pane_id="%20")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task="plan the feature", watchdog_retried=2)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="plan the feature",
+        watchdog_retried=2,
+    )
 
     agent = db.get_agent(agent_id)
     recovery_dir = tmp_path / "recovery"
 
-    execute_recovery(db, mock_mgr, agent, "stalled multiple times",
-                     recovery_dir=recovery_dir, session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "stalled multiple times",
+        recovery_dir=recovery_dir,
+        session_id="test-session",
+    )
 
     mock_mgr.spawn_agent.assert_not_called()
 
     with db._connect() as conn:
         events = conn.execute(
-            "SELECT event_type FROM watchdog_events WHERE agent_id=?",
-            (agent_id,)
+            "SELECT event_type FROM watchdog_events WHERE agent_id=?", (agent_id,)
         ).fetchall()
     assert len(events) == 1
     assert events[0][0] == "retry_blocked"
@@ -120,20 +145,31 @@ def test_retry_blocked_snapshot_preserved(db, mock_mgr, tmp_path):
     """
     thread_id = db.create_thread("retry blocked snapshot", session_id="test-session")
     agent_id = db.create_agent(role="researcher", pane_id="%30")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task="research the topic", watchdog_retried=1)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="research the topic",
+        watchdog_retried=1,
+    )
 
     agent = db.get_agent(agent_id)
     debug_output = "Failed output trace\nError in recovery attempt\nStack trace here"
     recovery_dir = tmp_path / "recovery"
 
-    execute_recovery(db, mock_mgr, agent, debug_output,
-                     recovery_dir=recovery_dir, session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        debug_output,
+        recovery_dir=recovery_dir,
+        session_id="test-session",
+    )
 
     with db._connect() as conn:
         events = conn.execute(
             "SELECT snapshot_path FROM watchdog_events WHERE agent_id=? AND event_type=?",
-            (agent_id, "retry_blocked")
+            (agent_id, "retry_blocked"),
         ).fetchall()
 
     assert len(events) == 1
@@ -148,6 +184,7 @@ def test_retry_blocked_snapshot_preserved(db, mock_mgr, tmp_path):
 # stalled Event Tests (1 regression case from 2026-05-18)
 # =============================================================================
 
+
 def test_stalled_event_no_task_content(db, mock_mgr, tmp_path):
     """Regression: stalled event created when agent has no task to replay.
 
@@ -158,15 +195,26 @@ def test_stalled_event_no_task_content(db, mock_mgr, tmp_path):
     """
     thread_id = db.create_thread("no task stall", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%40")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task=None, watchdog_retried=0)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task=None,
+        watchdog_retried=0,
+    )
 
     agent = db.get_agent(agent_id)
     pane_content = "Agent frozen, no recovery possible"
     recovery_dir = tmp_path / "recovery"
 
-    execute_recovery(db, mock_mgr, agent, pane_content,
-                     recovery_dir=recovery_dir, session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        pane_content,
+        recovery_dir=recovery_dir,
+        session_id="test-session",
+    )
 
     # Must NOT spawn new agent (cannot replay without task)
     mock_mgr.spawn_agent.assert_not_called()
@@ -174,8 +222,7 @@ def test_stalled_event_no_task_content(db, mock_mgr, tmp_path):
     # Must create stalled event
     with db._connect() as conn:
         events = conn.execute(
-            "SELECT * FROM watchdog_events WHERE agent_id=?",
-            (agent_id,)
+            "SELECT * FROM watchdog_events WHERE agent_id=?", (agent_id,)
         ).fetchall()
     assert len(events) == 1
     assert events[0]["event_type"] == "stalled"
@@ -184,7 +231,7 @@ def test_stalled_event_no_task_content(db, mock_mgr, tmp_path):
     with db._connect() as conn:
         items = conn.execute(
             "SELECT * FROM action_items WHERE thread_id=? ORDER BY created_at DESC",
-            (thread_id,)
+            (thread_id,),
         ).fetchall()
     assert len(items) > 0
     assert items[0]["priority"] == "high"
@@ -205,21 +252,31 @@ def test_stalled_event_empty_task_string(db, mock_mgr, tmp_path):
     """
     thread_id = db.create_thread("empty task stall", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%50")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task="", watchdog_retried=0)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="",
+        watchdog_retried=0,
+    )
 
     agent = db.get_agent(agent_id)
     recovery_dir = tmp_path / "recovery"
 
-    execute_recovery(db, mock_mgr, agent, "frozen",
-                     recovery_dir=recovery_dir, session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "frozen",
+        recovery_dir=recovery_dir,
+        session_id="test-session",
+    )
 
     mock_mgr.spawn_agent.assert_not_called()
 
     with db._connect() as conn:
         events = conn.execute(
-            "SELECT event_type FROM watchdog_events WHERE agent_id=?",
-            (agent_id,)
+            "SELECT event_type FROM watchdog_events WHERE agent_id=?", (agent_id,)
         ).fetchall()
     assert len(events) == 1
     assert events[0][0] == "stalled"
@@ -232,20 +289,33 @@ def test_stalled_event_snapshot_preserved(db, mock_mgr, tmp_path):
     """
     thread_id = db.create_thread("stalled snapshot", session_id="test-session")
     agent_id = db.create_agent(role="researcher", pane_id="%60")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task=None, watchdog_retried=0)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task=None,
+        watchdog_retried=0,
+    )
 
     agent = db.get_agent(agent_id)
-    pane_output = "Last output before freeze:\nWaiting for user input?\nNo visible progress"
+    pane_output = (
+        "Last output before freeze:\nWaiting for user input?\nNo visible progress"
+    )
     recovery_dir = tmp_path / "recovery"
 
-    execute_recovery(db, mock_mgr, agent, pane_output,
-                     recovery_dir=recovery_dir, session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        pane_output,
+        recovery_dir=recovery_dir,
+        session_id="test-session",
+    )
 
     with db._connect() as conn:
         events = conn.execute(
             "SELECT snapshot_path FROM watchdog_events WHERE agent_id=? AND event_type=?",
-            (agent_id, "stalled")
+            (agent_id, "stalled"),
         ).fetchall()
 
     assert len(events) == 1
@@ -260,18 +330,30 @@ def test_stalled_event_snapshot_preserved(db, mock_mgr, tmp_path):
 # State Transitions & Cleanup
 # =============================================================================
 
+
 def test_retry_blocked_deletes_original_agent(db, mock_mgr, tmp_path):
     """Retry_blocked must delete original agent from DB."""
     agent_id = db.create_agent(role="coder", pane_id="%70")
     thread_id = db.create_thread("delete agent", session_id="test-session")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task="task", watchdog_retried=1)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="task",
+        watchdog_retried=1,
+    )
 
     agent = db.get_agent(agent_id)
     assert agent is not None
 
-    execute_recovery(db, mock_mgr, agent, "stalled",
-                     recovery_dir=tmp_path / "recovery", session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "stalled",
+        recovery_dir=tmp_path / "recovery",
+        session_id="test-session",
+    )
 
     assert db.get_agent(agent_id) is None
 
@@ -280,14 +362,25 @@ def test_stalled_deletes_original_agent(db, mock_mgr, tmp_path):
     """Stalled must delete original agent from DB."""
     agent_id = db.create_agent(role="researcher", pane_id="%80")
     thread_id = db.create_thread("delete stalled", session_id="test-session")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task=None, watchdog_retried=0)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task=None,
+        watchdog_retried=0,
+    )
 
     agent = db.get_agent(agent_id)
     assert agent is not None
 
-    execute_recovery(db, mock_mgr, agent, "frozen",
-                     recovery_dir=tmp_path / "recovery", session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "frozen",
+        recovery_dir=tmp_path / "recovery",
+        session_id="test-session",
+    )
 
     assert db.get_agent(agent_id) is None
 
@@ -296,13 +389,24 @@ def test_retry_blocked_kills_original_pane(db, mock_mgr, tmp_path):
     """Retry_blocked must attempt to kill original pane."""
     agent_id = db.create_agent(role="coder", pane_id="%100")
     thread_id = db.create_thread("kill pane", session_id="test-session")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task="task", watchdog_retried=1)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="task",
+        watchdog_retried=1,
+    )
 
     agent = db.get_agent(agent_id)
 
-    execute_recovery(db, mock_mgr, agent, "stalled",
-                     recovery_dir=tmp_path / "recovery", session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "stalled",
+        recovery_dir=tmp_path / "recovery",
+        session_id="test-session",
+    )
 
     mock_mgr.kill_pane.assert_called_once_with("%100")
 
@@ -311,13 +415,24 @@ def test_stalled_kills_original_pane(db, mock_mgr, tmp_path):
     """Stalled must attempt to kill original pane."""
     agent_id = db.create_agent(role="researcher", pane_id="%110")
     thread_id = db.create_thread("kill stalled pane", session_id="test-session")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task=None, watchdog_retried=0)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task=None,
+        watchdog_retried=0,
+    )
 
     agent = db.get_agent(agent_id)
 
-    execute_recovery(db, mock_mgr, agent, "frozen",
-                     recovery_dir=tmp_path / "recovery", session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "frozen",
+        recovery_dir=tmp_path / "recovery",
+        session_id="test-session",
+    )
 
     mock_mgr.kill_pane.assert_called_once_with("%110")
 
@@ -326,13 +441,24 @@ def test_retry_blocked_thread_marked_failed(db, mock_mgr, tmp_path):
     """Retry_blocked must mark thread as failed (no retry attempted)."""
     thread_id = db.create_thread("thread failed", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%120")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task="task", watchdog_retried=1)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="task",
+        watchdog_retried=1,
+    )
 
     agent = db.get_agent(agent_id)
 
-    execute_recovery(db, mock_mgr, agent, "stalled",
-                     recovery_dir=tmp_path / "recovery", session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "stalled",
+        recovery_dir=tmp_path / "recovery",
+        session_id="test-session",
+    )
 
     thread = db.get_thread(thread_id)
     assert thread["status"] == "failed"
@@ -342,13 +468,24 @@ def test_stalled_thread_marked_failed(db, mock_mgr, tmp_path):
     """Stalled must mark thread as failed (no retry possible)."""
     thread_id = db.create_thread("stalled thread failed", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%130")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task=None, watchdog_retried=0)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task=None,
+        watchdog_retried=0,
+    )
 
     agent = db.get_agent(agent_id)
 
-    execute_recovery(db, mock_mgr, agent, "frozen",
-                     recovery_dir=tmp_path / "recovery", session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "frozen",
+        recovery_dir=tmp_path / "recovery",
+        session_id="test-session",
+    )
 
     thread = db.get_thread(thread_id)
     assert thread["status"] == "failed"
@@ -358,23 +495,35 @@ def test_stalled_thread_marked_failed(db, mock_mgr, tmp_path):
 # Event Sequence & Timestamps
 # =============================================================================
 
+
 def test_retry_blocked_event_has_correct_fields(db, mock_mgr, tmp_path):
     """Retry_blocked event record has all required fields."""
     thread_id = db.create_thread("event fields", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%140")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task="task", watchdog_retried=1)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="task",
+        watchdog_retried=1,
+    )
 
     agent = db.get_agent(agent_id)
 
-    execute_recovery(db, mock_mgr, agent, "stalled",
-                     recovery_dir=tmp_path / "recovery", session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "stalled",
+        recovery_dir=tmp_path / "recovery",
+        session_id="test-session",
+    )
 
     with db._connect() as conn:
         events = conn.execute(
             "SELECT agent_id, thread_id, event_type, snapshot_path, created_at "
             "FROM watchdog_events WHERE agent_id=?",
-            (agent_id,)
+            (agent_id,),
         ).fetchall()
 
     assert len(events) == 1
@@ -390,19 +539,30 @@ def test_stalled_event_has_correct_fields(db, mock_mgr, tmp_path):
     """Stalled event record has all required fields."""
     thread_id = db.create_thread("stalled fields", session_id="test-session")
     agent_id = db.create_agent(role="researcher", pane_id="%150")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task=None, watchdog_retried=0)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task=None,
+        watchdog_retried=0,
+    )
 
     agent = db.get_agent(agent_id)
 
-    execute_recovery(db, mock_mgr, agent, "frozen",
-                     recovery_dir=tmp_path / "recovery", session_id="test-session")
+    execute_recovery(
+        db,
+        mock_mgr,
+        agent,
+        "frozen",
+        recovery_dir=tmp_path / "recovery",
+        session_id="test-session",
+    )
 
     with db._connect() as conn:
         events = conn.execute(
             "SELECT agent_id, thread_id, event_type, snapshot_path, created_at "
             "FROM watchdog_events WHERE agent_id=?",
-            (agent_id,)
+            (agent_id,),
         ).fetchall()
 
     assert len(events) == 1

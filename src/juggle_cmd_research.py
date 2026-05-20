@@ -8,6 +8,7 @@ Usage (standalone):
 Usage (from Juggle CLI):
     juggle_cli.py research "topic" [--no-web] [--verbose] [--web-results JSON]
 """
+
 import argparse
 import asyncio
 import json
@@ -76,7 +77,10 @@ async def get_query_embedding(text: str, api_key: str, model: str) -> list[float
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/embeddings",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
             json={"model": model, "input": [text]},
             timeout=30.0,
         )
@@ -84,7 +88,9 @@ async def get_query_embedding(text: str, api_key: str, model: str) -> list[float
         return resp.json()["data"][0]["embedding"]
 
 
-async def search_kb(kb, query: str, api_key: str, model: str, k: int = 10) -> list[dict]:
+async def search_kb(
+    kb, query: str, api_key: str, model: str, k: int = 10
+) -> list[dict]:
     embedding = await get_query_embedding(query, api_key, model)
     return kb.hybrid_search(embedding, query, k=k)
 
@@ -93,7 +99,9 @@ async def search_vault(query: str, vault_path: str) -> list[str]:
     try:
         proc = subprocess.run(
             ["grep", "-ril", "--include=*.md", query, vault_path],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return [p for p in proc.stdout.strip().split("\n") if p][:20]
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -104,6 +112,7 @@ async def search_hindsight(query: str) -> str:
     try:
         sys.path.insert(0, str(Path(__file__).parent))
         from juggle_hindsight import HindsightClient
+
         client = HindsightClient.from_config()
         if client is None:
             return ""
@@ -166,15 +175,21 @@ async def enrich_web_results(web_data: list[dict], deep: bool = False) -> list[d
     return web_data
 
 
-async def synthesize(topic: str, context: str, model: str, api_key: str, vault_name: str = "personal") -> str:
-    prompt = (SYNTHESIS_PROMPT
-              .replace("{vault_name}", vault_name)
-              .replace("{topic}", topic)
-              .replace("{context}", context))
+async def synthesize(
+    topic: str, context: str, model: str, api_key: str, vault_name: str = "personal"
+) -> str:
+    prompt = (
+        SYNTHESIS_PROMPT.replace("{vault_name}", vault_name)
+        .replace("{topic}", topic)
+        .replace("{context}", context)
+    )
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
             json={"model": model, "messages": [{"role": "user", "content": prompt}]},
             timeout=60.0,
         )
@@ -204,7 +219,9 @@ def format_kb_results(articles: list[dict], verbose: bool) -> str:
     return "\n".join(lines)
 
 
-def format_vault_results(paths: list[str], vault_path: str, vault_name: str = "personal") -> str:
+def format_vault_results(
+    paths: list[str], vault_path: str, vault_name: str = "personal"
+) -> str:
     lines = []
     vault_root = Path(vault_path)
     for p in paths:
@@ -237,7 +254,14 @@ def format_web_results(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
-async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optional[str], web_results_file: Optional[str] = None, deep: bool = False) -> None:
+async def run(
+    topic: str,
+    no_web: bool,
+    verbose: bool,
+    web_results_json: Optional[str],
+    web_results_file: Optional[str] = None,
+    deep: bool = False,
+) -> None:
     _load_env()
     sys.path.insert(0, str(Path(__file__).parent))
     from juggle_research_kb import ResearchKB
@@ -262,7 +286,9 @@ async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optiona
         "vault": search_vault(topic, vault_path),
         "hindsight": search_hindsight(topic),
     }
-    results = dict(zip(tasks.keys(), await asyncio.gather(*tasks.values(), return_exceptions=True)))
+    results = dict(
+        zip(tasks.keys(), await asyncio.gather(*tasks.values(), return_exceptions=True))
+    )
 
     kb_articles = results["kb"] if isinstance(results["kb"], list) else []
     vault_paths = results["vault"] if isinstance(results["vault"], list) else []
@@ -294,9 +320,14 @@ async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optiona
     # Build context for synthesis
     context_parts = []
     if kb_articles:
-        context_parts.append("## Articles from KB\n" + format_kb_results(kb_articles, verbose=False))
+        context_parts.append(
+            "## Articles from KB\n" + format_kb_results(kb_articles, verbose=False)
+        )
     if vault_paths:
-        context_parts.append("## Vault Notes\n" + format_vault_results(vault_paths, vault_path, vault_name))
+        context_parts.append(
+            "## Vault Notes\n"
+            + format_vault_results(vault_paths, vault_path, vault_name)
+        )
     if memory_text:
         context_parts.append(f"## From Memory\n{memory_text}")
     if web_data:
@@ -306,31 +337,56 @@ async def run(topic: str, no_web: bool, verbose: bool, web_results_json: Optiona
         print(f"No results found for: {topic}")
         return
 
-    digest = await synthesize(topic, "\n\n".join(context_parts), synthesis_model, api_key, vault_name)
+    digest = await synthesize(
+        topic, "\n\n".join(context_parts), synthesis_model, api_key, vault_name
+    )
     print(digest)
 
 
 def cmd_research(args) -> None:
     """Entry point called by juggle_cli.py."""
-    asyncio.run(run(
-        topic=args.topic,
-        no_web=getattr(args, "no_web", False),
-        verbose=getattr(args, "verbose", False),
-        web_results_json=getattr(args, "web_results", None),
-        web_results_file=getattr(args, "web_results_file", None),
-        deep=getattr(args, "deep", False),
-    ))
+    asyncio.run(
+        run(
+            topic=args.topic,
+            no_web=getattr(args, "no_web", False),
+            verbose=getattr(args, "verbose", False),
+            web_results_json=getattr(args, "web_results", None),
+            web_results_file=getattr(args, "web_results_file", None),
+            deep=getattr(args, "deep", False),
+        )
+    )
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Search research KB and synthesize results")
     p.add_argument("topic", help="Research topic")
     p.add_argument("--no-web", action="store_true", help="Skip web search results")
-    p.add_argument("--verbose", action="store_true", help="Show raw results before synthesis")
-    p.add_argument("--web-results", dest="web_results", default=None,
-                   help="Web results as JSON string")
-    p.add_argument("--web-results-file", dest="web_results_file", default=None,
-                   help="Path to JSON file containing web results (preferred over --web-results)")
-    p.add_argument("--deep", action="store_true", help="Incremental URL fetching up to 15 results")
+    p.add_argument(
+        "--verbose", action="store_true", help="Show raw results before synthesis"
+    )
+    p.add_argument(
+        "--web-results",
+        dest="web_results",
+        default=None,
+        help="Web results as JSON string",
+    )
+    p.add_argument(
+        "--web-results-file",
+        dest="web_results_file",
+        default=None,
+        help="Path to JSON file containing web results (preferred over --web-results)",
+    )
+    p.add_argument(
+        "--deep", action="store_true", help="Incremental URL fetching up to 15 results"
+    )
     args = p.parse_args()
-    asyncio.run(run(args.topic, args.no_web, args.verbose, args.web_results, args.web_results_file, args.deep))
+    asyncio.run(
+        run(
+            args.topic,
+            args.no_web,
+            args.verbose,
+            args.web_results,
+            args.web_results_file,
+            args.deep,
+        )
+    )

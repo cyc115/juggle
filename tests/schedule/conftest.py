@@ -1,4 +1,5 @@
 """Conftest for schedule tests — isolates DB, state file, and reports dir."""
+
 import pytest
 
 

@@ -18,9 +18,9 @@ _TEASER_CHARS: int = _get_settings()["context_teaser_chars"]
 # --------------------------------------------------------------------------
 
 _STATE_EMOJI = {
-    "active":   "🟢",
-    "running":  "🏃",
-    "closed":   "✅",
+    "active": "🟢",
+    "running": "🏃",
+    "closed": "✅",
     "archived": "🗄",
 }
 
@@ -44,13 +44,16 @@ def _minute_ts(ts: str | None) -> str:
 
 def _current_session_id(db) -> str:
     with db._connect() as conn:
-        row = conn.execute("SELECT value FROM session WHERE key = 'session_id'").fetchone()
+        row = conn.execute(
+            "SELECT value FROM session WHERE key = 'session_id'"
+        ).fetchone()
     return row["value"] if row else ""
 
 
 def _render_tier1(t: dict, db) -> list[str]:
     """Full-detail Tier 1 block (active, running)."""
     import json as _json
+
     label = t.get("user_label") or t.get("label") or t["id"][:6]
     state = t.get("status") or "active"
     emoji = _STATE_EMOJI.get(state, "🟢")
@@ -83,7 +86,9 @@ def _render_tier1(t: dict, db) -> list[str]:
             lines.append("Q&A history:")
             for ex in exchanges:
                 u = _strip_articles((ex.get("user") or "").strip().split("\n")[0])[:120]
-                a = _strip_articles((ex.get("assistant") or "").strip().split("\n")[0])[:120]
+                a = _strip_articles((ex.get("assistant") or "").strip().split("\n")[0])[
+                    :120
+                ]
                 if u or a:
                     lines.append(f"  - Q: {u} A: {a}")
     except Exception:
@@ -114,6 +119,7 @@ def _render_tier2(t: dict) -> str:
 def _render_agent_role_anchor() -> str:
     """Return the AGENT ROLE anchor block for agent panes. Empty string otherwise."""
     import os
+
     if os.environ.get("JUGGLE_IS_AGENT") != "1":
         return ""
     role = os.environ.get("JUGGLE_AGENT_ROLE", "")
@@ -124,7 +130,10 @@ def _render_agent_role_anchor() -> str:
     if not identity:
         return ""
     from pathlib import Path as _Path
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", str(_Path(__file__).resolve().parent.parent))
+
+    plugin_root = os.environ.get(
+        "CLAUDE_PLUGIN_ROOT", str(_Path(__file__).resolve().parent.parent)
+    )
     return (
         "--- AGENT ROLE ---\n"
         f"ROLE: {role}. {identity}\n"
@@ -140,7 +149,9 @@ def _build(db: JuggleDB) -> str:
 
     parts: list[str] = []
     parts.append("--- JUGGLE ACTIVE (do not forward to sub-agents) ---")
-    parts.append("RULE: Every Agent call MUST use run_in_background=true. No foreground agents ever.")
+    parts.append(
+        "RULE: Every Agent call MUST use run_in_background=true. No foreground agents ever."
+    )
 
     session_id = _current_session_id(db)
 
@@ -157,15 +168,15 @@ def _build(db: JuggleDB) -> str:
                     lbl = t.get("user_label") or t.get("label") or it["thread_id"][:6]
                     thread_suffix = f" (thread: [{lbl}])"
             pri = (it.get("priority") or "normal").upper()
-            parts.append(f"⚡ [{it['id']}] {pri:6} {_strip_articles(it['message'])}{thread_suffix}")
+            parts.append(
+                f"⚡ [{it['id']}] {pri:6} {_strip_articles(it['message'])}{thread_suffix}"
+            )
 
     # --- Threads: Tier 1 (active + running) ---
     tier1 = [
-        t for t in db.get_threads_by_status("active")
-        if t.get("show_in_list", 1) != 0
+        t for t in db.get_threads_by_status("active") if t.get("show_in_list", 1) != 0
     ] + [
-        t for t in db.get_threads_by_status("running")
-        if t.get("show_in_list", 1) != 0
+        t for t in db.get_threads_by_status("running") if t.get("show_in_list", 1) != 0
     ]
     if tier1:
         parts.append("")
@@ -175,14 +186,18 @@ def _build(db: JuggleDB) -> str:
             parts.append("")
 
     # --- Threads: Tier 2 (closed within TTL) ---
-    ttl_secs = int(db.get_setting("thread_auto_archive_ttl_secs", default="3600") or "3600")
+    ttl_secs = int(
+        db.get_setting("thread_auto_archive_ttl_secs", default="3600") or "3600"
+    )
     closed = db.get_threads_by_status("closed")
     tier2 = []
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
     for t in closed:
         la = t.get("last_active_at") or t.get("last_active") or ""
         try:
-            dt = datetime.strptime(la[:16], "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+            dt = datetime.strptime(la[:16], "%Y-%m-%d %H:%M").replace(
+                tzinfo=timezone.utc
+            )
         except ValueError:
             continue
         if dt >= cutoff:
@@ -228,7 +243,7 @@ def _trim_to_limit(text: str, limit: int) -> str:
     if not lines:
         return text
 
-    header = lines[0]   # "--- JUGGLE ACTIVE (do not forward to sub-agents) ---"
+    header = lines[0]  # "--- JUGGLE ACTIVE (do not forward to sub-agents) ---"
     footer = lines[-1]  # "--- END JUGGLE ---"
 
     # Reserve space for header + footer + two newlines
@@ -244,8 +259,8 @@ def _trim_to_limit(text: str, limit: int) -> str:
         return text
 
     # Keep as much of the body as fits
-    cut = body[:body_budget - 4]
-    cut = cut[:cut.rfind(' ')] if ' ' in cut else cut
+    cut = body[: body_budget - 4]
+    cut = cut[: cut.rfind(" ")] if " " in cut else cut
     trimmed_body = cut + "\n..."
     return f"{header}\n{trimmed_body}\n{footer}"
 
@@ -300,7 +315,9 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
                     "SELECT content FROM messages WHERE thread_id = ? AND role = 'user' AND id > ? ORDER BY id ASC",
                     (tid, asst_row["id"]),
                 ).fetchall()
-                has_real_reply = any(not _is_junk_message(r["content"]) for r in user_rows)
+                has_real_reply = any(
+                    not _is_junk_message(r["content"]) for r in user_rows
+                )
                 if not has_real_reply:
                     return "⏸️"
         return "✅"
@@ -331,7 +348,11 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
             return "⏸️"
 
     # Idle: last assistant message exists (no "?") AND last_active > idle threshold
-    if assistant_row and age is not None and age > _get_settings()["thread_idle_threshold_secs"]:
+    if (
+        assistant_row
+        and age is not None
+        and age > _get_settings()["thread_idle_threshold_secs"]
+    ):
         return "💤"
 
     return ""
@@ -341,10 +362,14 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
 # Cross-session resume helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_juggle_version() -> str:
     import json as _json
     from pathlib import Path
-    plugin_json = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+
+    plugin_json = (
+        Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+    )
     try:
         return _json.loads(plugin_json.read_text())["version"]
     except Exception:
@@ -356,6 +381,7 @@ def _recall_for_thread(topic: str) -> list:
     try:
         from juggle_hindsight import HindsightClient
         from juggle_cli_common import JUGGLE_CONFIG_PATH
+
         client = HindsightClient.from_config(str(JUGGLE_CONFIG_PATH))
         if client is None:
             return []
@@ -397,7 +423,9 @@ def render_topics_tree(db: JuggleDB) -> str:
         else:
             tier = 2
         last_active = t.get("last_active") or ""
-        inverted = "".join(chr(0x10FFFF - ord(c)) for c in last_active) if last_active else ""
+        inverted = (
+            "".join(chr(0x10FFFF - ord(c)) for c in last_active) if last_active else ""
+        )
         return (tier, inverted)
 
     threads.sort(key=_full_sort_key)
@@ -462,7 +490,9 @@ def render_topics_tree(db: JuggleDB) -> str:
 
         status = t["status"]
         if status == "background":
-            agent_status = t.get("last_user_intent") or t.get("agent_task_id") or "running..."
+            agent_status = (
+                t.get("last_user_intent") or t.get("agent_task_id") or "running..."
+            )
             output_lines.append(f"{vert}├── ⏳ {agent_status}")
 
         if emoji == "⏸️":
@@ -473,10 +503,8 @@ def render_topics_tree(db: JuggleDB) -> str:
             )
             output_lines.append(f"{vert}└── {decision}")
 
-
         if not is_last:
             output_lines.append("│")
-
 
     return "\n".join(output_lines)
 
@@ -487,13 +515,18 @@ def _auto_archive_closed_threads(db: JuggleDB) -> int:
     Returns count of threads archived.
     """
     from datetime import datetime, timezone, timedelta
-    ttl_secs = int(db.get_setting("thread_auto_archive_ttl_secs", default="3600") or "3600")
+
+    ttl_secs = int(
+        db.get_setting("thread_auto_archive_ttl_secs", default="3600") or "3600"
+    )
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
     archived = 0
     for t in db.get_threads_by_status("closed"):
         la = t.get("last_active_at") or t.get("last_active") or ""
         try:
-            dt = datetime.strptime(la[:16], "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+            dt = datetime.strptime(la[:16], "%Y-%m-%d %H:%M").replace(
+                tzinfo=timezone.utc
+            )
         except ValueError:
             continue
         if dt < cutoff:
@@ -509,12 +542,14 @@ def build_startup_output(db: JuggleDB) -> str:
     """
     # Lazy import to avoid circular dependency (juggle_context ← juggle_cmd_threads)
     from juggle_cmd_threads import _cleanup_orphaned_threads
+
     _cleanup_orphaned_threads(db)
     _auto_archive_closed_threads(db)
 
     threads = db.get_all_threads()
     active = [
-        t for t in threads
+        t
+        for t in threads
         if t.get("status") != "archived" and t.get("show_in_list", 1) != 0
     ]
 
@@ -530,5 +565,6 @@ def build_startup_output(db: JuggleDB) -> str:
 if __name__ == "__main__":
     # Quick smoke-test / manual inspection
     import sys
+
     db_path = sys.argv[1] if len(sys.argv) > 1 else None
     print(build_context_string(db_path=db_path))

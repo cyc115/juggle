@@ -1,4 +1,5 @@
 """Guard that agent prompt templates reference the new commands."""
+
 from pathlib import Path
 
 SRC = Path(__file__).parent.parent / "src"

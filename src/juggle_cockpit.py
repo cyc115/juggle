@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
 # /// script
-# dependencies = [
-#   "rich",
-# ]
+# requires-python = ">=3.12,<3.14"
+# dependencies = ["rich"]
 # ///
 """Juggle Cockpit — three-column live terminal dashboard.
 
@@ -49,6 +48,7 @@ def _compute_scrollable_panes(
     """
     try:
         from juggle_settings import get_nested as _get_nested
+
         notif_ratio = _get_nested("cockpit", "notification_ratio") or 20
     except Exception:
         notif_ratio = 20
@@ -89,7 +89,9 @@ class _ScrollState:
         self._scrollable: tuple[str, ...] = _SCROLL_PANES  # updated each tick
         self._lock = threading.Lock()
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True, name="cockpit-keys")
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="cockpit-keys"
+        )
 
     def start(self) -> None:
         self._thread.start()
@@ -140,7 +142,7 @@ class _ScrollState:
                     # Read the rest of the escape sequence (non-blocking)
                     r2, _, _ = select.select([sys.stdin], [], [], 0.05)
                     seq = sys.stdin.read(2) if r2 else ""
-                    if seq == "[A":    # up arrow
+                    if seq == "[A":  # up arrow
                         self._adjust(-1)
                     elif seq == "[B":  # down arrow
                         self._adjust(+1)
@@ -157,6 +159,7 @@ class _ScrollState:
 # ---------------------------------------------------------------------------
 # Rich-based tick — model/view layer (Tasks 13-14)
 # ---------------------------------------------------------------------------
+
 
 def tick(
     db,
@@ -175,7 +178,11 @@ def tick(
     scroll_offsets and active_pane are forwarded to render_into.
     """
     from juggle_cockpit_model import snapshot as _snapshot
-    from juggle_cockpit_view import pick_breakpoint as _pick_bp, build_layout as _build_layout, render_into as _render_into
+    from juggle_cockpit_view import (
+        pick_breakpoint as _pick_bp,
+        build_layout as _build_layout,
+        render_into as _render_into,
+    )
 
     bp = _pick_bp(size)
     state = _snapshot(db)
@@ -185,12 +192,14 @@ def tick(
     else:
         layout = prev_layout
 
-    _render_into(layout, state, bp, scroll_offsets=scroll_offsets, active_pane=active_pane)
+    _render_into(
+        layout, state, bp, scroll_offsets=scroll_offsets, active_pane=active_pane
+    )
 
     pane_counts = {
-        "actions":       len(state.actions)       if state is not None else 0,
-        "agents":        len(state.agents)         if state is not None else 0,
-        "notifications": len(state.notifications)  if state is not None else 0,
+        "actions": len(state.actions) if state is not None else 0,
+        "agents": len(state.agents) if state is not None else 0,
+        "notifications": len(state.notifications) if state is not None else 0,
     }
     return layout, bp, topics_count, pane_counts
 
@@ -201,6 +210,7 @@ def _throttled_reaper(db, mgr, throttle_secs=60):
     now = time.time()
     if now - _last_reap_time >= throttle_secs:
         from juggle_tmux import reap_stale_agents
+
         reap_stale_agents(db, mgr)
         _last_reap_time = now
 
@@ -208,6 +218,7 @@ def _throttled_reaper(db, mgr, throttle_secs=60):
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def _make_cockpit_db(db_path: str | None = None) -> JuggleDB:
     """Create a JuggleDB with a persistent connection for cockpit use.
@@ -238,6 +249,7 @@ def run(db_path: str | None = None) -> None:
 
     try:
         from juggle_tmux import JuggleTmuxManager
+
         _cockpit_mgr = JuggleTmuxManager()
     except Exception:
         _cockpit_mgr = None
@@ -258,8 +270,13 @@ def run(db_path: str | None = None) -> None:
                         _throttled_reaper(db, _cockpit_mgr)
                     offsets, active = scroll.snapshot()
                     layout, bp, topics_count, pane_counts = tick(
-                        db, size, layout, bp, topics_count,
-                        scroll_offsets=offsets, active_pane=active,
+                        db,
+                        size,
+                        layout,
+                        bp,
+                        topics_count,
+                        scroll_offsets=offsets,
+                        active_pane=active,
                     )
                     scroll.set_scrollable_panes(
                         _compute_scrollable_panes(pane_counts, size, bp, topics_count)
@@ -267,6 +284,7 @@ def run(db_path: str | None = None) -> None:
                     live.update(layout)
                 except Exception as e:
                     from rich.text import Text
+
                     live.update(Text(f"[error] {e}", style="red"))
                 live.refresh()
                 time.sleep(REFRESH_INTERVAL)
@@ -280,7 +298,8 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
 
     parser = argparse.ArgumentParser(description="Juggle Cockpit dashboard")
-    parser.add_argument("--db", dest="db_path", default=None,
-                        help="Path to juggle.db file")
+    parser.add_argument(
+        "--db", dest="db_path", default=None, help="Path to juggle.db file"
+    )
     args = parser.parse_args()
     run(db_path=args.db_path)

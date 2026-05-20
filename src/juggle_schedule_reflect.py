@@ -44,6 +44,7 @@ ISSUE_PRIORITY = ["RF-1", "RF-7", "RF-2", "RF-5", "RF-8"]
 # RF-1: watchdog telemetry
 # ---------------------------------------------------------------------------
 
+
 def rf1_watchdog(db, cost_tracker: CostTracker, sections: dict) -> None:
     logger.info("RF-1: watchdog telemetry")
     since = days_ago_iso(7)
@@ -52,15 +53,19 @@ def rf1_watchdog(db, cost_tracker: CostTracker, sections: dict) -> None:
             db,
             "SELECT event_type, COUNT(*) as cnt FROM watchdog_events "
             "WHERE created_at > ? GROUP BY event_type ORDER BY cnt DESC",
-            (since,)
+            (since,),
         )
     except Exception as e:
         logger.warning("RF-1 query failed: %s", e)
-        sections["RF-1"] = "## Watchdog Health\n\n*DB query failed — unable to retrieve telemetry.*\n"
+        sections["RF-1"] = (
+            "## Watchdog Health\n\n*DB query failed — unable to retrieve telemetry.*\n"
+        )
         return
 
     if not events:
-        sections["RF-1"] = "## Watchdog Health\n\n*No watchdog events this week — quiet week, positive signal.*\n"
+        sections["RF-1"] = (
+            "## Watchdog Health\n\n*No watchdog events this week — quiet week, positive signal.*\n"
+        )
         return
 
     events_summary = "\n".join(f"- {row['event_type']}: {row['cnt']}" for row in events)
@@ -71,18 +76,28 @@ def rf1_watchdog(db, cost_tracker: CostTracker, sections: dict) -> None:
         f"Keep response under 200 words.\n\nEvents:\n{events_summary}"
     )
     try:
-        analysis = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=60)
-        sections["RF-1"] = f"## Watchdog Health\n\n{analysis}\n\n**Raw event counts:**\n{events_summary}\n"
+        analysis = claude_p(
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            cost_tracker=cost_tracker,
+            timeout=60,
+        )
+        sections["RF-1"] = (
+            f"## Watchdog Health\n\n{analysis}\n\n**Raw event counts:**\n{events_summary}\n"
+        )
     except CostCapExceeded:
         raise
     except Exception as e:
         logger.warning("RF-1 LLM failed: %s", e)
-        sections["RF-1"] = f"## Watchdog Health\n\n**Raw event counts:**\n{events_summary}\n"
+        sections["RF-1"] = (
+            f"## Watchdog Health\n\n**Raw event counts:**\n{events_summary}\n"
+        )
 
 
 # ---------------------------------------------------------------------------
 # RF-2: action item ack patterns
 # ---------------------------------------------------------------------------
+
 
 def rf2_action_items(db, cost_tracker: CostTracker, sections: dict) -> None:
     logger.info("RF-2: action item ack patterns")
@@ -91,7 +106,7 @@ def rf2_action_items(db, cost_tracker: CostTracker, sections: dict) -> None:
         items = db_query(
             db,
             "SELECT type, priority, created_at, dismissed_at FROM action_items WHERE created_at > ?",
-            (since,)
+            (since,),
         )
     except Exception as e:
         logger.warning("RF-2 query failed: %s", e)
@@ -99,7 +114,9 @@ def rf2_action_items(db, cost_tracker: CostTracker, sections: dict) -> None:
         return
 
     if not items:
-        sections["RF-2"] = "## Action Item Fatigue\n\n*No action items in the last 30 days.*\n"
+        sections["RF-2"] = (
+            "## Action Item Fatigue\n\n*No action items in the last 30 days.*\n"
+        )
         return
 
     total = len(items)
@@ -111,7 +128,9 @@ def rf2_action_items(db, cost_tracker: CostTracker, sections: dict) -> None:
 
     summary = (
         f"Total: {total} | Dismissed: {dismissed} | Pending: {total - dismissed}\n"
-        + "\n".join(f"- {k}: {v}" for k, v in sorted(by_type.items(), key=lambda x: -x[1]))
+        + "\n".join(
+            f"- {k}: {v}" for k, v in sorted(by_type.items(), key=lambda x: -x[1])
+        )
     )
     prompt = (
         f"Analyze these action item patterns from the last 30 days of Juggle usage.\n"
@@ -119,8 +138,15 @@ def rf2_action_items(db, cost_tracker: CostTracker, sections: dict) -> None:
         f"Under 150 words.\n\n{summary}"
     )
     try:
-        analysis = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=60)
-        sections["RF-2"] = f"## Action Item Fatigue\n\n{analysis}\n\n**Stats:**\n{summary}\n"
+        analysis = claude_p(
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            cost_tracker=cost_tracker,
+            timeout=60,
+        )
+        sections["RF-2"] = (
+            f"## Action Item Fatigue\n\n{analysis}\n\n**Stats:**\n{summary}\n"
+        )
     except CostCapExceeded:
         raise
     except Exception as e:
@@ -132,6 +158,7 @@ def rf2_action_items(db, cost_tracker: CostTracker, sections: dict) -> None:
 # RF-3: agent output quality
 # ---------------------------------------------------------------------------
 
+
 def rf3_completion_quality(db, cost_tracker: CostTracker, sections: dict) -> None:
     logger.info("RF-3: agent output quality")
     since = days_ago_iso(7)
@@ -140,7 +167,7 @@ def rf3_completion_quality(db, cost_tracker: CostTracker, sections: dict) -> Non
             db,
             "SELECT role, duration_secs, completed_at FROM agent_completions "
             "WHERE completed_at > ? ORDER BY completed_at DESC LIMIT 20",
-            (since,)
+            (since,),
         )
     except Exception as e:
         logger.warning("RF-3 query failed: %s", e)
@@ -160,7 +187,9 @@ def rf3_completion_quality(db, cost_tracker: CostTracker, sections: dict) -> Non
 
     summary = (
         f"Completions: {len(completions)} | Avg duration: {avg_dur:.0f}s\n"
-        + "\n".join(f"- {k}: {v}" for k, v in sorted(role_counts.items(), key=lambda x: -x[1]))
+        + "\n".join(
+            f"- {k}: {v}" for k, v in sorted(role_counts.items(), key=lambda x: -x[1])
+        )
     )
     prompt = (
         f"Rate these Juggle agent completion stats on a 1-5 completeness scale.\n"
@@ -168,8 +197,15 @@ def rf3_completion_quality(db, cost_tracker: CostTracker, sections: dict) -> Non
         f"Under 150 words.\n\n{summary}"
     )
     try:
-        analysis = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=60)
-        sections["RF-3"] = f"## Agent Output Quality\n\n{analysis}\n\n**Stats:**\n{summary}\n"
+        analysis = claude_p(
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            cost_tracker=cost_tracker,
+            timeout=60,
+        )
+        sections["RF-3"] = (
+            f"## Agent Output Quality\n\n{analysis}\n\n**Stats:**\n{summary}\n"
+        )
     except CostCapExceeded:
         raise
     except Exception as e:
@@ -181,6 +217,7 @@ def rf3_completion_quality(db, cost_tracker: CostTracker, sections: dict) -> Non
 # RF-4: context bloat
 # ---------------------------------------------------------------------------
 
+
 def rf4_context_bloat(db, sections: dict) -> None:
     logger.info("RF-4: context bloat candidates")
     since = days_ago_iso(7)
@@ -189,11 +226,13 @@ def rf4_context_bloat(db, sections: dict) -> None:
             db,
             "SELECT thread_id, COUNT(*) as msg_count FROM messages "
             "WHERE created_at > ? GROUP BY thread_id ORDER BY msg_count DESC LIMIT 5",
-            (since,)
+            (since,),
         )
     except Exception as e:
         logger.info("RF-4 query skipped: %s", e)
-        sections["RF-4"] = "## Context Bloat Candidates\n\n*Messages table not available.*\n"
+        sections["RF-4"] = (
+            "## Context Bloat Candidates\n\n*Messages table not available.*\n"
+        )
         return
 
     if not rows:
@@ -208,13 +247,17 @@ def rf4_context_bloat(db, sections: dict) -> None:
 # RF-5: Hindsight memory lint
 # ---------------------------------------------------------------------------
 
+
 def rf5_hindsight_lint(cost_tracker: CostTracker, sections: dict) -> None:
     logger.info("RF-5: Hindsight memory lint")
     try:
         from juggle_hindsight import HindsightClient
+
         client = HindsightClient.from_config()
         if client is None:
-            sections["RF-5"] = "## Memory Health\n\n*Hindsight unavailable this week.*\n"
+            sections["RF-5"] = (
+                "## Memory Health\n\n*Hindsight unavailable this week.*\n"
+            )
             return
 
         memories = client.search("", limit=50)
@@ -229,7 +272,7 @@ def rf5_hindsight_lint(cost_tracker: CostTracker, sections: dict) -> None:
             return
 
         memory_text = "\n".join(
-            f"- [{m.get('id','')}] {m.get('content','')[:100]}"
+            f"- [{m.get('id', '')}] {m.get('content', '')[:100]}"
             for m in old_memories[:20]
         )
         prompt = (
@@ -237,7 +280,12 @@ def rf5_hindsight_lint(cost_tracker: CostTracker, sections: dict) -> None:
             f"stale code references, near-duplicates.\n"
             f"Suggest which to archive or merge. Under 200 words.\n\n{memory_text}"
         )
-        analysis = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=60)
+        analysis = claude_p(
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            cost_tracker=cost_tracker,
+            timeout=60,
+        )
         sections["RF-5"] = f"## Memory Health\n\n{analysis}\n"
     except CostCapExceeded:
         raise
@@ -245,18 +293,23 @@ def rf5_hindsight_lint(cost_tracker: CostTracker, sections: dict) -> None:
         sections["RF-5"] = "## Memory Health\n\n*Hindsight module not available.*\n"
     except Exception as e:
         logger.warning("RF-5 failed: %s", e)
-        sections["RF-5"] = f"## Memory Health\n\n*Hindsight unavailable this week: {e}*\n"
+        sections["RF-5"] = (
+            f"## Memory Health\n\n*Hindsight unavailable this week: {e}*\n"
+        )
 
 
 # ---------------------------------------------------------------------------
 # RF-6: auto-memory scan (suggestions only)
 # ---------------------------------------------------------------------------
 
+
 def rf6_auto_memory(cost_tracker: CostTracker, sections: dict) -> None:
     logger.info("RF-6: auto-memory scan")
     memory_dirs = list(Path.home().glob(".claude/projects/*/memory/"))
     if not memory_dirs:
-        sections["RF-6"] = "## Auto-Memory Contradictions\n\n*No auto-memory directories found.*\n"
+        sections["RF-6"] = (
+            "## Auto-Memory Contradictions\n\n*No auto-memory directories found.*\n"
+        )
         return
 
     all_memories = []
@@ -278,7 +331,12 @@ def rf6_auto_memory(cost_tracker: CostTracker, sections: dict) -> None:
         f"Output SUGGESTIONS ONLY — do not edit any files.\nUnder 200 words.\n\n{memory_text}"
     )
     try:
-        analysis = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=60)
+        analysis = claude_p(
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            cost_tracker=cost_tracker,
+            timeout=60,
+        )
         sections["RF-6"] = (
             f"## Auto-Memory Contradictions\n\n{analysis}\n\n"
             f"*Note: suggestions only — no files modified.*\n"
@@ -293,6 +351,7 @@ def rf6_auto_memory(cost_tracker: CostTracker, sections: dict) -> None:
 # ---------------------------------------------------------------------------
 # RF-7: skill description drift
 # ---------------------------------------------------------------------------
+
 
 def rf7_skill_drift(db, cost_tracker: CostTracker, sections: dict) -> None:
     logger.info("RF-7: skill description drift")
@@ -309,7 +368,9 @@ def rf7_skill_drift(db, cost_tracker: CostTracker, sections: dict) -> None:
         if skill_md.exists():
             for line in skill_md.read_text(errors="ignore").splitlines():
                 if line.startswith("description:"):
-                    skill_descriptions[skill_dir.name] = line.replace("description:", "").strip()
+                    skill_descriptions[skill_dir.name] = line.replace(
+                        "description:", ""
+                    ).strip()
                     break
 
     if not skill_descriptions:
@@ -317,16 +378,23 @@ def rf7_skill_drift(db, cost_tracker: CostTracker, sections: dict) -> None:
         return
 
     try:
-        rows = db_query(db, "SELECT task FROM agents WHERE task IS NOT NULL ORDER BY updated_at DESC LIMIT 20")
+        rows = db_query(
+            db,
+            "SELECT task FROM agents WHERE task IS NOT NULL ORDER BY updated_at DESC LIMIT 20",
+        )
         task_prompts = [r.get("task", "") for r in rows if r.get("task")]
     except Exception:
         task_prompts = []
 
     if not task_prompts:
-        sections["RF-7"] = "## Skill Drift\n\n*No agent task prompts in DB to compare against.*\n"
+        sections["RF-7"] = (
+            "## Skill Drift\n\n*No agent task prompts in DB to compare against.*\n"
+        )
         return
 
-    skill_list = "\n".join(f"- {k}: {v}" for k, v in list(skill_descriptions.items())[:10])
+    skill_list = "\n".join(
+        f"- {k}: {v}" for k, v in list(skill_descriptions.items())[:10]
+    )
     tasks_sample = "\n".join(task_prompts[:5])[:1000]
 
     prompt = (
@@ -335,7 +403,12 @@ def rf7_skill_drift(db, cost_tracker: CostTracker, sections: dict) -> None:
         f"Under 150 words.\n\nSkill descriptions:\n{skill_list}\n\nRecent tasks:\n{tasks_sample}"
     )
     try:
-        analysis = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=60)
+        analysis = claude_p(
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            cost_tracker=cost_tracker,
+            timeout=60,
+        )
         sections["RF-7"] = f"## Skill Drift\n\n{analysis}\n"
     except CostCapExceeded:
         raise
@@ -348,9 +421,12 @@ def rf7_skill_drift(db, cost_tracker: CostTracker, sections: dict) -> None:
 # RF-8: dogfood cross-link
 # ---------------------------------------------------------------------------
 
+
 def rf8_dogfood_pulse(sections: dict) -> None:
     logger.info("RF-8: dogfood pulse")
-    reports = sorted(REPORTS_DIR.glob("dogfood-*.md"), key=lambda p: p.name, reverse=True)
+    reports = sorted(
+        REPORTS_DIR.glob("dogfood-*.md"), key=lambda p: p.name, reverse=True
+    )
     if not reports:
         sections["RF-8"] = "## Dogfood Pulse\n\n*No dogfood reports found this week.*\n"
         return
@@ -379,6 +455,7 @@ def rf8_dogfood_pulse(sections: dict) -> None:
 # Digest builder
 # ---------------------------------------------------------------------------
 
+
 def _build_digest(today: str, sections: dict, autofix_pr_ref: str) -> str:
     since = days_ago_iso(7)[:10]
     ordered = ["RF-1", "RF-2", "RF-3", "RF-4", "RF-5", "RF-6", "RF-7", "RF-8"]
@@ -404,7 +481,10 @@ def _find_autofix_pr_ref() -> str:
 # Issue filing
 # ---------------------------------------------------------------------------
 
-def _file_reflect_issues(sections: dict, today: str, report_path: Path, dry_run: bool) -> list[str]:
+
+def _file_reflect_issues(
+    sections: dict, today: str, report_path: Path, dry_run: bool
+) -> list[str]:
     filed = []
     for section_id in ISSUE_PRIORITY:
         if len(filed) >= MAX_ISSUES:
@@ -426,6 +506,7 @@ def _file_reflect_issues(sections: dict, today: str, report_path: Path, dry_run:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def run(dry_run: bool = False) -> int:
     today = today_str()
@@ -474,12 +555,15 @@ def run(dry_run: bool = False) -> int:
     logger.info("reflect: filed %d issues", len(issued))
 
     mark_run_complete(ROUTINE)
-    print(f"reflect complete: reports/reflect-{today}.md | {len(issued)} issues | cost=${cost_tracker.total:.4f}")
+    print(
+        f"reflect complete: reports/reflect-{today}.md | {len(issued)} issues | cost=${cost_tracker.total:.4f}"
+    )
     return 0
 
 
 if __name__ == "__main__":
     import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()

@@ -15,13 +15,16 @@ from juggle_settings import get_settings as _get_settings
 
 _log = logging.getLogger(__name__)
 
+
 def _hs() -> dict:
     """Shortcut: return the hindsight settings section."""
     return _get_settings()["hindsight"]
 
+
 def _paths() -> dict:
     """Shortcut: return the paths settings section."""
     return _get_settings()["paths"]
+
 
 # Kept as module-level constants for backward compat (used as __init__ defaults below)
 DEFAULT_API_URL: str = _hs()["api_url"]
@@ -61,6 +64,7 @@ class HindsightClient:
         """
         if config_path:
             import json as _json
+
             p = Path(config_path)
             if not p.exists():
                 return None
@@ -80,7 +84,13 @@ class HindsightClient:
             timeout=hs.get("timeout_secs", DEFAULT_TIMEOUT),
         )
 
-    def _request(self, method: str, path: str, body: dict | None = None, timeout: int | None = None) -> dict:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        body: dict | None = None,
+        timeout: int | None = None,
+    ) -> dict:
         """Make HTTP request to Hindsight API. Returns parsed JSON or empty dict."""
         url = f"{self.api_url}{path}"
         data = json.dumps(body).encode() if body else None
@@ -96,11 +106,22 @@ class HindsightClient:
         try:
             with urllib.request.urlopen(req, timeout=timeout or self.timeout) as resp:
                 return json.loads(resp.read())
-        except (urllib.error.URLError, urllib.error.HTTPError, OSError, json.JSONDecodeError) as e:
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            OSError,
+            json.JSONDecodeError,
+        ) as e:
             _log.debug("Hindsight API error: %s %s — %s", method, path, e)
             raise HindsightError(str(e)) from e
 
-    def _request_with_retry(self, method: str, path: str, body: dict | None = None, timeout: int | None = None) -> dict:
+    def _request_with_retry(
+        self,
+        method: str,
+        path: str,
+        body: dict | None = None,
+        timeout: int | None = None,
+    ) -> dict:
         """Request with one retry after auto-restart on failure."""
         try:
             return self._request(method, path, body, timeout=timeout)
@@ -124,6 +145,7 @@ class HindsightClient:
         try:
             subprocess.run(cmd, capture_output=True, timeout=15)
             import time
+
             time.sleep(2)  # wait for service to start
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
             _log.warning("Failed to restart hindsight: %s", e)
@@ -134,6 +156,7 @@ class HindsightClient:
             JUGGLE_LOG_DIR.mkdir(parents=True, exist_ok=True)
             log_path = JUGGLE_LOG_DIR / "memory-errors.log"
             from datetime import datetime, timezone
+
             ts = datetime.now(timezone.utc).isoformat()
             with open(log_path, "a") as f:
                 f.write(f"[{ts}] {msg}\n")

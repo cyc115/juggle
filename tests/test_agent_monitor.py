@@ -1,4 +1,5 @@
 """Tests for scripts/juggle-agent-monitor polling logic."""
+
 import importlib.util
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ _SCRIPT = Path(__file__).parent.parent / "scripts" / "juggle-agent-monitor"
 
 def _load_monitor():
     from importlib.machinery import SourceFileLoader
+
     loader = SourceFileLoader("juggle_agent_monitor", str(_SCRIPT))
     spec = importlib.util.spec_from_loader("juggle_agent_monitor", loader)
     mod = importlib.util.module_from_spec(spec)
@@ -43,7 +45,9 @@ def test_poll_detects_researcher_completion(db):
 
     thread = db.get_thread(tid)
     label = thread["user_label"]
-    assert [line for _, line in lines] == [f"[{label}] researcher: smoke test researcher action item"]
+    assert [line for _, line in lines] == [
+        f"[{label}] researcher: smoke test researcher action item"
+    ]
     assert new_id == nid
 
 

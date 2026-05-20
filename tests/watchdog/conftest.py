@@ -22,14 +22,18 @@ def ensure_tmux_session():
     yield
     # Only destroy the session if we created it — don't kill pre-existing sessions.
     if not session_existed:
-        subprocess.run(["tmux", "kill-session", "-t", TEST_SESSION], capture_output=True)
+        subprocess.run(
+            ["tmux", "kill-session", "-t", TEST_SESSION], capture_output=True
+        )
 
 
 @pytest.fixture
 def tmux_pane(ensure_tmux_session):  # noqa: ARG001 — fixture dep, not used in body
     r = subprocess.run(
         ["tmux", "new-window", "-t", TEST_SESSION, "-P", "-F", "#{pane_id}"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     pane_id = r.stdout.strip()
     subprocess.run(

@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12,<3.14"
+# dependencies = []
+# ///
 """
 Measure agent behavioral compliance for the prompt injection spec (v1.20.0+).
 
@@ -36,12 +40,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 def _get_db_path() -> Path:
     from juggle_settings import get_settings
+
     return Path(get_settings()["paths"]["data_dir"]) / "juggle.db"
 
 
 # ---------------------------------------------------------------------------
 # Role inference
 # ---------------------------------------------------------------------------
+
 
 def _infer_role(topic: str, last_msg: str) -> str | None:
     t = (topic or "").lower()
@@ -60,9 +66,12 @@ def _infer_role(topic: str, last_msg: str) -> str | None:
 # File-path extraction
 # ---------------------------------------------------------------------------
 
+
 def _extract_researcher_file(last_msg: str) -> Path | None:
     """Pull the saved .md path from 'Research complete: <path>'."""
-    m = re.search(r"(?:Research complete[:\s]+)([^\s,]+\.md)", last_msg or "", re.IGNORECASE)
+    m = re.search(
+        r"(?:Research complete[:\s]+)([^\s,]+\.md)", last_msg or "", re.IGNORECASE
+    )
     if not m:
         return None
     raw = m.group(1)
@@ -88,22 +97,27 @@ def _extract_plan_file(last_msg: str) -> Path | None:
 # Compliance checkers
 # ---------------------------------------------------------------------------
 
+
 def _check_researcher(last_msg: str) -> dict:
     path = _extract_researcher_file(last_msg)
     if not path or not path.exists():
         return {"has_confidence_markers": None, "has_gaps_section": None}
     text = path.read_text(errors="replace")
-    markers = bool(re.search(r"\[HIGH CONFIDENCE\]|\[CONFLICTING\]|\[UNVERIFIED\]", text))
+    markers = bool(
+        re.search(r"\[HIGH CONFIDENCE\]|\[CONFLICTING\]|\[UNVERIFIED\]", text)
+    )
     gaps = bool(re.search(r"^## Gaps", text, re.MULTILINE))
     return {"has_confidence_markers": markers, "has_gaps_section": gaps}
 
 
 def _check_coder(last_msg: str) -> dict:
     text = (last_msg or "").lower()
-    has_gate = bool(re.search(
-        r"pre.?pr|quality.gate|linting|lint|tests?\s+pass|pytest|ruff|mypy|type.?error",
-        text,
-    ))
+    has_gate = bool(
+        re.search(
+            r"pre.?pr|quality.gate|linting|lint|tests?\s+pass|pytest|ruff|mypy|type.?error",
+            text,
+        )
+    )
     return {"has_quality_gate": has_gate}
 
 
@@ -112,7 +126,9 @@ def _check_planner(last_msg: str) -> dict:
     if not path:
         return {"has_da_section": None}
     text = path.read_text(errors="replace")
-    has_da = bool(re.search(r"^## Devil'?s Advocate", text, re.MULTILINE | re.IGNORECASE))
+    has_da = bool(
+        re.search(r"^## Devil'?s Advocate", text, re.MULTILINE | re.IGNORECASE)
+    )
     return {"has_da_section": has_da}
 
 
@@ -120,11 +136,13 @@ def _check_planner(last_msg: str) -> dict:
 # DB query
 # ---------------------------------------------------------------------------
 
+
 def _fetch_threads(db_path: Path, cutoff_date: str) -> list[dict]:
     """Return archived/closed threads with their last assistant message, newest first."""
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("""
+    rows = conn.execute(
+        """
         SELECT
             t.id,
             t.topic,
@@ -145,7 +163,9 @@ def _fetch_threads(db_path: Path, cutoff_date: str) -> list[dict]:
         WHERE t.status IN ('archived', 'closed')
           AND COALESCE(t.last_active_at, t.last_active) >= ?
         ORDER BY COALESCE(t.last_active_at, t.last_active) DESC
-    """, (cutoff_date,)).fetchall()
+    """,
+        (cutoff_date,),
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -154,17 +174,28 @@ def _fetch_threads(db_path: Path, cutoff_date: str) -> list[dict]:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Measure agent behavioral compliance (CSV output)")
-    ap.add_argument("--mode", choices=["baseline", "post-deploy"], required=True,
-                    help="baseline: last 30 days; post-deploy: last 21 days")
-    ap.add_argument("--days", type=int, default=None,
-                    help="Override look-back window (days)")
-    ap.add_argument("--n", type=int, default=15,
-                    help="Max threads per role (default: 15)")
+    ap = argparse.ArgumentParser(
+        description="Measure agent behavioral compliance (CSV output)"
+    )
+    ap.add_argument(
+        "--mode",
+        choices=["baseline", "post-deploy"],
+        required=True,
+        help="baseline: last 30 days; post-deploy: last 21 days",
+    )
+    ap.add_argument(
+        "--days", type=int, default=None, help="Override look-back window (days)"
+    )
+    ap.add_argument(
+        "--n", type=int, default=15, help="Max threads per role (default: 15)"
+    )
     args = ap.parse_args()
 
-    days = args.days if args.days is not None else (30 if args.mode == "baseline" else 21)
+    days = (
+        args.days if args.days is not None else (30 if args.mode == "baseline" else 21)
+    )
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     db_path = _get_db_path()
 

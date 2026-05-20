@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for juggle_research_ingest — HN and PDF ingestion."""
+
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 @pytest.fixture
 def kb(tmp_path):
     from juggle_research_kb import ResearchKB
+
     kb = ResearchKB(str(tmp_path / "test.db"))
     kb.init_db()
     return kb
@@ -19,6 +21,7 @@ def kb(tmp_path):
 
 def test_parse_bq_row():
     from juggle_research_ingest import parse_bq_row
+
     row = {
         "title": "Ask HN: Best books 2024",
         "url": "https://news.ycombinator.com/item?id=123",
@@ -35,11 +38,16 @@ def test_parse_bq_row():
 
 def test_parse_bq_row_skips_missing_url():
     from juggle_research_ingest import parse_bq_row
-    assert parse_bq_row({"title": "x", "url": None, "score": 100, "time": 0, "text": None}) is None
+
+    assert (
+        parse_bq_row({"title": "x", "url": None, "score": 100, "time": 0, "text": None})
+        is None
+    )
 
 
 def test_chunk_text():
     from juggle_research_ingest import chunk_text
+
     text = "word " * 600
     chunks = chunk_text(text, max_tokens=512)
     assert len(chunks) >= 2
@@ -50,6 +58,7 @@ def test_chunk_text():
 @pytest.mark.asyncio
 async def test_embed_batch_calls_openrouter(kb):
     from juggle_research_ingest import embed_batch
+
     fake_embeddings = [[0.1] * 1536, [0.2] * 1536]
     with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client = MagicMock()
@@ -76,10 +85,22 @@ async def test_embed_batch_calls_openrouter(kb):
 
 def test_ingest_hn_rows(kb):
     from juggle_research_ingest import ingest_hn_rows
+
     rows = [
-        {"title": "Rust is great", "url": "https://example.com/rust", "score": 300,
-         "time": 1704067200, "text": "Rust memory safety"},
-        {"title": "No URL", "url": None, "score": 100, "time": 1704067200, "text": None},
+        {
+            "title": "Rust is great",
+            "url": "https://example.com/rust",
+            "score": 300,
+            "time": 1704067200,
+            "text": "Rust memory safety",
+        },
+        {
+            "title": "No URL",
+            "url": None,
+            "score": 100,
+            "time": 1704067200,
+            "text": None,
+        },
     ]
     count = ingest_hn_rows(kb, rows)
     assert count == 1
@@ -87,6 +108,7 @@ def test_ingest_hn_rows(kb):
 
 def test_ingest_pdf_skips_already_ingested(kb, tmp_path):
     from juggle_research_ingest import should_ingest_pdf
+
     pdf_path = tmp_path / "test.pdf"
     pdf_path.write_bytes(b"fake pdf content")
     mtime = pdf_path.stat().st_mtime

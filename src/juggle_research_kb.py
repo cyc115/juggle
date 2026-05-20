@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Research KB — SQLite DB layer with sqlite-vec + FTS5 hybrid search."""
+
 import sqlite3
 import struct
 from pathlib import Path
@@ -16,6 +17,7 @@ class ResearchKB:
 
     def _connect(self) -> sqlite3.Connection:
         import sqlite_vec
+
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.enable_load_extension(True)
@@ -73,8 +75,14 @@ class ResearchKB:
             conn.close()
 
     def insert_article(
-        self, title: str, url: str, score: Optional[int], date: Optional[str],
-        source: str, summary: Optional[str], body: Optional[str],
+        self,
+        title: str,
+        url: str,
+        score: Optional[int],
+        date: Optional[str],
+        source: str,
+        summary: Optional[str],
+        body: Optional[str],
     ) -> Optional[int]:
         """Insert article; skip if URL exists. Returns new row id or None."""
         conn = self._connect()
@@ -125,7 +133,9 @@ class ResearchKB:
         finally:
             conn.close()
 
-    def hybrid_search(self, query_embedding: list[float], query_text: str, k: int = 10) -> list[dict]:
+    def hybrid_search(
+        self, query_embedding: list[float], query_text: str, k: int = 10
+    ) -> list[dict]:
         """RRF fusion of vec0 KNN and FTS5. Returns top-k results."""
         conn = self._connect()
         try:
@@ -177,6 +187,7 @@ class ResearchKB:
 
     def mark_pdf_ingested(self, path: str, mtime: float) -> None:
         from datetime import datetime, timezone
+
         conn = self._connect()
         try:
             conn.execute(

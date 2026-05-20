@@ -1,4 +1,5 @@
 """Integration smoke + orphaned detection tests."""
+
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -24,7 +25,9 @@ def test_orphaned_thread_files_action_item(db, tmp_path):
     db.update_thread(thread_id, status="background")
     past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
     with db._connect() as conn:
-        conn.execute("UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id))
+        conn.execute(
+            "UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id)
+        )
         conn.commit()
 
     orphaned = check_orphaned_threads(db, orphan_threshold=300.0)
@@ -43,7 +46,9 @@ def test_orphaned_thread_dedup(db, tmp_path):
     db.update_thread(thread_id, status="background")
     past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
     with db._connect() as conn:
-        conn.execute("UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id))
+        conn.execute(
+            "UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id)
+        )
         conn.commit()
 
     check_orphaned_threads(db, orphan_threshold=300.0)
@@ -64,7 +69,9 @@ def test_active_thread_not_orphaned(db, tmp_path):
     db.update_agent(agent_id, status="busy", assigned_thread=thread_id)
     past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
     with db._connect() as conn:
-        conn.execute("UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id))
+        conn.execute(
+            "UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id)
+        )
         conn.commit()
 
     orphaned = check_orphaned_threads(db, orphan_threshold=300.0)
@@ -74,14 +81,23 @@ def test_active_thread_not_orphaned(db, tmp_path):
 
 def test_full_stall_recovery_cycle(db, tmp_path):
     """Simulate: agent busy → same pane content × threshold → recovery fires."""
-    from juggle_watchdog import (classify_pane_state, execute_recovery,
-                                  get_threshold_seconds, write_snapshot)
+    from juggle_watchdog import (
+        classify_pane_state,
+        execute_recovery,
+        get_threshold_seconds,
+        write_snapshot,
+    )
 
     thread_id = db.create_thread("integration test", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%9")
-    db.update_agent(agent_id, status="busy", assigned_thread=thread_id,
-                    last_task="do the work", watchdog_retried=0,
-                    watchdog_threshold_minutes=1)
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="do the work",
+        watchdog_retried=0,
+        watchdog_threshold_minutes=1,
+    )
 
     snapshot_dir = tmp_path / "snapshots"
     recovery_dir = tmp_path / "recovery"
@@ -96,8 +112,10 @@ def test_full_stall_recovery_cycle(db, tmp_path):
     assert threshold == 60.0
 
     state, key = classify_pane_state(
-        content=pane_content, prev_content=pane_content,
-        stalled_for=70.0, threshold=threshold,
+        content=pane_content,
+        prev_content=pane_content,
+        stalled_for=70.0,
+        threshold=threshold,
     )
     assert state == "stalled"
 
@@ -108,8 +126,9 @@ def test_full_stall_recovery_cycle(db, tmp_path):
     mgr.verify_pane.return_value = True
     mgr.spawn_agent.return_value = new_agent
 
-    execute_recovery(db, mgr, agent, pane_content,
-                     recovery_dir=recovery_dir, session_id="")
+    execute_recovery(
+        db, mgr, agent, pane_content, recovery_dir=recovery_dir, session_id=""
+    )
 
     assert db.get_agent(agent_id) is None
     assert db.get_thread(thread_id)["status"] == "background"
@@ -131,10 +150,14 @@ def test_allowlist_resolution_no_recovery(db, tmp_path):
     agent_id = db.create_agent(role="coder", pane_id="%7")
     db.update_agent(agent_id, status="busy", assigned_thread=thread_id)
 
-    content = "Claude wants to run a bash command\n1. Yes / 2. Yes, allow always / 3. No"
+    content = (
+        "Claude wants to run a bash command\n1. Yes / 2. Yes, allow always / 3. No"
+    )
     state, key = classify_pane_state(
-        content=content, prev_content=content,
-        stalled_for=300.0, threshold=60.0,
+        content=content,
+        prev_content=content,
+        stalled_for=300.0,
+        threshold=60.0,
     )
     assert state == "prompt"
     assert key == "2"

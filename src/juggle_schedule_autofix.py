@@ -48,6 +48,7 @@ def _branch_name() -> str:
 # FX-1: ruff --fix
 # ---------------------------------------------------------------------------
 
+
 def fx1_ruff(branch: str, dry_run: bool, pr_sections: dict) -> None:
     logger.info("FX-1: ruff --fix")
     try:
@@ -58,36 +59,59 @@ def fx1_ruff(branch: str, dry_run: bool, pr_sections: dict) -> None:
             subprocess.run(["ruff", "--version"], capture_output=True, check=True)
             ruff_cmd = ["ruff"]
         except (subprocess.CalledProcessError, FileNotFoundError):
-            pr_sections["FX-1"] = {"status": "tool unavailable", "files": 0, "lines": ""}
+            pr_sections["FX-1"] = {
+                "status": "tool unavailable",
+                "files": 0,
+                "lines": "",
+            }
             return
 
     # Scope ruff to Python files changed in the last 7 days, not the entire src/
     since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
     try:
         git_out = subprocess.check_output(
-            ["git", "log", f"--since={since}", "--name-only", "--pretty=format:", "--all"],
-            text=True, cwd=str(JUGGLE_REPO)
+            [
+                "git",
+                "log",
+                f"--since={since}",
+                "--name-only",
+                "--pretty=format:",
+                "--all",
+            ],
+            text=True,
+            cwd=str(JUGGLE_REPO),
         )
-        changed = sorted({
-            f for f in git_out.split()
-            if f.endswith(".py") and (JUGGLE_REPO / f).exists()
-        })
+        changed = sorted(
+            {
+                f
+                for f in git_out.split()
+                if f.endswith(".py") and (JUGGLE_REPO / f).exists()
+            }
+        )
     except Exception:
         changed = []
 
     if not changed:
-        pr_sections["FX-1"] = {"status": "no findings this week", "files": 0, "lines": ""}
+        pr_sections["FX-1"] = {
+            "status": "no findings this week",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     subprocess.run(
         ruff_cmd + ["check", "--fix", "--select", "F401,F841,E501"] + changed,
-        capture_output=True, text=True, cwd=str(JUGGLE_REPO)
+        capture_output=True,
+        text=True,
+        cwd=str(JUGGLE_REPO),
     )
     diff = _git_diff_stat()
     if not dry_run and diff:
         _git_commit_on_branch(branch, "fix(autofix): FX-1 ruff lint fixes")
     pr_sections["FX-1"] = {
-        "status": "committed" if diff and not dry_run else ("dry-run" if diff else "no findings this week"),
+        "status": "committed"
+        if diff and not dry_run
+        else ("dry-run" if diff else "no findings this week"),
         "files": diff.get("files", 0),
         "lines": diff.get("lines", ""),
     }
@@ -96,6 +120,7 @@ def fx1_ruff(branch: str, dry_run: bool, pr_sections: dict) -> None:
 # ---------------------------------------------------------------------------
 # FX-2: vulture dead code
 # ---------------------------------------------------------------------------
+
 
 def fx2_vulture(branch: str, dry_run: bool, pr_sections: dict, issues: list) -> None:
     logger.info("FX-2: vulture dead code")
@@ -107,12 +132,18 @@ def fx2_vulture(branch: str, dry_run: bool, pr_sections: dict, issues: list) -> 
             subprocess.run(["vulture", "--version"], capture_output=True, check=True)
             vulture_cmd = ["vulture"]
         except (subprocess.CalledProcessError, FileNotFoundError):
-            pr_sections["FX-2"] = {"status": "tool unavailable", "files": 0, "lines": ""}
+            pr_sections["FX-2"] = {
+                "status": "tool unavailable",
+                "files": 0,
+                "lines": "",
+            }
             return
 
     result = subprocess.run(
         vulture_cmd + [str(JUGGLE_REPO / "src"), "--min-confidence", "60"],
-        capture_output=True, text=True, cwd=str(JUGGLE_REPO)
+        capture_output=True,
+        text=True,
+        cwd=str(JUGGLE_REPO),
     )
     lines = result.stdout.splitlines()
     high_conf = []
@@ -134,8 +165,13 @@ def fx2_vulture(branch: str, dry_run: bool, pr_sections: dict, issues: list) -> 
         fn = parts[0] if parts else "unknown"
         conf_str = item.split("%")[0].split()[-1] if "%" in item else "?"
         title = f"autofix: probable dead code — {fn} ({conf_str}%)"[:72]
-        issues.append(("IS-3", title,
-                        f"Vulture found probable dead code with <{VULTURE_CONFIDENCE_THRESHOLD}% confidence:\n\n```\n{item}\n```\n"))
+        issues.append(
+            (
+                "IS-3",
+                title,
+                f"Vulture found probable dead code with <{VULTURE_CONFIDENCE_THRESHOLD}% confidence:\n\n```\n{item}\n```\n",
+            )
+        )
 
     # High confidence — grep confirm then commit
     if high_conf and not dry_run:
@@ -145,34 +181,62 @@ def fx2_vulture(branch: str, dry_run: bool, pr_sections: dict, issues: list) -> 
             fn = parts[0].strip() if parts else ""
             # Check for live references outside the definition site
             grep_result = subprocess.run(
-                ["grep", "-rn", "--include=*.py", fn.split("/")[-1], str(JUGGLE_REPO / "src")],
-                capture_output=True, text=True
+                [
+                    "grep",
+                    "-rn",
+                    "--include=*.py",
+                    fn.split("/")[-1],
+                    str(JUGGLE_REPO / "src"),
+                ],
+                capture_output=True,
+                text=True,
             )
             refs = [line for line in grep_result.stdout.splitlines() if fn not in line]
             if not refs:
                 confirmed.append(item)
         if confirmed:
-            pr_sections["FX-2"] = {"status": "committed", "files": len(confirmed), "lines": f"+0/-{len(confirmed)}"}
-            _git_commit_on_branch(branch, f"fix(autofix): FX-2 remove {len(confirmed)} dead code items (≥{VULTURE_CONFIDENCE_THRESHOLD}% confidence)")
+            pr_sections["FX-2"] = {
+                "status": "committed",
+                "files": len(confirmed),
+                "lines": f"+0/-{len(confirmed)}",
+            }
+            _git_commit_on_branch(
+                branch,
+                f"fix(autofix): FX-2 remove {len(confirmed)} dead code items (≥{VULTURE_CONFIDENCE_THRESHOLD}% confidence)",
+            )
         else:
-            pr_sections["FX-2"] = {"status": "no findings this week", "files": 0, "lines": ""}
+            pr_sections["FX-2"] = {
+                "status": "no findings this week",
+                "files": 0,
+                "lines": "",
+            }
     else:
-        pr_sections["FX-2"] = {"status": "no findings this week" if not high_conf else "dry-run", "files": 0, "lines": ""}
+        pr_sections["FX-2"] = {
+            "status": "no findings this week" if not high_conf else "dry-run",
+            "files": 0,
+            "lines": "",
+        }
 
 
 # ---------------------------------------------------------------------------
 # FX-3: test coverage gaps
 # ---------------------------------------------------------------------------
 
-def fx3_test_gaps(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: CostTracker) -> None:
+
+def fx3_test_gaps(
+    branch: str, dry_run: bool, pr_sections: dict, cost_tracker: CostTracker
+) -> None:
     logger.info("FX-3: test coverage gaps")
     # Find functions with no test coverage (heuristic: functions in src/ with no matching test_*)
     src_files = list((JUGGLE_REPO / "src").glob("juggle_*.py"))
     uncovered = []
     for f in src_files[:5]:  # limit scope
         content = f.read_text(errors="ignore")
-        fns = [ln.strip().split("(")[0].replace("def ", "")
-               for ln in content.splitlines() if ln.strip().startswith("def ") and not ln.strip().startswith("def _")]
+        fns = [
+            ln.strip().split("(")[0].replace("def ", "")
+            for ln in content.splitlines()
+            if ln.strip().startswith("def ") and not ln.strip().startswith("def _")
+        ]
         for fn in fns[:3]:
             test_exists = any(
                 fn in t.read_text(errors="ignore")
@@ -183,7 +247,11 @@ def fx3_test_gaps(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
                 uncovered.append((f.name, fn))
 
     if not uncovered:
-        pr_sections["FX-3"] = {"status": "no findings this week", "files": 0, "lines": ""}
+        pr_sections["FX-3"] = {
+            "status": "no findings this week",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     sample = uncovered[:5]
@@ -194,16 +262,29 @@ def fx3_test_gaps(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
         f"Output valid Python pytest code only — no explanation."
     )
     try:
-        test_code = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=90)
+        test_code = claude_p(
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            cost_tracker=cost_tracker,
+            timeout=90,
+        )
     except CostCapExceeded:
         raise
     except Exception as e:
         logger.warning("FX-3 LLM failed: %s", e)
-        pr_sections["FX-3"] = {"status": "no findings this week", "files": 0, "lines": ""}
+        pr_sections["FX-3"] = {
+            "status": "no findings this week",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     if not test_code or len(test_code) < 50:
-        pr_sections["FX-3"] = {"status": "no findings this week", "files": 0, "lines": ""}
+        pr_sections["FX-3"] = {
+            "status": "no findings this week",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     auto_gen_dir = JUGGLE_REPO / "tests" / "auto-generated"
@@ -216,7 +297,10 @@ def fx3_test_gaps(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
 
     lines = validated.count("\n")
     if not dry_run:
-        _git_commit_on_branch(branch, f"test(autofix): FX-3 add {lines} auto-generated test lines for coverage gaps")
+        _git_commit_on_branch(
+            branch,
+            f"test(autofix): FX-3 add {lines} auto-generated test lines for coverage gaps",
+        )
     pr_sections["FX-3"] = {
         "status": "committed" if not dry_run else "dry-run",
         "files": 1,
@@ -228,7 +312,10 @@ def fx3_test_gaps(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
 # FX-4: watchdog regression tests
 # ---------------------------------------------------------------------------
 
-def fx4_watchdog_tests(branch: str, dry_run: bool, pr_sections: dict, db, cost_tracker: CostTracker) -> None:
+
+def fx4_watchdog_tests(
+    branch: str, dry_run: bool, pr_sections: dict, db, cost_tracker: CostTracker
+) -> None:
     logger.info("FX-4: watchdog regression tests")
     since = days_ago_iso(7)
     try:
@@ -236,19 +323,27 @@ def fx4_watchdog_tests(branch: str, dry_run: bool, pr_sections: dict, db, cost_t
             db,
             "SELECT event_type, agent_id, thread_id, created_at FROM watchdog_events "
             "WHERE created_at > ? ORDER BY created_at DESC LIMIT 20",
-            (since,)
+            (since,),
         )
     except Exception as e:
         logger.info("FX-4 query skipped: %s", e)
-        pr_sections["FX-4"] = {"status": "no stall events this week — no regression tests generated", "files": 0, "lines": ""}
+        pr_sections["FX-4"] = {
+            "status": "no stall events this week — no regression tests generated",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     if not events:
-        pr_sections["FX-4"] = {"status": "no stall events this week — no regression tests generated", "files": 0, "lines": ""}
+        pr_sections["FX-4"] = {
+            "status": "no stall events this week — no regression tests generated",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     events_text = "\n".join(
-        f"- {e.get('event_type','?')} at {e.get('created_at','?')[:10]}"
+        f"- {e.get('event_type', '?')} at {e.get('created_at', '?')[:10]}"
         for e in events[:10]
     )
     prompt = (
@@ -258,16 +353,29 @@ def fx4_watchdog_tests(branch: str, dry_run: bool, pr_sections: dict, db, cost_t
         f"Output valid Python only.\n\nEvents:\n{events_text}"
     )
     try:
-        test_code = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=60)
+        test_code = claude_p(
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            cost_tracker=cost_tracker,
+            timeout=60,
+        )
     except CostCapExceeded:
         raise
     except Exception as e:
         logger.warning("FX-4 LLM failed: %s", e)
-        pr_sections["FX-4"] = {"status": "no findings this week", "files": 0, "lines": ""}
+        pr_sections["FX-4"] = {
+            "status": "no findings this week",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     if not test_code or len(test_code) < 50:
-        pr_sections["FX-4"] = {"status": "no findings this week", "files": 0, "lines": ""}
+        pr_sections["FX-4"] = {
+            "status": "no findings this week",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     auto_gen_dir = JUGGLE_REPO / "tests" / "auto-generated"
@@ -278,7 +386,10 @@ def fx4_watchdog_tests(branch: str, dry_run: bool, pr_sections: dict, db, cost_t
 
     lines = validated.count("\n")
     if not dry_run:
-        _git_commit_on_branch(branch, f"test(autofix): FX-4 add {len(events)} watchdog regression test stubs")
+        _git_commit_on_branch(
+            branch,
+            f"test(autofix): FX-4 add {len(events)} watchdog regression test stubs",
+        )
     pr_sections["FX-4"] = {
         "status": "committed" if not dry_run else "dry-run",
         "files": 1,
@@ -290,7 +401,10 @@ def fx4_watchdog_tests(branch: str, dry_run: bool, pr_sections: dict, db, cost_t
 # FX-5: doc drift
 # ---------------------------------------------------------------------------
 
-def fx5_doc_drift(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: CostTracker) -> tuple[str, list]:
+
+def fx5_doc_drift(
+    branch: str, dry_run: bool, pr_sections: dict, cost_tracker: CostTracker
+) -> tuple[str, list]:
     logger.info("FX-5: doc drift")
     docs = list(JUGGLE_REPO.glob("docs/**/*.md")) + list(JUGGLE_REPO.glob("*.md"))
     drift_sections = []
@@ -308,7 +422,12 @@ def fx5_doc_drift(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
             f"Doc: {doc.name}\n\n{content}"
         )
         try:
-            result = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=60)
+            result = claude_p(
+                prompt,
+                model="claude-haiku-4-5-20251001",
+                cost_tracker=cost_tracker,
+                timeout=60,
+            )
         except CostCapExceeded:
             raise
         except Exception:
@@ -325,13 +444,19 @@ def fx5_doc_drift(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
                     logger.warning("FX-5 write failed for %s: %s", doc.name, e)
 
     if changed_files and not dry_run:
-        _git_commit_on_branch(branch, f"docs(autofix): FX-5 correct drift in {len(changed_files)} docs")
+        _git_commit_on_branch(
+            branch, f"docs(autofix): FX-5 correct drift in {len(changed_files)} docs"
+        )
 
     drift_text = "\n".join(drift_sections) if drift_sections else ""
     pr_sections["FX-5"] = {
-        "status": "committed" if changed_files and not dry_run else ("dry-run" if drift_sections else "no findings this week"),
+        "status": "committed"
+        if changed_files and not dry_run
+        else ("dry-run" if drift_sections else "no findings this week"),
         "files": len(changed_files),
-        "lines": f"+{sum(len(d) for d in drift_sections)//80}/-?" if drift_sections else "",
+        "lines": f"+{sum(len(d) for d in drift_sections) // 80}/-?"
+        if drift_sections
+        else "",
     }
     return drift_text, changed_files
 
@@ -340,13 +465,20 @@ def fx5_doc_drift(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
 # FX-6: CHANGELOG
 # ---------------------------------------------------------------------------
 
-def fx6_changelog(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: CostTracker) -> None:
+
+def fx6_changelog(
+    branch: str, dry_run: bool, pr_sections: dict, cost_tracker: CostTracker
+) -> None:
     logger.info("FX-6: CHANGELOG")
     result = git_run(["log", "--since=7 days ago", "--oneline", "--no-merges"])
     commits = result.stdout.strip()
 
     if not commits:
-        pr_sections["FX-6"] = {"status": "no findings this week", "files": 0, "lines": ""}
+        pr_sections["FX-6"] = {
+            "status": "no findings this week",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     prompt = (
@@ -354,12 +486,21 @@ def fx6_changelog(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
         f"Format:\n## YYYY-MM-DD\n- bullet point\n\nKeep it factual. No hype."
     )
     try:
-        entry = claude_p(prompt, model="claude-haiku-4-5-20251001", cost_tracker=cost_tracker, timeout=30)
+        entry = claude_p(
+            prompt,
+            model="claude-haiku-4-5-20251001",
+            cost_tracker=cost_tracker,
+            timeout=30,
+        )
     except CostCapExceeded:
         raise
     except Exception as e:
         logger.warning("FX-6 LLM failed: %s", e)
-        pr_sections["FX-6"] = {"status": "no findings this week", "files": 0, "lines": ""}
+        pr_sections["FX-6"] = {
+            "status": "no findings this week",
+            "files": 0,
+            "lines": "",
+        }
         return
 
     changelog_path = JUGGLE_REPO / "CHANGELOG.md"
@@ -371,7 +512,9 @@ def fx6_changelog(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
 
     lines = entry.count("\n") + 1
     if not dry_run:
-        _git_commit_on_branch(branch, "docs(autofix): FX-6 append weekly CHANGELOG entry")
+        _git_commit_on_branch(
+            branch, "docs(autofix): FX-6 append weekly CHANGELOG entry"
+        )
     pr_sections["FX-6"] = {
         "status": "committed" if not dry_run else "dry-run",
         "files": 1,
@@ -383,27 +526,42 @@ def fx6_changelog(branch: str, dry_run: bool, pr_sections: dict, cost_tracker: C
 # FX-7: graphify refresh
 # ---------------------------------------------------------------------------
 
+
 def fx7_graphify(branch: str, dry_run: bool, pr_sections: dict) -> None:
     logger.info("FX-7: graphify refresh")
     graphify_bin = JUGGLE_REPO / ".claude" / "scripts" / "graphify"
     if not graphify_bin.exists():
         try:
-            result = subprocess.run(["which", "graphify"], capture_output=True, text=True)
+            result = subprocess.run(
+                ["which", "graphify"], capture_output=True, text=True
+            )
             if result.returncode != 0:
-                pr_sections["FX-7"] = {"status": "tool unavailable", "files": 0, "lines": ""}
+                pr_sections["FX-7"] = {
+                    "status": "tool unavailable",
+                    "files": 0,
+                    "lines": "",
+                }
                 return
             graphify_bin = result.stdout.strip()
         except Exception:
-            pr_sections["FX-7"] = {"status": "tool unavailable", "files": 0, "lines": ""}
+            pr_sections["FX-7"] = {
+                "status": "tool unavailable",
+                "files": 0,
+                "lines": "",
+            }
             return
 
     subprocess.run(
         [str(graphify_bin), "update", "."],
-        capture_output=True, text=True, cwd=str(JUGGLE_REPO)
+        capture_output=True,
+        text=True,
+        cwd=str(JUGGLE_REPO),
     )
     diff = _git_diff_stat()
     if diff and not dry_run:
-        _git_commit_on_branch(branch, "chore(autofix): FX-7 refresh graphify knowledge graph")
+        _git_commit_on_branch(
+            branch, "chore(autofix): FX-7 refresh graphify knowledge graph"
+        )
     pr_sections["FX-7"] = {
         "status": "refreshed" if not dry_run else "dry-run",
         "files": diff.get("files", 0),
@@ -414,6 +572,7 @@ def fx7_graphify(branch: str, dry_run: bool, pr_sections: dict) -> None:
 # ---------------------------------------------------------------------------
 # IS-1: bandit security findings
 # ---------------------------------------------------------------------------
+
 
 def is1_bandit(branch: str, issues: list, cost_tracker: CostTracker) -> None:
     logger.info("IS-1: bandit security scan")
@@ -429,7 +588,9 @@ def is1_bandit(branch: str, issues: list, cost_tracker: CostTracker) -> None:
 
     result = subprocess.run(
         bandit_cmd + ["-r", str(JUGGLE_REPO / "src"), "-f", "json", "-ll"],
-        capture_output=True, text=True, cwd=str(JUGGLE_REPO)
+        capture_output=True,
+        text=True,
+        cwd=str(JUGGLE_REPO),
     )
     try:
         data = json.loads(result.stdout)
@@ -455,6 +616,7 @@ def is1_bandit(branch: str, issues: list, cost_tracker: CostTracker) -> None:
 # IS-2: skill audit (unused skills)
 # ---------------------------------------------------------------------------
 
+
 def is2_skill_audit(issues: list, dry_run: bool) -> None:
     logger.info("IS-2: skill audit")
     skills_dir = JUGGLE_REPO / "skills"
@@ -467,7 +629,7 @@ def is2_skill_audit(issues: list, dry_run: bool) -> None:
     for jf in jsonl_dirs[:20]:
         try:
             for line in jf.read_text(errors="ignore").splitlines():
-                if '"skill"' in line or '/schedule:' in line or '/juggle:' in line:
+                if '"skill"' in line or "/schedule:" in line or "/juggle:" in line:
                     invoked_skills.add(line[:200])
         except Exception:
             pass
@@ -477,7 +639,9 @@ def is2_skill_audit(issues: list, dry_run: bool) -> None:
             continue
         skill_name = skill_dir.name
         if not any(skill_name in s for s in invoked_skills):
-            title = f"autofix: skill retirement candidate — {skill_name} (0 invocations, 30d)"[:72]
+            title = f"autofix: skill retirement candidate — {skill_name} (0 invocations, 30d)"[
+                :72
+            ]
             body = (
                 f"No skill invocations found for `{skill_name}` in the last 30 days "
                 f"based on session JSONL scan.\n\n"
@@ -491,8 +655,14 @@ def is2_skill_audit(issues: list, dry_run: bool) -> None:
 # PR description builder
 # ---------------------------------------------------------------------------
 
-def _build_pr_description(today: str, sections: dict, issue_urls: list[str],
-                           drift_text: str, dogfood_snippet: str) -> str:
+
+def _build_pr_description(
+    today: str,
+    sections: dict,
+    issue_urls: list[str],
+    drift_text: str,
+    dogfood_snippet: str,
+) -> str:
     branch = f"cyc_schedule-autofix-{today}"
 
     def row(fx_id: str) -> str:
@@ -500,18 +670,34 @@ def _build_pr_description(today: str, sections: dict, issue_urls: list[str],
         if not s:
             return f"| {fx_id} | 0 | | ⚪ no findings this week |"
         status = s.get("status", "no findings this week")
-        icon = "✅" if "committed" in status or "refreshed" in status else ("⚠️" if "skip" in status or "dry" in status else "⚪")
+        icon = (
+            "✅"
+            if "committed" in status or "refreshed" in status
+            else ("⚠️" if "skip" in status or "dry" in status else "⚪")
+        )
         return f"| {fx_id} | {s.get('files', 0)} | {s.get('lines', '')} | {icon} {status} |"
 
-    summary_rows = "\n".join(row(k) for k in ["FX-1", "FX-2", "FX-3", "FX-4", "FX-5", "FX-6", "FX-7"])
-    issues_section = "\n".join(f"- {u}" for u in issue_urls) if issue_urls else "*(none this week)*"
+    summary_rows = "\n".join(
+        row(k) for k in ["FX-1", "FX-2", "FX-3", "FX-4", "FX-5", "FX-6", "FX-7"]
+    )
+    issues_section = (
+        "\n".join(f"- {u}" for u in issue_urls) if issue_urls else "*(none this week)*"
+    )
 
-    reflect_reports = sorted(REPORTS_DIR.glob("reflect-*.md"), key=lambda p: p.name, reverse=True)
-    reflect_link = f"`reports/{reflect_reports[0].name}`" if reflect_reports else "not yet run this week"
+    reflect_reports = sorted(
+        REPORTS_DIR.glob("reflect-*.md"), key=lambda p: p.name, reverse=True
+    )
+    reflect_link = (
+        f"`reports/{reflect_reports[0].name}`"
+        if reflect_reports
+        else "not yet run this week"
+    )
 
     dogfood_block = ""
     if dogfood_snippet:
-        dogfood_block = f"\n### Dogfood findings (from Saturday's analysis)\n> {dogfood_snippet}\n"
+        dogfood_block = (
+            f"\n### Dogfood findings (from Saturday's analysis)\n> {dogfood_snippet}\n"
+        )
 
     drift_block = ""
     if drift_text:
@@ -541,6 +727,7 @@ Reflect digest from last Monday: {reflect_link}
 def _read_dogfood_snippet() -> str:
     """Read the most recent dogfood report within the last 48h and extract top suggestion."""
     from glob import glob
+
     reports = sorted(glob(str(REPORTS_DIR / "dogfood-*.md")), reverse=True)
     if not reports:
         return ""
@@ -565,6 +752,7 @@ def _read_dogfood_snippet() -> str:
 # ---------------------------------------------------------------------------
 # Git helpers (branch-specific)
 # ---------------------------------------------------------------------------
+
 
 def _git_diff_stat() -> dict:
     result = git_run(["diff", "--stat", "HEAD"], check=False)
@@ -597,12 +785,15 @@ def _git_commit_on_branch(branch: str, message: str) -> bool:
 def _validate_and_skip_tests(test_code: str) -> str:
     """Run pytest on generated code; mark failing cases @pytest.mark.skip."""
     import tempfile
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(test_code)
         tmp = Path(f.name)
     result = subprocess.run(
         [sys.executable, "-m", "pytest", str(tmp), "--tb=no", "-q"],
-        capture_output=True, text=True, cwd=str(JUGGLE_REPO)
+        capture_output=True,
+        text=True,
+        cwd=str(JUGGLE_REPO),
     )
     if result.returncode == 0:
         tmp.unlink(missing_ok=True)
@@ -622,6 +813,7 @@ def _validate_and_skip_tests(test_code: str) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def run(dry_run: bool = False) -> int:
     today = today_str()
     branch = _branch_name()
@@ -638,7 +830,12 @@ def run(dry_run: bool = False) -> int:
         db = get_db()
         rows = db_query(db, "SELECT id FROM threads ORDER BY created_at DESC LIMIT 1")
         if rows:
-            db.add_action_item(thread_id=rows[0]["id"], message=msg, type_="manual_step", priority="high")
+            db.add_action_item(
+                thread_id=rows[0]["id"],
+                message=msg,
+                type_="manual_step",
+                priority="high",
+            )
         print(f"SKIPPED: {msg}", file=sys.stderr)
         return 1
 
@@ -711,7 +908,12 @@ def run(dry_run: bool = False) -> int:
         git_run(["branch", "-D", branch], check=False)
         rows = db_query(db, "SELECT id FROM threads ORDER BY created_at DESC LIMIT 1")
         if rows:
-            db.add_action_item(thread_id=rows[0]["id"], message=msg, type_="manual_step", priority="high")
+            db.add_action_item(
+                thread_id=rows[0]["id"],
+                message=msg,
+                type_="manual_step",
+                priority="high",
+            )
         return 1
 
     # File GitHub issues
@@ -723,35 +925,67 @@ def run(dry_run: bool = False) -> int:
                 issue_urls.append(url)
 
     # Recreate PR desc with issue URLs
-    pr_desc = _build_pr_description(today, pr_sections, issue_urls, drift_text, dogfood_snippet)
+    pr_desc = _build_pr_description(
+        today, pr_sections, issue_urls, drift_text, dogfood_snippet
+    )
 
     from juggle_schedule_common import gh_run as _gh_run
-    _gh_run(["pr", "create", "--title", f"autofix: {today}", "--body", pr_desc,
-             "--base", "main", "--head", branch])
+
+    _gh_run(
+        [
+            "pr",
+            "create",
+            "--title",
+            f"autofix: {today}",
+            "--body",
+            pr_desc,
+            "--base",
+            "main",
+            "--head",
+            branch,
+        ]
+    )
 
     git_run(["checkout", "main"])
     mark_run_complete(ROUTINE)
-    print(f"autofix complete: PR cyc_schedule-autofix-{today} | {len(issue_urls)} issues | cost=${cost_tracker.total:.4f}")
+    print(
+        f"autofix complete: PR cyc_schedule-autofix-{today} | {len(issue_urls)} issues | cost=${cost_tracker.total:.4f}"
+    )
     return 0
 
 
-def _handle_cost_cap(branch: str, today: str, pr_sections: dict, exc: CostCapExceeded, dry_run: bool) -> None:
+def _handle_cost_cap(
+    branch: str, today: str, pr_sections: dict, exc: CostCapExceeded, dry_run: bool
+) -> None:
     logger.error("Cost cap hit: %s", exc)
     completed = [k for k in pr_sections]
     if not dry_run:
         try:
             git_run(["push", "-u", "origin", branch], check=False)
             from juggle_schedule_common import gh_run as _gh_run
-            _gh_run(["pr", "create",
-                     "--title", f"[PARTIAL] autofix: {today}",
-                     "--body", f"Cost cap exceeded. Completed: {completed}",
-                     "--base", "main", "--head", branch], check=False)
+
+            _gh_run(
+                [
+                    "pr",
+                    "create",
+                    "--title",
+                    f"[PARTIAL] autofix: {today}",
+                    "--body",
+                    f"Cost cap exceeded. Completed: {completed}",
+                    "--base",
+                    "main",
+                    "--head",
+                    branch,
+                ],
+                check=False,
+            )
         except Exception:
             pass
 
 
 if __name__ == "__main__":
     import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()

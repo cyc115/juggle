@@ -494,6 +494,7 @@ def _make_full_state():
         notifications=[
             Notification(text="plan v3 ready", kind="complete", age_secs=30),
         ],
+        scheduled=[],
         fetched_at=_time.time(),
     )
 
@@ -574,15 +575,15 @@ def test_render_actions_scroll_past_end_no_error():
 
 def test_render_agents_scroll_hides_first():
     """With scroll_offset=1, first sorted agent is hidden."""
-    # busy agent (abcd1234) sorts first; offset=1 hides it
+    # busy agent (abcd1234, topic K coder) sorts first; offset=1 hides it
     agents = _make_agents()
     c = Console(record=True, width=100)
     panel = render_agents(agents, scroll_offset=1)
     with c:
         c.print(panel)
     text = c.export_text()
-    assert "abcd1234" not in text  # first after sort
-    assert "ef567890" in text  # second
+    assert "[K] coder" not in text  # first after sort — hidden
+    assert "[J] planner" in text  # second — visible
 
 
 def test_render_agents_scroll_title_shows_offset():

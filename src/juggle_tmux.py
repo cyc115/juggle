@@ -37,8 +37,14 @@ class JuggleTmuxManager:
         if result.returncode != 0:
             _s = _get_settings()["tmux"]
             self._run_tmux(
-                "new-session", "-s", self.session_name,
-                "-d", "-x", str(_s["session_width"]), "-y", str(_s["session_height"]),
+                "new-session",
+                "-s",
+                self.session_name,
+                "-d",
+                "-x",
+                str(_s["session_width"]),
+                "-y",
+                str(_s["session_height"]),
             )
 
     def _first_window(self) -> str:
@@ -56,8 +62,12 @@ class JuggleTmuxManager:
         """
         result = self._run_tmux(
             "split-window",
-            "-t", self._first_window(),
-            "-v", "-P", "-F", "#{pane_id}",
+            "-t",
+            self._first_window(),
+            "-v",
+            "-P",
+            "-F",
+            "#{pane_id}",
         )
         pane_id = result.stdout.strip()
         if not pane_id:
@@ -65,8 +75,11 @@ class JuggleTmuxManager:
                 # Window too small to split — create a new window instead.
                 result = self._run_tmux(
                     "new-window",
-                    "-t", self.session_name,
-                    "-P", "-F", "#{pane_id}",
+                    "-t",
+                    self.session_name,
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
                 )
                 pane_id = result.stdout.strip()
             if not pane_id:
@@ -76,7 +89,9 @@ class JuggleTmuxManager:
                 )
         return pane_id
 
-    def start_claude_in_pane(self, pane_id: str, model: str | None = None, role: str | None = None) -> None:
+    def start_claude_in_pane(
+        self, pane_id: str, model: str | None = None, role: str | None = None
+    ) -> None:
         """Send the 'claude' command to a pane.
 
         Prefixes with env -u CLAUDE_PLUGIN_DATA to prevent DB fragmentation.
@@ -110,7 +125,9 @@ class JuggleTmuxManager:
 
     def verify_pane(self, pane_id: str) -> bool:
         """Return True if pane_id exists in the juggle session."""
-        if os.environ.get("JUGGLE_TMUX_MOCK_PANE") or os.environ.get("JUGGLE_TMUX_MOCK_SEND"):
+        if os.environ.get("JUGGLE_TMUX_MOCK_PANE") or os.environ.get(
+            "JUGGLE_TMUX_MOCK_SEND"
+        ):
             return True
         result = self._run_tmux(
             "list-panes", "-t", self._first_window(), "-F", "#{pane_id}"
@@ -156,7 +173,9 @@ class JuggleTmuxManager:
 
         Returns True on success, False on timeout.
         """
-        first_line = pasted_prompt.strip().split("\n", 1)[0] if pasted_prompt.strip() else ""
+        first_line = (
+            pasted_prompt.strip().split("\n", 1)[0] if pasted_prompt.strip() else ""
+        )
         head = first_line[:_PROMPT_HEAD_CHARS]
 
         consecutive_stuck = 0
@@ -195,7 +214,9 @@ class JuggleTmuxManager:
 
         del is_new
         if not pane_id or not pane_id.strip():
-            raise ValueError("send_task called with empty pane_id — aborting to avoid pasting to wrong tmux session")
+            raise ValueError(
+                "send_task called with empty pane_id — aborting to avoid pasting to wrong tmux session"
+            )
         if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
             return _hashlib.sha256(prompt.encode()).hexdigest()[:16]
 
@@ -237,6 +258,7 @@ class JuggleTmuxManager:
         """
         import sys
         from pathlib import Path as _Path
+
         sys.path.insert(0, str(_Path(__file__).parent))
         from juggle_db import MAX_BACKGROUND_AGENTS
 
@@ -279,21 +301,32 @@ class JuggleTmuxManager:
 def _pane_has_juggle_agent_env(pane_id: str) -> bool:
     """Return True if any child process of the pane has JUGGLE_IS_AGENT=1."""
     import subprocess as _sp
+
     try:
         pane_pid = _sp.run(
             ["tmux", "display-message", "-t", pane_id, "-p", "#{pane_pid}"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
         ).stdout.strip()
         if not pane_pid:
             return False
-        children = _sp.run(
-            ["pgrep", "-P", pane_pid],
-            capture_output=True, text=True, timeout=3,
-        ).stdout.strip().splitlines()
+        children = (
+            _sp.run(
+                ["pgrep", "-P", pane_pid],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            .stdout.strip()
+            .splitlines()
+        )
         for child in children:
             env_out = _sp.run(
                 ["ps", "eww", "-p", child],
-                capture_output=True, text=True, timeout=3,
+                capture_output=True,
+                text=True,
+                timeout=3,
             ).stdout
             if "JUGGLE_IS_AGENT=1" in env_out:
                 return True
@@ -349,9 +382,12 @@ def reap_stale_agents(db, mgr):
     known_pane_ids = {a["pane_id"] for a in db.get_all_agents()}
     try:
         import subprocess as _sp
+
         result = _sp.run(
             ["tmux", "list-panes", "-t", mgr.session_name, "-a", "-F", "#{pane_id}"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         for pane_id in result.stdout.strip().splitlines():
             if pane_id in known_pane_ids:
