@@ -3,6 +3,7 @@
 
 import logging
 import os
+import shlex
 import subprocess
 import time
 import uuid
@@ -90,7 +91,7 @@ class JuggleTmuxManager:
         if role:
             denied += agent_cfg.get("disallowed_tools_by_role", {}).get(role, [])
         if denied:
-            cmd += " --disallowedTools " + ",".join(denied)
+            cmd += " --disallowedTools " + shlex.quote(",".join(denied))
 
         role_env = f" JUGGLE_AGENT_ROLE={role}" if role else ""
         cmd = f"env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1{role_env} {cmd}"
