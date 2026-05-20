@@ -615,6 +615,29 @@ def test_send_task_error_on_missing_prompt_file(started_db):
     assert "not found" in result.stdout.lower()
 
 
+def test_send_task_prepends_universal_preamble(started_db, tmp_path):
+    """UNIVERSAL_PREAMBLE must be prepended to the task body stored in last_task."""
+    db_path, thread_id = started_db
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
+        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+    agent_id = r.stdout.strip().split()[0]
+
+    prompt_file = tmp_path / "task.txt"
+    prompt_file.write_text("Do the thing.\n")
+
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
+        result = run_cli(["send-task", agent_id, str(prompt_file)], db_path)
+    assert result.returncode == 0
+
+    sys.path.insert(0, SRC_DIR)
+    from juggle_cmd_agents import UNIVERSAL_PREAMBLE
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(db_path))
+    agent = db.get_agent(agent_id)
+    assert agent["last_task"].startswith(UNIVERSAL_PREAMBLE)
+    assert "Do the thing." in agent["last_task"]
+
+
 def test_archive_thread_decommissions_idle_agents(started_db):
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB

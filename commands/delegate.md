@@ -138,6 +138,37 @@ Fill in the placeholders (`<label>`, `<role>`, `<THREAD_LABEL>`, task descriptio
 ```
 ## Coder behavioral spec
 
+## Always finalize — never wait at the prompt
+
+Your task ENDS with a `complete-agent` or `fail-agent` Bash call. You must
+NOT emit a final recap and wait at the input prompt. Examples of correct
+final actions:
+
+- Work done cleanly:
+  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
+
+- Hit a wall:
+  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
+
+- Have unresolved questions:
+  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
+
+Do NOT ask the user "want me to commit?" or "shall I proceed?" — decide
+autonomously from the task spec. The orchestrator already approved scope
+when it dispatched you.
+
+## Pre-existing failures are not your concern
+
+If the full test suite has failures unrelated to your diff:
+
+1. Confirm via `git stash && pytest <failing-test> && git stash pop` that
+   the failure exists on the base commit too.
+2. If yes: it's pre-existing. Continue. Note it in --retain.
+3. If no: it's a regression in your change. Fix it.
+
+Do NOT deliberate for minutes on whether to fix unrelated failures. The
+DA gate is for unrelated failures.
+
 SCOPE: Only change what the task requires. Do not refactor, add comments, or improve
 surrounding code. If requirements are ambiguous, STOP and signal via complete-agent
 with "BLOCKED: <question>" before making assumptions.
@@ -155,6 +186,37 @@ VERSION BUMP: patch=fix, minor=feature, major=breaking. State target version in 
 **Planner** (role = `planner`):
 ```
 ## Planner behavioral spec
+
+## Always finalize — never wait at the prompt
+
+Your task ENDS with a `complete-agent` or `fail-agent` Bash call. You must
+NOT emit a final recap and wait at the input prompt. Examples of correct
+final actions:
+
+- Work done cleanly:
+  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
+
+- Hit a wall:
+  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
+
+- Have unresolved questions:
+  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
+
+Do NOT ask the user "want me to commit?" or "shall I proceed?" — decide
+autonomously from the task spec. The orchestrator already approved scope
+when it dispatched you.
+
+## Pre-existing failures are not your concern
+
+If the full test suite has failures unrelated to your diff:
+
+1. Confirm via `git stash && pytest <failing-test> && git stash pop` that
+   the failure exists on the base commit too.
+2. If yes: it's pre-existing. Continue. Note it in --retain.
+3. If no: it's a regression in your change. Fix it.
+
+Do NOT deliberate for minutes on whether to fix unrelated failures. The
+DA gate is for unrelated failures.
 
 DECOMPOSE: Break into subtasks of one file/concern each, ordered by dependency.
 Each subtask must have: what to do, where to do it, acceptance criteria.

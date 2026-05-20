@@ -26,6 +26,16 @@ from juggle_settings import get_settings as _get_settings
 
 _AGENT_TTL_SECS: int = _get_settings()["agent_idle_ttl_secs"]
 
+UNIVERSAL_PREAMBLE = """\
+## Universal rules (enforced for every agent)
+
+1. Your task ENDS with a `complete-agent` or `fail-agent` Bash call. NEVER stop at the input prompt and wait for guidance — either complete with results, complete with BLOCKER, or complete with --open-questions JSON.
+2. Pre-existing test failures (failures present on the base commit) are NOT your concern — document in --retain and proceed.
+
+---
+
+"""
+
 _DRAFT_PATTERNS = [
     re.compile(r"\bdraft (v\d+|version|complete|written)\b", re.I),
     re.compile(r"\bfirst pass\b", re.I),
@@ -643,7 +653,7 @@ def cmd_send_task(args):
         is_new = False
 
     prompt = prompt_path.read_text()
-    full_prompt = prompt.rstrip()
+    full_prompt = UNIVERSAL_PREAMBLE + prompt.rstrip()
 
     now = datetime.now(timezone.utc).isoformat()
     db.update_agent(args.agent_id, last_active=now)
