@@ -85,7 +85,10 @@ def test_full_stall_recovery_cycle(db, tmp_path):
 
     snapshot_dir = tmp_path / "snapshots"
     recovery_dir = tmp_path / "recovery"
-    pane_content = "Working on stuff\nstill here"
+    # Use content with no Claude UI markers and no shell prompt so
+    # classify_pane_state returns "stalled" and _classify_agent_state
+    # returns "never_fired" — triggering recovery (not nudge).
+    pane_content = "processing data\nstep 1 complete\nstep 2 pending"
     write_snapshot(agent_id, pane_content, snapshot_dir)
 
     agent = db.get_agent(agent_id)

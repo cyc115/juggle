@@ -26,6 +26,10 @@ _COLD_START_DEFAULTS: dict[str, float] = {
     "researcher": 120.0,
 }
 _EXECUTION_MARKERS = ("Thinking", "Running", "→", "↓", "Tool call", "✓", "⚡")
+_CLAUDE_UI_MARKERS = (
+    "Welcome", "Bypass permissions", "INSERT", "Cogitated",
+    "Working", "shortcuts", "claude.ai/code",
+)
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 _BOX_TOP_RE = re.compile(r"^╭─+╮\s*$")
 # Sentinel: caller did not supply last_send_task_at, so backward-compat applies.
@@ -203,6 +207,75 @@ def handle_prompt(db: Any, mgr: Any, agent: dict, pane_id: str, key: str) -> Non
 
 
 # ---------------------------------------------------------------------------
+# Agent state classifier for watchdog policy (kill vs nudge decision)
+# ---------------------------------------------------------------------------
+
+def _classify_agent_state(pane_content: str, pane_exists: bool) -> str:
+    """Classify agent state to decide watchdog action.
+
+    Returns one of: "alive_slow" | "dead" | "never_fired"
+    - alive_slow: Claude UI is visible — agent is thinking/working/finished but still alive
+    - dead: pane no longer exists in tmux
+    - never_fired: pane exists but shows shell with no Claude UI (truncated launch, crash, etc.)
+    """
+    if not pane_exists:
+        return "dead"
+    if any(marker in pane_content for marker in _CLAUDE_UI_MARKERS):
+        return "alive_slow"
+    return "never_fired"
+
+
+# ---------------------------------------------------------------------------
+# Nudge + notify — for alive-but-slow agents
+# ---------------------------------------------------------------------------
+
+def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
+    """Send a harmless Enter nudge and file a request-action for user visibility.
+
+    Does NOT kill the pane or spawn a replacement. The orchestrator handles
+    escalation if the agent remains stuck after a human reviews the action item.
+    """
+    from datetime import datetime, timezone
+
+    agent_id = agent["id"]
+    pane_id = agent.get("pane_id", "")
+    thread_id = agent.get("assigned_thread")
+    role = agent.get("role", "researcher")
+    label = _get_thread_label(db, thread_id) if thread_id else agent_id[:8]
+
+    last_active_str = agent.get("last_active") or agent.get("last_active_at")
+    stalled_for = 0
+    if last_active_str:
+        try:
+            last_dt = datetime.fromisoformat(last_active_str.replace("Z", "+00:00"))
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            stalled_for = int((datetime.now(timezone.utc) - last_dt).total_seconds())
+        except (ValueError, TypeError):
+            pass
+
+    # Literal Enter — may unstick a permission prompt; harmless otherwise
+    try:
+        mgr._run_tmux("send-keys", "-t", pane_id, "Enter")
+    except Exception:
+        pass
+
+    tail_lines = "\n".join(content.splitlines()[-5:]) if content else "(no content)"
+    message = (
+        f"⚠️ [{label}] [{role}] alive-but-stalled on pane {pane_id}, "
+        f"stalled_for={stalled_for}s. Last pane tail:\n{tail_lines}"
+    )
+    if thread_id:
+        db.add_action_item(thread_id=thread_id, message=message,
+                           type_="failure", priority="normal")
+
+    _log.info(
+        "Watchdog: nudged + notified agent %s on thread %s (stalled_for=%ds); not killing",
+        agent_id[:8], label, stalled_for,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Recovery
 # ---------------------------------------------------------------------------
 
@@ -223,6 +296,13 @@ def execute_recovery(
     live = db.get_agent(agent_id)
     if live is None or live.get("status") != "busy":
         _log.info("Watchdog: recovery aborted for %s — agent no longer busy", agent_id[:8])
+        return
+
+    # Policy: never kill a live agent. Only recover dead / never-fired panes.
+    pane_exists = mgr.verify_pane(live["pane_id"])
+    agent_state = _classify_agent_state(pane_content, pane_exists)
+    if agent_state == "alive_slow":
+        nudge_and_notify(db, mgr, live, pane_content)
         return
 
     thread_id = live.get("assigned_thread")

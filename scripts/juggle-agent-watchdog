@@ -16,12 +16,14 @@ from juggle_db import JuggleDB, DB_PATH
 from juggle_settings import get_settings
 from juggle_tmux import JuggleTmuxManager
 from juggle_watchdog import (
+    _classify_agent_state,
     check_orphaned_threads,
     classify_pane_state,
     execute_recovery,
     get_session_id,
     get_threshold_seconds,
     handle_prompt,
+    nudge_and_notify,
     read_snapshot,
     write_snapshot,
 )
