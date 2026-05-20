@@ -7,6 +7,7 @@ Usage: python juggle_cli.py <command> [args]
 import argparse
 import logging
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -185,11 +186,25 @@ def _obsidian_fallback(abs_file: str) -> None:
         subprocess.run(["open", abs_file], check=True)
 
 
+def _parse_path_with_line(spec: str) -> tuple[str, int | None]:
+    """Split 'path:line' or 'path:line:col' into (path, line). Returns (spec, None) if no line."""
+    m = re.match(r"^(.*?):(\d+)(?::\d+)?$", spec)
+    if m:
+        return m.group(1), int(m.group(2))
+    return spec, None
+
+
 def cmd_open_in_editor(args):
-    abs_file = os.path.abspath(args.file)
+    path, line = _parse_path_with_line(args.file)
+    abs_file = os.path.abspath(path)
     if os.path.exists(NVIM_SOCKET):
         try:
             subprocess.run(["nvim", "--server", NVIM_SOCKET, "--remote", abs_file], check=True)
+            if line is not None:
+                subprocess.run(
+                    ["nvim", "--server", NVIM_SOCKET, "--remote-send", f"<C-\\><C-N>:{line}<CR>"],
+                    check=True,
+                )
             return
         except subprocess.CalledProcessError:
             pass

@@ -686,7 +686,7 @@ def test_open_in_editor_no_socket_vault_file(tmp_path):
 
 
 def test_open_in_editor_calls_nvim(tmp_path):
-    """Calls nvim --server --remote when socket exists."""
+    """Calls nvim --server --remote when socket exists (no line number)."""
     from juggle_cli import main
     sock = tmp_path / "nvim.sock"
     sock.touch()
@@ -700,3 +700,49 @@ def test_open_in_editor_calls_nvim(tmp_path):
         ["nvim", "--server", str(sock), "--remote", "/some/file.md"],
         check=True,
     )
+
+
+def test_open_in_editor_with_line_number(tmp_path):
+    """Sends remote-send to position cursor when path:line syntax is used."""
+    from juggle_cli import main
+    sock = tmp_path / "nvim.sock"
+    sock.touch()
+    with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.py:153"]):
+        with patch("juggle_cli.NVIM_SOCKET", str(sock)):
+            with patch.dict(os.environ, {"_JUGGLE_TEST_DB": "1"}):
+                with patch("juggle_cli.subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0)
+                    main()
+    calls = mock_run.call_args_list
+    assert len(calls) == 2
+    assert calls[0][0][0] == ["nvim", "--server", str(sock), "--remote", "/some/file.py"]
+    assert calls[1][0][0] == ["nvim", "--server", str(sock), "--remote-send", "<C-\\><C-N>:153<CR>"]
+
+
+# ---------------------------------------------------------------------------
+# _parse_path_with_line unit tests
+# ---------------------------------------------------------------------------
+
+def test_parse_path_with_line_no_suffix():
+    from juggle_cli import _parse_path_with_line
+    assert _parse_path_with_line("foo.py") == ("foo.py", None)
+
+
+def test_parse_path_with_line_basic():
+    from juggle_cli import _parse_path_with_line
+    assert _parse_path_with_line("foo.py:42") == ("foo.py", 42)
+
+
+def test_parse_path_with_line_col():
+    from juggle_cli import _parse_path_with_line
+    assert _parse_path_with_line("foo.py:42:5") == ("foo.py", 42)
+
+
+def test_parse_path_with_line_abs():
+    from juggle_cli import _parse_path_with_line
+    assert _parse_path_with_line("/abs/path.py:1") == ("/abs/path.py", 1)
+
+
+def test_parse_path_with_line_no_trailing_digits():
+    from juggle_cli import _parse_path_with_line
+    assert _parse_path_with_line("weird:name.py") == ("weird:name.py", None)
