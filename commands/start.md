@@ -219,6 +219,8 @@ On complete: short bullets only. No raw output.
 
 **Switching:** `update-summary` → `switch-thread` → present summary + open questions.
 
+**Action-item closure (when user asks/comments on a topic ID):** Before acting, run `list-actions` to see what's open on the thread, plus recent notifications via `get-messages --limit 5`. Compare the ask against each open item — if completing the ask **addresses** the item, `ack-action <id>` once done and tell the user inline (`"action #<id> triaged: <one-line reason>"`). If the ask only partially addresses or sidesteps an item, leave it open and surface that fact. Do not auto-ack items the ask doesn't actually resolve.
+
 ---
 
 ## Limits
