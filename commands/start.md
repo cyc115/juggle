@@ -6,7 +6,7 @@ allowed-tools: Read, Glob, Grep, Bash, Agent, Edit, Write
 # /juggle:start
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py start
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py start
 ```
 
 Arm monitor immediately:
@@ -21,7 +21,7 @@ Auto-create Topic A from first substantive message: `create-thread "<label>"`
 
 ## CLI Reference
 
-`python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <cmd> [args]`
+`uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <cmd> [args]`
 
 | Command | Signature | Notes |
 | ------- | --------- | ----- |
@@ -92,7 +92,7 @@ Coordinates only. Edit/Write/NotebookEdit blocked by hook.
 
 **DA action items:** 🔴 input needed → `request-action --tier 2`; 🟡 auto-resolved → note inline.
 ```bash
-python3 juggle_cli.py request-action <thread_id> "DA finding: <decision>" --tier 2
+uv run juggle_cli.py request-action <thread_id> "DA finding: <decision>" --tier 2
 ```
 
 **Code review:** always background, never inline.
@@ -127,7 +127,7 @@ Pre-dispatch checklist:
 ```
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role <role>
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role <role>
 # → <agent_id> <pane_id>
 TASK_FILE="/tmp/juggle_task_$(date +%s%N).txt"
 cat > "$TASK_FILE" << 'EOF'
@@ -137,15 +137,15 @@ cat > "$TASK_FILE" << 'EOF'
 <context>
 
 On completion:
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>"
 EOF
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> "$TASK_FILE"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> "$TASK_FILE"
 ```
 
 ### Plan Agent Prompt
 ```
 [JUGGLE_THREAD:<thread_id>]
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<task>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<task>"
 
 Invoke superpowers:writing-plans. Overrides:
 - Skip "Announce at start" and "Execution Handoff"
@@ -154,7 +154,7 @@ Invoke superpowers:writing-plans. Overrides:
 
 <task description>
 
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
 ```
 
 After plan: no open decisions → dispatch coder immediately. Design decisions → AskUserQuestion first.
@@ -182,7 +182,7 @@ Scope (mandatory):
 # Normal:  complete-agent <id> "Done. <summary>" --retain "<learnings>"
 # Blocker: complete-agent <id> "⚠️ BLOCKER: <description>" --retain "<learnings>"
 # --retain: minimal words — decisions, non-obvious facts. Skip routine git output.
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>" --retain "<key decisions>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>" --retain "<key decisions>"
 ```
 
 On result: `Done` → "[X done] <label>". `⚠️ BLOCKER` → research first, present recommendation. `PARTIAL` → root cause + options. Never surface bare.
@@ -192,19 +192,19 @@ On result: `Done` → "[X done] <label>". `⚠️ BLOCKER` → research first, p
 SEQUENTIAL-FIX MODE:
 - Run end-to-end. On failure: diagnose, fix, retry — do NOT stop and report.
 - Escalate only for: missing credentials, irreversible action, architectural decision.
-- notify at each milestone: python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py notify <thread_id> "<milestone>"
+- notify at each milestone: uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py notify <thread_id> "<milestone>"
 - Keep going until done or genuine BLOCKER.
 ```
 
 ### Research Agent Prompt
 ```
 [JUGGLE_THREAD:<thread_id>]
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<question>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<question>"
 
 <research question>
 
 # --retain: non-obvious findings, personal details, hard-to-re-derive config.
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings>" --retain "<non-obvious findings>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings>" --retain "<non-obvious findings>"
 ```
 On complete: short bullets only. No raw output.
 

@@ -9,7 +9,7 @@ allowed-tools: Bash, Agent
 
 Run:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-stale-threads
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-stale-threads
 ```
 
 For each stale thread: spawn Haiku background summarizer (see `commands/start.md § Auto-Summary`). Wait for all to complete before rendering.
@@ -20,7 +20,7 @@ No stale threads → go to Step 2.
 
 Run:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py show-topics
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py show-topics
 ```
 
 Print output verbatim. No reformat.

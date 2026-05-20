@@ -95,14 +95,14 @@ Run the following Bash commands:
 
 ```bash
 # 1. Create thread — capture label from output
-CREATE_OUT=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<label>")
+CREATE_OUT=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<label>")
 THREAD_LABEL=$(echo "$CREATE_OUT" | grep -oP '(?<=Created Topic )\w+')
 echo "Thread: $THREAD_LABEL"
 ```
 
 ```bash
 # 2. Get agent — first token is agent_id
-AGENT_INFO=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent "$THREAD_LABEL" --role <role>)
+AGENT_INFO=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent "$THREAD_LABEL" --role <role>)
 AGENT_ID=$(echo "$AGENT_INFO" | awk '{print $1}')
 echo "Agent: $AGENT_ID"
 ```
@@ -124,10 +124,10 @@ Use this context to avoid re-exploring known ground. Trust it as the state at di
 Constraints: <Q2 answer>
 
 On completion:
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD_LABEL> "<1-line result>" --retain "<key decisions or findings>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD_LABEL> "<1-line result>" --retain "<key decisions or findings>"
 TASKEOF
 
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FILE"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FILE"
 ```
 
 Fill in the placeholders (`<label>`, `<role>`, `<THREAD_LABEL>`, task description, constraints, `<BEHAVIORAL_SPEC>`) from the answers collected in Steps 1–2 before running. Substitute `<BEHAVIORAL_SPEC>` with the role-appropriate block from the templates below.
@@ -145,13 +145,13 @@ NOT emit a final recap and wait at the input prompt. Examples of correct
 final actions:
 
 - Work done cleanly:
-  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
+  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
 
 - Hit a wall:
-  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
+  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
 
 - Have unresolved questions:
-  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
+  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
 
 Do NOT ask the user "want me to commit?" or "shall I proceed?" — decide
 autonomously from the task spec. The orchestrator already approved scope
@@ -194,13 +194,13 @@ NOT emit a final recap and wait at the input prompt. Examples of correct
 final actions:
 
 - Work done cleanly:
-  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
+  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
 
 - Hit a wall:
-  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
+  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
 
 - Have unresolved questions:
-  python3 /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
+  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
 
 Do NOT ask the user "want me to commit?" or "shall I proceed?" — decide
 autonomously from the task spec. The orchestrator already approved scope

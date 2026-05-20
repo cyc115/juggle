@@ -19,7 +19,7 @@ Ingest HN articles from BigQuery and/or PDFs from configured directories.
 
 ```bash
 source ~/.juggle/.env 2>/dev/null; true
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_research_ingest.py <ARGUMENTS>
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_research_ingest.py <ARGUMENTS>
 ```
 
 Pass `--pdf-only` if the user specified it; otherwise run with no extra args (ingests both HN and PDFs).

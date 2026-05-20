@@ -7,7 +7,7 @@ allowed-tools: Bash
 
 Run:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py list-agents
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py list-agents
 ```
 
 Print output verbatim. No reformat.

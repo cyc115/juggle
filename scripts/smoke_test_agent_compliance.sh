@@ -203,7 +203,7 @@ Intent: build
 Focus areas: implementation, cost optimisation
 
 On completion:
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "Research complete: ~/Documents/personal/research/'"${SMOKE_DATE}"'-smoke-prompt-caching.md" --retain "<one-line finding>"'
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "Research complete: ~/Documents/personal/research/'"${SMOKE_DATE}"'-smoke-prompt-caching.md" --retain "<one-line finding>"'
 
 CODER_TASK='[JUGGLE_THREAD:<REPLACE>]
 Create the file /tmp/juggle_smoke_coder_'"${SMOKE_TS}"'.txt with the single line: smoke-test-ok
@@ -220,7 +220,7 @@ QUALITY GATE (run before complete-agent):
 VERSION BUMP: n/a (no code change)
 
 On completion:
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "Created smoke file. Quality gate: file verified, content correct." --retain "smoke test"'
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "Created smoke file. Quality gate: file verified, content correct." --retain "smoke test"'
 
 PLANNER_TASK='[JUGGLE_THREAD:<REPLACE>]
 Plan adding a --dry-run flag to a hypothetical CLI command. Design exercise only — do not modify any real files except the plan output.
@@ -241,7 +241,7 @@ DONE when: a coder with no prior context could execute every subtask without ask
 Save the plan to: /Users/mikechen/Documents/personal/projects/juggle/plan/'"${SMOKE_DATE}"'-smoke-dry-run-plan.md
 
 On completion:
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "Plan saved: /Users/mikechen/Documents/personal/projects/juggle/plan/'"${SMOKE_DATE}"'-smoke-dry-run-plan.md" --retain "dry-run flag plan"'
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "Plan saved: /Users/mikechen/Documents/personal/projects/juggle/plan/'"${SMOKE_DATE}"'-smoke-dry-run-plan.md" --retain "dry-run flag plan"'
 
 # ---------------------------------------------------------------------------
 # Main

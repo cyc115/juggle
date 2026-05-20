@@ -21,7 +21,7 @@ and stop.
 ### 2. List open action items
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py list-actions
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py list-actions
 ```
 
 Output format per line: `⚡ [<id>] <tier> <message> (thread [<topic-id>])`
@@ -34,7 +34,7 @@ For each topic ID in the arguments:
 - For each matched action item, run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py ack-action <id>
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py ack-action <id>
 ```
 
 ### 4. Report

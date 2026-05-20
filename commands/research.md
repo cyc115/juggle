@@ -66,11 +66,11 @@ This context is injected into the task file (step 4) so the researcher agent sta
 ### 4. Create thread and get agent
 
 ```bash
-CREATE_OUT=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "research-<SLUG>")
+CREATE_OUT=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "research-<SLUG>")
 THREAD_LABEL=$(echo "$CREATE_OUT" | grep -oP '(?<=Created Topic )\w+')
 echo "Thread: $THREAD_LABEL"
 
-AGENT_INFO=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent "$THREAD_LABEL" --role researcher)
+AGENT_INFO=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent "$THREAD_LABEL" --role researcher)
 AGENT_ID=$(echo "$AGENT_INFO" | awk '{print $1}')
 echo "Agent: $AGENT_ID"
 ```
@@ -118,7 +118,7 @@ Use this context to avoid re-researching known ground and to align findings with
 
 ### Step 1 — Check web search config
 source ~/.juggle/.env 2>/dev/null
-python3 -c "import sys; sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src'); from juggle_settings import get_settings; print(get_settings()['research_kb'].get('web_search_enabled', True))"
+uv run python -c "import sys; sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src'); from juggle_settings import get_settings; print(get_settings()['research_kb'].get('web_search_enabled', True))"
 
 ### Step 2 — Multi-round parallel web search (skip if web_search_enabled=False or --no-web)
 
@@ -152,7 +152,7 @@ echo '<JSON_ARRAY_OF_{title,url,snippet}>' > "$WEB_FILE"
 
 After Round 1, if you found a surprising or high-value angle that the user may not have anticipated,
 surface it immediately via request-action before proceeding to Round 2:
-  python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <THREAD_LABEL> \
+  uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <THREAD_LABEL> \
     "Research direction check: found [interesting angle]. Worth exploring? Reply to steer." \
     --type manual_step
 
@@ -160,11 +160,11 @@ Then continue with Round 2 regardless (don't wait — the user can redirect in t
 
 ### Step 4 — KB + vault + memory + web synthesis
 source ~/.juggle/.env 2>/dev/null
-REPORT=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_WEB_FLAG> <VERBOSE_FLAG> <DEEP_FLAG> ${WEB_FILE:+--web-results-file "$WEB_FILE"})
+REPORT=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_WEB_FLAG> <VERBOSE_FLAG> <DEEP_FLAG> ${WEB_FILE:+--web-results-file "$WEB_FILE"})
 rm -f "$WEB_FILE"
 
 ### Step 5 — Save report to vault
-VAULT_PATH=$(python3 -c "
+VAULT_PATH=$(uv run python -c "
 import sys, os
 sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
 from juggle_settings import get_settings
@@ -186,11 +186,11 @@ echo "Saved: $REPORT_FILE"
 ### Step 6 — Print report and notify orchestrator
 echo "$REPORT"
 ONE_LINE=$(echo "$REPORT" | head -5 | tr '\n' ' ' | cut -c1-200)
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <THREAD_LABEL> "Research complete: <TOPIC> — report at $REPORT_FILE" --type manual_step
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD_LABEL> "Research complete: $REPORT_FILE" --retain "$ONE_LINE"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <THREAD_LABEL> "Research complete: <TOPIC> — report at $REPORT_FILE" --type manual_step
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD_LABEL> "Research complete: $REPORT_FILE" --retain "$ONE_LINE"
 TASKEOF
 
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FILE"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FILE"
 ```
 
 ---

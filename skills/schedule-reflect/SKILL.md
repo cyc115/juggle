@@ -26,10 +26,10 @@ schedule:
 cd ~/github/juggle
 
 # Live run (commits digest, files issues)
-python3 src/juggle_cli.py schedule-reflect
+uv run src/juggle_cli.py schedule-reflect
 
 # Dry run (writes digest to /tmp/schedule-reflect-sample-digest.md, no Git/GitHub)
-python3 src/juggle_cli.py schedule-reflect --dry-run
+uv run src/juggle_cli.py schedule-reflect --dry-run
 ```
 
 ## Digest sections
@@ -76,5 +76,5 @@ All sections attempted regardless of failures — partial digest beats no digest
 ## complete-agent format
 
 ```
-python3 src/juggle_cli.py complete-agent <THREAD_ID> "Reflect complete: reports/reflect-YYYY-MM-DD.md committed. N issues filed. Cost=$X.XX." --retain "Reflect ran YYYY-MM-DD. Key finding: <summary>."
+uv run src/juggle_cli.py complete-agent <THREAD_ID> "Reflect complete: reports/reflect-YYYY-MM-DD.md committed. N issues filed. Cost=$X.XX." --retain "Reflect ran YYYY-MM-DD. Key finding: <summary>."
 ```

@@ -26,10 +26,10 @@ schedule:
 cd ~/github/juggle
 
 # Live run (creates branch, commits fixes, opens PR)
-python3 src/juggle_cli.py schedule-autofix
+uv run src/juggle_cli.py schedule-autofix
 
 # Dry run (runs analysis, writes would-be PR to /tmp/schedule-autofix-sample-PR.md)
-python3 src/juggle_cli.py schedule-autofix --dry-run
+uv run src/juggle_cli.py schedule-autofix --dry-run
 ```
 
 ## Fix sections (each = one commit on branch)
@@ -73,5 +73,5 @@ python3 src/juggle_cli.py schedule-autofix --dry-run
 ## complete-agent format
 
 ```
-python3 src/juggle_cli.py complete-agent <THREAD_ID> "Autofix complete: PR cyc_schedule-autofix-YYYY-MM-DD created. N sections committed. Cost=$X.XX." --retain "Autofix ran YYYY-MM-DD. PR: <URL>."
+uv run src/juggle_cli.py complete-agent <THREAD_ID> "Autofix complete: PR cyc_schedule-autofix-YYYY-MM-DD created. N sections committed. Cost=$X.XX." --retain "Autofix ran YYYY-MM-DD. PR: <URL>."
 ```

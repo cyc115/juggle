@@ -9,7 +9,7 @@ allowed-tools: Bash
 
 Run:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-archive-candidates
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-archive-candidates
 ```
 
 On `No archive candidates.`:
@@ -40,7 +40,7 @@ Wait for response.
 
 For each candidate:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py archive-thread <tid>
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py archive-thread <tid>
 ```
 
 Report:
@@ -57,7 +57,7 @@ Archive [C] Battery usage check? (y/n)
 
 Wait before next. Archive confirmed threads:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py archive-thread <tid>
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py archive-thread <tid>
 ```
 
 Report archived and skipped.

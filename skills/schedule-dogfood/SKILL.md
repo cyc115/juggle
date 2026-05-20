@@ -25,10 +25,10 @@ schedule:
 cd ~/github/juggle
 
 # Live run
-python3 src/juggle_cli.py schedule-dogfood
+uv run src/juggle_cli.py schedule-dogfood
 
 # Dry run (no Git/GitHub side effects; report written to /tmp/)
-python3 src/juggle_cli.py schedule-dogfood --dry-run
+uv run src/juggle_cli.py schedule-dogfood --dry-run
 ```
 
 The script automatically chooses:
@@ -64,5 +64,5 @@ Autofix (Sunday 03:00, ~24h later) reads the dogfood report at startup and embed
 ## complete-agent format
 
 ```
-python3 src/juggle_cli.py complete-agent <THREAD_ID> "Dogfood complete: reports/dogfood-YYYY-MM-DD.md written. Cost=$X.XX. Action item filed." --retain "Dogfood ran YYYY-MM-DD. Top finding: <summary>."
+uv run src/juggle_cli.py complete-agent <THREAD_ID> "Dogfood complete: reports/dogfood-YYYY-MM-DD.md written. Cost=$X.XX. Action item filed." --retain "Dogfood ran YYYY-MM-DD. Top finding: <summary>."
 ```

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py UserPromptSubmit"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py UserPromptSubmit"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py Stop"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py Stop"
           },
           {
             "type": "command",
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py SessionStart"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py SessionStart"
           }
         ]
       }
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
           }
         ]
       },
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
           }
         ]
       },
@@ -58,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
           }
         ]
       },
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PreToolUse"
           }
         ]
       }
@@ -78,7 +78,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
           }
         ]
       },
@@ -87,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
           }
         ]
       },
@@ -96,7 +96,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
           }
         ]
       },
@@ -105,7 +105,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
           }
         ]
       },
@@ -114,7 +114,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
+            "command": "uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_hooks.py PostToolUse"
           }
         ]
       }

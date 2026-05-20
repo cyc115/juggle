@@ -12,18 +12,18 @@ allowed-tools: Bash, Agent, Edit, Write
 
 1. Save current topic state:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <current_id> "<summary>"
+   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <current_id> "<summary>"
    ```
    Save decisions/questions as they arise:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-meta <current_id> --add-decision "<text>"
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-meta <current_id> --add-question "<text>"
+   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-meta <current_id> --add-decision "<text>"
+   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-meta <current_id> --add-question "<text>"
    ```
 
 2. Load target topic:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py switch-thread <id>
-   python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall-bg <id> "<topic label or summary as query>"
+   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py switch-thread <id>
+   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall-bg <id> "<topic label or summary as query>"
    ```
    On "Thread not found":
    `"Topic [X] doesn't exist. Use /juggle:show-topics."`

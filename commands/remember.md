@@ -11,7 +11,7 @@ Store something in Juggle's long-term memory.
 
 Run:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <current_thread_id> "<ARGUMENTS>" --context preferences
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain <current_thread_id> "<ARGUMENTS>" --context preferences
 ```
 
 If no arguments provided, ask: "What should I remember?"
