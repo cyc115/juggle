@@ -17,6 +17,7 @@ from juggle_settings import get_settings
 from juggle_tmux import JuggleTmuxManager
 from juggle_watchdog import (
     _classify_agent_state,
+    _is_source_stale,
     check_orphaned_threads,
     classify_pane_state,
     execute_recovery,
@@ -27,6 +28,8 @@ from juggle_watchdog import (
     read_snapshot,
     write_snapshot,
 )
+
+_WATCHDOG_SRC = Path(__file__).parent.parent / "src" / "juggle_watchdog.py"
 
 _POLL_INTERVAL = int(os.environ.get("JUGGLE_WATCHDOG_INTERVAL", "30"))
 
@@ -169,7 +172,14 @@ def main() -> None:
         mgr = JuggleTmuxManager()
         _log.info("Watchdog started (PID=%d, interval=%ds)", os.getpid(), _POLL_INTERVAL)
 
+        _src_mtime = _WATCHDOG_SRC.stat().st_mtime if _WATCHDOG_SRC.exists() else 0.0
+
         while _running:
+            if _is_source_stale(_src_mtime, _WATCHDOG_SRC):
+                _log.warning(
+                    "Watchdog: juggle_watchdog.py updated — exiting for supervisor restart"
+                )
+                sys.exit(0)
             try:
                 _poll_once(db, mgr)
             except Exception:

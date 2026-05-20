@@ -1,4 +1,5 @@
 """Juggle agent watchdog — pure functions and inspect_agent for the watchdog daemon."""
+
 from __future__ import annotations
 
 import hashlib as _hashlib
@@ -27,13 +28,77 @@ _COLD_START_DEFAULTS: dict[str, float] = {
 }
 _EXECUTION_MARKERS = ("Thinking", "Running", "→", "↓", "Tool call", "✓", "⚡")
 _CLAUDE_UI_MARKERS = (
-    "Welcome", "Bypass permissions", "INSERT", "Cogitated",
-    "Working", "shortcuts", "claude.ai/code",
+    "Welcome",
+    "Bypass permissions",
+    "INSERT",
+    "Cogitated",
+    "Working",
+    "shortcuts",
+    "claude.ai/code",
 )
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 _BOX_TOP_RE = re.compile(r"^╭─+╮\s*$")
 # Sentinel: caller did not supply last_send_task_at, so backward-compat applies.
 _NO_DISPATCH_INFO: object = object()
+
+# ---------------------------------------------------------------------------
+# Stale-code detection (pure helper — used by daemon process)
+# ---------------------------------------------------------------------------
+
+
+def _is_source_stale(recorded_mtime: float, source_path: Path) -> bool:
+    """Return True if source_path has been modified since recorded_mtime."""
+    try:
+        return source_path.stat().st_mtime > recorded_mtime
+    except OSError:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Cold-start cascade dedup state
+# ---------------------------------------------------------------------------
+
+_CASCADE_WINDOW_SECS: float = 300.0  # 5-minute sliding window
+_CASCADE_THRESHOLD: int = 3  # ≥3 failures → cascade item
+
+_cold_start_failures: dict[str, list[float]] = {}  # thread_id → [timestamps]
+_cascade_filed: set[str] = set()  # threads with cascade item already filed
+
+
+def _record_cold_start_failure(
+    thread_id: str | None, *, _now: float | None = None
+) -> str:
+    """Record a cold-start failure for thread_id.
+
+    Returns one of:
+      'skip'             — no thread_id, do nothing
+      'normal'           — below threshold, file individual item
+      'cascade_fire'     — threshold just hit, file one cascade item
+      'cascade_suppress' — cascade already filed, suppress this item
+    """
+    if not thread_id:
+        return "skip"
+    ts = _now if _now is not None else _time.time()
+    cutoff = ts - _CASCADE_WINDOW_SECS
+    failures = [t for t in _cold_start_failures.get(thread_id, []) if t > cutoff]
+    failures.append(ts)
+    _cold_start_failures[thread_id] = failures
+    # Window cleared — reset cascade state so a fresh run can re-fire
+    if thread_id in _cascade_filed and len(failures) == 1:
+        _cascade_filed.discard(thread_id)
+    if thread_id in _cascade_filed:
+        return "cascade_suppress"
+    if len(failures) >= _CASCADE_THRESHOLD:
+        _cascade_filed.add(thread_id)
+        return "cascade_fire"
+    return "normal"
+
+
+def _clear_cold_start_failures(thread_id: str | None) -> None:
+    """Clear cascade state after successful recovery for thread_id."""
+    if thread_id:
+        _cold_start_failures.pop(thread_id, None)
+        _cascade_filed.discard(thread_id)
 
 
 def _strip_ansi(s: str) -> str:
@@ -57,6 +122,7 @@ def _has_box_top(content: str) -> bool:
 # Snapshot helpers
 # ---------------------------------------------------------------------------
 
+
 def read_snapshot(agent_id: str, snapshot_dir: Path) -> str | None:
     path = snapshot_dir / f"{agent_id}.txt"
     return path.read_text() if path.exists() else None
@@ -73,8 +139,9 @@ def write_recovery_snapshot(agent_id: str, content: str, recovery_dir: Path) -> 
     ts = _time.time_ns()  # nanosecond precision avoids collisions in rapid succession
     path = recovery_dir / f"{agent_id}-{ts}.txt"
     path.write_text(content)
-    agent_snaps = sorted(recovery_dir.glob(f"{agent_id}-*.txt"),
-                         key=lambda p: p.stat().st_mtime)
+    agent_snaps = sorted(
+        recovery_dir.glob(f"{agent_id}-*.txt"), key=lambda p: p.stat().st_mtime
+    )
     for old in agent_snaps[:-100]:
         try:
             old.unlink()
@@ -86,6 +153,7 @@ def write_recovery_snapshot(agent_id: str, content: str, recovery_dir: Path) -> 
 # ---------------------------------------------------------------------------
 # State classifier (pure, used by daemon poll loop)
 # ---------------------------------------------------------------------------
+
 
 def classify_pane_state(
     content: str | None,
@@ -151,6 +219,7 @@ def classify_pane_state(
 # Threshold
 # ---------------------------------------------------------------------------
 
+
 def get_threshold_seconds(db: Any, agent: dict) -> float:
     override = agent.get("watchdog_threshold_minutes")
     if override is not None:
@@ -171,9 +240,12 @@ def get_threshold_seconds(db: Any, agent: dict) -> float:
 # Session helper
 # ---------------------------------------------------------------------------
 
+
 def get_session_id(db: Any) -> str:
     with db._connect() as conn:
-        row = conn.execute("SELECT value FROM session WHERE key='session_id'").fetchone()
+        row = conn.execute(
+            "SELECT value FROM session WHERE key='session_id'"
+        ).fetchone()
     return row["value"] if row else ""
 
 
@@ -189,6 +261,7 @@ def _get_thread_label(db: Any, thread_id: str) -> str:
 # ---------------------------------------------------------------------------
 # Prompt auto-resolution
 # ---------------------------------------------------------------------------
+
 
 def handle_prompt(db: Any, mgr: Any, agent: dict, pane_id: str, key: str) -> None:
     if key:
@@ -210,6 +283,7 @@ def handle_prompt(db: Any, mgr: Any, agent: dict, pane_id: str, key: str) -> Non
 # Agent state classifier for watchdog policy (kill vs nudge decision)
 # ---------------------------------------------------------------------------
 
+
 def _classify_agent_state(pane_content: str, pane_exists: bool) -> str:
     """Classify agent state to decide watchdog action.
 
@@ -228,6 +302,7 @@ def _classify_agent_state(pane_content: str, pane_exists: bool) -> str:
 # ---------------------------------------------------------------------------
 # Nudge + notify — for alive-but-slow agents
 # ---------------------------------------------------------------------------
+
 
 def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
     """Send a harmless Enter nudge and file a request-action for user visibility.
@@ -266,18 +341,22 @@ def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
         f"stalled_for={stalled_for}s. Last pane tail:\n{tail_lines}"
     )
     if thread_id:
-        db.add_action_item(thread_id=thread_id, message=message,
-                           type_="failure", priority="normal")
+        db.add_action_item(
+            thread_id=thread_id, message=message, type_="failure", priority="normal"
+        )
 
     _log.info(
         "Watchdog: nudged + notified agent %s on thread %s (stalled_for=%ds); not killing",
-        agent_id[:8], label, stalled_for,
+        agent_id[:8],
+        label,
+        stalled_for,
     )
 
 
 # ---------------------------------------------------------------------------
 # Recovery
 # ---------------------------------------------------------------------------
+
 
 def execute_recovery(
     db: Any,
@@ -295,7 +374,9 @@ def execute_recovery(
     # record for all subsequent reads so a concurrent release can't mislead us.
     live = db.get_agent(agent_id)
     if live is None or live.get("status") != "busy":
-        _log.info("Watchdog: recovery aborted for %s — agent no longer busy", agent_id[:8])
+        _log.info(
+            "Watchdog: recovery aborted for %s — agent no longer busy", agent_id[:8]
+        )
         return
 
     # Policy: never kill a live agent. Only recover dead / never-fired panes.
@@ -337,32 +418,49 @@ def execute_recovery(
         if thread_id:
             db.add_action_item(
                 thread_id=thread_id,
-                message=(f"🛑 [{label}] agent stalled AGAIN after watchdog retry — "
-                         f"manual intervention required. Snapshot: {snap_path}"),
-                type_="failure", priority="high",
+                message=(
+                    f"🛑 [{label}] agent stalled AGAIN after watchdog retry — "
+                    f"manual intervention required. Snapshot: {snap_path}"
+                ),
+                type_="failure",
+                priority="high",
             )
-        db.add_watchdog_event(agent_id=agent_id, thread_id=thread_id,
-                              event_type="retry_blocked", snapshot_path=str(snap_path))
+        db.add_watchdog_event(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            event_type="retry_blocked",
+            snapshot_path=str(snap_path),
+        )
         return
 
     if not last_task:
         if thread_id:
             db.add_action_item(
                 thread_id=thread_id,
-                message=(f"🚨 [{label}] agent stalled — no task content to replay; "
-                         f"re-dispatch manually. Snapshot: {snap_path}"),
-                type_="failure", priority="high",
+                message=(
+                    f"🚨 [{label}] agent stalled — no task content to replay; "
+                    f"re-dispatch manually. Snapshot: {snap_path}"
+                ),
+                type_="failure",
+                priority="high",
             )
-        db.add_watchdog_event(agent_id=agent_id, thread_id=thread_id,
-                              event_type="stalled", snapshot_path=str(snap_path))
+        db.add_watchdog_event(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            event_type="stalled",
+            snapshot_path=str(snap_path),
+        )
         return
 
     if thread_id:
         db.add_action_item(
             thread_id=thread_id,
-            message=(f"🚨 [{label}] agent stalled/crashed — snapshot at {snap_path}, "
-                     f"auto-retrying"),
-            type_="failure", priority="high",
+            message=(
+                f"🚨 [{label}] agent stalled/crashed — snapshot at {snap_path}, "
+                f"auto-retrying"
+            ),
+            type_="failure",
+            priority="high",
         )
 
     new_agent = mgr.spawn_agent(db, role=role, model=model)
@@ -370,17 +468,28 @@ def execute_recovery(
     new_pane_id = new_agent["pane_id"]
 
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc).isoformat()
-    db.update_agent(new_agent_id, status="busy", assigned_thread=thread_id,
-                    last_active=now, busy_since=now, watchdog_retried=1, last_task=last_task)
+    db.update_agent(
+        new_agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_active=now,
+        busy_since=now,
+        watchdog_retried=1,
+        last_task=last_task,
+    )
     if thread_id:
         db.update_thread(thread_id, status="background")
 
     try:
         mgr.send_task(new_pane_id, last_task)
     except RuntimeError as exc:
-        _log.error("Watchdog: [RECOVERY-COLD-START-FAILED] send_task raised for agent %s: %s",
-                   new_agent_id[:8], exc)
+        _log.error(
+            "Watchdog: [RECOVERY-COLD-START-FAILED] send_task raised for agent %s: %s",
+            new_agent_id[:8],
+            exc,
+        )
         # Rollback: thread is not actually being recovered if the agent can't start.
         if thread_id:
             db.update_thread(thread_id, status="failed")
@@ -389,35 +498,77 @@ def execute_recovery(
             mgr.kill_pane(new_pane_id)
         except Exception:
             pass
-        if thread_id:
-            db.add_action_item(
-                thread_id=thread_id,
-                message=(f"🚨 [{label}] [RECOVERY-COLD-START-FAILED] recovery send_task "
-                         f"raised: {exc}. New agent {new_agent_id[:8]} spawned but task "
-                         f"not sent — re-dispatch manually."),
-                type_="failure", priority="high",
-            )
-        db.add_watchdog_event(agent_id=new_agent_id, thread_id=thread_id,
-                              event_type="cold_start_failed", snapshot_path=str(snap_path))
+        cascade_status = _record_cold_start_failure(thread_id)
+        if thread_id and cascade_status != "cascade_suppress":
+            if cascade_status == "cascade_fire":
+                db.add_action_item(
+                    thread_id=thread_id,
+                    message=(
+                        f"🛑 [{label}] WATCHDOG-CASCADE-DETECTED — "
+                        f"≥{_CASCADE_THRESHOLD} cold-start failures within "
+                        f"{int(_CASCADE_WINDOW_SECS // 60)} min. "
+                        f"Check spawn config (tmux truncation?). "
+                        f"Latest: {exc}"
+                    ),
+                    type_="failure",
+                    priority="high",
+                )
+            else:
+                db.add_action_item(
+                    thread_id=thread_id,
+                    message=(
+                        f"🚨 [{label}] [RECOVERY-COLD-START-FAILED] recovery send_task "
+                        f"raised: {exc}. New agent {new_agent_id[:8]} spawned but task "
+                        f"not sent — re-dispatch manually."
+                    ),
+                    type_="failure",
+                    priority="high",
+                )
+        db.add_watchdog_event(
+            agent_id=new_agent_id,
+            thread_id=thread_id,
+            event_type="cold_start_failed",
+            snapshot_path=str(snap_path),
+        )
         return
 
     if thread_id:
         db.add_action_item(
             thread_id=thread_id,
-            message=(f"⚠️ [{label}] agent auto-re-dispatched after stall — "
-                     f"verify result when complete"),
-            type_="manual_step", priority="normal",
+            message=(
+                f"⚠️ [{label}] agent auto-re-dispatched after stall — "
+                f"verify result when complete"
+            ),
+            type_="manual_step",
+            priority="normal",
         )
 
-    db.add_watchdog_event(agent_id=agent_id, thread_id=thread_id,
-                          event_type="recovered", snapshot_path=str(snap_path))
-    _log.info("Watchdog: re-dispatched %s → %s for thread %s",
-              agent_id[:8], new_agent_id[:8], (thread_id or "")[:8])
+    db.add_watchdog_event(
+        agent_id=agent_id,
+        thread_id=thread_id,
+        event_type="recovered",
+        snapshot_path=str(snap_path),
+    )
+    # Clear cascade state and dismiss any open cold-start failure items for this thread
+    _clear_cold_start_failures(thread_id)
+    if thread_id:
+        for item in db.get_open_action_items():
+            if item.get("thread_id") == thread_id and "COLD-START-FAILED" in item.get(
+                "message", ""
+            ):
+                db.dismiss_action_item(item["id"])
+    _log.info(
+        "Watchdog: re-dispatched %s → %s for thread %s",
+        agent_id[:8],
+        new_agent_id[:8],
+        (thread_id or "")[:8],
+    )
 
 
 # ---------------------------------------------------------------------------
 # Orphaned thread detection — Loop 2
 # ---------------------------------------------------------------------------
+
 
 def check_orphaned_threads(
     db: Any,
@@ -490,7 +641,8 @@ def check_orphaned_threads(
                 f"  Recovery attempted: none (auto-recovery OOS v1)\n"
                 f"  Next step: re-dispatch manually"
             ),
-            type_="failure", priority="high",
+            type_="failure",
+            priority="high",
         )
         # DA-7: use sentinel agent_id, not empty string
         db.add_watchdog_event(
@@ -500,8 +652,12 @@ def check_orphaned_threads(
             snapshot_path=None,
         )
         orphaned.append(thread_id)
-        _log.warning("Watchdog: orphaned thread %s (%s, %d min no agent)",
-                     thread_id[:8], label, mins)
+        _log.warning(
+            "Watchdog: orphaned thread %s (%s, %d min no agent)",
+            thread_id[:8],
+            label,
+            mins,
+        )
 
     return orphaned
 
@@ -510,8 +666,10 @@ def check_orphaned_threads(
 # inspect_agent — high-level entry point used by active test suite
 # ---------------------------------------------------------------------------
 
+
 def _config_dir() -> Path:
     from juggle_settings import get_settings
+
     return Path(get_settings()["paths"]["config_dir"])
 
 
@@ -535,8 +693,12 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
 
     agent = db.get_agent(agent_id)
     if agent is None:
-        return {"state": "crashed", "actions": ["agent_missing"],
-                "action_item_id": None, "notification_id": None}
+        return {
+            "state": "crashed",
+            "actions": ["agent_missing"],
+            "action_item_id": None,
+            "notification_id": None,
+        }
 
     pane_id = agent["pane_id"]
     thread_id = agent.get("assigned_thread")
@@ -552,7 +714,8 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
     # Capture pane content
     cap = subprocess.run(
         ["tmux", "capture-pane", "-pt", pane_id],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if cap.returncode != 0:
         raw_content = None
@@ -568,8 +731,16 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
 
     if raw_content is None:
         # Pane gone entirely
-        return _handle_crashed(db, agent, thread_id, label, session_id, result,
-                                pane_content="", snapshot_dir=snapshot_dir)
+        return _handle_crashed(
+            db,
+            agent,
+            thread_id,
+            label,
+            session_id,
+            result,
+            pane_content="",
+            snapshot_dir=snapshot_dir,
+        )
 
     content = _strip_ansi(raw_content)
     _lines = content.splitlines()
@@ -584,18 +755,25 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
             matched_key = key
             break
     # Flexible: detect multiline "1. Yes ... 2. Yes ... 3. No" permission dialog
-    if matched_key is None and re.search(r"1\.\s+Yes", tail) and re.search(r"2\.\s+Yes", tail):
+    if (
+        matched_key is None
+        and re.search(r"1\.\s+Yes", tail)
+        and re.search(r"2\.\s+Yes", tail)
+    ):
         matched_key = "2"
 
     if matched_key is not None:
         result["state"] = "recoverable_prompt"
         result["actions"].append("sent_key")
         if matched_key:
-            subprocess.run(["tmux", "send-keys", "-t", pane_id, matched_key, "Enter"],
-                           capture_output=True)
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_id, matched_key, "Enter"],
+                capture_output=True,
+            )
         else:
-            subprocess.run(["tmux", "send-keys", "-t", pane_id, "Enter"],
-                           capture_output=True)
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane_id, "Enter"], capture_output=True
+            )
         notif_id = db.add_notification_v2(
             thread_id=thread_id,
             message=f"[Watchdog] [{label}] auto-resolved permission prompt (key={matched_key!r})",
@@ -608,19 +786,28 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
     last_nonempty = next(
         (line for line in reversed(content.splitlines()) if line.strip()), ""
     )
-    is_shell_prompt = (
-        any(last_nonempty.endswith(suffix) for suffix in _SHELL_SUFFIXES)
-        or any(indicator in last_nonempty for indicator in _SHELL_INDICATORS)
-    )
+    is_shell_prompt = any(
+        last_nonempty.endswith(suffix) for suffix in _SHELL_SUFFIXES
+    ) or any(indicator in last_nonempty for indicator in _SHELL_INDICATORS)
     if is_shell_prompt:
-        return _handle_crashed(db, agent, thread_id, label, session_id, result,
-                                pane_content=content, snapshot_dir=snapshot_dir)
+        return _handle_crashed(
+            db,
+            agent,
+            thread_id,
+            label,
+            session_id,
+            result,
+            pane_content=content,
+            snapshot_dir=snapshot_dir,
+        )
 
     # 3. ╭─╮ box → stuck_at_prompt (send Enter to unblock)
     if _has_box_top(content):
         result["state"] = "stuck_at_prompt"
         result["actions"].append("sent_enter")
-        subprocess.run(["tmux", "send-keys", "-t", pane_id, "Enter"], capture_output=True)
+        subprocess.run(
+            ["tmux", "send-keys", "-t", pane_id, "Enter"], capture_output=True
+        )
         notif_id = db.add_notification_v2(
             thread_id=thread_id,
             message=f"[Watchdog] [{label}] stuck-at-prompt — sent Enter to unblock",
@@ -654,9 +841,12 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
         snap_path.write_text(content)
         item_id = db.add_action_item(
             thread_id=thread_id,
-            message=(f"🚨 [{label}] agent stalled (silent for {int(stall_for)}s) — "
-                     f"snapshot at {snap_path}"),
-            type_="failure", priority="high",
+            message=(
+                f"🚨 [{label}] agent stalled (silent for {int(stall_for)}s) — "
+                f"snapshot at {snap_path}"
+            ),
+            type_="failure",
+            priority="high",
         )
         result["action_item_id"] = item_id
         return result
@@ -667,8 +857,13 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
 
 
 def _handle_crashed(
-    db: Any, agent: dict, thread_id: str | None, label: str,
-    session_id: str, result: dict, pane_content: str,
+    db: Any,
+    agent: dict,
+    thread_id: str | None,
+    label: str,
+    session_id: str,
+    result: dict,
+    pane_content: str,
     snapshot_dir: Path,
 ) -> dict:
     result["state"] = "crashed"
@@ -682,7 +877,8 @@ def _handle_crashed(
     item_id = db.add_action_item(
         thread_id=thread_id,
         message=f"🚨 [{label}] agent crashed — pane exited or shell prompt detected",
-        type_="failure", priority="high",
+        type_="failure",
+        priority="high",
     )
     result["action_item_id"] = item_id
     return result

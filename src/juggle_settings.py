@@ -17,7 +17,6 @@ Usage:
 
 import json
 import os
-from functools import lru_cache
 from pathlib import Path
 
 DEFAULTS: dict = {
@@ -32,14 +31,12 @@ DEFAULTS: dict = {
     "summary_max_chars": 250,
     "thread_idle_threshold_secs": 1800,
     "thread_archive_threshold_secs": 172800,
-
     # Cockpit Display
     "cockpit": {
         "refresh_interval_secs": 1.0,
         "column_ratios": [0.30, 0.40, 0.30],
         "notification_ratio": 30,
     },
-
     # Paths
     "paths": {
         "data_dir": "~/.claude/juggle",
@@ -48,7 +45,6 @@ DEFAULTS: dict = {
         "vault": "/Documents/personal",
         "vault_name": "",
     },
-
     # Tmux
     "tmux": {
         "session_name": "juggle",
@@ -56,7 +52,6 @@ DEFAULTS: dict = {
         "session_height": 50,
         "agent_idle_detection_secs": 30,
     },
-
     # Hindsight
     "hindsight": {
         "enabled": False,
@@ -66,7 +61,6 @@ DEFAULTS: dict = {
         "timeout_secs": 10,
         "reflect_timeout_secs": 60,
     },
-
     # Agent Launch
     "agent": {
         "claude_launch_command": "claude --dangerously-skip-permissions",
@@ -100,38 +94,36 @@ DEFAULTS: dict = {
         # Per-role role identity sentences injected into agent context anchor.
         "role_context": {
             "researcher": "Produce comprehensive, well-structured, cited reports. Never fabricate URLs.",
-            "coder":      "Implement exactly what is specified — no more. Minimal diff.",
-            "planner":    "Produce plans a coder can execute without clarification.",
+            "coder": "Implement exactly what is specified — no more. Minimal diff.",
+            "planner": "Produce plans a coder can execute without clarification.",
         },
         # Skill invoked by coder agents before complete-agent (configurable per deployment).
         "quality_gate_skill": "mike:pre-pr",
         # Per-role additional denylists (merged with universal at spawn time).
         "disallowed_tools_by_role": {
             "researcher": [
-                "Edit",          # researchers don't patch code
+                "Edit",  # researchers don't patch code
                 "NotebookEdit",  # no Jupyter in Juggle
             ],
             "coder": [
-                "NotebookEdit",                              # no Jupyter in Juggle
-                "mcp__personal-mcp__extract_text_from_file", # OCR not needed for coding
+                "NotebookEdit",  # no Jupyter in Juggle
+                "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for coding
             ],
             "planner": [
-                "Edit",                                      # planners write plans, not code
-                "NotebookEdit",                              # no Jupyter in Juggle
-                "Monitor",                                   # planners don't run bg processes
-                "TaskOutput",                                # no bg tasks to monitor
-                "TaskStop",                                  # no bg tasks to stop
-                "mcp__personal-mcp__extract_text_from_file", # OCR not needed for planning
+                "Edit",  # planners write plans, not code
+                "NotebookEdit",  # no Jupyter in Juggle
+                "Monitor",  # planners don't run bg processes
+                "TaskOutput",  # no bg tasks to monitor
+                "TaskStop",  # no bg tasks to stop
+                "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for planning
             ],
         },
     },
-
     # Talkback TTS
     "talkback": {
         "enabled": False,
         "port": 18787,
     },
-
     # Research Knowledge Base
     "research_kb": {
         "db_path": "~/.juggle/research_kb.db",
@@ -141,7 +133,6 @@ DEFAULTS: dict = {
         "web_search_enabled": True,
         "pdf_dirs": [],
     },
-
     # Title Generation (API key lives in ~/.juggle/.env as OPENROUTER_KEY, not here)
     "title_gen": {
         "openrouter_enabled": True,
@@ -163,9 +154,8 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-@lru_cache(maxsize=1)
 def get_settings() -> dict:
-    """Return merged settings dict. Cached for process lifetime.
+    """Return merged settings dict. Re-reads config on every call (no cache).
 
     Load order: DEFAULTS → config.json → env var overrides.
     Safe to call at import time — falls back to DEFAULTS if config is missing or corrupt.
@@ -191,7 +181,9 @@ def get_settings() -> dict:
     if "JUGGLE_MAX_BACKGROUND_AGENTS" in os.environ:
         settings["max_agents"] = int(os.environ["JUGGLE_MAX_BACKGROUND_AGENTS"])
     if "JUGGLE_IDLE_THRESHOLD_SECS" in os.environ:
-        settings["tmux"]["agent_idle_detection_secs"] = int(os.environ["JUGGLE_IDLE_THRESHOLD_SECS"])
+        settings["tmux"]["agent_idle_detection_secs"] = int(
+            os.environ["JUGGLE_IDLE_THRESHOLD_SECS"]
+        )
     # Expand ~ in all path values
     for key in ("data_dir", "config_dir", "digest_log_dir"):
         settings["paths"][key] = str(Path(settings["paths"][key]).expanduser())
