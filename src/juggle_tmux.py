@@ -94,7 +94,18 @@ class JuggleTmuxManager:
 
         role_env = f" JUGGLE_AGENT_ROLE={role}" if role else ""
         cmd = f"env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1{role_env} {cmd}"
-        self._run_tmux("send-keys", "-t", pane_id, cmd, "Enter")
+
+        tmp = f"/tmp/juggle_launch_{uuid.uuid4().hex[:8]}.txt"
+        buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
+        try:
+            Path(tmp).write_text(cmd)
+            self._run_tmux("load-buffer", "-b", buf_name, tmp)
+            self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
+            self._run_tmux("delete-buffer", "-b", buf_name)
+            self._run_tmux("send-keys", "-t", pane_id, "Enter")
+        finally:
+            if Path(tmp).exists():
+                os.unlink(tmp)
 
     def verify_pane(self, pane_id: str) -> bool:
         """Return True if pane_id exists in the juggle session."""
@@ -183,7 +194,7 @@ class JuggleTmuxManager:
 
         del is_new
         if not pane_id or not pane_id.strip():
-            raise ValueError(f"send_task called with empty pane_id — aborting to avoid pasting to wrong tmux session")
+            raise ValueError("send_task called with empty pane_id — aborting to avoid pasting to wrong tmux session")
         if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
             return _hashlib.sha256(prompt.encode()).hexdigest()[:16]
 

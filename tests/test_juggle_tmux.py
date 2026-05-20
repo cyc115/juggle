@@ -61,23 +61,66 @@ def test_spawn_pane_returns_pane_id(mgr):
 
 def test_start_claude_sets_juggle_is_agent(mgr):
     """Agent panes must be launched with JUGGLE_IS_AGENT=1 so PreToolUse hooks can skip blocking."""
-    sent_commands = []
-    def capture_send_keys(*args, **_):
-        # args = (["tmux", "send-keys", "-t", pane_id, cmd, "Enter"],)
-        if args and "send-keys" in args[0]:
-            sent_commands.append(args[0][-2])  # cmd is second-to-last arg
+    from pathlib import Path as _Path
+    launch_cmd_content = []
+
+    def capture_tmux(*args):
         m = MagicMock()
         m.returncode = 0
         m.stdout = ""
+        if args[0] == "load-buffer":
+            # args: ("load-buffer", "-b", buf_name, tmp_path)
+            try:
+                launch_cmd_content.append(_Path(args[-1]).read_text())
+            except Exception:
+                pass
         return m
 
-    with patch("subprocess.run", side_effect=capture_send_keys):
+    with patch.object(mgr, "_run_tmux", side_effect=capture_tmux):
         mgr.start_claude_in_pane("%5")
 
-    assert sent_commands, "send-keys was never called"
-    cmd = sent_commands[0]
+    assert launch_cmd_content, "load-buffer was never called — command not written to temp file"
+    cmd = launch_cmd_content[0]
     assert cmd.startswith("env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1 "), (
         f"Expected cmd to start with env prefix, got: {cmd!r}"
+    )
+
+
+def test_start_claude_large_command_no_truncation(mgr):
+    """A >4KB launch command must arrive intact in the temp file, not via send-keys."""
+    from pathlib import Path as _Path
+
+    big_denied = [f"mcp__tool_{i}__action" for i in range(200)]
+
+    written_content = []
+
+    def capture_tmux(*args):
+        m = MagicMock()
+        m.returncode = 0
+        m.stdout = ""
+        if args[0] == "load-buffer":
+            try:
+                written_content.append(_Path(args[-1]).read_text())
+            except Exception:
+                pass
+        return m
+
+    fake_settings = {
+        "agent": {
+            "claude_launch_command": "claude --dangerously-skip-permissions",
+            "disallowed_tools_universal": big_denied,
+            "disallowed_tools_by_role": {},
+        }
+    }
+    with patch("juggle_tmux._get_settings", return_value=fake_settings), \
+         patch.object(mgr, "_run_tmux", side_effect=capture_tmux):
+        mgr.start_claude_in_pane("%5")
+
+    assert written_content, "load-buffer was never called"
+    cmd = written_content[0]
+    assert len(cmd) > 4096, f"Expected cmd > 4KB, got {len(cmd)} bytes"
+    assert all(f"mcp__tool_{i}__action" in cmd for i in range(200)), (
+        "Tool names missing from written command — truncation detected"
     )
 
 
