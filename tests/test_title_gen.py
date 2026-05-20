@@ -1,4 +1,5 @@
 """Tests for title generation fallback chain and settings defaults."""
+
 import json
 import sys
 from pathlib import Path
@@ -13,7 +14,9 @@ def test_title_gen_defaults_present():
     assert tg is not None, "title_gen section missing from DEFAULTS"
     assert tg["openrouter_enabled"] is True
     assert tg["openrouter_model"] == "google/gemini-2.5-flash-lite"
-    assert "openrouter_api_key" not in tg, "API key must not appear in config defaults — use OPENROUTER_KEY env var"
+    assert "openrouter_api_key" not in tg, (
+        "API key must not appear in config defaults — use OPENROUTER_KEY env var"
+    )
     assert tg["haiku_model"] == "claude-haiku-4-5-20251001"
     assert tg["timeout_secs"] == 10
 
@@ -21,6 +24,7 @@ def test_title_gen_defaults_present():
 # ---------------------------------------------------------------------------
 # Test helpers
 # ---------------------------------------------------------------------------
+
 
 def _cfg(**overrides) -> dict:
     """Return a full get_settings()-shaped dict. No openrouter_api_key — key lives in env only."""
@@ -44,9 +48,7 @@ def _db() -> MagicMock:
 
 def _urlopen_ok(title: str) -> MagicMock:
     """Return a mock for urllib.request.urlopen that yields a 200 response."""
-    resp_data = json.dumps(
-        {"choices": [{"message": {"content": title}}]}
-    ).encode()
+    resp_data = json.dumps({"choices": [{"message": {"content": title}}]}).encode()
     mock_resp = MagicMock()
     mock_resp.read.return_value = resp_data
     mock_resp.__enter__ = lambda s: s
@@ -58,25 +60,34 @@ def _urlopen_ok(title: str) -> MagicMock:
 # Tier 1 — OpenRouter (key from OPENROUTER_KEY env var)
 # ---------------------------------------------------------------------------
 
+
 def test_tier1_success_uses_openrouter_title(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.setenv("OPENROUTER_KEY", "sk-test-key")
     mock_urlopen = _urlopen_ok("Build Auth System With OAuth")
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("urllib.request.urlopen", mock_urlopen):
-            title = _generate_title_for_thread(db, "uuid-1", "Implement OAuth login flow")
+            title = _generate_title_for_thread(
+                db, "uuid-1", "Implement OAuth login flow"
+            )
 
     assert title == "Build Auth System With OAuth"
-    db.update_thread.assert_called_once_with("uuid-1", title="Build Auth System With OAuth")
+    db.update_thread.assert_called_once_with(
+        "uuid-1", title="Build Auth System With OAuth"
+    )
 
 
 def test_tier1_skipped_when_env_key_missing(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.delenv("OPENROUTER_KEY", raising=False)
-    mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout="Haiku Fallback Title\n"))
+    mock_run = MagicMock(
+        return_value=MagicMock(returncode=0, stdout="Haiku Fallback Title\n")
+    )
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("urllib.request.urlopen") as mock_urlopen:
@@ -88,11 +99,14 @@ def test_tier1_skipped_when_env_key_missing(monkeypatch):
 
 def test_tier1_skipped_when_openrouter_disabled(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.setenv("OPENROUTER_KEY", "sk-test-key")
     mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout="Haiku Title\n"))
 
-    with patch("juggle_settings.get_settings", return_value=_cfg(openrouter_enabled=False)):
+    with patch(
+        "juggle_settings.get_settings", return_value=_cfg(openrouter_enabled=False)
+    ):
         with patch("urllib.request.urlopen") as mock_urlopen:
             with patch("subprocess.run", mock_run):
                 _generate_title_for_thread(db, "uuid-1", "Something")
@@ -102,9 +116,12 @@ def test_tier1_skipped_when_openrouter_disabled(monkeypatch):
 
 def test_tier1_exception_falls_to_tier2(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.setenv("OPENROUTER_KEY", "sk-test-key")
-    mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout="Haiku Result Title\n"))
+    mock_run = MagicMock(
+        return_value=MagicMock(returncode=0, stdout="Haiku Result Title\n")
+    )
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("urllib.request.urlopen", side_effect=Exception("network error")):
@@ -119,11 +136,16 @@ def test_tier1_exception_falls_to_tier2(monkeypatch):
 
 def test_tier1_overlong_response_falls_to_tier2(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.setenv("OPENROUTER_KEY", "sk-test-key")
-    long_title = " ".join(f"word{i}" for i in range(16))  # 16 words — exceeds 15-word limit
+    long_title = " ".join(
+        f"word{i}" for i in range(16)
+    )  # 16 words — exceeds 15-word limit
     mock_urlopen = _urlopen_ok(long_title)
-    mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout="Good Short Title\n"))
+    mock_run = MagicMock(
+        return_value=MagicMock(returncode=0, stdout="Good Short Title\n")
+    )
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("urllib.request.urlopen", mock_urlopen):
@@ -137,11 +159,15 @@ def test_tier1_overlong_response_falls_to_tier2(monkeypatch):
 # Tier 2 — claude -p --model haiku
 # ---------------------------------------------------------------------------
 
+
 def test_tier2_success_stores_and_returns_title(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.delenv("OPENROUTER_KEY", raising=False)
-    mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout="  Generated Haiku Title  \n"))
+    mock_run = MagicMock(
+        return_value=MagicMock(returncode=0, stdout="  Generated Haiku Title  \n")
+    )
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("subprocess.run", mock_run):
@@ -153,63 +179,79 @@ def test_tier2_success_stores_and_returns_title(monkeypatch):
 
 def test_tier2_nonzero_returncode_falls_to_tier3(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.delenv("OPENROUTER_KEY", raising=False)
     mock_run = MagicMock(return_value=MagicMock(returncode=1, stdout="some output"))
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("subprocess.run", mock_run):
-            title = _generate_title_for_thread(db, "uuid-1", "one two three four five six")
+            title = _generate_title_for_thread(
+                db, "uuid-1", "one two three four five six"
+            )
 
-    assert title == "One Two Three Four Five Six"
+    assert title == "one two three four five"
 
 
 def test_tier2_empty_stdout_falls_to_tier3(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.delenv("OPENROUTER_KEY", raising=False)
     mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=""))
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("subprocess.run", mock_run):
-            title = _generate_title_for_thread(db, "uuid-1", "one two three four five six")
+            title = _generate_title_for_thread(
+                db, "uuid-1", "one two three four five six"
+            )
 
-    assert title == "One Two Three Four Five Six"
+    assert title == "one two three four five"
 
 
 def test_tier2_file_not_found_falls_to_tier3(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.delenv("OPENROUTER_KEY", raising=False)
     mock_run = MagicMock(side_effect=FileNotFoundError("claude not found"))
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("subprocess.run", mock_run):
-            title = _generate_title_for_thread(db, "uuid-1", "alpha beta gamma delta epsilon eta")
+            title = _generate_title_for_thread(
+                db, "uuid-1", "alpha beta gamma delta epsilon eta"
+            )
 
-    assert title == "Alpha Beta Gamma Delta Epsilon Eta"
+    assert title == "alpha beta gamma delta epsilon"
 
 
 def test_tier2_overlong_output_falls_to_tier3(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.delenv("OPENROUTER_KEY", raising=False)
-    long_output = " ".join(f"w{i}" for i in range(16))  # 16 words — exceeds _valid() limit
+    long_output = " ".join(
+        f"w{i}" for i in range(16)
+    )  # 16 words — exceeds _valid() limit
     mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=long_output))
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("subprocess.run", mock_run):
-            title = _generate_title_for_thread(db, "uuid-1", "one two three four five six")
+            title = _generate_title_for_thread(
+                db, "uuid-1", "one two three four five six"
+            )
 
-    assert title == "One Two Three Four Five Six"
+    assert title == "one two three four five"
 
 
 # ---------------------------------------------------------------------------
 # Tier 3 — first 5 words
 # ---------------------------------------------------------------------------
 
+
 def test_tier3_empty_topic_stores_empty_string(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.delenv("OPENROUTER_KEY", raising=False)
 
@@ -223,14 +265,19 @@ def test_tier3_empty_topic_stores_empty_string(monkeypatch):
 
 def test_tier3_db_updated_with_fallback(monkeypatch):
     from juggle_cli_common import _generate_title_for_thread
+
     db = _db()
     monkeypatch.delenv("OPENROUTER_KEY", raising=False)
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
-        with patch("subprocess.run", MagicMock(return_value=MagicMock(returncode=2, stdout=""))):
+        with patch(
+            "subprocess.run", MagicMock(return_value=MagicMock(returncode=2, stdout=""))
+        ):
             title = _generate_title_for_thread(
                 db, "uuid-1", "apple banana cherry date elderberry fig"
             )
 
-    assert title == "Apple Banana Cherry Date Elderberry Fig"
-    db.update_thread.assert_called_once_with("uuid-1", title="Apple Banana Cherry Date Elderberry Fig")
+    assert title == "apple banana cherry date elderberry"
+    db.update_thread.assert_called_once_with(
+        "uuid-1", title="apple banana cherry date elderberry"
+    )

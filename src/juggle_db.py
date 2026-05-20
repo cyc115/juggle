@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS watchdog_events (
 def _next_excel_label(used: set) -> str:
     """Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ."""
     import string
+
     letters = string.ascii_uppercase
     # Single letter
     for c in letters:
@@ -231,7 +232,9 @@ class JuggleDB:
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
         """Apply incremental schema migrations."""
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
 
         # Migration 1: thread_id → id + label
         if "thread_id" in cols and "id" not in cols:
@@ -271,14 +274,18 @@ class JuggleDB:
         # Migration 2 (new DBs): add summarized_msg_count if missing
         if "summarized_msg_count" not in cols:
             try:
-                conn.execute("ALTER TABLE threads ADD COLUMN summarized_msg_count INTEGER DEFAULT 0")
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN summarized_msg_count INTEGER DEFAULT 0"
+                )
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 2 skipped: %s", e)
 
         # Migration 3 (new DBs): add show_in_list if missing
         if "show_in_list" not in cols:
             try:
-                conn.execute("ALTER TABLE threads ADD COLUMN show_in_list INTEGER NOT NULL DEFAULT 1")
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN show_in_list INTEGER NOT NULL DEFAULT 1"
+                )
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 3 skipped: %s", e)
 
@@ -297,14 +304,19 @@ class JuggleDB:
                 _log.warning("Migration 5 skipped: %s", e)
 
         # Migration 6: add agents table for tmux persistent agent pool
-        tables = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
         if "agents" not in tables:
             conn.execute(CREATE_AGENTS)
 
         # Migration 7: add domain to threads
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
         if "domain" not in cols:
             try:
                 conn.execute("ALTER TABLE threads ADD COLUMN domain TEXT DEFAULT NULL")
@@ -312,7 +324,9 @@ class JuggleDB:
                 _log.warning("Migration 7 skipped: %s", e)
 
         # Migration 8: add domain to agents
-        agent_cols = {row["name"] for row in conn.execute("PRAGMA table_info(agents)").fetchall()}
+        agent_cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(agents)").fetchall()
+        }
         if "domain" not in agent_cols:
             try:
                 conn.execute("ALTER TABLE agents ADD COLUMN domain TEXT DEFAULT NULL")
@@ -323,40 +337,62 @@ class JuggleDB:
         # tables, which are now dropped in Migrations 17–19. Body intentionally empty.
 
         # Migration 10: add memory columns for Hindsight integration
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
         if "memory_loaded" not in cols:
             try:
-                conn.execute("ALTER TABLE threads ADD COLUMN memory_context TEXT DEFAULT ''")
-                conn.execute("ALTER TABLE threads ADD COLUMN memory_loaded INTEGER DEFAULT 0")
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN memory_context TEXT DEFAULT ''"
+                )
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN memory_loaded INTEGER DEFAULT 0"
+                )
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 10 skipped: %s", e)
 
         # Migration 11: add delivery_attempts to notifications for escalation
-        notif_cols = {row["name"] for row in conn.execute("PRAGMA table_info(notifications)").fetchall()}
+        notif_cols = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(notifications)").fetchall()
+        }
         if "delivery_attempts" not in notif_cols:
             try:
-                conn.execute("ALTER TABLE notifications ADD COLUMN delivery_attempts INTEGER DEFAULT 0")
+                conn.execute(
+                    "ALTER TABLE notifications ADD COLUMN delivery_attempts INTEGER DEFAULT 0"
+                )
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 11 skipped: %s", e)
 
         # Migration 12: add reviewed flag for cockpit REVIEW nudge
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
         if "reviewed" not in cols:
             try:
-                conn.execute("ALTER TABLE threads ADD COLUMN reviewed INTEGER DEFAULT 0")
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN reviewed INTEGER DEFAULT 0"
+                )
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 12 skipped: %s", e)
 
         # Migration 13: add severity column for cockpit notification routing
-        notif_cols = {row["name"] for row in conn.execute("PRAGMA table_info(notifications)").fetchall()}
+        notif_cols = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(notifications)").fetchall()
+        }
         if "severity" not in notif_cols:
             try:
-                conn.execute("ALTER TABLE notifications ADD COLUMN severity TEXT DEFAULT 'action'")
+                conn.execute(
+                    "ALTER TABLE notifications ADD COLUMN severity TEXT DEFAULT 'action'"
+                )
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 13 skipped: %s", e)
 
         # Migration 14: add user_label + last_active_at to threads
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
         if "user_label" not in cols:
             try:
                 conn.execute("ALTER TABLE threads ADD COLUMN user_label TEXT")
@@ -382,13 +418,18 @@ class JuggleDB:
             _log.warning("Migration 15 (settings seed) skipped: %s", e)
 
         # Migration 16: backfill user_label for legacy threads, then drop label column
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
         if "label" in cols:
             try:
                 # Step 1: backfill user_label for any threads still missing one
-                used = {row["user_label"] for row in conn.execute(
-                    "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
-                ).fetchall()}
+                used = {
+                    row["user_label"]
+                    for row in conn.execute(
+                        "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
+                    ).fetchall()
+                }
                 missing = conn.execute(
                     "SELECT id FROM threads WHERE user_label IS NULL"
                 ).fetchall()
@@ -401,16 +442,22 @@ class JuggleDB:
                     used.add(ul)
                 # Step 2: drop the now-redundant label column
                 conn.execute("ALTER TABLE threads DROP COLUMN label")
-                _log.info("Migration 16: backfilled %d threads, dropped label column", len(missing))
+                _log.info(
+                    "Migration 16: backfilled %d threads, dropped label column",
+                    len(missing),
+                )
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 16 skipped: %s", e)
 
         # Migration 17: drop domain column from threads
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
         if "domain" in cols:
             try:
                 domain_indexes = [
-                    row[0] for row in conn.execute(
+                    row[0]
+                    for row in conn.execute(
                         "SELECT name FROM sqlite_master "
                         "WHERE type='index' AND tbl_name='threads' AND sql LIKE '%domain%'"
                     ).fetchall()
@@ -423,7 +470,9 @@ class JuggleDB:
                 _log.warning("Migration 17 skipped: %s", e)
 
         # Migration 18: drop domain column from agents
-        agent_cols = {row["name"] for row in conn.execute("PRAGMA table_info(agents)").fetchall()}
+        agent_cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(agents)").fetchall()
+        }
         if "domain" in agent_cols:
             try:
                 conn.execute("ALTER TABLE agents DROP COLUMN domain")
@@ -431,9 +480,12 @@ class JuggleDB:
                 _log.warning("Migration 18 skipped: %s", e)
 
         # Migration 19: drop domain tables (domain_paths FK → domains, drop in order)
-        tables = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
         if "domain_paths" in tables or "domains" in tables:
             try:
                 conn.execute("DROP TABLE IF EXISTS domain_paths")
@@ -442,17 +494,19 @@ class JuggleDB:
                 _log.warning("Migration 19 skipped: %s", e)
 
         # Migration 20: all watchdog columns on agents
-        agents_cols = {r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()}
+        agents_cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()
+        }
         try:
             for col, defn in [
-                ("watchdog_retried",           "INTEGER NOT NULL DEFAULT 0"),
+                ("watchdog_retried", "INTEGER NOT NULL DEFAULT 0"),
                 ("watchdog_threshold_minutes", "INTEGER"),
-                ("model",                      "TEXT"),
-                ("last_task",                  "TEXT"),
-                ("busy_since",                 "TEXT"),
-                ("last_send_task_pane_hash",   "TEXT"),
-                ("last_send_task_at",          "TEXT"),
-                ("last_activity_at",           "TEXT"),
+                ("model", "TEXT"),
+                ("last_task", "TEXT"),
+                ("busy_since", "TEXT"),
+                ("last_send_task_pane_hash", "TEXT"),
+                ("last_send_task_at", "TEXT"),
+                ("last_activity_at", "TEXT"),
             ]:
                 if col not in agents_cols:
                     conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {defn}")
@@ -476,12 +530,20 @@ class JuggleDB:
         # Migration 22: watchdog_events table + threads dispatch payload columns
         try:
             conn.execute(CREATE_WATCHDOG_EVENTS)
-            threads_cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
-            for col in ("last_dispatched_task", "last_dispatched_role", "last_dispatched_model"):
+            threads_cols = {
+                r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()
+            }
+            for col in (
+                "last_dispatched_task",
+                "last_dispatched_role",
+                "last_dispatched_model",
+            ):
                 if col not in threads_cols:
                     conn.execute(f"ALTER TABLE threads ADD COLUMN {col} TEXT")
             conn.commit()
-            _log.info("Migration 22: watchdog_events + threads dispatch payload columns created")
+            _log.info(
+                "Migration 22: watchdog_events + threads dispatch payload columns created"
+            )
         except sqlite3.OperationalError as e:
             _log.warning("Migration 22 (watchdog_events + threads) skipped: %s", e)
 
@@ -490,9 +552,7 @@ class JuggleDB:
     # ------------------------------------------------------------------
 
     def _get_session_key(self, conn: sqlite3.Connection, key: str) -> str | None:
-        row = conn.execute(
-            "SELECT value FROM session WHERE key = ?", (key,)
-        ).fetchone()
+        row = conn.execute("SELECT value FROM session WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else None
 
     def _set_session_key(self, conn: sqlite3.Connection, key: str, value: str):
@@ -571,9 +631,12 @@ class JuggleDB:
                         "No immediate candidates — close or archive a thread manually."
                     )
             new_id = str(uuid.uuid4())
-            used_labels = {row["user_label"] for row in conn.execute(
-                "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
-            ).fetchall()}
+            used_labels = {
+                row["user_label"]
+                for row in conn.execute(
+                    "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
+                ).fetchall()
+            }
             user_label = _next_excel_label(used_labels)
             now_iso = datetime.now(timezone.utc).isoformat()
             now_min = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
@@ -608,16 +671,13 @@ class JuggleDB:
                 "SELECT * FROM threads WHERE user_label = ? ORDER BY "
                 "CASE WHEN length(id) = 36 AND id LIKE '%-%-%-%-%' THEN 0 ELSE 1 END, "
                 "last_active_at DESC LIMIT 1",
-                (label.upper(),)
+                (label.upper(),),
             ).fetchone()
         return dict(row) if row else None
 
-
     def get_all_threads(self) -> list[dict]:
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM threads ORDER BY created_at"
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM threads ORDER BY created_at").fetchall()
             return [dict(row) for row in rows]
 
     def update_thread(self, thread_id: str, **kwargs):
@@ -691,7 +751,11 @@ class JuggleDB:
         Load messages newest-first until token budget is exhausted
         (token estimate = len(content) // 4), then return in chronological order.
         """
-        budget: int = token_budget if token_budget is not None else int(_get_settings()["message_history_token_budget"])
+        budget: int = (
+            token_budget
+            if token_budget is not None
+            else int(_get_settings()["message_history_token_budget"])
+        )
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -823,7 +887,8 @@ class JuggleDB:
 
         # Collect non-junk user message ids in order (ascending)
         user_msgs = [
-            row for row in all_rows
+            row
+            for row in all_rows
             if row["role"] == "user" and not _is_junk_message(row["content"])
         ]
 
@@ -850,7 +915,11 @@ class JuggleDB:
 
         Uses a single DB query for all threads instead of N per-thread calls.
         """
-        limit: int = threshold if threshold is not None else int(_get_settings()["stale_summary_message_threshold"])
+        limit: int = (
+            threshold
+            if threshold is not None
+            else int(_get_settings()["stale_summary_message_threshold"])
+        )
         threads = self.get_all_threads()
         if not threads:
             return []
@@ -919,8 +988,9 @@ class JuggleDB:
     # Action items
     # ------------------------------------------------------------------
 
-    def add_action_item(self, thread_id, message: str,
-                        type_: str, priority: str = "normal") -> int:
+    def add_action_item(
+        self, thread_id, message: str, type_: str, priority: str = "normal"
+    ) -> int:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             cur = conn.execute(
@@ -1025,9 +1095,7 @@ class JuggleDB:
     def get_all_agents(self) -> list[dict]:
         """Return all agents ordered by creation time."""
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM agents ORDER BY created_at"
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM agents ORDER BY created_at").fetchall()
             return [dict(row) for row in rows]
 
     def update_agent(self, agent_id: str, **kwargs):
@@ -1035,8 +1103,7 @@ class JuggleDB:
         if not kwargs:
             return
         serialized = {
-            k: json.dumps(v) if isinstance(v, list) else v
-            for k, v in kwargs.items()
+            k: json.dumps(v) if isinstance(v, list) else v for k, v in kwargs.items()
         }
         set_clause = ", ".join(f"{col} = ?" for col in serialized)
         values = list(serialized.values()) + [agent_id]
@@ -1085,7 +1152,7 @@ class JuggleDB:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM agents WHERE assigned_thread = ? AND status = 'busy' LIMIT 1",
-                (thread_id,)
+                (thread_id,),
             ).fetchone()
             return dict(row) if row else None
 
@@ -1102,6 +1169,7 @@ class JuggleDB:
         self, role: str, days: int = 30, min_samples: int = 10
     ) -> float | None:
         from datetime import timedelta
+
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         with self._connect() as conn:
             rows = conn.execute(
@@ -1135,6 +1203,7 @@ class JuggleDB:
 
     def cleanup_watchdog_events(self, days: int = 30) -> int:
         from datetime import timedelta
+
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         with self._connect() as conn:
             cur = conn.execute(
@@ -1142,6 +1211,15 @@ class JuggleDB:
             )
             conn.commit()
         return cur.rowcount
+
+    def get_watchdog_events(self, agent_id: str) -> list[dict]:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "SELECT * FROM watchdog_events WHERE agent_id=? ORDER BY created_at",
+                (agent_id,),
+            )
+            cols = [c[0] for c in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
 
     def get_archive_candidates(self) -> list[dict]:
         """Return threads that are candidates for archiving.
@@ -1169,7 +1247,11 @@ class JuggleDB:
                 continue
 
             age = _thread_age_seconds(t.get("last_active") or "")
-            if age is not None and age > _get_settings()["thread_archive_threshold_secs"] and status not in ("background", "waiting"):
+            if (
+                age is not None
+                and age > _get_settings()["thread_archive_threshold_secs"]
+                and status not in ("background", "waiting")
+            ):
                 candidates.append(t)
 
         return candidates

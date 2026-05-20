@@ -1,4 +1,5 @@
 import sys, os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import json
@@ -9,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+
+pytest.importorskip("rich")
 from rich.layout import Layout
 
 from juggle_cockpit_model import snapshot, CockpitState
@@ -71,13 +74,40 @@ def _make_in_memory_db():
         "key_decisions, open_questions, last_user_intent, agent_task_id, agent_result, "
         "show_in_list, summarized_msg_count, title, reviewed, created_at, last_active, last_active_at) "
         "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("thread-001", "K", "K", "", "cockpit UI refactor", "active",
-         "", "[]", "[]", "", None, None, 1, 0, "cockpit", 0, now, now, now_min)
+        (
+            "thread-001",
+            "K",
+            "K",
+            "",
+            "cockpit UI refactor",
+            "active",
+            "",
+            "[]",
+            "[]",
+            "",
+            None,
+            None,
+            1,
+            0,
+            "cockpit",
+            0,
+            now,
+            now,
+            now_min,
+        ),
     )
     conn.execute(
         "INSERT INTO agents VALUES(?,?,?,?,?,?,?,?)",
-        ("abcd1234-0000-0000-0000-000000000000", "coder", "juggle:1",
-         "thread-001", "busy", "[]", now, now)
+        (
+            "abcd1234-0000-0000-0000-000000000000",
+            "coder",
+            "juggle:1",
+            "thread-001",
+            "busy",
+            "[]",
+            now,
+            now,
+        ),
     )
     conn.commit()
     return conn
@@ -86,6 +116,7 @@ def _make_in_memory_db():
 class _FakeDB:
     def __init__(self, conn):
         self._conn = conn
+
     def _connect(self):
         return self._conn
 
@@ -120,7 +151,9 @@ def test_tick_rebuilds_layout_when_bp_changes():
     conn = _make_in_memory_db()
     db = _FakeDB(conn)
     layout_wide, bp_wide, tc_wide, _ = tick(db, Size(140, 40), None, None)
-    layout_medium, bp_medium, tc_medium, _ = tick(db, Size(90, 40), layout_wide, bp_wide, tc_wide)
+    layout_medium, bp_medium, tc_medium, _ = tick(
+        db, Size(90, 40), layout_wide, bp_wide, tc_wide
+    )
     assert bp_wide == "wide"
     assert bp_medium == "medium"
     assert layout_wide is not layout_medium
@@ -130,6 +163,7 @@ def test_run_uses_rich_live():
     """run() must use Rich Live, not raw sys.stdout writes."""
     import inspect
     import juggle_cockpit
+
     src = inspect.getsource(juggle_cockpit.run)
     assert "Live" in src
     assert "sys.stdout.write" not in src
@@ -149,6 +183,7 @@ def test_snapshot_to_render_pipeline():
 # ---------------------------------------------------------------------------
 # Version bump test
 # ---------------------------------------------------------------------------
+
 
 def test_plugin_version_is_1_11_0():
     plugin_json = Path(__file__).parent.parent / ".claude-plugin" / "plugin.json"
