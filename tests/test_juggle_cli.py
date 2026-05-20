@@ -1,4 +1,5 @@
 """Tests for juggle_cli.py using subprocess."""
+
 import json
 import os
 import subprocess
@@ -20,6 +21,7 @@ SRC_DIR = str(Path(__file__).parent.parent / "src")
 def run_cli(args, db_path):
     """Run juggle_cli.py with a test DB path, override DB_PATH via env."""
     import os
+
     env = os.environ.copy()
     # Patch by passing db_path via a temporary monkeypatch in subprocess
     result = subprocess.run(
@@ -42,6 +44,7 @@ def started_db(tmp_path):
     db_path = tmp_path / "test.db"
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     db.init_db()
     db.set_active(True)
@@ -53,6 +56,7 @@ def started_db(tmp_path):
 def test_init_db(db_path):
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     db.init_db()
     assert db_path.exists()
@@ -62,6 +66,7 @@ def test_show_topics_empty(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     threads = db.get_all_threads()
     assert len(threads) == 1
@@ -73,6 +78,7 @@ def test_create_thread(started_db):
     db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     tid = db.create_thread("New topic", session_id="")
     # New thread should be a UUID, not "B"
@@ -86,6 +92,7 @@ def test_switch_thread(started_db):
     db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     second_tid = db.create_thread("Second topic", session_id="")
     db.set_current_thread(second_tid)
@@ -96,6 +103,7 @@ def test_update_thread_meta(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     db.update_thread(general_tid, key_decisions=["Use SQLite"])
     t = db.get_thread(general_tid)
@@ -108,6 +116,7 @@ def test_update_summary(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     db.update_thread(general_tid, summary="We decided to use juggle.")
     t = db.get_thread(general_tid)
@@ -119,6 +128,7 @@ def test_close_thread(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     db.update_thread(general_tid, status="closed")
     t = db.get_thread(general_tid)
@@ -130,9 +140,14 @@ def test_set_and_check_agent(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     db.update_thread(general_tid, agent_task_id="task_abc", status="background")
-    threads = [t for t in db.get_all_threads() if t["status"] == "background" and t.get("agent_task_id")]
+    threads = [
+        t
+        for t in db.get_all_threads()
+        if t["status"] == "background" and t.get("agent_task_id")
+    ]
     assert len(threads) == 1
     assert threads[0]["agent_task_id"] == "task_abc"
 
@@ -141,6 +156,7 @@ def test_complete_agent(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     db.update_thread(general_tid, agent_task_id="task_abc", status="background")
     db.update_thread(general_tid, agent_result="Done", status="done")
@@ -153,6 +169,7 @@ def test_fail_agent(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     db.update_thread(general_tid, status="failed", agent_result="timeout")
     t = db.get_thread(general_tid)
@@ -168,6 +185,7 @@ def test_set_summarized_count(started_db):
 
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     thread = db.get_thread(general_tid)
     assert thread is not None
@@ -185,6 +203,7 @@ def test_get_stale_threads_finds_stale(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     for i in range(3):
         db.add_message(general_tid, "user", f"real question {i}")
@@ -198,6 +217,7 @@ def test_get_messages_plain(started_db):
     db_path, general_tid = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     db.add_message(general_tid, "user", "hello world")
     db.add_message(general_tid, "assistant", "hi there")
@@ -212,6 +232,7 @@ def test_get_messages_plain(started_db):
 # archive-thread CLI tests
 # ------------------------------------------------------------------
 
+
 def test_archive_thread_cli(started_db):
     """archive-thread sets status=archived and prints confirmation."""
     db_path, general_tid = started_db
@@ -221,6 +242,7 @@ def test_archive_thread_cli(started_db):
 
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     t = db.get_thread(general_tid)
     assert t is not None
@@ -231,6 +253,7 @@ def test_archive_thread_cli(started_db):
 # ------------------------------------------------------------------
 # get-archive-candidates CLI tests
 # ------------------------------------------------------------------
+
 
 def test_get_archive_candidates_none(started_db):
     """Prints 'No archive candidates.' when nothing qualifies."""
@@ -246,6 +269,7 @@ def test_get_archive_candidates_finds_done(started_db):
     db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     second_tid = db.create_thread("Second topic", session_id="")
     db.update_thread(second_tid, status="done")
@@ -262,6 +286,7 @@ def test_get_archive_candidates_excludes_archived(started_db):
     db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     second_tid = db.create_thread("Second topic", session_id="")
     db.archive_thread(second_tid)
@@ -275,11 +300,13 @@ def test_get_archive_candidates_excludes_archived(started_db):
 # unarchive-thread CLI tests
 # ------------------------------------------------------------------
 
+
 def test_unarchive_thread_cli(started_db):
     """unarchive-thread restores thread and prints 'Thread X unarchived.'"""
     db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
 
     # Archive first, then unarchive via CLI
@@ -302,6 +329,7 @@ def test_unarchive_thread_cli_by_uuid(started_db):
     db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
 
     tid = db.create_thread("Archived topic", session_id="")
@@ -321,11 +349,13 @@ def test_unarchive_thread_cli_by_uuid(started_db):
 # show-topics filters archived threads
 # ------------------------------------------------------------------
 
+
 def test_show_topics_hides_archived(started_db):
     """show-topics does not display threads with show_in_list=0."""
     db_path, _ = started_db
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     second_tid = db.create_thread("Second topic", session_id="")
     db.archive_thread(second_tid)
@@ -340,13 +370,14 @@ def test_show_topics_hides_archived(started_db):
 # _extract_decision_prompt tests
 # ------------------------------------------------------------------
 
+
 def test_extract_decision_prompt_with_question():
     """Extracts last sentence containing ? from assistant message."""
     sys.path.insert(0, SRC_DIR)
     from juggle_cli import _extract_decision_prompt
+
     result = _extract_decision_prompt(
-        "We talked about things. Which option do you want?",
-        "some user text"
+        "We talked about things. Which option do you want?", "some user text"
     )
     assert result == "🤔 Which option do you want?"
 
@@ -355,9 +386,9 @@ def test_extract_decision_prompt_no_question_falls_back_to_user():
     """When no ? in assistant message, shows user message as 📬 prompt."""
     sys.path.insert(0, SRC_DIR)
     from juggle_cli import _extract_decision_prompt
+
     result = _extract_decision_prompt(
-        "Implementation complete.",
-        "Merge back to main locally, then push"
+        "Implementation complete.", "Merge back to main locally, then push"
     )
     assert result == '📬 Respond to: "Merge back to main locally, then push"'
 
@@ -366,6 +397,7 @@ def test_extract_decision_prompt_truncates_long_question():
     """Questions longer than 80 chars are truncated."""
     sys.path.insert(0, SRC_DIR)
     from juggle_cli import _extract_decision_prompt
+
     long_q = "Do you want option A which does something or option B which does something else entirely?"
     result = _extract_decision_prompt(long_q, "user")
     assert result.startswith("🤔 ")
@@ -376,7 +408,10 @@ def test_extract_decision_prompt_truncates_long_user_message():
     """User messages longer than 60 chars are truncated with ..."""
     sys.path.insert(0, SRC_DIR)
     from juggle_cli import _extract_decision_prompt
-    long_user = "This is a very long user message that goes on and on and says many things"
+
+    long_user = (
+        "This is a very long user message that goes on and on and says many things"
+    )
     result = _extract_decision_prompt(None, long_user)
     assert result.startswith('📬 Respond to: "')
     assert result.endswith('..."')
@@ -386,6 +421,7 @@ def test_extract_decision_prompt_no_messages():
     """Returns generic fallback when no messages."""
     sys.path.insert(0, SRC_DIR)
     from juggle_cli import _extract_decision_prompt
+
     result = _extract_decision_prompt(None, None)
     assert result == "🤔 Waiting for input"
 
@@ -393,6 +429,7 @@ def test_extract_decision_prompt_no_messages():
 # ------------------------------------------------------------------
 # show-topics ⏸️ decision prompt rendering tests
 # ------------------------------------------------------------------
+
 
 def test_last_sentences_basic_truncation():
     """_last_sentences returns up to max_chars of stripped text."""
@@ -447,6 +484,7 @@ def test_show_topics_waiting_thread_shows_decision_prompt(tmp_path, capsys):
 # ------------------------------------------------------------------
 # Agent pool CLI tests (Tasks 6–10)
 # ------------------------------------------------------------------
+
 
 def patch_tmux_spawn(pane_id="%1"):
     """Set env var so juggle_tmux uses a mock pane instead of real tmux."""
@@ -596,7 +634,9 @@ def test_send_task_appends_release_and_sends(started_db, tmp_path):
     agent_id = r.stdout.strip().split()[0]
 
     prompt_file = tmp_path / "task.txt"
-    prompt_file.write_text("Do the thing.\npython3 juggle_cli.py complete-agent X result\n")
+    prompt_file.write_text(
+        "Do the thing.\npython3 juggle_cli.py complete-agent X result\n"
+    )
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
         result = run_cli(["send-task", agent_id, str(prompt_file)], db_path)
@@ -632,6 +672,7 @@ def test_send_task_prepends_universal_preamble(started_db, tmp_path):
     sys.path.insert(0, SRC_DIR)
     from juggle_cmd_agents import UNIVERSAL_PREAMBLE
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(db_path))
     agent = db.get_agent(agent_id)
     assert agent["last_task"].startswith(UNIVERSAL_PREAMBLE)
@@ -680,9 +721,11 @@ def test_archive_thread_marks_busy_agents_pending(started_db):
 # open-in-editor tests
 # ---------------------------------------------------------------------------
 
+
 def test_open_in_editor_no_socket(tmp_path):
     """Falls back to system open (non-vault file) when socket doesn't exist."""
     from juggle_cli import main
+
     socket_path = str(tmp_path / "missing.sock")
     with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.md"]):
         with patch("juggle_cli.NVIM_SOCKET", socket_path):
@@ -696,6 +739,7 @@ def test_open_in_editor_no_socket(tmp_path):
 def test_open_in_editor_no_socket_vault_file(tmp_path):
     """Falls back to Obsidian URL when socket is absent and file is inside vault."""
     from juggle_cli import main, VAULT_ROOT
+
     socket_path = str(tmp_path / "missing.sock")
     vault_file = str(VAULT_ROOT / "projects/test.md")
     with patch("sys.argv", ["juggle_cli.py", "open-in-editor", vault_file]):
@@ -711,6 +755,7 @@ def test_open_in_editor_no_socket_vault_file(tmp_path):
 def test_open_in_editor_calls_nvim(tmp_path):
     """Calls nvim --server --remote when socket exists (no line number)."""
     from juggle_cli import main
+
     sock = tmp_path / "nvim.sock"
     sock.touch()
     with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.md"]):
@@ -728,6 +773,7 @@ def test_open_in_editor_calls_nvim(tmp_path):
 def test_open_in_editor_with_line_number(tmp_path):
     """Sends remote-send to position cursor when path:line syntax is used."""
     from juggle_cli import main
+
     sock = tmp_path / "nvim.sock"
     sock.touch()
     with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.py:153"]):
@@ -738,34 +784,117 @@ def test_open_in_editor_with_line_number(tmp_path):
                     main()
     calls = mock_run.call_args_list
     assert len(calls) == 2
-    assert calls[0][0][0] == ["nvim", "--server", str(sock), "--remote", "/some/file.py"]
-    assert calls[1][0][0] == ["nvim", "--server", str(sock), "--remote-send", "<C-\\><C-N>:153<CR>"]
+    assert calls[0][0][0] == [
+        "nvim",
+        "--server",
+        str(sock),
+        "--remote",
+        "/some/file.py",
+    ]
+    assert calls[1][0][0] == [
+        "nvim",
+        "--server",
+        str(sock),
+        "--remote-send",
+        "<C-\\><C-N>:153<CR>",
+    ]
 
 
 # ---------------------------------------------------------------------------
 # _parse_path_with_line unit tests
 # ---------------------------------------------------------------------------
 
+
 def test_parse_path_with_line_no_suffix():
     from juggle_cli import _parse_path_with_line
+
     assert _parse_path_with_line("foo.py") == ("foo.py", None)
 
 
 def test_parse_path_with_line_basic():
     from juggle_cli import _parse_path_with_line
+
     assert _parse_path_with_line("foo.py:42") == ("foo.py", 42)
 
 
 def test_parse_path_with_line_col():
     from juggle_cli import _parse_path_with_line
+
     assert _parse_path_with_line("foo.py:42:5") == ("foo.py", 42)
 
 
 def test_parse_path_with_line_abs():
     from juggle_cli import _parse_path_with_line
+
     assert _parse_path_with_line("/abs/path.py:1") == ("/abs/path.py", 1)
 
 
 def test_parse_path_with_line_no_trailing_digits():
     from juggle_cli import _parse_path_with_line
+
     assert _parse_path_with_line("weird:name.py") == ("weird:name.py", None)
+
+
+# ---------------------------------------------------------------------------
+# Unknown flag rejection — regression tests (fixes TODO.md:38)
+# ---------------------------------------------------------------------------
+
+
+def _run_no_db(args):
+    """Run CLI without _JUGGLE_TEST_DB so argparse errors fire before DB init."""
+    env = os.environ.copy()
+    env.pop("_JUGGLE_TEST_DB", None)
+    return subprocess.run(
+        [sys.executable, CLI] + args,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def test_unknown_flag_rejected_request_action(tmp_path):
+    """--tier is not a valid flag on request-action; argparse must reject it."""
+    result = _run_no_db(["request-action", "THREAD", "msg", "--tier", "2"])
+    assert result.returncode == 2
+    assert "unrecognized arguments" in result.stderr or "error" in result.stderr
+
+
+def test_unknown_flag_rejected_complete_agent(tmp_path):
+    """--badarg is not a valid flag on complete-agent; argparse must reject it."""
+    result = _run_no_db(["complete-agent", "AGENT", "msg", "--badarg"])
+    assert result.returncode == 2
+    assert "unrecognized arguments" in result.stderr or "error" in result.stderr
+
+
+def test_unknown_flag_rejected_start(tmp_path):
+    """--nosuchflag is not a valid flag on start; argparse must reject it."""
+    result = _run_no_db(["start", "--nosuchflag"])
+    assert result.returncode == 2
+    assert "unrecognized arguments" in result.stderr or "error" in result.stderr
+
+
+def test_unknown_flag_rejected_notify(tmp_path):
+    """--priority is not a valid flag on notify; argparse must reject it."""
+    result = _run_no_db(["notify", "THREAD", "msg", "--priority", "high"])
+    assert result.returncode == 2
+    assert "unrecognized arguments" in result.stderr or "error" in result.stderr
+
+
+def test_known_flags_accepted_request_action(tmp_path):
+    """Valid flags on request-action (--type, --priority) must not be rejected at parse time."""
+    db_path = tmp_path / "test.db"
+    import sys as _sys
+
+    _sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(str(db_path))
+    db.init_db()
+    db.set_active(True)
+    tid = db.create_thread("test", session_id="")
+    result = run_cli(
+        ["request-action", tid, "test msg", "--type", "failure", "--priority", "high"],
+        db_path,
+    )
+    # Should not fail with "unrecognized arguments"
+    assert "unrecognized arguments" not in result.stderr
