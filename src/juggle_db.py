@@ -547,6 +547,20 @@ class JuggleDB:
         except sqlite3.OperationalError as e:
             _log.warning("Migration 22 (watchdog_events + threads) skipped: %s", e)
 
+        # Migration 23: last_reflect_msg_count for reflect() gate
+        threads_cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
+        if "last_reflect_msg_count" not in threads_cols:
+            try:
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN last_reflect_msg_count INTEGER DEFAULT 0"
+                )
+                conn.commit()
+                _log.info("Migration 23: last_reflect_msg_count column added")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 23 (last_reflect_msg_count) skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------

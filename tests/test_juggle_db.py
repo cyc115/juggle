@@ -1,4 +1,5 @@
 """Tests for JuggleDB."""
+
 import json
 import sys
 from pathlib import Path
@@ -31,16 +32,21 @@ def test_set_active(db):
 def test_set_active_sets_started_at_once(db):
     db.set_active(True)
     with db._connect() as conn:
-        row1 = conn.execute("SELECT value FROM session WHERE key='started_at'").fetchone()
+        row1 = conn.execute(
+            "SELECT value FROM session WHERE key='started_at'"
+        ).fetchone()
     db.set_active(True)
     with db._connect() as conn:
-        row2 = conn.execute("SELECT value FROM session WHERE key='started_at'").fetchone()
+        row2 = conn.execute(
+            "SELECT value FROM session WHERE key='started_at'"
+        ).fetchone()
     assert row1["value"] == row2["value"]  # not overwritten on second call
 
 
 def test_create_thread_returns_a(db):
     """create_thread returns a UUID (not a letter)."""
     import re
+
     tid = db.create_thread("My topic", session_id="s1")
     assert re.match(r"^[0-9a-f-]{36}$", tid), f"Expected UUID, got: {tid}"
 
@@ -55,6 +61,7 @@ def test_create_thread_sequential(db):
 
 def test_create_thread_max_10(db):
     from juggle_db import MAX_THREADS
+
     for i in range(MAX_THREADS):
         db.create_thread(f"Topic {i}", session_id="s1")
     with pytest.raises(ValueError, match=f"Maximum of {MAX_THREADS}"):
@@ -153,12 +160,12 @@ def test_get_message_count_excludes_junk(db):
     db.set_active(True)
     tid = db.create_thread("Topic A", session_id="s1")
     db.add_message(tid, "user", "real question about auth")
-    db.add_message(tid, "user", "/juggle:show-topics")           # junk: slash cmd
+    db.add_message(tid, "user", "/juggle:show-topics")  # junk: slash cmd
     db.add_message(tid, "user", "<task-notification>...</task-notification>")  # junk
     db.add_message(tid, "user", "another real question")
-    db.add_message(tid, "assistant", "some response")             # excluded: not user
+    db.add_message(tid, "assistant", "some response")  # excluded: not user
     assert db.get_message_count(tid, exclude_junk=True) == 2
-    assert db.get_message_count(tid, exclude_junk=False) == 4    # counts all user rows
+    assert db.get_message_count(tid, exclude_junk=False) == 4  # counts all user rows
 
 
 def test_get_stale_threads(db):
@@ -204,8 +211,10 @@ def test_get_recent_exchanges_skips_junk(db):
     tid = db.create_thread("Topic A", session_id="s1")
     db.add_message(tid, "user", "real question")
     db.add_message(tid, "assistant", "real answer")
-    db.add_message(tid, "user", "/juggle:show-topics")          # junk
-    db.add_message(tid, "user", "<task-notification>task-id</task-notification>")  # junk
+    db.add_message(tid, "user", "/juggle:show-topics")  # junk
+    db.add_message(
+        tid, "user", "<task-notification>task-id</task-notification>"
+    )  # junk
 
     exchanges = db.get_recent_exchanges(tid, n=2)
     assert len(exchanges) == 1
@@ -283,6 +292,7 @@ def test_get_thread_state_failed(db):
 def test_get_thread_state_archived(db):
     """get_thread_state returns 🗄️ for threads inactive > 48 hours."""
     from datetime import datetime, timezone, timedelta
+
     tid = db.create_thread("Topic A", session_id="s1")
     old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
     db.update_thread(tid, last_active=old_time)
@@ -304,6 +314,7 @@ def test_get_thread_state_waiting(db):
 def test_get_thread_state_idle(db):
     """get_thread_state returns 💤 when last assistant message has no ? and inactive > 30 min."""
     from datetime import datetime, timezone, timedelta
+
     tid = db.create_thread("Topic A", session_id="s1")
     db.add_message(tid, "user", "some question")
     db.add_message(tid, "assistant", "Here is the answer.")
@@ -377,8 +388,14 @@ def test_get_last_exchange_skips_junk_user_messages(db):
     db.add_message(tid, "user", "real question about auth")
     db.add_message(tid, "assistant", "Here is the answer")
     # Add junk user messages after the real exchange
-    db.add_message(tid, "user", '"><tool_uses>2</tool_uses><duration_ms>5292</duration_ms></usage></task-notification>')
-    db.add_message(tid, "user", "<task-notification>some task-id content</task-notification>")
+    db.add_message(
+        tid,
+        "user",
+        '"><tool_uses>2</tool_uses><duration_ms>5292</duration_ms></usage></task-notification>',
+    )
+    db.add_message(
+        tid, "user", "<task-notification>some task-id content</task-notification>"
+    )
     db.add_message(tid, "user", "/juggle:show-topics")
 
     result = db.get_last_exchange(tid)
@@ -389,6 +406,7 @@ def test_get_last_exchange_skips_junk_user_messages(db):
 # ------------------------------------------------------------------
 # archive_thread tests
 # ------------------------------------------------------------------
+
 
 def test_archive_thread_sets_status_and_show_in_list(db):
     """archive_thread sets status='archived' and show_in_list=0."""
@@ -418,6 +436,7 @@ def test_show_in_list_defaults_to_1(db):
 # ------------------------------------------------------------------
 # get_archive_candidates tests
 # ------------------------------------------------------------------
+
 
 def test_get_archive_candidates_empty(db):
     """No candidates when only one active thread exists."""
@@ -452,6 +471,7 @@ def test_get_archive_candidates_failed(db):
 def test_get_archive_candidates_old_inactive(db):
     """A thread inactive > 48 hours (not background/waiting) is a candidate."""
     from datetime import datetime, timezone, timedelta
+
     tid_a = db.create_thread("Topic A", session_id="s1")
     tid_b = db.create_thread("Topic B", session_id="s1")
     db.set_current_thread(tid_a)
@@ -459,7 +479,6 @@ def test_get_archive_candidates_old_inactive(db):
     db.update_thread(tid_b, last_active=old_time, status="active")
     candidates = db.get_archive_candidates()
     assert any(c["id"] == tid_b for c in candidates)
-
 
 
 def test_get_archive_candidates_excludes_current(db):
@@ -484,11 +503,14 @@ def test_get_archive_candidates_excludes_already_archived(db):
 def test_get_archive_candidates_background_not_candidate_for_48h_rule(db):
     """Background threads inactive > 48h are NOT candidates (excluded by status filter)."""
     from datetime import datetime, timezone, timedelta
+
     tid_a = db.create_thread("Topic A", session_id="s1")
     tid_b = db.create_thread("Topic B", session_id="s1")
     db.set_current_thread(tid_a)
     old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
-    db.update_thread(tid_b, status="background", last_active=old_time, agent_task_id="task_1")
+    db.update_thread(
+        tid_b, status="background", last_active=old_time, agent_task_id="task_1"
+    )
     candidates = db.get_archive_candidates()
     assert all(c["id"] != tid_b for c in candidates)
 
@@ -497,9 +519,11 @@ def test_get_archive_candidates_background_not_candidate_for_48h_rule(db):
 # UUID + label schema tests
 # ------------------------------------------------------------------
 
+
 def test_create_thread_returns_uuid(db):
     """create_thread() returns a UUID string, not a letter."""
     import re
+
     tid = db.create_thread("My topic", session_id="s1")
     assert re.match(r"^[0-9a-f-]{36}$", tid), f"Expected UUID, got: {tid}"
 
@@ -523,7 +547,9 @@ def test_create_thread_second_user_label_is_b(db):
 def test_schema_has_id_and_user_label_not_label(db):
     """threads table has 'id' and 'user_label'; 'label' and 'thread_id' are absent."""
     with db._connect() as conn:
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
     assert "id" in cols
     assert "user_label" in cols
     assert "label" not in cols
@@ -533,6 +559,7 @@ def test_schema_has_id_and_user_label_not_label(db):
 def test_migration_preserves_existing_threads(tmp_path):
     """Existing DBs with thread_id column are migrated: id=letter, label=letter."""
     import sqlite3
+
     old_db_path = tmp_path / "old.db"
     # Create a legacy-style DB
     with sqlite3.connect(str(old_db_path)) as conn:
@@ -584,6 +611,7 @@ def test_migration_preserves_existing_threads(tmp_path):
         conn.commit()
 
     from juggle_db import JuggleDB
+
     db = JuggleDB(str(old_db_path))
     db.init_db()  # triggers migration
 
@@ -596,6 +624,7 @@ def test_migration_preserves_existing_threads(tmp_path):
 # ------------------------------------------------------------------
 # UUID + label Task 2 tests
 # ------------------------------------------------------------------
+
 
 def test_get_thread_by_uuid(db):
     """get_thread() accepts UUID and returns dict with 'id' and 'user_label'."""
@@ -640,6 +669,7 @@ def test_user_label_not_recycled_after_archive(db):
 # ------------------------------------------------------------------
 # unarchive_thread tests
 # ------------------------------------------------------------------
+
 
 def test_unarchive_thread_restores_show_in_list(db):
     """unarchive_thread sets show_in_list=1."""
@@ -686,3 +716,31 @@ def test_unarchive_thread_full_cycle(db):
     assert t["status"] == "active"
     assert t["show_in_list"] == 1
     assert t["user_label"] == "A"  # still preserved
+
+
+def test_migration_adds_last_reflect_msg_count(tmp_path):
+    """Migration 23: last_reflect_msg_count column exists with default 0."""
+    d = JuggleDB(str(tmp_path / "migrate_test.db"))
+    d.init_db()
+    with d._connect() as conn:
+        cols = [
+            r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()
+        ]
+    assert "last_reflect_msg_count" in cols
+
+    # New threads default to 0
+    tid = d.create_thread("Test topic", session_id="")
+    t = d.get_thread(tid)
+    assert (t.get("last_reflect_msg_count") or 0) == 0
+
+
+def test_migration_last_reflect_msg_count_idempotent(tmp_path):
+    """Calling init_db() twice doesn't fail on the column-already-exists case."""
+    d = JuggleDB(str(tmp_path / "idempotent_test.db"))
+    d.init_db()
+    d.init_db()  # second call must not raise
+    with d._connect() as conn:
+        cols = [
+            r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()
+        ]
+    assert "last_reflect_msg_count" in cols

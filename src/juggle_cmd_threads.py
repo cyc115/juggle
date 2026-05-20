@@ -22,6 +22,8 @@ from juggle_context import get_thread_state
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
 from juggle_settings import get_settings as _get_settings
 
+MIN_REFLECT_MSG_DELTA = 5  # min new messages since last reflect before re-firing
+
 
 def _watchdog_script() -> _Path:
     return _Path(__file__).parent.parent / "scripts" / "juggle-agent-watchdog"
@@ -29,11 +31,13 @@ def _watchdog_script() -> _Path:
 
 def _watchdog_pid_file() -> _Path:
     from juggle_settings import get_settings
+
     return _Path(get_settings()["paths"]["config_dir"]) / "watchdog.pid"
 
 
 def _start_watchdog() -> None:
     import subprocess
+
     pid_file = _watchdog_pid_file()
     if pid_file.exists():
         try:
@@ -53,10 +57,12 @@ def _start_watchdog() -> None:
     with open(log_path, "a") as log_fh:
         proc = subprocess.Popen(
             [sys.executable, str(script)],
-            stdout=log_fh, stderr=log_fh,
+            stdout=log_fh,
+            stderr=log_fh,
             start_new_session=True,
         )
     import time
+
     time.sleep(1)
     _log.info("Watchdog started (PID=%d)", proc.pid)
 
@@ -76,7 +82,9 @@ def _stop_watchdog() -> None:
 
 
 def _get_version():
-    plugin_json = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+    plugin_json = (
+        Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+    )
     try:
         return json.loads(plugin_json.read_text())["version"]
     except Exception:
@@ -130,7 +138,9 @@ def cmd_start(_):
         thread_uuid = db.create_thread("General", session_id="")
         db.set_current_thread(thread_uuid)
         thread = db.get_thread(thread_uuid)
-        label = (thread.get("user_label") or thread.get("label")) if thread else thread_uuid
+        label = (
+            (thread.get("user_label") or thread.get("label")) if thread else thread_uuid
+        )
         print(f"Juggle v{ver} started. Topic {label} created.")
     else:
         # Auto-switch to most recently active non-archived thread
@@ -139,6 +149,7 @@ def cmd_start(_):
             most_recent = max(active_threads, key=lambda t: t.get("last_active") or "")
             db.set_current_thread(most_recent["id"])
         from juggle_context import build_startup_output
+
         print(build_startup_output(db))
 
 
@@ -172,18 +183,50 @@ def cmd_create_thread(args):
         args=(get_db(), thread_uuid, args.topic),
         daemon=True,
     ).start()
+
     # Auto-recall: load memory context in background; joined so process doesn't exit first.
     def _auto_recall():
         from juggle_cli_common import _get_hindsight_client
+
         client = _get_hindsight_client()
         if client is None:
             return
         db2 = get_db()
+        current_thread = db2.get_thread(thread_uuid)
+
+        # Gate 1: skip reflect for internal/agent threads (show_in_list=0)
+        if not current_thread or not current_thread.get("show_in_list", 1):
+            _log.debug("skipping reflect for internal thread %s", thread_uuid)
+            db2.update_thread(thread_uuid, memory_loaded=1)
+            return
+
+        # Gate 2: skip if not enough new messages since last reflect
+        last_reflect = int(current_thread.get("last_reflect_msg_count") or 0)
+        msg_count = int(current_thread.get("summarized_msg_count") or 0)
+        if last_reflect != 0 and (msg_count - last_reflect) < MIN_REFLECT_MSG_DELTA:
+            _log.debug(
+                "skipping reflect for thread %s (delta=%d < %d)",
+                thread_uuid,
+                msg_count - last_reflect,
+                MIN_REFLECT_MSG_DELTA,
+            )
+            return
+
         result = client.reflect(args.topic)
         if result:
-            db2.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
+            db2.update_thread(
+                thread_uuid,
+                memory_context=result,
+                memory_loaded=1,
+                last_reflect_msg_count=msg_count,
+            )
         else:
-            db2.update_thread(thread_uuid, memory_loaded=1)
+            db2.update_thread(
+                thread_uuid,
+                memory_loaded=1,
+                last_reflect_msg_count=msg_count,
+            )
+
     t = threading.Thread(target=_auto_recall, daemon=False)
     t.start()
     t.join(timeout=10)
@@ -252,7 +295,11 @@ def _render_briefing(thread: dict, memories: list, db) -> str:
     # ── DECISIONS ────────────────────────────────────────────────────────────
     key_decisions_raw = thread.get("key_decisions") or "[]"
     try:
-        key_decisions = json.loads(key_decisions_raw) if isinstance(key_decisions_raw, str) else (key_decisions_raw or [])
+        key_decisions = (
+            json.loads(key_decisions_raw)
+            if isinstance(key_decisions_raw, str)
+            else (key_decisions_raw or [])
+        )
     except (json.JSONDecodeError, ValueError):
         key_decisions = []
     if key_decisions:
@@ -264,7 +311,11 @@ def _render_briefing(thread: dict, memories: list, db) -> str:
     # ── OPEN QUESTIONS ───────────────────────────────────────────────────────
     open_questions_raw = thread.get("open_questions") or "[]"
     try:
-        open_questions = json.loads(open_questions_raw) if isinstance(open_questions_raw, str) else (open_questions_raw or [])
+        open_questions = (
+            json.loads(open_questions_raw)
+            if isinstance(open_questions_raw, str)
+            else (open_questions_raw or [])
+        )
     except (json.JSONDecodeError, ValueError):
         open_questions = []
     if open_questions:
@@ -282,7 +333,7 @@ def _render_briefing(thread: dict, memories: list, db) -> str:
     elif status == "failed":
         lines.append("  • Review what failed. Decide whether to retry or close.")
     elif agent_result.startswith("⚠️ BLOCKER:"):
-        blocker_text = agent_result[len("⚠️ BLOCKER:"):].strip()
+        blocker_text = agent_result[len("⚠️ BLOCKER:") :].strip()
         lines.append(f"  • Resolve the blocker: {blocker_text}")
     elif status == "done" and open_questions:
         lines.append("  • Address open questions, then archive.")
@@ -311,6 +362,7 @@ def cmd_switch_thread(args):
 
     # Hardcoded recall — fires on every switch regardless of LLM behavior
     from juggle_context import _recall_for_thread
+
     memories = _recall_for_thread(thread["topic"])
 
     print(_render_briefing(thread, memories, db))
@@ -368,15 +420,18 @@ def cmd_update_summary(args):
     # Truncate at word boundary if over configured max chars
     _max_chars = _get_settings()["summary_max_chars"]
     if len(summary) > _max_chars:
-        summary = summary[:_max_chars].rsplit(' ', 1)[0]
+        summary = summary[:_max_chars].rsplit(" ", 1)[0]
     db.update_thread(thread_uuid, summary=summary)
     updated = db.get_thread(thread_uuid)
-    label = (updated.get("user_label") or updated.get("label") if updated else None) or args.thread_id
+    label = (
+        updated.get("user_label") or updated.get("label") if updated else None
+    ) or args.thread_id
     print(f"Summary updated for Thread {label}.")
 
 
 def cmd_close_thread(args):
     import juggle_cli_common as _common
+
     db = _common.get_db()
     thread_uuid = _common._resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
@@ -386,7 +441,11 @@ def cmd_close_thread(args):
     label = thread.get("user_label") or thread.get("label") or args.thread_id
     db.set_thread_status(thread_uuid, "closed")
     dismissed = db.dismiss_action_items_for_thread(thread_uuid)
-    suffix = f" ({dismissed} action item{'s' if dismissed != 1 else ''} closed)" if dismissed else ""
+    suffix = (
+        f" ({dismissed} action item{'s' if dismissed != 1 else ''} closed)"
+        if dismissed
+        else ""
+    )
     print(f"Thread {label} ({thread['topic']}) closed.{suffix}")
 
 
@@ -434,6 +493,7 @@ def _cleanup_orphaned_threads(db) -> None:
 def cmd_show_topics(_):
     from datetime import datetime, timezone
     from juggle_cli_common import _extract_decision_prompt
+
     db = get_db()
     _cleanup_orphaned_threads(db)
     threads = [t for t in db.get_all_threads() if t.get("status") != "archived"]
@@ -453,7 +513,11 @@ def cmd_show_topics(_):
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
                 secs = int((now - dt).total_seconds())
-                age = f"{secs}s" if secs < 60 else (f"{secs // 60}m" if secs < 3600 else f"{secs // 3600}h")
+                age = (
+                    f"{secs}s"
+                    if secs < 60
+                    else (f"{secs // 60}m" if secs < 3600 else f"{secs // 3600}h")
+                )
             except (ValueError, TypeError):
                 pass
         line = f"[{lbl}] {status:<8} {title:<30} {age}"
@@ -468,7 +532,9 @@ def cmd_show_topics(_):
                 (t["id"],),
             ).fetchone()
         if asst and asst["content"].rstrip().endswith("?"):
-            prompt = _extract_decision_prompt(asst["content"], usr["content"] if usr else None)
+            prompt = _extract_decision_prompt(
+                asst["content"], usr["content"] if usr else None
+            )
             line += f"  {prompt}"
         print(line)
 
@@ -500,8 +566,11 @@ def cmd_archive_thread(args):
     # Decommission agents still assigned to this thread
     sys.path.insert(0, str(SRC_DIR))
     from juggle_tmux import JuggleTmuxManager
+
     mgr = JuggleTmuxManager()
-    assigned = [a for a in db.get_all_agents() if a.get("assigned_thread") == thread_uuid]
+    assigned = [
+        a for a in db.get_all_agents() if a.get("assigned_thread") == thread_uuid
+    ]
     for agent in assigned:
         status = agent["status"]
         if status == "idle":
@@ -529,7 +598,9 @@ def cmd_set_summarized_count(args):
         sys.exit(1)
     db.update_thread(thread_uuid, summarized_msg_count=args.count)
     updated = db.get_thread(thread_uuid)
-    label = (updated.get("user_label") or updated.get("label") if updated else None) or args.thread_id
+    label = (
+        updated.get("user_label") or updated.get("label") if updated else None
+    ) or args.thread_id
     print(f"Summarized count set to {args.count} for Thread {label}.")
 
 
@@ -549,7 +620,7 @@ def cmd_get_messages(args):
     thread_uuid = _resolve_thread(db, args.thread_id)
     messages = db.get_messages(thread_uuid, token_budget=9999)
     if args.limit:
-        messages = messages[-args.limit:]
+        messages = messages[-args.limit :]
     if not messages:
         print("No messages.")
         return
