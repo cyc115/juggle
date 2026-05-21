@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -62,7 +63,13 @@ def _fmt_results(results: list[dict], db_path: str, mode: str) -> str:
 async def main() -> None:
     p = argparse.ArgumentParser(description="Search offline research KB only (no synthesis)")
     p.add_argument("query", help="Search query")
-    p.add_argument("-k", "--limit", type=int, default=10, metavar="N", help="Max results (default 10)")
+    def _positive_int(val: str) -> int:
+        n = int(val)
+        if n < 1 or n > 100:
+            raise argparse.ArgumentTypeError("limit must be between 1 and 100")
+        return n
+
+    p.add_argument("-k", "--limit", type=_positive_int, default=10, metavar="N", help="Max results 1-100 (default 10)")
     p.add_argument("--fts", action="store_true", help="FTS-only mode — fully offline, no embedding API call")
     p.add_argument("--json", dest="json_out", action="store_true", help="Emit raw JSON instead of pretty list")
     args = p.parse_args()
@@ -77,21 +84,27 @@ async def main() -> None:
     embedding_model = s["embedding_model"]
 
     kb = ResearchKB(db_path)
+    kb.init_db()
 
-    if args.fts:
-        results = kb.fts_search(args.query, limit=args.limit)
-        mode = "fts"
-    else:
-        api_key = os.environ.get("OPENROUTER_KEY", "")
-        if not api_key:
-            print(
-                "Error: OPENROUTER_KEY not set. Use --fts for fully-offline search.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        embedding = await _get_embedding(args.query, api_key, embedding_model)
-        results = kb.hybrid_search(embedding, args.query, k=args.limit)
-        mode = "hybrid"
+    try:
+        if args.fts:
+            results = kb.fts_search(args.query, limit=args.limit)
+            mode = "fts"
+        else:
+            api_key = os.environ.get("OPENROUTER_KEY", "")
+            if not api_key:
+                print(
+                    "Error: OPENROUTER_KEY not set. Use --fts for fully-offline search.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            embedding = await _get_embedding(args.query, api_key, embedding_model)
+            results = kb.hybrid_search(embedding, args.query, k=args.limit)
+            mode = "hybrid"
+    except sqlite3.OperationalError as e:
+        print(f"DB error: {e}", file=sys.stderr)
+        print("Run /juggle:research-ingest to initialize and populate the KB.", file=sys.stderr)
+        sys.exit(1)
 
     if args.json_out:
         print(json.dumps(results, indent=2))
