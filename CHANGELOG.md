@@ -2,6 +2,7 @@
 
 ## 2026-05-20
 - Add `/juggle:search-offline-db` — lightweight KB-only search (no synthesis, no vault/memory/web). Supports `--fts` for fully-offline mode.
+- Fix talkback Bluetooth-device routing: pick output by index, not name, so HFP/A2DP duplicate names don't shadow the A2DP entry
 
 ## 2026-05-19
 - Add `/schedule:dogfood`, `:autofix`, `:reflect` skills for background automation routines

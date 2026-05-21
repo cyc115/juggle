@@ -23,18 +23,29 @@ _HEADPHONE_KEYWORDS = ["WH-", "WF-", "AirPods", "Headphones", "Headset", "Buds",
 _FALLBACK_DEVICE = "MacBook Pro Speakers"
 
 
-def _pick_device() -> str | None:
-    """Return the name of the first connected headphone output, or the MacBook speakers."""
+def _pick_device() -> int | None:
+    """Return the index of the first connected headphone output device with audio output."""
     try:
         devices = sd.query_devices()
-        for d in devices:
+        for idx, d in enumerate(devices):
             if d["max_output_channels"] > 0:
                 for kw in _HEADPHONE_KEYWORDS:
                     if kw.lower() in d["name"].lower():
-                        return d["name"]
+                        return idx
     except Exception:
         pass
-    return _FALLBACK_DEVICE
+    return None
+
+
+def _find_fallback_index() -> int | None:
+    """Return the index of the MacBook Pro Speakers device, or None."""
+    try:
+        for idx, d in enumerate(sd.query_devices()):
+            if d["max_output_channels"] > 0 and d["name"] == _FALLBACK_DEVICE:
+                return idx
+    except Exception:
+        pass
+    return None
 
 
 def _try_play(audio: np.ndarray, samplerate: int, device: int | str | None) -> None:
@@ -105,9 +116,14 @@ def _play_audio(audio: np.ndarray, samplerate: int = 24000) -> None:
     take effect immediately without stale state.
     """
     primary = _pick_device()
-    chain: list[str | None] = [primary]
-    if primary != _FALLBACK_DEVICE:
-        chain.append(_FALLBACK_DEVICE)
+    fallback = _find_fallback_index()
+    chain: list[int | None] = []
+    if primary is not None:
+        chain.append(primary)
+    if fallback is not None and fallback != primary:
+        chain.append(fallback)
+    if not chain:
+        chain.append(None)  # let PortAudio pick default
 
     for dev in chain:
         try:
