@@ -196,6 +196,7 @@ class CockpitApp(App):
         self._offsets: dict[str, int] = {p: 0 for p in _SCROLL_PANES}
         self._active_pane: str = "notifications"
         self._last_reap: float = 0.0
+        self._last_bp: str = "wide"  # tracks previous breakpoint for resize transitions
         self._cockpit_mgr = None
         try:
             from juggle_tmux import JuggleTmuxManager
@@ -362,15 +363,23 @@ class CockpitApp(App):
         bp = pick_breakpoint(event.size)
         try:
             if bp == "wide":
-                t, *_ = _COL_RATIOS
-                self.query_one("#topics").styles.display = "block"
-                self.query_one("#topics").styles.width = f"{int(t * 100)}%"
-                right_w = 100 - int(t * 100)
-                self.query_one("#right").styles.width = f"{right_w}%"
+                if self._last_bp != "wide":
+                    # Transitioning narrow/medium → wide: restore all columns from config.
+                    # Also resets #actions/#agents so they fit the restored #right width.
+                    t, a, ag = _COL_RATIOS
+                    topics_w = int(t * 100)
+                    self.query_one("#topics").styles.display = "block"
+                    self.query_one("#topics").styles.width = f"{topics_w}%"
+                    self.query_one("#right").styles.width = f"{100 - topics_w}%"
+                    actions_pct = int(a / (a + ag) * 100)
+                    self.query_one("#actions").styles.width = f"{actions_pct}%"
+                    self.query_one("#agents").styles.width = f"{100 - actions_pct}%"
+                # else: already wide — preserve user-dragged widths unchanged
             else:
                 # medium/narrow: collapse topics column into notifications area
                 self.query_one("#topics").styles.display = "none"
                 self.query_one("#right").styles.width = "100%"
+            self._last_bp = bp
         except Exception:
             pass
 
