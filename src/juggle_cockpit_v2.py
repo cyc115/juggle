@@ -14,6 +14,8 @@ Exit: q or Ctrl-C
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import signal
 import subprocess
 import sys
@@ -31,6 +33,43 @@ from textual.widgets import Footer, Header, Static
 
 from juggle_db import JuggleDB
 from juggle_settings import get_settings as _get_settings
+
+
+def _compute_ratios(topics_cells: float, actions_cells: float, agents_cells: float) -> list[float]:
+    """Normalize actual rendered cell widths to [topics, actions, agents] ratios summing to 1.0.
+
+    Uses size.width (absolute cells) so the result is correct regardless of whether
+    styles were set as percent (initial mount) or as cell integers (post-drag).
+    The last element absorbs floating-point rounding to ensure exact sum of 1.0.
+    """
+    total = topics_cells + actions_cells + agents_cells
+    if total <= 0:
+        return []
+    t = round(topics_cells / total, 2)
+    a = round(actions_cells / total, 2)
+    ag = round(1.0 - t - a, 2)
+    return [t, a, ag]
+
+
+def _write_ratios(config_path: Path, ratios: list[float]) -> None:
+    """Atomically write column_ratios to config.json.
+
+    No-op if config file is missing or the cockpit key is absent — avoids
+    corrupting a partially-edited config on first run. Atomic via tmp + os.replace.
+    """
+    if not config_path.exists():
+        return
+    try:
+        cfg = json.loads(config_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return
+    if "cockpit" not in cfg:
+        return
+    cfg["cockpit"]["column_ratios"] = ratios
+    tmp = config_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(cfg, indent=2))
+    os.replace(tmp, config_path)
+
 
 _SETTINGS = _get_settings()
 REFRESH_INTERVAL: float = _SETTINGS["cockpit"]["refresh_interval_secs"]
@@ -163,6 +202,32 @@ class CockpitApp(App):
             self._cockpit_mgr = JuggleTmuxManager()
         except Exception:
             pass
+
+    def exit(self, result=None, return_code: int = 0, message=None) -> None:
+        """Persist column widths before handing off to Textual's exit machinery.
+
+        Overrides App.exit() so _persist_ratios fires on every clean exit path:
+        q binding, Ctrl+C (Textual converts SIGINT to exit()), and programmatic
+        self.exit() calls. size.width is still valid here — widgets unmount after.
+        """
+        self._persist_ratios()
+        super().exit(result=result, return_code=return_code, message=message)
+
+    def _persist_ratios(self) -> None:
+        """Write current column widths to config.json. Last-writer-wins on quit."""
+        config_path = Path(
+            os.environ.get("_JUGGLE_CONFIG_PATH", str(Path.home() / ".juggle" / "config.json"))
+        )
+        try:
+            t_cells = self.query_one("#topics").size.width
+            a_cells = self.query_one("#actions").size.width
+            ag_cells = self.query_one("#agents").size.width
+        except Exception:
+            return
+        ratios = _compute_ratios(t_cells, a_cells, ag_cells)
+        if not ratios:
+            return
+        _write_ratios(config_path, ratios)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -297,7 +362,7 @@ class CockpitApp(App):
         bp = pick_breakpoint(event.size)
         try:
             if bp == "wide":
-                t, a, ag = _COL_RATIOS
+                t, *_ = _COL_RATIOS
                 self.query_one("#topics").styles.display = "block"
                 self.query_one("#topics").styles.width = f"{int(t * 100)}%"
                 right_w = 100 - int(t * 100)
