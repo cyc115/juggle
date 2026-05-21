@@ -119,6 +119,17 @@ from juggle_cmd_context import (
 from juggle_cmd_research import cmd_research
 
 
+def cmd_cockpit(args):
+    """Launch the Juggle Cockpit dashboard (v1 Rich or v2 Textual)."""
+    import subprocess as _sp
+    src = Path(__file__).parent
+    script = src / ("juggle_cockpit_v2.py" if getattr(args, "v2", False) else "juggle_cockpit.py")
+    cmd = ["uv", "run", str(script)]
+    if getattr(args, "db_path", None):
+        cmd += ["--db", args.db_path]
+    sys.exit(_sp.call(cmd))
+
+
 def cmd_record_pending_decision(args):
     """Record pending user decisions in current thread's open_questions."""
     import json
@@ -630,6 +641,12 @@ def main():
             __import__("juggle_schedule_autofix").run(dry_run=a.dry_run) or None
         )
     )
+
+    # cockpit
+    p_cockpit = subparsers.add_parser("cockpit", help="Open live cockpit dashboard")
+    p_cockpit.add_argument("--v2", action="store_true", help="Launch Textual v2 cockpit")
+    p_cockpit.add_argument("--db", dest="db_path", default=None, help="Path to juggle.db")
+    p_cockpit.set_defaults(func=cmd_cockpit)
 
     # schedule-reflect (Mon 03:00 local / 0 8 * * 1 UTC)
     p_reflect = subparsers.add_parser(
