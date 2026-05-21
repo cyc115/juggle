@@ -7,16 +7,16 @@
 
 **Parallel conversation threads for Claude Code.**
 
-[![Version](https://img.shields.io/badge/version-1.23.0-2563eb.svg)](.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.28.2-2563eb.svg)](.claude-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/python-3.12+-f59e0b.svg)](https://www.python.org/)
 [![tmux](https://img.shields.io/badge/tmux-3.0+-22c55e.svg)](https://github.com/tmux/tmux)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-94a3b8.svg)](#prerequisites)
 
 </div>
 
-![Juggle in action](docs/images/juggle-in-action.png)
+![Juggle in action — Cockpit v2 with orchestrator and nvim](docs/images/juggle-in-action.png)
 
-*Juggle cockpit showing concurrent topics (left), action items queue (center), and live agent terminal panes (right).*
+> **What you're seeing:** orchestrator (top-left) dispatching parallel coders by writing task files, nvim (top-right) holding open context, and the **Cockpit v2** (full-width bottom) tracking Topics, Action Items, and live Agents. Threads `[LJ]` and `[LK]` here are critiquing the same TF provider examples in parallel — one via Claude (juggle), one via Codex.
 
 ---
 
