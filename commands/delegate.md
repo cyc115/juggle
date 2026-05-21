@@ -138,6 +138,17 @@ Fill in the placeholders (`<label>`, `<role>`, `<THREAD_LABEL>`, task descriptio
 ```
 ## Coder behavioral spec
 
+## Invoke TDD by default
+
+Invoke `superpowers:test-driven-development` before implementation. Cycle:
+1. RED — write a failing test; run it and confirm failure mode.
+2. GREEN — minimum code to pass; verify.
+3. REFACTOR if necessary; re-verify.
+4. Commit each RED→GREEN atomically.
+
+Skipping RED is forbidden. Trivial config/doc/typo edits may skip; logic
+changes must follow the cycle.
+
 ## Always finalize — never wait at the prompt
 
 Your task ENDS with a `complete-agent` or `fail-agent` Bash call. You must

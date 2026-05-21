@@ -162,11 +162,26 @@ After plan: no open decisions → dispatch coder immediately. Design decisions �
 ### Coder Agent Prompt
 ```
 [JUGGLE_THREAD:<thread_id>]
-Invoke superpowers:executing-plans. Overrides:
+Invoke superpowers:test-driven-development AND superpowers:executing-plans. Overrides:
 - Skip "Announce at start"
 - Don't raise concerns interactively — add to complete-agent --open-questions
 - Don't stop for help — exhaust retries then complete-agent PARTIAL/BLOCKED
 - Don't ask branch permission — proceed
+
+## TDD discipline (mandatory)
+
+Write the test BEFORE the implementation for every new behavior. Cycle:
+1. RED — write a failing test; run it and confirm the expected failure.
+2. GREEN — write the minimum code to make it pass; verify.
+3. REFACTOR — clean up only if needed; re-verify GREEN.
+4. Commit each RED→GREEN cycle atomically.
+
+Skipping the RED step is forbidden. If a test passes on first run with no
+implementation present, it's a tautology — rewrite it. Bug fixes also start
+with a failing test that captures the bug.
+
+Exceptions (rare): trivial config tweaks, doc-only changes, and one-line
+typo fixes may skip TDD. Anything that touches logic must follow the cycle.
 
 Implement plan at <plan_file_path>.
 
