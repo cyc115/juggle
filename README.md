@@ -183,6 +183,7 @@ Juggle ships as a Claude Code plugin (see `.claude-plugin/plugin.json` and `.cla
 | `/juggle:archive-topics` | Archive completed or stale topics |
 | `/juggle:remember <text>` | Explicitly retain a memory to Hindsight |
 | `/juggle:toggle-talkback` | Toggle TTS voice notifications |
+| `/juggle:search-offline-db <query>` | Search local research KB only (no synthesis, no web) |
 
 Under the hood every command shells out to `python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py <subcommand>`. Run `juggle_cli.py --help` for the full subcommand list (create-thread, switch-thread, spawn-agent, send-task, complete-agent, digest, recall, grep-vault, and more).
 

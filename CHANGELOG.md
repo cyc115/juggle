@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-05-20
+- Add `/juggle:search-offline-db` — lightweight KB-only search (no synthesis, no vault/memory/web). Supports `--fts` for fully-offline mode.
+
 ## 2026-05-19
 - Add `/schedule:dogfood`, `:autofix`, `:reflect` skills for background automation routines
 - Add autofix fix-types: fx3 (test-gap analysis), fx4 (watchdog test improvements), fx5 (doc drift), fx6 (CHANGELOG append)
