@@ -130,7 +130,7 @@ async def ingest_pdf(kb, pdf_path: str, model: str, api_key: str) -> int:
             score=None,
             date=None,
             source="pdf",
-            summary=chunk[:200],
+            summary=chunk,
             body=chunk,
         )
         if row_id:
