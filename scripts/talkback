@@ -6,11 +6,42 @@
 """Talkback — local TTS service using Kokoro. CLI + HTTP server modes."""
 
 import argparse
+import json
+import os
+import pathlib
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 import numpy as np
 import sounddevice as sd
+
+# ---------------------------------------------------------------------------
+# Speak log
+# ---------------------------------------------------------------------------
+_LOG_PATH = pathlib.Path(
+    os.environ.get("JUGGLE_TALKBACK_LOG_PATH")
+    or pathlib.Path.home() / ".juggle/logs/talkback.jsonl"
+)
+
+
+def _log_speak(text: str, voice: str, speed: float, client_ip: str) -> None:
+    try:
+        _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        entry: dict = {
+            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "text": text,
+            "voice": voice,
+            "speed": speed,
+            "client_ip": client_ip,
+        }
+        if not text.strip():
+            entry["cancelled"] = True
+        with open(_LOG_PATH, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+            f.flush()
+    except Exception as e:
+        print(f"[talkback] WARNING: failed to write speak log: {e}", file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # Global state for cancellation
@@ -185,7 +216,7 @@ def speak(text: str, voice: str = "af_heart", speed: float = 1.0) -> None:
 # HTTP server (Flask)
 # ---------------------------------------------------------------------------
 
-def run_server(port: int, voice: str, speed: float) -> None:
+def create_app(voice: str = "af_heart", speed: float = 1.0):
     from flask import Flask, request, jsonify
 
     app = Flask(__name__)
@@ -200,6 +231,9 @@ def run_server(port: int, voice: str, speed: float) -> None:
         text = data.get("text", "")
         req_speed = data.get("speed", speed)
         req_voice = data.get("voice", voice)
+        client_ip = request.remote_addr or ""
+
+        _log_speak(text, req_voice, req_speed, client_ip)
 
         if not text.strip():
             cancel_playback()
@@ -214,6 +248,11 @@ def run_server(port: int, voice: str, speed: float) -> None:
         t.start()
         return jsonify({"status": "speaking"})
 
+    return app
+
+
+def run_server(port: int, voice: str, speed: float) -> None:
+    app = create_app(voice=voice, speed=speed)
     print(f"[talkback] Loading Kokoro model...")
     _get_pipeline()
     print(f"[talkback] Listening on http://localhost:{port} (auto device)")
