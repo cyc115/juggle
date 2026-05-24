@@ -15,7 +15,7 @@ The DB does **not** capture:
 - The user's in-flight conversation that has not yet been committed to a thread message
 - The current state of the working tree (uncommitted edits, untracked files, recent local commits)
 
-Both are needed by dispatched agents but only the orchestrator can see them. So the responsibility lives in the **dispatching skill** (`/juggle:research`, `/juggle:delegate`, and any future skill that fires an agent).
+Both are needed by dispatched agents but only the orchestrator can see them. So the responsibility lives in the **dispatching skill** (`/juggle:deep-research`, `/juggle:delegate`, and any future skill that fires an agent).
 
 The canonical extraction prose lives in [`commands/_context-extraction.md`](../commands/_context-extraction.md). It defines two blocks:
 

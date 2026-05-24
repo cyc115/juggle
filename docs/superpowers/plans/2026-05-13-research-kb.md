@@ -2,7 +2,7 @@
 
 **Status:** Implemented 2026-05-13
 
-**Goal:** `/juggle:research [topic]` — a hybrid vector+keyword search over HN articles, PDFs, vault, and Hindsight, synthesized via OpenRouter into a markdown digest with inline links.
+**Goal:** `/juggle:deep-research [topic]` — a hybrid vector+keyword search over HN articles, PDFs, vault, and Hindsight, synthesized via OpenRouter into a markdown digest with inline links.
 
 **Architecture:** A dedicated SQLite DB (`~/.juggle/research_kb.db`) holds articles with sqlite-vec embeddings and FTS5 full-text index. The standalone `juggle_cmd_research.py` script runs parallel async searches across all sources, then calls OpenRouter for synthesis. The slash command handles MCP web search and injects results via `--web-results`.
 
@@ -18,7 +18,7 @@
 | `src/juggle_research_kb.py` | ✅ | DB schema init, hybrid RRF search |
 | `src/juggle_research_ingest.py` | ✅ | HN BigQuery + PDF ingestion pipeline |
 | `src/juggle_cmd_research.py` | ✅ | Standalone search+synthesis CLI |
-| `commands/research.md` | ✅ | `/juggle:research` slash command |
+| `commands/deep-research.md` | ✅ | `/juggle:deep-research` slash command |
 | `commands/research-ingest.md` | ✅ | `/juggle:research-ingest` slash command |
 | `commands/init.md` | ✅ | `research_kb` init step wired in |
 | `tests/test_research_kb.py` | ⏸ | DB layer unit tests (stubs) |
@@ -878,11 +878,11 @@ description: Search research KB — HN articles, PDFs, vault, memory, and web
 allowed-tools: Bash, mcp__web-search__search-web
 ---
 
-# /juggle:research — Research Knowledge Base
+# /juggle:deep-research — Research Knowledge Base
 
 Search for a topic across HN articles, PDFs, vault notes, Hindsight memory, and the web.
 
-**Usage:** `/juggle:research <topic>`
+**Usage:** `/juggle:deep-research <topic>`
 
 ## Steps
 

@@ -1,4 +1,4 @@
-# Design: `/juggle:research` — Personal Knowledge Base
+# Design: `/juggle:deep-research` — Personal Knowledge Base
 
 **Date:** 2026-05-13  
 **Status:** Approved
@@ -7,7 +7,7 @@
 
 ## Overview
 
-A personal research knowledge base integrated into Juggle. The `/juggle:research [topic]` command performs parallel hybrid search across HN articles, local PDFs, vault notes, Hindsight memory, and the web, then synthesizes results via Gemini 3.1 Flash into a markdown digest with inline clickable links.
+A personal research knowledge base integrated into Juggle. The `/juggle:deep-research [topic]` command performs parallel hybrid search across HN articles, local PDFs, vault notes, Hindsight memory, and the web, then synthesizes results via Gemini 3.1 Flash into a markdown digest with inline clickable links.
 
 ---
 

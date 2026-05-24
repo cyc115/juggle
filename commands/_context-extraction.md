@@ -1,6 +1,6 @@
 # Shared partial: orchestrator-side context extraction for dispatched agents
 
-This partial is referenced by dispatching skills (`/juggle:research`, `/juggle:delegate`). It defines the canonical prose for extracting context from the orchestrator's current session and injecting it into the agent's task file.
+This partial is referenced by dispatching skills (`/juggle:deep-research`, `/juggle:delegate`). It defines the canonical prose for extracting context from the orchestrator's current session and injecting it into the agent's task file.
 
 It is **not** invoked at runtime — dispatching skills inline its instructions by reference. Update this file when the extraction pattern changes, and the dispatching skills inherit the change.
 

@@ -3,11 +3,11 @@ description: Search research KB — HN articles, PDFs, vault, memory, and web �
 allowed-tools: Bash
 ---
 
-# /juggle:research — Research Knowledge Base
+# /juggle:deep-research — Research Knowledge Base
 
 Delegates research to a background agent. Asks clarifying intent questions first, then dispatches multi-round parallel web research. Loops back with a report and optionally mid-research for directional guidance.
 
-**Usage:** `/juggle:research <topic> [--no-web] [--verbose] [--deep] [--no-clarify]`
+**Usage:** `/juggle:deep-research <topic> [--no-web] [--verbose] [--deep] [--no-clarify]`
 
 ---
 
