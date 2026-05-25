@@ -351,19 +351,54 @@ def render_notifications(
 def render_static_from_state(state: CockpitState, width: int = 120) -> str:
     """Render all four cockpit panes as plain text from a CockpitState.
 
-    Prints Topics → Actions → Agents → Notifications, each as a Rich panel,
-    into a fixed-width console and returns the exported text. No DB I/O.
-    Suitable for unit tests and CI smoke checks.
+    Mirrors the TUI 2D layout:
+      Left column  : Topics (full height)
+      Right top    : Actions + Agents side by side
+      Right bottom : Notifications (full width of right)
+
+    No DB I/O. Suitable for unit tests and CI smoke checks.
     """
+    import io
     from rich.console import Console
 
-    console = Console(width=width, record=True, no_color=True, highlight=False)
-    with console:
-        console.print(render_topics(state.topics, "wide"))
-        console.print(render_actions(state.actions))
-        console.print(render_agents(state.agents, state.scheduled))
-        console.print(render_notifications(state.notifications))
-    return console.export_text()
+    def _render(renderable, w: int) -> list[str]:
+        """Render a Rich renderable into lines at width w without touching stdout."""
+        buf = io.StringIO()
+        con = Console(width=w, file=buf, no_color=True, highlight=False)
+        con.print(renderable)
+        return buf.getvalue().splitlines()
+
+    left_w = width // 3
+    right_w = width - left_w
+    half_right = right_w // 2
+
+    left_lines = _render(render_topics(state.topics, "wide"), left_w)
+    actions_lines = _render(render_actions(state.actions), half_right)
+    agents_lines = _render(render_agents(state.agents, state.scheduled), right_w - half_right)
+    notif_lines = _render(render_notifications(state.notifications), right_w)
+
+    # --- compose the 2D grid into lines ----------------------------------
+    right_top_rows = max(len(actions_lines), len(agents_lines))
+    total_rows = max(len(left_lines), right_top_rows + len(notif_lines))
+
+    def _pad(lines: list[str], n: int, w: int) -> list[str]:
+        padded = [ln.ljust(w)[:w] for ln in lines]
+        padded += [" " * w] * (n - len(padded))
+        return padded
+
+    left_padded = _pad(left_lines, total_rows, left_w)
+    actions_padded = _pad(actions_lines, right_top_rows, half_right)
+    agents_padded = _pad(agents_lines, right_top_rows, right_w - half_right)
+    notif_padded = _pad(notif_lines, len(notif_lines), right_w)
+
+    right_padded: list[str] = []
+    for i in range(right_top_rows):
+        right_padded.append(actions_padded[i] + agents_padded[i])
+    right_padded.extend(notif_padded)
+    right_padded = _pad(right_padded, total_rows, right_w)
+
+    output_lines = [l + r for l, r in zip(left_padded, right_padded)]
+    return "\n".join(output_lines) + "\n"
 
 
 def render_static(db_path: str | None = None, width: int = 120) -> str:

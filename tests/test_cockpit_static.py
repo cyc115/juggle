@@ -119,3 +119,42 @@ def test_render_static_with_real_db(tmp_path):
     assert "Action Items" in text
     assert "Agents" in text
     assert "Notifications" in text
+
+
+def test_render_static_2d_layout():
+    """Topics is left column; Action Items and Agents share top-right; Notifications is bottom-right.
+
+    At width=120, Topics occupies leftmost 40 cols, so the first line of
+    the Topics panel title must appear in the left third of every row it appears
+    on.  Action Items and Agents titles must appear on the SAME line as each
+    other (side-by-side) and NOT on the same line as Notifications.
+    """
+    state = _make_state(
+        topics=[Topic(id="t1", label="K", status="current", age_secs=60, is_current=True, title="deploy")],
+        actions=[Action(id="a1", topic_id="K", text="check logs", tier=2, age_secs=30)],
+        agents=[Agent(id_short="ag1", role="coder", status="busy", topic_id="K", age_secs=10)],
+        notifications=[Notification(text="done", kind="complete", age_secs=5)],
+    )
+    text = render_static_from_state(state, width=120)
+    lines = text.splitlines()
+
+    # Find the row containing "Action Items"
+    actions_row = next(i for i, ln in enumerate(lines) if "Action Items" in ln)
+    agents_row = next(i for i, ln in enumerate(lines) if "Agents" in ln)
+    notif_row = next(i for i, ln in enumerate(lines) if "Notifications" in ln)
+    topics_row = next(i for i, ln in enumerate(lines) if "Topics" in ln)
+
+    # Topics is the leftmost panel (left third of screen)
+    left_w = 120 // 3
+    topics_col = lines[topics_row].find("Topics")
+    assert topics_col < left_w, "Topics title must be in left column"
+
+    # Action Items and Agents appear on the same row (side-by-side, top-right)
+    assert actions_row == agents_row, "Action Items and Agents must be on the same row (side-by-side)"
+
+    # Notifications appears below Action Items / Agents
+    assert notif_row > actions_row, "Notifications must be below Action Items / Agents"
+
+    # Notifications panel starts at left_w (right column, full width)
+    notif_col = lines[notif_row].find("Notifications")
+    assert notif_col >= left_w, "Notifications title must be in the right column"

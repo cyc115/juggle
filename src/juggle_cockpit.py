@@ -102,7 +102,7 @@ def _make_cockpit_db(db_path: str | None = None) -> JuggleDB:
 
 
 class Splitter(Static):
-    """Vertical drag handle. Resizes the widget pair on either side."""
+    """Vertical drag handle. Resizes the left/right widget pair on either side."""
 
     DEFAULT_CSS = """
     Splitter {
@@ -154,6 +154,59 @@ class Splitter(Static):
         event.stop()
 
 
+class HSplitter(Static):
+    """Horizontal drag handle. Resizes the top/bottom widget pair above and below."""
+
+    DEFAULT_CSS = """
+    HSplitter {
+        width: 100%;
+        height: 1;
+        background: $panel-darken-1;
+        color: $panel-lighten-2;
+    }
+    HSplitter:hover {
+        background: $accent;
+    }
+    """
+
+    def __init__(self, top_id: str, bottom_id: str) -> None:
+        super().__init__("─")
+        self._top_id = top_id
+        self._bottom_id = bottom_id
+        self._dragging = False
+        self._drag_start_y: int = 0
+        self._top_start_h: int = 0
+        self._bottom_start_h: int = 0
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        top = self.app.query_one(f"#{self._top_id}")
+        bottom = self.app.query_one(f"#{self._bottom_id}")
+        self._dragging = True
+        self._drag_start_y = event.screen_y
+        self._top_start_h = top.size.height
+        self._bottom_start_h = bottom.size.height
+        self.capture_mouse()
+        event.stop()
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        if not self._dragging:
+            return
+        delta = event.screen_y - self._drag_start_y
+        top = self.app.query_one(f"#{self._top_id}")
+        bottom = self.app.query_one(f"#{self._bottom_id}")
+        total = self._top_start_h + self._bottom_start_h
+        new_top = max(4, min(total - 4, self._top_start_h + delta))
+        new_bottom = total - new_top
+        top.styles.height = new_top
+        bottom.styles.height = new_bottom
+        event.stop()
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        self.release_mouse()
+        self._dragging = False
+        event.stop()
+
+
 # ---------------------------------------------------------------------------
 # CockpitApp
 # ---------------------------------------------------------------------------
@@ -181,15 +234,11 @@ class CockpitApp(App):
     }
     #upper {
         layout: horizontal;
-        height: 100%;
     }
     #actions {
         height: 100%;
     }
     #agents {
-        height: 100%;
-    }
-    #notifications {
         height: 100%;
     }
     """
@@ -244,8 +293,8 @@ class CockpitApp(App):
                     yield Static("", id="actions")
                     yield Splitter("actions", "agents")
                     yield Static("", id="agents")
-                    yield Splitter("agents", "notifications")
-                    yield Static("", id="notifications")
+                yield HSplitter("upper", "notifications")
+                yield Static("", id="notifications")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -257,24 +306,22 @@ class CockpitApp(App):
             self.exit(1)
             return
 
-        # Apply settings-driven initial widths.
-        # Notifications is now the third column in #upper (horizontally resizable).
+        # Apply settings-driven initial sizes.
         t, a, ag = _COL_RATIOS
         topics_w = int(t * 100)
         right_w = 100 - topics_w
-        # Distribute #upper width across actions / agents / notifications.
-        # _NOTIF_RATIO (originally a height %) is repurposed as initial notif column width %.
-        notif_pct = _NOTIF_RATIO
-        inner_pct = 100 - notif_pct  # split between actions and agents
         inner_total = a + ag
-        actions_pct = int(a / inner_total * inner_pct) if inner_total > 0 else int(inner_pct / 2)
-        agents_pct = inner_pct - actions_pct
+        actions_pct = int(a / inner_total * 100) if inner_total > 0 else 50
+        agents_pct = 100 - actions_pct
+        notif_pct = _NOTIF_RATIO       # height % for #notifications
+        upper_pct = 100 - notif_pct   # height % for #upper
 
         self.query_one("#topics").styles.width = f"{topics_w}%"
         self.query_one("#right").styles.width = f"{right_w}%"
         self.query_one("#actions").styles.width = f"{actions_pct}%"
         self.query_one("#agents").styles.width = f"{agents_pct}%"
-        self.query_one("#notifications").styles.width = f"{notif_pct}%"
+        self.query_one("#upper").styles.height = f"{upper_pct}%"
+        self.query_one("#notifications").styles.height = f"{notif_pct}%"
 
         self._check_tmux_mouse()
         self.set_interval(REFRESH_INTERVAL, self._refresh)
@@ -372,21 +419,19 @@ class CockpitApp(App):
         try:
             if bp == "wide":
                 if self._last_bp != "wide":
-                    # Transitioning narrow/medium → wide: restore all columns from config.
+                    # Transitioning narrow/medium → wide: restore column widths from config.
+                    # Heights (#upper / #notifications) are preserved from HSplitter drag.
                     t, a, ag = _COL_RATIOS
                     topics_w = int(t * 100)
                     self.query_one("#topics").styles.display = "block"
                     self.query_one("#topics").styles.width = f"{topics_w}%"
                     self.query_one("#right").styles.width = f"{100 - topics_w}%"
-                    notif_pct = _NOTIF_RATIO
-                    inner_pct = 100 - notif_pct
                     inner_total = a + ag
-                    actions_pct = int(a / inner_total * inner_pct) if inner_total > 0 else int(inner_pct / 2)
-                    agents_pct = inner_pct - actions_pct
+                    actions_pct = int(a / inner_total * 100) if inner_total > 0 else 50
+                    agents_pct = 100 - actions_pct
                     self.query_one("#actions").styles.width = f"{actions_pct}%"
                     self.query_one("#agents").styles.width = f"{agents_pct}%"
-                    self.query_one("#notifications").styles.width = f"{notif_pct}%"
-                # else: already wide — preserve user-dragged widths unchanged
+                # else: already wide — preserve user-dragged sizes unchanged
             else:
                 # medium/narrow: collapse topics column
                 self.query_one("#topics").styles.display = "none"
