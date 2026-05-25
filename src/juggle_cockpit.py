@@ -48,7 +48,7 @@ from juggle_cockpit_helpers import (
     _tmux_capture_pane,
     _tmux_focus_pane,
 )
-from juggle_cockpit_modals import _ConfirmModal, _HelpModal, _PromptModal
+from juggle_cockpit_modals import _ConfirmModal, _HelpModal, _PromptModal, _TailModal
 from juggle_cockpit_widgets import HSplitter, Splitter
 
 
@@ -160,13 +160,6 @@ class CockpitApp(App):
     #agents {
         height: 100%;
     }
-    #tail {
-        height: 8;
-        display: none;
-        border: round $warning;
-        padding: 0 1;
-        color: $text-muted;
-    }
     """
 
     def __init__(self, db_path: str | None = None) -> None:
@@ -184,9 +177,6 @@ class CockpitApp(App):
         # Phase 4: Bell / desktop notification diff state
         self._prev_action_ids: set[str] = set()
         self._prev_agent_statuses: dict[str, str] = {}  # id_short → status
-        # Phase 5: tail drawer state
-        self._tail_active: bool = False
-        self._tail_pane_id: str | None = None
         _settings = _get_settings()
         self._bell_enabled: bool = bool(
             _settings.get("cockpit", {}).get("bell", True)
@@ -239,7 +229,6 @@ class CockpitApp(App):
                     yield Static("", id="agents")
                 yield HSplitter("upper", "notifications")
                 yield Static("", id="notifications")
-        yield Static("", id="tail")  # Phase 5: tail drawer — hidden by default
         yield Footer()
 
     def on_mount(self) -> None:
@@ -376,12 +365,6 @@ class CockpitApp(App):
                     filter_label=self._filter.get("notifications", ""),
                 )
             )
-
-            # Update tail drawer if active
-            if self._tail_active and self._tail_pane_id:
-                tail_text = _tmux_capture_pane(self._tail_pane_id, lines=7)
-                header = f"[dim]tail {self._tail_pane_id}[/]  [dim]t — close[/]\n"
-                self.query_one("#tail").update(header + (tail_text or "[dim](no output)[/]"))
 
         except Exception as e:
             self.notify(str(e), severity="error")
@@ -639,15 +622,7 @@ class CockpitApp(App):
         self.push_screen(_PromptModal(f"Focus agent (1–{len(agents)}):"), _on_index)
 
     def action_tail_toggle(self) -> None:
-        """t — toggle tail drawer. Second press dismisses without prompt."""
-        if self._tail_active:
-            # Toggle off
-            self._tail_active = False
-            self._tail_pane_id = None
-            self.query_one("#tail").styles.display = "none"
-            self._refresh()
-            return
-
+        """t — open tail modal for an agent's tmux pane."""
         from juggle_cockpit_model import snapshot as _snapshot
         state = _snapshot(self._db)
         agents = state.agents
@@ -676,10 +651,7 @@ class CockpitApp(App):
                     severity="warning", timeout=2,
                 )
                 return
-            self._tail_active = True
-            self._tail_pane_id = agent.pane_id
-            self.query_one("#tail").styles.display = "block"
-            self._refresh()
+            self.push_screen(_TailModal(agent.pane_id, _tmux_capture_pane))
 
         self.push_screen(_PromptModal(f"Tail agent (1–{len(agents)}):"), _on_index)
 

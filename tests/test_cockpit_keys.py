@@ -630,3 +630,124 @@ async def test_shift_tab_cycles_pane_backward(tmp_path):
             f"After 3 Shift+Tabs (full reverse cycle): expected 'notifications', "
             f"got {app._active_pane!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Cycle 9 — _TailModal (modal overlay replacing inline #tail drawer)
+# ---------------------------------------------------------------------------
+
+
+def test_tail_modal_refresh_calls_capture_fn():
+    """_refresh_tail calls capture_fn(pane_id, lines=20) and updates Static body."""
+    from unittest.mock import MagicMock, patch
+
+    from juggle_cockpit_modals import _TailModal
+
+    calls: list = []
+
+    def fake_capture(pane_id, lines=20):
+        calls.append((pane_id, lines))
+        return "line1\nline2"
+
+    modal = _TailModal("%99", fake_capture)
+    mock_body = MagicMock()
+
+    with patch.object(modal, "query_one", return_value=mock_body):
+        modal._refresh_tail()
+
+    assert calls == [("%99", 20)], f"Expected [('%99', 20)], got {calls}"
+    mock_body.update.assert_called_once_with("line1\nline2")
+
+
+@pytest.mark.asyncio
+async def test_tail_modal_dismiss_on_t():
+    """_TailModal dismisses itself when 't' is pressed."""
+    from textual.app import App
+
+    from juggle_cockpit_modals import _TailModal
+
+    def fake_capture(pane_id, lines=20):
+        return "output"
+
+    class TestApp(App):
+        async def on_mount(self) -> None:
+            await self.push_screen(_TailModal("%1", fake_capture))
+
+    async with TestApp().run_test(size=(80, 24)) as pilot:
+        assert len(pilot.app.screen_stack) == 2, "modal should be open"
+        await pilot.press("t")
+        await pilot.pause(0.2)
+        assert len(pilot.app.screen_stack) == 1, "modal should be dismissed after 't'"
+
+
+@pytest.mark.asyncio
+async def test_tail_modal_dismiss_on_escape():
+    """_TailModal dismisses itself when 'escape' is pressed."""
+    from textual.app import App
+
+    from juggle_cockpit_modals import _TailModal
+
+    def fake_capture(pane_id, lines=20):
+        return "output"
+
+    class TestApp(App):
+        async def on_mount(self) -> None:
+            await self.push_screen(_TailModal("%2", fake_capture))
+
+    async with TestApp().run_test(size=(80, 24)) as pilot:
+        assert len(pilot.app.screen_stack) == 2, "modal should be open"
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+        assert len(pilot.app.screen_stack) == 1, "modal should be dismissed after 'escape'"
+
+
+@pytest.mark.asyncio
+async def test_no_tail_widget_in_cockpit(tmp_path):
+    """CockpitApp must NOT have a #tail Static widget — drawer is removed."""
+    from textual.css.query import NoMatches
+
+    from juggle_cockpit import CockpitApp
+    from juggle_db import JuggleDB
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    db.create_thread("test", session_id="")
+
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        with pytest.raises(NoMatches):
+            app.query_one("#tail")
+
+
+@pytest.mark.asyncio
+async def test_tail_toggle_pushes_modal_for_valid_agent(tmp_path):
+    """Pressing 't' then a valid agent index pushes _TailModal onto screen_stack."""
+    from juggle_cockpit import CockpitApp
+    from juggle_cockpit_modals import _TailModal
+    from juggle_db import JuggleDB
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    db.create_thread("test", session_id="")
+    db.create_agent("coder", "%99")  # agent with a tmux pane_id
+
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        # 't' → _PromptModal for agent index
+        await pilot.press("t")
+        await pilot.pause(0.15)
+        # type '1' + enter → resolves to agent #1
+        await pilot.press("1")
+        await pilot.press("enter")
+        await pilot.pause(0.3)
+        # _TailModal should now be on top of screen_stack
+        assert len(pilot.app.screen_stack) == 2, (
+            f"Expected _TailModal on stack, got depth {len(pilot.app.screen_stack)}"
+        )
+        assert isinstance(pilot.app.screen_stack[-1], _TailModal), (
+            f"Expected _TailModal, got {type(pilot.app.screen_stack[-1])}"
+        )

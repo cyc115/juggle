@@ -657,13 +657,13 @@ def test_action_tail_toggle_method_exists():
     assert hasattr(CockpitApp, "action_tail_toggle")
 
 
-def test_tail_state_attrs_in_init():
-    """CockpitApp.__init__ initialises _tail_active and _tail_pane_id."""
+def test_tail_drawer_state_attrs_removed_from_init():
+    """Drawer attrs _tail_active / _tail_pane_id must NOT exist — replaced by _TailModal."""
     import inspect
     from juggle_cockpit import CockpitApp
     src = inspect.getsource(CockpitApp.__init__)
-    assert "_tail_active" in src
-    assert "_tail_pane_id" in src
+    assert "_tail_active" not in src, "_tail_active drawer state should be removed"
+    assert "_tail_pane_id" not in src, "_tail_pane_id drawer state should be removed"
 
 
 @pytest.mark.asyncio
@@ -698,11 +698,12 @@ async def test_action_focus_pane_calls_tmux_with_correct_pane_id(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_action_tail_toggle_shows_then_hides(tmp_path):
-    """t → 1 → enter shows tail drawer; t again hides it."""
-    from juggle_db import JuggleDB
-    from juggle_cockpit import CockpitApp
+async def test_action_tail_toggle_pushes_modal_and_injects_capture(tmp_path):
+    """t → 1 → enter pushes _TailModal; injected capture_fn calls _tmux_capture_pane."""
     import juggle_cockpit
+    from juggle_cockpit import CockpitApp
+    from juggle_cockpit_modals import _TailModal
+    from juggle_db import JuggleDB
 
     db_path = str(tmp_path / "juggle.db")
     db = JuggleDB(db_path=db_path)
@@ -719,30 +720,19 @@ async def test_action_tail_toggle_shows_then_hides(tmp_path):
 
     async with app.run_test(size=(160, 40)) as pilot:
         with patch.object(juggle_cockpit, "_tmux_capture_pane", mock_capture):
-            # First press t: open index modal, type 1, enter
             await pilot.press("t")
             await pilot.pause(0.1)
             await pilot.press("1")
             await pilot.press("enter")
             await pilot.pause(0.3)
 
-            # Tail should be visible
-            assert app._tail_active is True, "tail_active should be True"
-            assert app._tail_pane_id == "%200", (
-                f"tail_pane_id should be %200, got {app._tail_pane_id}"
+            # _TailModal should now be on top of screen_stack
+            assert len(pilot.app.screen_stack) == 2, (
+                f"Expected _TailModal on stack, got depth {len(pilot.app.screen_stack)}"
             )
-            tail_widget = app.query_one("#tail")
-            assert tail_widget.styles.display == "block", (
-                f"tail display should be block, got {tail_widget.styles.display}"
+            assert isinstance(pilot.app.screen_stack[-1], _TailModal), (
+                f"Expected _TailModal, got {type(pilot.app.screen_stack[-1])}"
             )
-            assert len(capture_calls) >= 1, "_tmux_capture_pane not called"
-            assert capture_calls[0] == "%200", f"capture called with {capture_calls[0]}"
-
-            # Second press t: toggle off (no modal — instant dismiss)
-            await pilot.press("t")
-            await pilot.pause(0.2)
-
-        assert app._tail_active is False, "tail_active should be False after second t"
-        assert app.query_one("#tail").styles.display == "none", (
-            "tail display should be none after close"
-        )
+            # The injected capture_fn (which wraps mock_capture) should have been called
+            assert len(capture_calls) >= 1, "_tmux_capture_pane not called via injected fn"
+            assert capture_calls[0] == "%200", f"capture called with wrong pane: {capture_calls[0]}"

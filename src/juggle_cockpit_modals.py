@@ -6,6 +6,8 @@ All symbols are re-exported from juggle_cockpit for backward compatibility.
 
 from __future__ import annotations
 
+from typing import Callable
+
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Vertical
@@ -123,3 +125,49 @@ class _HelpModal(ModalScreen):
             lines.append(f"  {b.key:<14} {b.description}")
         lines += ["", "Esc / q — close"]
         yield Static("\n".join(lines))
+
+
+class _TailModal(ModalScreen):
+    """Live tail overlay for a tmux pane.
+
+    Pops on top of the cockpit when the user presses 't' + agent index.
+    Refreshes every 1 s via set_interval; dismiss on 't' or 'escape'.
+
+    capture_fn is injected (not imported) so the modal stays testable
+    without subprocess access.
+    """
+
+    DEFAULT_CSS = """
+    _TailModal {
+        align: center middle;
+    }
+    _TailModal > Vertical {
+        width: 80%;
+        height: 70%;
+        border: round $accent;
+        padding: 1 2;
+    }
+    """
+
+    def __init__(self, pane_id: str, capture_fn: Callable[..., str]) -> None:
+        super().__init__()
+        self.pane_id = pane_id
+        self._capture_fn = capture_fn
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(f"tail {self.pane_id}   (t / esc to close)", markup=False)
+            yield Static("", id="tail-modal-body")
+
+    def on_mount(self) -> None:
+        self._refresh_tail()
+        self.set_interval(1.0, self._refresh_tail)
+
+    def _refresh_tail(self) -> None:
+        text = self._capture_fn(self.pane_id, lines=20)
+        self.query_one("#tail-modal-body", Static).update(text or "[dim](no output)[/]")
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key in ("t", "escape"):
+            event.stop()
+            self.dismiss()
