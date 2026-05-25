@@ -6,22 +6,18 @@ from collections import namedtuple
 import pytest
 
 pytest.importorskip("rich")
-import time as _time
 
 from rich.console import Console
-from rich.layout import Layout
 from rich.panel import Panel
 
 from juggle_cockpit_view import (
     pick_breakpoint,
-    build_layout,
     render_topics,
     render_actions,
     render_agents,
     render_notifications,
-    render_into,
 )
-from juggle_cockpit_model import Topic, Action, Agent, Notification, CockpitState
+from juggle_cockpit_model import Topic, Action, Agent, Notification
 
 Size = namedtuple("Size", ["width", "height"])
 
@@ -48,58 +44,6 @@ def test_pick_breakpoint_wide():
 
 def test_pick_breakpoint_very_wide():
     assert pick_breakpoint(Size(220, 50)) == "wide"
-
-
-# ---------------------------------------------------------------------------
-# build_layout
-# ---------------------------------------------------------------------------
-
-
-def test_build_layout_wide_returns_layout():
-    layout = build_layout("wide")
-    assert isinstance(layout, Layout)
-
-
-def test_build_layout_wide_has_topics():
-    layout = build_layout("wide")
-    assert layout["topics"] is not None
-
-
-def test_build_layout_wide_has_actions():
-    layout = build_layout("wide")
-    assert layout["actions"] is not None
-
-
-def test_build_layout_wide_has_agents():
-    layout = build_layout("wide")
-    assert layout["agents"] is not None
-
-
-def test_build_layout_wide_has_notifications():
-    layout = build_layout("wide")
-    assert layout["notifications"] is not None
-
-
-def test_build_layout_medium_returns_layout():
-    layout = build_layout("medium")
-    assert isinstance(layout, Layout)
-
-
-def test_build_layout_medium_has_topics_strip():
-    layout = build_layout("medium")
-    assert layout["topics_strip"] is not None
-
-
-def test_build_layout_narrow_returns_layout():
-    layout = build_layout("narrow")
-    assert isinstance(layout, Layout)
-
-
-def test_build_layout_narrow_has_all_sections():
-    layout = build_layout("narrow")
-    assert layout["actions"] is not None
-    assert layout["agents"] is not None
-    assert layout["notifications"] is not None
 
 
 # ---------------------------------------------------------------------------
@@ -250,21 +194,6 @@ def test_render_topics_medium_one_topic_per_line():
     assert len(label_lines) >= 3, (
         f"Expected ≥3 label lines, got {len(label_lines)}: {lines}"
     )
-
-
-def test_build_layout_medium_strip_height_scales_with_topics():
-    """topics_strip size must grow when topics_count increases."""
-    layout3 = build_layout("medium", topics_count=3)
-    layout6 = build_layout("medium", topics_count=6)
-
-    def _strip_size(layout):
-        # Walk children to find topics_strip
-        for child in layout._children:
-            if child.name == "topics_strip":
-                return child.size
-        raise AssertionError("topics_strip not found")
-
-    assert _strip_size(layout6) > _strip_size(layout3)
 
 
 # ---------------------------------------------------------------------------
@@ -455,76 +384,6 @@ def test_render_notifications_multiple_newest_first():
 
 
 # ---------------------------------------------------------------------------
-# render_into
-# ---------------------------------------------------------------------------
-
-
-def _make_full_state():
-    return CockpitState(
-        topics=[
-            Topic(
-                id="t1",
-                label="K",
-                status="current",
-                age_secs=60,
-                is_current=True,
-                title="cockpit refactor",
-            ),
-            Topic(
-                id="t2",
-                label="J",
-                status="running",
-                age_secs=3600,
-                is_current=False,
-                title="talkback",
-            ),
-        ],
-        actions=[
-            Action(id="a1", topic_id="K", text="approve plan v3", tier=2, age_secs=300),
-        ],
-        agents=[
-            Agent(
-                id_short="abcd1234",
-                role="coder",
-                status="busy",
-                topic_id="K",
-                age_secs=720,
-            ),
-        ],
-        notifications=[
-            Notification(text="plan v3 ready", kind="complete", age_secs=30),
-        ],
-        scheduled=[],
-        fetched_at=_time.time(),
-    )
-
-
-def test_render_into_wide_no_exception():
-    layout = build_layout("wide")
-    state = _make_full_state()
-    render_into(layout, state, "wide")
-
-
-def test_render_into_medium_no_exception():
-    layout = build_layout("medium")
-    state = _make_full_state()
-    render_into(layout, state, "medium")
-
-
-def test_render_into_narrow_no_exception():
-    layout = build_layout("narrow")
-    state = _make_full_state()
-    render_into(layout, state, "narrow")
-
-
-def test_render_into_wide_actions_panel_updated():
-    layout = build_layout("wide")
-    state = _make_full_state()
-    render_into(layout, state, "wide")
-    assert layout["actions"].renderable is not None
-
-
-# ---------------------------------------------------------------------------
 # Scroll: render_actions
 # ---------------------------------------------------------------------------
 
@@ -632,29 +491,3 @@ def test_render_notifications_active_border():
     assert panel_active.border_style != panel_inactive.border_style
 
 
-# ---------------------------------------------------------------------------
-# Scroll: render_into with scroll_offsets
-# ---------------------------------------------------------------------------
-
-
-def test_render_into_passes_scroll_offsets():
-    """render_into with scroll_offsets must hide first action row."""
-    layout = build_layout("wide")
-    state = _make_full_state()
-    # First action is "approve plan v3" — offset=1 should hide it
-    render_into(layout, state, "wide", scroll_offsets={"actions": 1})
-    c = Console(record=True, width=160)
-    with c:
-        c.print(layout["actions"].renderable)
-    text = c.export_text()
-    assert "approve plan v3" not in text
-
-
-def test_render_into_active_pane_highlights_border():
-    """Active pane panel must have a different border than inactive panes."""
-    layout = build_layout("wide")
-    state = _make_full_state()
-    render_into(layout, state, "wide", active_pane="agents")
-    agents_panel = layout["agents"].renderable
-    actions_panel = layout["actions"].renderable
-    assert agents_panel.border_style != actions_panel.border_style

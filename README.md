@@ -45,7 +45,7 @@ Juggle turns a single Claude Code session into a multi-track workspace. Each top
 /juggle:start
 
 # 3. Open the live dashboard in a second terminal
-uv run ~/.claude/plugins/juggle/src/juggle_cli.py cockpit --v2
+uv run ~/.claude/plugins/juggle/src/juggle_cli.py cockpit
 
 # 4. Dispatch your first background agent
 /juggle:delegate
@@ -57,7 +57,7 @@ After `/juggle:start`, talk normally. Juggle detects topic shifts and opens new 
 
 - **Topics** — each line of work gets a label (`A`–`ZZ`), its own SQLite-backed message history, and an independent context window. Switch anytime with `/juggle:resume-topic`.
 - **Agents** — background workers (researcher / planner / coder) run in tmux panes, up to 20 concurrent. An auto-approver handles permission prompts so agents don't stall while you're focused elsewhere.
-- **Cockpit** — a live dashboard (Topics | Action Items | Agents) updated every second. v2 (Textual, mouse drag-to-resize) is opt-in via `cockpit --v2`; v1 (Rich) is the default.
+- **Cockpit** — a live dashboard (Topics | Action Items | Agents) updated every second. Textual-based with mouse drag-to-resize between panels (tmux mouse mode required).
 - **Action Items** — persistent follow-ups created by agents or manually. Survive sessions until dismissed with `/juggle:action-item-dismiss`.
 - **Hindsight memory** — opt-in long-term memory across sessions. Enable via `hindsight.enabled` in `~/.juggle/config.json`. See [docs/architecture.md](docs/architecture.md).
 
@@ -79,11 +79,9 @@ Full catalog: [`commands/`](commands/)
 ## Cockpit
 
 ```bash
-# v1 — Rich, default
 uv run ~/.claude/plugins/juggle/src/juggle_cockpit.py
-
-# v2 — Textual, mouse drag-to-resize between panels (tmux mouse mode required)
-uv run ~/.claude/plugins/juggle/src/juggle_cli.py cockpit --v2
+# or
+uv run ~/.claude/plugins/juggle/src/juggle_cli.py cockpit
 ```
 
 Three columns: **Topics** (status + label + title), **Action Items** (persistent follow-ups), **Agents** (role, model, assigned thread, idle age). Refreshes every second. Read-only — never writes to the DB.

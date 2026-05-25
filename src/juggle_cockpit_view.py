@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from rich.console import Group
-from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -15,11 +14,8 @@ from juggle_cockpit_model import (
     Agent,
     Notification,
     ScheduledTask,
-    CockpitState,
     format_age,
 )
-from juggle_settings import get_nested
-
 # ---------------------------------------------------------------------------
 # Glyph tables
 # ---------------------------------------------------------------------------
@@ -76,89 +72,6 @@ def pick_breakpoint(size) -> str:
     if size.width >= 80:
         return "medium"
     return "narrow"
-
-
-# ---------------------------------------------------------------------------
-# Layout builder
-# ---------------------------------------------------------------------------
-
-
-def build_layout(bp: str, topics_count: int = 0) -> Layout:
-    """Build a Rich Layout tree for the given breakpoint.
-
-    Wide (>=120):
-        root (horizontal)
-        ├── topics   (ratio=t_ratio, full height)
-        └── right    (ratio=a_ratio+ag_ratio, vertical)
-            ├── upper (ratio=100-notif_ratio, horizontal)
-            │   ├── actions (ratio=a_ratio)
-            │   └── agents  (ratio=ag_ratio)
-            └── notifications (ratio=notif_ratio)
-
-    Medium (80-119):
-        root (vertical)
-        ├── upper (ratio=100-notif_ratio, horizontal)
-        │   ├── actions (ratio=60)
-        │   └── agents  (ratio=40)
-        ├── topics_strip (size=topics_count+2, min 3)
-        └── notifications (ratio=notif_ratio)
-
-    Narrow (<80):
-        root (vertical)
-        ├── actions       (ratio=int((100-notif_ratio)*4/7))
-        ├── agents        (ratio=(100-notif_ratio)-actions_ratio)
-        ├── topics_strip  (size=topics_count+2, min 3)
-        └── notifications (ratio=notif_ratio)
-    """
-    notif_ratio = get_nested("cockpit", "notification_ratio")
-    col_ratios = get_nested("cockpit", "column_ratios") or [0.30, 0.40, 0.30]
-    # col_ratios = [topics, actions, agents] — three visible columns
-    t_ratio = int(col_ratios[0] * 100)
-    a_ratio = int(col_ratios[1] * 100)
-    ag_ratio = int(col_ratios[2] * 100)
-    upper_ratio = 100 - notif_ratio
-    strip_size = max(3, topics_count + 2)
-
-    if bp == "wide":
-        root = Layout(name="root")
-        root.split_row(
-            Layout(name="topics", ratio=t_ratio),
-            Layout(name="right", ratio=a_ratio + ag_ratio),
-        )
-        root["right"].split_column(
-            Layout(name="upper", ratio=upper_ratio),
-            Layout(name="notifications", ratio=notif_ratio),
-        )
-        root["right"]["upper"].split_row(
-            Layout(name="actions", ratio=a_ratio),
-            Layout(name="agents", ratio=ag_ratio),
-        )
-        return root
-
-    elif bp == "medium":
-        root = Layout(name="root")
-        root.split_column(
-            Layout(name="upper", ratio=upper_ratio),
-            Layout(name="topics_strip", size=strip_size),
-            Layout(name="notifications", ratio=notif_ratio),
-        )
-        root["upper"].split_row(
-            Layout(name="actions", ratio=60),
-            Layout(name="agents", ratio=40),
-        )
-        return root
-
-    else:  # narrow
-        actions_ratio = int(upper_ratio * 4 / 7)
-        agents_ratio = upper_ratio - actions_ratio
-        root = Layout(name="root")
-        root.split_column(
-            Layout(name="actions", ratio=actions_ratio),
-            Layout(name="agents", ratio=agents_ratio),
-            Layout(name="topics_strip", size=strip_size),
-            Layout(name="notifications", ratio=notif_ratio),
-        )
-        return root
 
 
 # ---------------------------------------------------------------------------
@@ -425,63 +338,3 @@ def render_notifications(
     )
 
 
-def render_into(
-    layout: Layout,
-    state: CockpitState | None,
-    bp: str,
-    scroll_offsets: dict[str, int] | None = None,
-    active_pane: str | None = None,
-) -> None:
-    """Populate layout panels from state. Mutates layout in place.
-
-    If state is None (DB error on first tick), renders placeholder panels.
-    scroll_offsets maps pane name → row offset; active_pane highlights one border.
-    """
-    offsets = scroll_offsets or {}
-
-    def _offset(pane: str) -> int:
-        return offsets.get(pane, 0)
-
-    def _active(pane: str) -> bool:
-        return active_pane == pane
-
-    if state is None:
-        _placeholder = Panel(Text("loading…", style=Style(dim=True)))
-        if bp == "wide":
-            layout["topics"].update(_placeholder)
-            layout["actions"].update(_placeholder)
-            layout["agents"].update(_placeholder)
-            layout["notifications"].update(_placeholder)
-        else:
-            layout["actions"].update(_placeholder)
-            layout["agents"].update(_placeholder)
-            layout["topics_strip"].update(_placeholder)
-            layout["notifications"].update(_placeholder)
-        return
-
-    topics_panel = render_topics(state.topics, bp)
-    actions_panel = render_actions(
-        state.actions, _offset("actions"), _active("actions")
-    )
-    agents_panel = render_agents(
-        state.agents, state.scheduled, _offset("agents"), _active("agents")
-    )
-    notifs_panel = render_notifications(
-        state.notifications, _offset("notifications"), _active("notifications")
-    )
-
-    if bp == "wide":
-        layout["topics"].update(topics_panel)
-        layout["actions"].update(actions_panel)
-        layout["agents"].update(agents_panel)
-        layout["notifications"].update(notifs_panel)
-    elif bp == "medium":
-        layout["actions"].update(actions_panel)
-        layout["agents"].update(agents_panel)
-        layout["topics_strip"].update(render_topics(state.topics, "medium"))
-        layout["notifications"].update(notifs_panel)
-    else:  # narrow
-        layout["actions"].update(actions_panel)
-        layout["agents"].update(agents_panel)
-        layout["topics_strip"].update(render_topics(state.topics, "narrow"))
-        layout["notifications"].update(notifs_panel)

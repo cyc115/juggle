@@ -240,21 +240,15 @@ On complete: short bullets only. No raw output.
 
 ## Cockpit
 
-Launch the live dashboard:
+Launch the live dashboard (Textual, mouse drag-to-resize between panels):
 
 ```bash
-# v1 — Rich, default:
 uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cockpit.py
-
-# v2 — Textual, opt-in (adds mouse drag-to-resize between panels):
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cockpit_v2.py
 # or via CLI:
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py cockpit --v2
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py cockpit
 ```
 
-> **tmux users:** `set -g mouse on` required for drag-to-resize in v2. v2 warns on startup if mouse mode is off.
->
-> **TODO (future):** migrate v2 panel colors from inline Rich styles to Textual CSS variables. Promote v2 to default after 1 week of dogfooding without regressions.
+> **tmux users:** `set -g mouse on` required for drag-to-resize. Cockpit warns on startup if mouse mode is off.
 
 ---
 

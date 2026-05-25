@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-05-24
+- cockpit: removed legacy v1 (Rich) cockpit; the Textual cockpit is now the only one; dropped the `--v2` flag from `juggle_cli.py cockpit`
+
 ## 2026-05-21
 - talkback: log every /speak request to ~/.juggle/logs/talkback.jsonl (text, voice, speed, ts, client_ip, cancelled flag) for future analysis. Override path via JUGGLE_TALKBACK_LOG_PATH env var.
 - docs(readme): concise rewrite — cut filler, sharpen tagline, refresh examples to uv run / cockpit --v2

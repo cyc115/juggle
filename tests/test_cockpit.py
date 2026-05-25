@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 def test_persist_ratios_writes_normalized_config(tmp_path):
     """_compute_ratios + _write_ratios stores correct column_ratios to config.json."""
-    from juggle_cockpit_v2 import _compute_ratios, _write_ratios
+    from juggle_cockpit import _compute_ratios, _write_ratios
 
     cfg_file = tmp_path / "config.json"
     cfg_file.write_text('{"cockpit": {"column_ratios": [0.18, 0.62, 0.20]}}')
@@ -48,7 +48,7 @@ def test_persist_ratios_writes_normalized_config(tmp_path):
 
 def test_persist_ratios_normalization_sums_to_one():
     """Normalized ratios always sum to 1.0 (last element absorbs rounding error)."""
-    from juggle_cockpit_v2 import _compute_ratios
+    from juggle_cockpit import _compute_ratios
 
     ratios = _compute_ratios(33, 33, 34)
     assert sum(ratios) == pytest.approx(1.0, abs=0.01)
@@ -61,7 +61,7 @@ def test_persist_ratios_normalization_sums_to_one():
 
 def test_persist_ratios_handles_integer_and_float_widths():
     """_compute_ratios handles both integer cell counts (post-drag) and floats."""
-    from juggle_cockpit_v2 import _compute_ratios
+    from juggle_cockpit import _compute_ratios
 
     int_ratios = _compute_ratios(33, 33, 34)
     float_ratios = _compute_ratios(33.0, 33.0, 34.0)
@@ -77,7 +77,7 @@ def test_persist_ratios_handles_integer_and_float_widths():
 
 def test_persist_ratios_missing_config_no_exception(tmp_path):
     """_write_ratios is a no-op when config.json does not exist."""
-    from juggle_cockpit_v2 import _write_ratios
+    from juggle_cockpit import _write_ratios
 
     missing = tmp_path / "nonexistent.json"
     assert not missing.exists()
@@ -96,7 +96,7 @@ def test_persist_ratios_missing_config_no_exception(tmp_path):
 async def test_persist_ratios_on_quit(tmp_path, monkeypatch):
     """Pressing q calls exit() which triggers _persist_ratios, writing config.json."""
     from juggle_db import JuggleDB
-    from juggle_cockpit_v2 import CockpitApp
+    from juggle_cockpit import CockpitApp
 
     db_path = str(tmp_path / "juggle.db")
     db = JuggleDB(db_path=db_path)
@@ -133,7 +133,7 @@ async def test_palette_close_preserves_layout(tmp_path, monkeypatch):
     Fix: only reset widths when transitioning narrow/medium → wide (topics was hidden).
     """
     from juggle_db import JuggleDB
-    from juggle_cockpit_v2 import CockpitApp
+    from juggle_cockpit import CockpitApp
 
     db_path = str(tmp_path / "juggle.db")
     db = JuggleDB(db_path=db_path)
@@ -141,7 +141,7 @@ async def test_palette_close_preserves_layout(tmp_path, monkeypatch):
     db.set_active(True)
 
     # Control config ratios so the test is deterministic
-    monkeypatch.setattr("juggle_cockpit_v2._COL_RATIOS", [0.50, 0.30, 0.20])
+    monkeypatch.setattr("juggle_cockpit._COL_RATIOS", [0.50, 0.30, 0.20])
 
     app = CockpitApp(db_path=db_path)
     # Terminal wide enough to be "wide" breakpoint (pick_breakpoint: width >= 130)
