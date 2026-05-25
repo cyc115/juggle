@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-25 (v1.32.3)
+- fix(tmux): `wait_for_submission` now captures scrollback tail via `capture-pane -S -10` instead of visible-only `capture-pane -pt`; submission markers and stuck-state (`[Pasted text`, head, ❯/> prompt) are evaluated against the last `_DETECT_TAIL_LINES=10` lines of the returned output, making detection pane-size-independent; `_BOTTOM_REGION_LINES` constant removed (superseded by `_DETECT_TAIL_LINES`)
+- tests: 3 new TDD tests — `test_wait_for_submission_capture_uses_scrollback_flag` (asserts -S present in capture-pane args), `test_wait_for_submission_detects_marker_in_scrollback_tail` (marker in last 10 lines of 50-line buffer), `test_wait_for_submission_detects_stuck_in_scrollback_tail` (stuck placeholder in tail triggers C-m retry)
+
 ## 2026-05-25 (v1.32.2)
 - fix(tmux): `wait_for_submission` now requires a `_SUBMISSION_MARKERS` token ("esc to interrupt" / "✻" / "✶") for success — removed the `head not in bottom → True` false-positive branch that caused tasks to sit unsubmitted when Claude Code collapses large pastes into a `[Pasted text #N +M lines]` placeholder; stuck detection covers collapsed-paste placeholder, head-in-bottom (short prompts), and non-empty ❯/> prompt lines; C-m retry fires immediately on every stuck poll (no consecutive-stuck delay); `max_enter_retries` raised 3→5; settle delay before first C-m bumped 0.15s→0.4s
 - tests: 2 new RED→GREEN regression tests (`test_wait_for_submission_collapsed_paste_does_not_false_positive`, `test_wait_for_submission_collapsed_paste_retries_enter_then_succeeds`); 3 existing tests updated to new marker-only success contract

@@ -13,7 +13,7 @@ from juggle_settings import get_settings as _get_settings
 
 _READY_MARKERS = ("bypass permissions on", "/effort")
 _SUBMISSION_MARKERS = ("esc to interrupt", "✻", "✶")
-_BOTTOM_REGION_LINES = 10
+_DETECT_TAIL_LINES = 10  # lines of scrollback tail used for submission/stuck detection
 _PROMPT_HEAD_CHARS = 40
 
 
@@ -185,11 +185,14 @@ class JuggleTmuxManager:
 
         retries = 0
         for _ in range(max(1, timeout)):
-            result = self._run_tmux("capture-pane", "-pt", pane_id)
+            result = self._run_tmux(
+                "capture-pane", "-p", "-t", pane_id, "-S", f"-{_DETECT_TAIL_LINES}"
+            )
             out = getattr(result, "stdout", "") or ""
-            if any(m in out for m in _SUBMISSION_MARKERS):
+            tail = out.splitlines()[-_DETECT_TAIL_LINES:]
+            if any(m in line for m in _SUBMISSION_MARKERS for line in tail):
                 return True
-            bottom = "\n".join(out.splitlines()[-_BOTTOM_REGION_LINES:])
+            bottom = "\n".join(tail)
             stuck = (
                 "[Pasted text" in bottom
                 or (head and head in bottom)

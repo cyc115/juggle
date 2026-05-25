@@ -495,3 +495,90 @@ def test_get_pane_last_used_returns_zero_on_non_int(mgr):
         mgr, "_run_tmux", MagicMock(return_value=MagicMock(stdout="not-a-number"))
     ):
         assert mgr.get_pane_last_used("%5") == 0
+
+
+# --- scrollback-tail capture (-S flag) tests --------------------------------
+
+
+def test_wait_for_submission_capture_uses_scrollback_flag(mgr):
+    """capture-pane call in wait_for_submission must include -S for scrollback tail.
+
+    Plain 'capture-pane -pt <pane>' only returns the visible region; a small or
+    resized pane can hide the submission markers. The fix adds '-S -10' to reach
+    10 lines into the scrollback history above the visible top.
+    """
+    capture_calls: list = []
+
+    def fake_run(*args):
+        if args[0] == "capture-pane":
+            capture_calls.append(args)
+            # Return a submission marker on the first poll so we exit quickly
+            return MagicMock(stdout="✻ Working… (esc to interrupt)\n")
+        return MagicMock(stdout="")
+
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run), patch("time.sleep"):
+        mgr.wait_for_submission("%3", "hello", timeout=5)
+
+    assert capture_calls, "wait_for_submission never called capture-pane"
+    first_cap = capture_calls[0]
+    assert "-S" in first_cap, (
+        f"capture-pane in wait_for_submission must include -S for scrollback tail; "
+        f"got args: {first_cap}"
+    )
+
+
+def test_wait_for_submission_detects_marker_in_scrollback_tail(mgr):
+    """Submission marker buried in scrollback tail (tall pane) must still be found.
+
+    Simulates a pane that is 50 lines tall but the submission marker only appears
+    in the last 10 lines. With plain capture-pane (visible-only on small panes)
+    this could be missed; with -S -10 it is always present in the output.
+    """
+    # Build a 50-line output where the marker is only in lines 41-50
+    many_blank_lines = "\n" * 40
+    marker_tail = "✻ Working… (esc to interrupt)\nsome output\n"
+    tall_pane_output = many_blank_lines + marker_tail
+
+    with (
+        patch.object(
+            mgr, "_run_tmux", return_value=MagicMock(stdout=tall_pane_output)
+        ),
+        patch("time.sleep"),
+    ):
+        result = mgr.wait_for_submission("%3", "hello", timeout=5)
+
+    assert result is True, (
+        "submission marker in scrollback tail must be detected; "
+        "check that capture-pane uses -S and detection scans the tail"
+    )
+
+
+def test_wait_for_submission_detects_stuck_in_scrollback_tail(mgr):
+    """Stuck-at-prompt state buried in scrollback tail is still detected and retried.
+
+    Simulates a tall pane where the [Pasted text placeholder appears only in the
+    last 10 lines of a 50-line buffer. The stuck detector must find it and send C-m.
+    """
+    many_blank_lines = "\n" * 40
+    stuck_tail = "  ❯ [Pasted text #1 +2 lines]\n"
+    tall_stuck_output = many_blank_lines + stuck_tail
+    marker_output = "✻ Working… (esc to interrupt)\n"
+
+    outputs = iter([tall_stuck_output, marker_output])
+    enter_calls: list = []
+
+    def fake_run(*args):
+        if args[0] == "capture-pane":
+            return MagicMock(stdout=next(outputs))
+        if args[0] == "send-keys":
+            enter_calls.append(args)
+        return MagicMock(stdout="")
+
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run), patch("time.sleep"):
+        result = mgr.wait_for_submission("%3", "hello", timeout=10, max_enter_retries=3)
+
+    assert result is True
+    assert len(enter_calls) >= 1, (
+        "stuck-at-prompt in scrollback tail must trigger C-m retry; "
+        f"got {len(enter_calls)} retries — stuck detection not scanning the tail"
+    )
