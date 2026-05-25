@@ -312,7 +312,12 @@ def _apply_filter_text(items: list, text: str) -> list:
 
 
 class _PromptModal(ModalScreen):
-    """Generic one-line input modal. Dismisses with the stripped value or None."""
+    """Generic one-line input modal. Dismisses with the stripped value or None.
+
+    dismiss_empty_as: value returned when the Input is blank (default None).
+    Set to "" in action_filter so blank submit clears the filter, while Esc
+    still returns None meaning "keep existing filter unchanged".
+    """
 
     DEFAULT_CSS = """
     _PromptModal {
@@ -326,9 +331,10 @@ class _PromptModal(ModalScreen):
     }
     """
 
-    def __init__(self, prompt: str) -> None:
+    def __init__(self, prompt: str, dismiss_empty_as=None) -> None:
         super().__init__()
         self._prompt = prompt
+        self._dismiss_empty_as = dismiss_empty_as
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -336,10 +342,12 @@ class _PromptModal(ModalScreen):
             yield Input(placeholder="…")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.dismiss(event.value.strip() or None)
+        val = event.value.strip()
+        self.dismiss(val if val else self._dismiss_empty_as)
 
     def on_key(self, event: events.Key) -> None:
         if event.key == "escape":
+            event.stop()  # prevent Esc from bubbling to CockpitApp.on_key
             self.dismiss(None)
 
 
@@ -436,6 +444,7 @@ class CockpitApp(App):
         Binding("shift+c",      "close",         "Close"),
         Binding("x",            "archive",       "Archive"),
         Binding("d",            "decommission",  "Decommission"),
+        Binding("slash",        "filter",        "Filter"),
     ]
 
     CSS = """
@@ -468,6 +477,11 @@ class CockpitApp(App):
         self._active_pane: str = "notifications"
         self._last_reap: float = 0.0
         self._last_bp: str = "wide"  # tracks previous breakpoint for resize transitions
+        self._filter: dict[str, str] = {
+            "actions": "",
+            "agents": "",
+            "notifications": "",
+        }
         self._cockpit_mgr = None
         try:
             from juggle_tmux import JuggleTmuxManager
@@ -585,7 +599,18 @@ class CockpitApp(App):
 
             state = _snapshot(self._db)
 
-            # Clamp offsets to content length
+            # Apply active filters
+            filtered_actions = _apply_filter_actions(
+                state.actions, self._filter.get("actions", "")
+            )
+            filtered_agents = _apply_filter_text(
+                state.agents, self._filter.get("agents", "")
+            )
+            filtered_notifs = _apply_filter_text(
+                state.notifications, self._filter.get("notifications", "")
+            )
+
+            # Clamp offsets to content length (use unfiltered for bound — conservative)
             self._offsets["actions"] = min(self._offsets["actions"], max(0, len(state.actions) - 3))
             self._offsets["agents"] = min(self._offsets["agents"], max(0, len(state.agents) - 3))
             self._offsets["notifications"] = min(
@@ -599,13 +624,22 @@ class CockpitApp(App):
 
             self.query_one("#topics").update(render_topics(state.topics, bp))
             self.query_one("#actions").update(
-                render_actions(state.actions, off["actions"], active == "actions")
+                render_actions(
+                    filtered_actions, off["actions"], active == "actions",
+                    filter_label=self._filter.get("actions", ""),
+                )
             )
             self.query_one("#agents").update(
-                render_agents(state.agents, state.scheduled, off["agents"], active == "agents")
+                render_agents(
+                    filtered_agents, state.scheduled, off["agents"], active == "agents",
+                    filter_label=self._filter.get("agents", ""),
+                )
             )
             self.query_one("#notifications").update(
-                render_notifications(state.notifications, off["notifications"], active == "notifications")
+                render_notifications(
+                    filtered_notifs, off["notifications"], active == "notifications",
+                    filter_label=self._filter.get("notifications", ""),
+                )
             )
         except Exception as e:
             self.notify(str(e), severity="error")
@@ -793,6 +827,38 @@ class CockpitApp(App):
             )
 
         self.push_screen(_PromptModal(f"Decommission agent (1–{len(agents)}):"), _on_index)
+
+    def action_filter(self) -> None:
+        """/ — open filter prompt for the active pane."""
+        pane = self._active_pane
+        prompt = (
+            f"Filter {pane}"
+            + (
+                " (blank=clear; 'priority:high [text]'):"
+                if pane == "actions"
+                else " (blank=clear):"
+            )
+        )
+
+        def _on_text(text: str | None) -> None:
+            if text is None:
+                return  # Esc in modal — keep existing filter unchanged
+            self._filter[pane] = text.strip()
+            self._offsets[pane] = 0  # reset offset when filter changes
+            self._refresh()
+
+        # dismiss_empty_as="" so blank submit clears the filter (passes "" not None)
+        self.push_screen(_PromptModal(prompt, dismiss_empty_as=""), _on_text)
+
+    def on_key(self, event: events.Key) -> None:
+        """Clear ALL filters + reset active pane offset on Escape (when no modal open)."""
+        if event.key == "escape" and any(self._filter.values()):
+            if len(self.screen_stack) > 1:  # Modal is open — let it handle Esc
+                return
+            self._filter = {k: "" for k in self._filter}
+            self._offsets[self._active_pane] = 0  # reset active pane offset
+            event.stop()
+            self._refresh()
 
     def action_help(self) -> None:
         """? — show help overlay."""

@@ -11,7 +11,7 @@ Covers:
 
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -110,11 +110,11 @@ async def test_action_close_valid_label_confirm_y_calls_db(tmp_path):
 
     original_set_status = app._db.set_thread_status
 
-    def _spy_set_status(tid, status):
-        called_with.append((tid, status))
-        return original_set_status(tid, status)
+    def _spy_set_status(thread_id, status):
+        called_with.append((thread_id, status))
+        return original_set_status(thread_id, status)
 
-    app._db.set_thread_status = _spy_set_status
+    app._db.set_thread_status = _spy_set_status  # type: ignore[method-assign]
 
     async with app.run_test(size=(160, 40)) as pilot:
         await pilot.press("shift+c")
@@ -154,11 +154,11 @@ async def test_action_close_valid_label_confirm_n_no_db_call(tmp_path):
     called_with: list = []
     original_set_status = app._db.set_thread_status
 
-    def _spy_set_status(tid, status):
-        called_with.append((tid, status))
-        return original_set_status(tid, status)
+    def _spy_set_status(thread_id, status):
+        called_with.append((thread_id, status))
+        return original_set_status(thread_id, status)
 
-    app._db.set_thread_status = _spy_set_status
+    app._db.set_thread_status = _spy_set_status  # type: ignore[method-assign]
 
     async with app.run_test(size=(160, 40)) as pilot:
         await pilot.press("shift+c")
@@ -222,11 +222,11 @@ async def test_action_archive_valid_label_y_calls_db(tmp_path):
     called_with: list = []
     original_archive = app._db.archive_thread
 
-    def _spy_archive(tid):
-        called_with.append(tid)
-        return original_archive(tid)
+    def _spy_archive(thread_id):
+        called_with.append(thread_id)
+        return original_archive(thread_id)
 
-    app._db.archive_thread = _spy_archive
+    app._db.archive_thread = _spy_archive  # type: ignore[method-assign]
 
     async with app.run_test(size=(160, 40)) as pilot:
         await pilot.press("x")
@@ -289,11 +289,11 @@ async def test_action_decommission_valid_index_y_calls_db(tmp_path):
     called_with: list = []
     original_update = app._db.update_agent
 
-    def _spy_update(aid, **kwargs):
-        called_with.append((aid, kwargs))
-        return original_update(aid, **kwargs)
+    def _spy_update(agent_id, **kwargs):
+        called_with.append((agent_id, kwargs))
+        return original_update(agent_id, **kwargs)
 
-    app._db.update_agent = _spy_update
+    app._db.update_agent = _spy_update  # type: ignore[method-assign]
 
     async with app.run_test(size=(160, 40)) as pilot:
         await pilot.press("d")
@@ -329,11 +329,11 @@ async def test_action_decommission_valid_index_n_no_db_call(tmp_path):
     called_with: list = []
     original_update = app._db.update_agent
 
-    def _spy_update(aid, **kwargs):
-        called_with.append((aid, kwargs))
-        return original_update(aid, **kwargs)
+    def _spy_update(agent_id, **kwargs):
+        called_with.append((agent_id, kwargs))
+        return original_update(agent_id, **kwargs)
 
-    app._db.update_agent = _spy_update
+    app._db.update_agent = _spy_update  # type: ignore[method-assign]
 
     async with app.run_test(size=(160, 40)) as pilot:
         await pilot.press("d")
@@ -346,3 +346,163 @@ async def test_action_decommission_valid_index_n_no_db_call(tmp_path):
         await pilot.pause(0.2)
 
     assert called_with == [], f"update_agent must not be called; got {called_with}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — action_filter functional Pilot tests
+# ---------------------------------------------------------------------------
+
+
+def test_action_filter_method_exists():
+    from juggle_cockpit import CockpitApp
+    assert hasattr(CockpitApp, "action_filter")
+
+
+def test_filter_state_in_init():
+    """CockpitApp.__init__ initialises _filter dict with pane keys."""
+    from juggle_cockpit import CockpitApp
+    import inspect
+    src = inspect.getsource(CockpitApp.__init__)
+    assert "_filter" in src
+
+
+@pytest.mark.asyncio
+async def test_action_filter_sets_state_and_resets_offset(tmp_path):
+    """`/` → type substring → enter sets _filter[pane] and resets offset to 0.
+
+    Note: Tab binding is consumed by Textual's focus system in Pilot; we set
+    _active_pane directly. The filter behavior itself (not Tab navigation) is tested.
+    """
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    t1 = db.create_thread("deploy db", session_id="")
+    db.add_action_item(t1, "deploy DB migration", type_="question")
+    db.add_action_item(t1, "write docs", type_="question")
+
+    app = CockpitApp(db_path=db_path)
+
+    async with app.run_test(size=(160, 40)) as pilot:
+        # Set active pane directly (Tab binding is swallowed by Textual focus system)
+        app._active_pane = "actions"
+        # Give a non-zero offset to verify it resets
+        app._offsets["actions"] = 2
+
+        # Press / (slash) to open filter modal
+        await pilot.press("/")
+        await pilot.pause(0.1)
+
+        # Type "deploy" and submit
+        for ch in "deploy":
+            await pilot.press(ch)
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+    # Filter state set
+    assert app._filter["actions"] == "deploy", f"Expected 'deploy', got {app._filter['actions']!r}"
+    # Offset reset to 0
+    assert app._offsets["actions"] == 0, f"Expected offset 0, got {app._offsets['actions']}"
+
+
+@pytest.mark.asyncio
+async def test_action_filter_blank_submit_clears_filter(tmp_path):
+    """`/` → blank submit clears existing filter and resets offset."""
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    db.create_thread("alpha", session_id="")
+
+    app = CockpitApp(db_path=db_path)
+
+    async with app.run_test(size=(160, 40)) as pilot:
+        # Set active pane and existing filter/offset directly
+        app._active_pane = "actions"
+        app._filter["actions"] = "something"
+        app._offsets["actions"] = 3
+
+        await pilot.press("/")
+        await pilot.pause(0.1)
+        # Submit without typing anything (blank) → should clear filter
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+    # Filter cleared
+    assert app._filter["actions"] == "", f"Expected '', got {app._filter['actions']!r}"
+    # Offset reset
+    assert app._offsets["actions"] == 0, f"Expected offset 0, got {app._offsets['actions']}"
+
+
+@pytest.mark.asyncio
+async def test_action_filter_esc_with_active_filter_clears_and_resets_offset(tmp_path):
+    """Pressing Esc outside modal when filter is active clears filter + resets offset."""
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    db.create_thread("beta", session_id="")
+
+    app = CockpitApp(db_path=db_path)
+
+    async with app.run_test(size=(160, 40)) as pilot:
+        # Set active pane + filter state directly, then press Esc at app level
+        app._active_pane = "actions"
+        app._filter["actions"] = "deploy"
+        app._offsets["actions"] = 4
+        app._filter["agents"] = "coder"
+
+        await pilot.pause(0.05)
+        # Press Esc — no modal open, filter is active → should clear all filters
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+
+    # All filters cleared
+    assert app._filter["actions"] == "", f"actions filter: {app._filter['actions']!r}"
+    assert app._filter["agents"] == "", f"agents filter: {app._filter['agents']!r}"
+    # Active pane (actions) offset reset
+    assert app._offsets["actions"] == 0, f"Expected offset 0, got {app._offsets['actions']}"
+
+
+@pytest.mark.asyncio
+async def test_action_filter_esc_in_modal_leaves_filter_unchanged(tmp_path):
+    """Pressing Esc inside the filter prompt modal leaves existing filter unchanged.
+
+    Note: CockpitApp.on_key checks screen_stack depth to avoid intercepting
+    Esc when a modal is open. This test verifies that guard works.
+    """
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    db.create_thread("gamma", session_id="")
+
+    app = CockpitApp(db_path=db_path)
+
+    async with app.run_test(size=(160, 40)) as pilot:
+        app._active_pane = "actions"
+        # Pre-set a filter
+        app._filter["actions"] = "existing"
+
+        # Open filter modal, then Esc out of the modal
+        await pilot.press("/")
+        await pilot.pause(0.1)
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+
+    # Filter unchanged — Esc in modal means "cancel", not "clear"
+    assert app._filter["actions"] == "existing", (
+        f"Expected 'existing', got {app._filter['actions']!r}"
+    )
