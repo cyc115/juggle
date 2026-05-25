@@ -524,3 +524,98 @@ def test_tmux_capture_pane_failure_returns_empty():
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=1, stdout="")
         assert _tmux_capture_pane("%123") == ""
+
+
+# ---------------------------------------------------------------------------
+# Tab / Shift+Tab pane-cycle — Pilot functional tests
+# (Regression: Tab was eaten by Textual focus traversal; fix in on_key)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tab_cycles_pane_forward(tmp_path):
+    """Tab press advances _active_pane to the next entry in _SCROLL_PANES.
+
+    Starts at 'notifications' (default), expects 'actions' after one Tab,
+    'agents' after two, 'notifications' after three (full cycle).
+    """
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp, _SCROLL_PANES
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    db.create_thread("alpha", session_id="")
+
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        # Default active pane is 'notifications'
+        assert app._active_pane == "notifications"
+        start_idx = _SCROLL_PANES.index("notifications")
+
+        await pilot.press("tab")
+        await pilot.pause(0.15)
+        expected_1 = _SCROLL_PANES[(start_idx + 1) % len(_SCROLL_PANES)]
+        assert app._active_pane == expected_1, (
+            f"After 1 Tab: expected {expected_1!r}, got {app._active_pane!r}"
+        )
+
+        await pilot.press("tab")
+        await pilot.pause(0.15)
+        expected_2 = _SCROLL_PANES[(start_idx + 2) % len(_SCROLL_PANES)]
+        assert app._active_pane == expected_2, (
+            f"After 2 Tabs: expected {expected_2!r}, got {app._active_pane!r}"
+        )
+
+        # Third Tab wraps back around
+        await pilot.press("tab")
+        await pilot.pause(0.15)
+        assert app._active_pane == "notifications", (
+            f"After 3 Tabs (full cycle): expected 'notifications', got {app._active_pane!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_shift_tab_cycles_pane_backward(tmp_path):
+    """Shift+Tab reverses _active_pane to the previous entry in _SCROLL_PANES.
+
+    Starts at 'notifications' (default), expects 'agents' after one Shift+Tab
+    (wraps backward), then 'actions', then back to 'notifications'.
+    """
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp, _SCROLL_PANES
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    db.create_thread("beta", session_id="")
+
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        assert app._active_pane == "notifications"
+        n = len(_SCROLL_PANES)
+        start_idx = _SCROLL_PANES.index("notifications")
+
+        await pilot.press("shift+tab")
+        await pilot.pause(0.15)
+        expected_1 = _SCROLL_PANES[(start_idx - 1) % n]
+        assert app._active_pane == expected_1, (
+            f"After 1 Shift+Tab: expected {expected_1!r}, got {app._active_pane!r}"
+        )
+
+        await pilot.press("shift+tab")
+        await pilot.pause(0.15)
+        expected_2 = _SCROLL_PANES[(start_idx - 2) % n]
+        assert app._active_pane == expected_2, (
+            f"After 2 Shift+Tabs: expected {expected_2!r}, got {app._active_pane!r}"
+        )
+
+        # Third Shift+Tab wraps back
+        await pilot.press("shift+tab")
+        await pilot.pause(0.15)
+        assert app._active_pane == "notifications", (
+            f"After 3 Shift+Tabs (full reverse cycle): expected 'notifications', "
+            f"got {app._active_pane!r}"
+        )

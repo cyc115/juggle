@@ -803,6 +803,11 @@ class CockpitApp(App):
         self._active_pane = _SCROLL_PANES[(idx + 1) % len(_SCROLL_PANES)]
         self._refresh()
 
+    def _cycle_pane_backward(self) -> None:
+        idx = _SCROLL_PANES.index(self._active_pane) if self._active_pane in _SCROLL_PANES else 0
+        self._active_pane = _SCROLL_PANES[(idx - 1) % len(_SCROLL_PANES)]
+        self._refresh()
+
     # ------------------------------------------------------------------
     # Safe actions: switch thread, ack actions, help overlay
     # ------------------------------------------------------------------
@@ -1067,7 +1072,20 @@ class CockpitApp(App):
         self.push_screen(_PromptModal(f"Tail agent (1–{len(agents)}):"), _on_index)
 
     def on_key(self, event: events.Key) -> None:
-        """Clear ALL filters + reset active pane offset on Escape (when no modal open)."""
+        """Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape."""
+        # Tab / Shift+Tab — must intercept here with prevent_default() so Textual's
+        # built-in focus-traversal doesn't consume the key before our binding fires.
+        if event.key in ("tab", "shift+tab", "backtab"):
+            if len(self.screen_stack) > 1:  # modal open — let it handle Tab
+                return
+            if event.key == "tab":
+                self._cycle_pane()          # advance forward
+            else:
+                self._cycle_pane_backward() # retreat backward
+            event.stop()
+            event.prevent_default()
+            return
+
         if event.key == "escape" and any(self._filter.values()):
             if len(self.screen_stack) > 1:  # Modal is open — let it handle Esc
                 return
