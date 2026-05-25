@@ -149,7 +149,7 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
     from juggle_settings import get_settings
 
     cfg = get_settings().get("title_gen", {})
-    fallback = " ".join(topic.replace("-", " ").replace("_", " ").split()[:6]).title()
+    fallback = " ".join(topic.replace("-", " ").replace("_", " ").split()[:5]).title()
     prompt = (
         f'Convert this task identifier into a concise 4-8 word descriptive title in Title Case. '
         f'Task: "{topic}". Reply with the title only. No punctuation. No quotes. No explanation. Use Title Case.'

@@ -190,7 +190,7 @@ def test_tier2_nonzero_returncode_falls_to_tier3(monkeypatch):
                 db, "uuid-1", "one two three four five six"
             )
 
-    assert title == "one two three four five"
+    assert title == "One Two Three Four Five"
 
 
 def test_tier2_empty_stdout_falls_to_tier3(monkeypatch):
@@ -206,7 +206,7 @@ def test_tier2_empty_stdout_falls_to_tier3(monkeypatch):
                 db, "uuid-1", "one two three four five six"
             )
 
-    assert title == "one two three four five"
+    assert title == "One Two Three Four Five"
 
 
 def test_tier2_file_not_found_falls_to_tier3(monkeypatch):
@@ -222,7 +222,7 @@ def test_tier2_file_not_found_falls_to_tier3(monkeypatch):
                 db, "uuid-1", "alpha beta gamma delta epsilon eta"
             )
 
-    assert title == "alpha beta gamma delta epsilon"
+    assert title == "Alpha Beta Gamma Delta Epsilon"
 
 
 def test_tier2_overlong_output_falls_to_tier3(monkeypatch):
@@ -241,7 +241,7 @@ def test_tier2_overlong_output_falls_to_tier3(monkeypatch):
                 db, "uuid-1", "one two three four five six"
             )
 
-    assert title == "one two three four five"
+    assert title == "One Two Three Four Five"
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +277,7 @@ def test_tier3_db_updated_with_fallback(monkeypatch):
                 db, "uuid-1", "apple banana cherry date elderberry fig"
             )
 
-    assert title == "apple banana cherry date elderberry"
+    assert title == "Apple Banana Cherry Date Elderberry"
     db.update_thread.assert_called_once_with(
-        "uuid-1", title="apple banana cherry date elderberry"
+        "uuid-1", title="Apple Banana Cherry Date Elderberry"
     )
