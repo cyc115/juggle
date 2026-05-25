@@ -233,6 +233,14 @@ def _resolve_actions_by_thread_label(
     return [a for a in open_actions if a.get("thread_id") == thread_id]
 
 
+def _resolve_agent_by_index(agents: list, index_1based: int):
+    """Return the Agent at 1-based position, or None if out of range."""
+    idx = index_1based - 1
+    if idx < 0 or idx >= len(agents):
+        return None
+    return agents[idx]
+
+
 # ---------------------------------------------------------------------------
 # Modal screens
 # ---------------------------------------------------------------------------
@@ -268,6 +276,41 @@ class _PromptModal(ModalScreen):
     def on_key(self, event: events.Key) -> None:
         if event.key == "escape":
             self.dismiss(None)
+
+
+class _ConfirmModal(ModalScreen):
+    """Single-keypress y/N confirm gate.
+
+    Dismisses True on 'y', False on 'n' or Escape. No Input widget —
+    the user only presses a single key. Cannot be submitted accidentally.
+    """
+
+    DEFAULT_CSS = """
+    _ConfirmModal {
+        align: center middle;
+    }
+    _ConfirmModal > Vertical {
+        width: 52;
+        height: 6;
+        border: round $warning;
+        padding: 1 2;
+    }
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label(self._message)
+            yield Label("[dim]y — confirm    n / Esc — cancel[/dim]")
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "y":
+            self.dismiss(True)
+        elif event.key in ("n", "escape"):
+            self.dismiss(False)
 
 
 class _HelpModal(ModalScreen):
@@ -325,6 +368,9 @@ class CockpitApp(App):
         Binding("tab",          "cycle_pane",    "Tab",     show=False),
         Binding("s",            "switch",        "Switch"),
         Binding("a",            "ack",           "Ack"),
+        Binding("shift+c",      "close",         "Close"),
+        Binding("x",            "archive",       "Archive"),
+        Binding("d",            "decommission",  "Decommission"),
     ]
 
     CSS = """
@@ -576,6 +622,112 @@ class CockpitApp(App):
                 self.notify(f"Ack failed: {exc}", severity="error", timeout=4)
 
         self.push_screen(_PromptModal("Ack action(s) for thread (label):"), _on_label)
+
+    def action_close(self) -> None:
+        """C — close thread by label (y/N confirm)."""
+        def _on_label(label: str | None) -> None:
+            if label is None:
+                return
+            label_up = label.strip().upper()
+            threads = self._db.get_all_threads()
+            match = _resolve_thread_by_label(threads, label_up)
+            if match is None:
+                self.notify(f"Thread '{label_up}' not found", severity="warning", timeout=3)
+                return
+
+            def _on_confirm(confirmed: bool) -> None:
+                if not confirmed:
+                    return
+                try:
+                    self._db.set_thread_status(match["id"], "closed")
+                    self.notify(f"Thread [{label_up}] closed", timeout=2)
+                    self._refresh()
+                except Exception as exc:
+                    self.notify(f"Close failed: {exc}", severity="error", timeout=4)
+
+            self.push_screen(_ConfirmModal(f"Close thread [{label_up}]?"), _on_confirm)
+
+        self.push_screen(_PromptModal("Close thread (label):"), _on_label)
+
+    def action_archive(self) -> None:
+        """x — archive thread by label (y/N confirm)."""
+        def _on_label(label: str | None) -> None:
+            if label is None:
+                return
+            label_up = label.strip().upper()
+            threads = self._db.get_all_threads()
+            match = _resolve_thread_by_label(threads, label_up)
+            if match is None:
+                self.notify(f"Thread '{label_up}' not found", severity="warning", timeout=3)
+                return
+
+            def _on_confirm(confirmed: bool) -> None:
+                if not confirmed:
+                    return
+                try:
+                    self._db.archive_thread(match["id"])
+                    self.notify(f"Thread [{label_up}] archived", timeout=2)
+                    self._refresh()
+                except Exception as exc:
+                    self.notify(f"Archive failed: {exc}", severity="error", timeout=4)
+
+            self.push_screen(_ConfirmModal(f"Archive thread [{label_up}]?"), _on_confirm)
+
+        self.push_screen(_PromptModal("Archive thread (label):"), _on_label)
+
+    def action_decommission(self) -> None:
+        """d — decommission agent by 1-based index (y/N confirm)."""
+        from juggle_cockpit_model import snapshot as _snapshot
+        state = _snapshot(self._db)
+        agents = state.agents
+        if not agents:
+            self.notify("No agents running", severity="warning", timeout=2)
+            return
+
+        def _on_index(raw: str | None) -> None:
+            if raw is None:
+                return
+            try:
+                idx_1based = int(raw.strip())
+            except ValueError:
+                self.notify("Type a number (e.g. 2)", severity="warning", timeout=2)
+                return
+            agent = _resolve_agent_by_index(agents, idx_1based)
+            if agent is None:
+                self.notify(
+                    f"Agent index out of range (1–{len(agents)})",
+                    severity="warning", timeout=2,
+                )
+                return
+
+            def _on_confirm(confirmed: bool) -> None:
+                if not confirmed:
+                    return
+                try:
+                    # Agent.id_short is only 8 chars; resolve full ID via DB
+                    all_db_agents = self._db.get_all_agents()
+                    full = next(
+                        (a for a in all_db_agents if a["id"].startswith(agent.id_short)),
+                        None,
+                    )
+                    if full is None:
+                        self.notify("Agent not found in DB", severity="error", timeout=3)
+                        return
+                    self._db.update_agent(full["id"], status="decommission_pending")
+                    self.notify(
+                        f"Agent #{idx_1based} ({agent.role}) decommission queued",
+                        timeout=2,
+                    )
+                    self._refresh()
+                except Exception as exc:
+                    self.notify(f"Decommission failed: {exc}", severity="error", timeout=4)
+
+            self.push_screen(
+                _ConfirmModal(f"Decommission agent #{idx_1based} ({agent.role})?"),
+                _on_confirm,
+            )
+
+        self.push_screen(_PromptModal(f"Decommission agent (1–{len(agents)}):"), _on_index)
 
     def action_help(self) -> None:
         """? — show help overlay."""

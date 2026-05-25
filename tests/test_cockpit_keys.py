@@ -156,6 +156,36 @@ def test_help_modal_no_duplicate_action_rows():
 
 
 # ---------------------------------------------------------------------------
+# Cycle 7 — _resolve_agent_by_index (pure helper)
+# ---------------------------------------------------------------------------
+
+from juggle_cockpit import _resolve_agent_by_index
+from juggle_cockpit_model import Agent
+
+
+def _make_agent(idx: int) -> Agent:
+    return Agent(
+        id_short=f"abc1234{idx}", role="coder", status="busy",
+        topic_id="MA", age_secs=10, pane_id=f"%{100 + idx}",
+    )
+
+
+def test_resolve_agent_by_index_valid():
+    agents = [_make_agent(1), _make_agent(2), _make_agent(3)]
+    assert _resolve_agent_by_index(agents, 1) == agents[0]  # 1-based
+
+
+def test_resolve_agent_by_index_out_of_range():
+    agents = [_make_agent(1)]
+    assert _resolve_agent_by_index(agents, 0) is None   # below range
+    assert _resolve_agent_by_index(agents, 2) is None   # above range
+
+
+def test_resolve_agent_by_index_empty():
+    assert _resolve_agent_by_index([], 1) is None
+
+
+# ---------------------------------------------------------------------------
 # Cycles 5 & 6 — Textual Pilot (switch + ack)  [require textual]
 # ---------------------------------------------------------------------------
 
