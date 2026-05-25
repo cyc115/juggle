@@ -30,22 +30,59 @@ def _watchdog_script() -> _Path:
 
 
 def _watchdog_pid_file() -> _Path:
+    """Return the session-scoped watchdog pidfile path.
+
+    If CLAUDE_CODE_SESSION_ID is set (i.e. we are running inside a Claude Code
+    session) the pidfile is scoped to that session so multiple concurrent Claude
+    sessions never share or clobber each other's watchdog.  Outside Claude Code
+    (tests, manual invocations) the legacy name ``watchdog.pid`` is used.
+    """
     from juggle_settings import get_settings
 
-    return _Path(get_settings()["paths"]["config_dir"]) / "watchdog.pid"
+    config_dir = _Path(get_settings()["paths"]["config_dir"])
+    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    if session_id:
+        return config_dir / f"watchdog-{session_id}.pid"
+    return config_dir / "watchdog.pid"
 
 
 def _start_watchdog() -> None:
+    """Start the watchdog for this session, kill-then-restart if one is already running.
+
+    Idempotent within a session: if THIS session's pidfile points to a live
+    watchdog process it is SIGTERMed (with a SIGKILL escalation after ~2 s)
+    before a fresh process is launched.  Another session's pidfile is NEVER
+    touched.
+    """
     import subprocess
+    import time
 
     pid_file = _watchdog_pid_file()
+
+    # Kill any prior watchdog for this session (idempotent restart).
     if pid_file.exists():
         try:
             pid = int(pid_file.read_text().strip())
-            os.kill(pid, 0)
-            return  # already running
+            os.kill(pid, 0)  # check alive
+            # It's alive — terminate it.
+            _log.info("Watchdog: terminating stale watchdog PID=%d for this session", pid)
+            os.kill(pid, signal.SIGTERM)
+            # Poll up to ~2 s for exit, then escalate to SIGKILL.
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                time.sleep(0.1)
+                try:
+                    os.kill(pid, 0)
+                except OSError:
+                    break  # process gone
+            else:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass
         except (OSError, ValueError):
-            pid_file.unlink(missing_ok=True)
+            pass
+        pid_file.unlink(missing_ok=True)
 
     log_path = pid_file.parent / "watchdog.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,8 +98,8 @@ def _start_watchdog() -> None:
             stderr=log_fh,
             start_new_session=True,
         )
-    import time
-
+    # Persist the new PID so _stop_watchdog / the next _start_watchdog can find it.
+    pid_file.write_text(str(proc.pid))
     time.sleep(1)
     _log.info("Watchdog started (PID=%d)", proc.pid)
 

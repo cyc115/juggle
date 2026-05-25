@@ -1,5 +1,6 @@
+import signal
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock, patch
 
 
 @pytest.fixture
@@ -239,3 +240,100 @@ def test_reflect_fires_when_msg_delta_meets_threshold(mock_get_db):
         memory_loaded=1,
         last_reflect_msg_count=15,
     )
+
+
+# ---------------------------------------------------------------------------
+# Change B — session-scoped watchdog pidfile + kill-then-restart
+# ---------------------------------------------------------------------------
+
+
+def test_watchdog_pid_file_session_scoped(tmp_path, monkeypatch):
+    """When CLAUDE_CODE_SESSION_ID is set, pidfile is session-scoped."""
+    import juggle_cmd_threads
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-abc123")
+    with patch("juggle_settings.get_settings", return_value={"paths": {"config_dir": str(tmp_path)}}):
+        result = juggle_cmd_threads._watchdog_pid_file()
+    assert result.name == "watchdog-sess-abc123.pid"
+    assert result.parent == tmp_path
+
+
+def test_watchdog_pid_file_fallback_when_no_session(tmp_path, monkeypatch):
+    """When CLAUDE_CODE_SESSION_ID is unset, falls back to watchdog.pid."""
+    import juggle_cmd_threads
+
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    with patch("juggle_settings.get_settings", return_value={"paths": {"config_dir": str(tmp_path)}}):
+        result = juggle_cmd_threads._watchdog_pid_file()
+    assert result.name == "watchdog.pid"
+    assert result.parent == tmp_path
+
+
+def test_start_watchdog_kills_prior_pid_same_session(tmp_path, monkeypatch):
+    """Second _start_watchdog() in same session SIGTERMs the old PID then starts fresh."""
+    import juggle_cmd_threads
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-xyz")
+    old_pid = 99991
+    pid_file = tmp_path / "watchdog-sess-xyz.pid"
+    pid_file.write_text(str(old_pid))
+    script_path = tmp_path / "juggle-agent-watchdog"
+    script_path.touch()
+
+    mock_proc = MagicMock()
+    mock_proc.pid = 99992
+    killed = []
+
+    def fake_kill(pid, sig):
+        if sig == signal.SIGTERM:
+            killed.append(pid)
+        elif sig == 0:
+            # old pid alive until SIGTERMed, then dead
+            if pid == old_pid and old_pid not in killed:
+                return
+            raise OSError("not found")
+
+    with patch("juggle_settings.get_settings", return_value={"paths": {"config_dir": str(tmp_path)}}):
+        with patch.object(juggle_cmd_threads, "_watchdog_script", return_value=script_path):
+            with patch("subprocess.Popen", return_value=mock_proc):
+                with patch("os.kill", side_effect=fake_kill):
+                    with patch("time.sleep"):
+                        juggle_cmd_threads._start_watchdog()
+
+    assert old_pid in killed, "Expected SIGTERM sent to old PID"
+    # New PID must be written to this session's pidfile
+    assert pid_file.read_text().strip() == str(mock_proc.pid)
+
+
+def test_start_watchdog_does_not_touch_other_session_pidfile(tmp_path, monkeypatch):
+    """_start_watchdog() must never read or kill another session's pidfile."""
+    import juggle_cmd_threads
+
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-mine")
+    other_pid = 88881
+    other_pid_file = tmp_path / "watchdog-sess-other.pid"
+    other_pid_file.write_text(str(other_pid))
+    script_path = tmp_path / "juggle-agent-watchdog"
+    script_path.touch()
+
+    mock_proc = MagicMock()
+    mock_proc.pid = 88882
+    killed = []
+
+    def fake_kill(pid, sig):
+        killed.append((pid, sig))
+        if sig == 0 and pid != other_pid:
+            raise OSError("not found")
+
+    with patch("juggle_settings.get_settings", return_value={"paths": {"config_dir": str(tmp_path)}}):
+        with patch.object(juggle_cmd_threads, "_watchdog_script", return_value=script_path):
+            with patch("subprocess.Popen", return_value=mock_proc):
+                with patch("os.kill", side_effect=fake_kill):
+                    with patch("time.sleep"):
+                        juggle_cmd_threads._start_watchdog()
+
+    for pid, _ in killed:
+        assert pid != other_pid, "Must not touch another session's PID"
+
+    for pid, _ in killed:
+        assert pid != other_pid, "Must not touch another session's PID"
