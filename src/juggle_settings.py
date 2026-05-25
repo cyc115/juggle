@@ -37,6 +37,8 @@ DEFAULTS: dict = {
         "refresh_interval_secs": 1.0,
         "column_ratios": [0.30, 0.40, 0.30],
         "notification_ratio": 30,
+        "bell": True,
+        "desktop_notifications": False,
     },
     # Paths
     "paths": {

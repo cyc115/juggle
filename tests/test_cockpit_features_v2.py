@@ -506,3 +506,160 @@ async def test_action_filter_esc_in_modal_leaves_filter_unchanged(tmp_path):
     assert app._filter["actions"] == "existing", (
         f"Expected 'existing', got {app._filter['actions']!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Bell state + _refresh integration
+# ---------------------------------------------------------------------------
+
+
+def test_bell_state_attrs_exist():
+    """CockpitApp.__init__ initialises _prev_action_ids and _prev_agent_statuses."""
+    import inspect
+    from juggle_cockpit import CockpitApp
+    src = inspect.getsource(CockpitApp.__init__)
+    assert "_prev_action_ids" in src
+    assert "_prev_agent_statuses" in src
+
+
+def test_bell_enabled_attr_exists():
+    """CockpitApp.__init__ initialises _bell_enabled."""
+    import inspect
+    from juggle_cockpit import CockpitApp
+    src = inspect.getsource(CockpitApp.__init__)
+    assert "_bell_enabled" in src
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Functional: bell via _refresh diff (direct invocation)
+# ---------------------------------------------------------------------------
+# Full Pilot tick-simulation is fragile; instead we call _refresh directly
+# with seeded prev-state and a mocked self.bell to assert it fires correctly.
+
+
+@pytest.mark.asyncio
+async def test_bell_fires_on_new_blocker(tmp_path):
+    """New tier-0 action on 2nd _refresh fires self.bell(); 1st tick does not."""
+    from unittest.mock import patch
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    t1 = db.create_thread("alpha", session_id="")
+
+    app = CockpitApp(db_path=db_path)
+
+    with patch.object(app, "bell") as mock_bell:
+        async with app.run_test(size=(160, 40)):
+            # 1st tick: prev_ids / prev_statuses are both empty → guard skips bell
+            app._refresh()
+            assert mock_bell.call_count == 0, "bell must NOT fire on first tick"
+
+            # Seed prev state so the guard passes on next call
+            app._prev_action_ids = set()
+            app._prev_agent_statuses = {}
+
+            # Add a tier-0 (high priority) action AFTER prev state was captured (simulate 2nd tick)
+            db.add_action_item(t1, "critical blocker", type_="question", priority="high")
+
+            # Force prev state to non-empty so guard passes
+            app._prev_action_ids = {"dummy-prev-id"}
+
+            app._refresh()
+            assert mock_bell.call_count >= 1, (
+                f"bell must fire when a new blocker appears (called {mock_bell.call_count}x)"
+            )
+
+
+@pytest.mark.asyncio
+async def test_bell_fires_on_agent_failure(tmp_path):
+    """Agent transitioning busy→stale on 2nd _refresh fires self.bell().
+
+    NOTE: Full-tick simulation is not feasible here because the cockpit's
+    cached SQLite connection (monkey-patched by _make_cockpit_db) does not
+    see writes made by a separate connection inside Textual's run_test context
+    due to read-isolation within the implicit open transaction. We therefore
+    patch _snapshot to return controlled state data, which exercises the
+    exact same bell-diff code path.
+    """
+    import time
+    from unittest.mock import patch
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+    from juggle_cockpit_model import Agent, CockpitState
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+
+    agent_short = "abcd1234"
+
+    # Build a controlled snapshot where the agent shows as "stale"
+    stale_agent = Agent(
+        id_short=agent_short,
+        role="coder",
+        status="stale",
+        topic_id=None,
+        age_secs=60,
+        pane_id="%99",
+    )
+    fake_state = CockpitState(
+        topics=[],
+        actions=[],
+        agents=[stale_agent],
+        notifications=[],
+        scheduled=[],
+        fetched_at=time.time(),
+    )
+
+    app = CockpitApp(db_path=db_path)
+
+    with patch.object(app, "bell") as mock_bell:
+        async with app.run_test(size=(160, 40)):
+            # Seed prev state: agent was busy (not stale) → transition triggers bell
+            app._prev_action_ids = {"dummy"}
+            app._prev_agent_statuses = {agent_short: "busy"}
+
+            # Patch snapshot (imported locally in _refresh from juggle_cockpit_model)
+            # so _refresh sees the stale agent without DB cached-connection isolation issues.
+            import juggle_cockpit_model
+            with patch.object(juggle_cockpit_model, "snapshot", return_value=fake_state):
+                app._refresh()
+
+            assert mock_bell.call_count >= 1, (
+                f"bell must fire when agent goes stale (called {mock_bell.call_count}x)"
+            )
+
+
+@pytest.mark.asyncio
+async def test_bell_no_fire_on_first_tick(tmp_path):
+    """First _refresh (prev state empty) does NOT call self.bell()."""
+    from unittest.mock import patch
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    t1 = db.create_thread("gamma", session_id="")
+    # Seed a tier-0 action BEFORE the app starts — should NOT trigger bell on first tick
+    db.add_action_item(t1, "pre-existing blocker", type_="question", priority="high")
+
+    app = CockpitApp(db_path=db_path)
+
+    with patch.object(app, "bell") as mock_bell:
+        async with app.run_test(size=(160, 40)):
+            # Reset to ensure truly first-tick state
+            app._prev_action_ids = set()
+            app._prev_agent_statuses = {}
+
+            app._refresh()
+            assert mock_bell.call_count == 0, (
+                f"bell must NOT fire on first tick even with pre-existing blockers "
+                f"(called {mock_bell.call_count}x)"
+            )

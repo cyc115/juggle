@@ -307,6 +307,49 @@ def _apply_filter_text(items: list, text: str) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Phase 4 — Bell / desktop notification diff helpers
+# ---------------------------------------------------------------------------
+
+
+def _new_blocker_actions(prev_ids: set[str], current_actions: list) -> list:
+    """Return tier-0 (blocker) actions whose id was not in prev_ids."""
+    return [a for a in current_actions if a.tier == 0 and a.id not in prev_ids]
+
+
+def _newly_failed_agents(prev_statuses: dict[str, str], current_agents: list) -> list:
+    """Return agents that transitioned *to* 'stale' from a known non-stale status.
+
+    Agents with no prior entry (new agents) are skipped to avoid false alerts
+    on cockpit startup when existing stale agents are first seen.
+    """
+    return [
+        a for a in current_agents
+        if a.status == "stale"
+        and a.id_short in prev_statuses           # must have been seen before
+        and prev_statuses[a.id_short] != "stale"  # and was not already stale
+    ]
+
+
+def _send_desktop_notification(title: str, body: str) -> None:
+    """Fire-and-forget macOS desktop notification via osascript.
+
+    Non-blocking: uses Popen. Silently no-ops on non-macOS or missing osascript.
+    Caller must sanitize title/body to avoid shell injection (no user input allowed).
+    """
+    body_safe = body[:120].replace('"', "'")
+    title_safe = title[:60].replace('"', "'")
+    script = f'display notification "{body_safe}" with title "{title_safe}"'
+    try:
+        subprocess.Popen(
+            ["osascript", "-e", script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass  # osascript unavailable
+
+
+# ---------------------------------------------------------------------------
 # Modal screens
 # ---------------------------------------------------------------------------
 
@@ -482,6 +525,16 @@ class CockpitApp(App):
             "agents": "",
             "notifications": "",
         }
+        # Phase 4: Bell / desktop notification diff state
+        self._prev_action_ids: set[str] = set()
+        self._prev_agent_statuses: dict[str, str] = {}  # id_short → status
+        _settings = _get_settings()
+        self._bell_enabled: bool = bool(
+            _settings.get("cockpit", {}).get("bell", True)
+        )
+        self._desktop_notif_enabled: bool = bool(
+            _settings.get("cockpit", {}).get("desktop_notifications", False)
+        )
         self._cockpit_mgr = None
         try:
             from juggle_tmux import JuggleTmuxManager
@@ -598,6 +651,28 @@ class CockpitApp(App):
                     pass
 
             state = _snapshot(self._db)
+
+            # --- Bell / desktop notification diff (skip first tick; prev is empty) ---
+            if self._prev_action_ids or self._prev_agent_statuses:
+                new_blockers = _new_blocker_actions(self._prev_action_ids, state.actions)
+                failed_agents = _newly_failed_agents(self._prev_agent_statuses, state.agents)
+                if self._bell_enabled and (new_blockers or failed_agents):
+                    self.bell()
+                    if self._desktop_notif_enabled:
+                        if new_blockers:
+                            _send_desktop_notification(
+                                "Juggle: Blocker",
+                                f"{len(new_blockers)} new blocker(s): {new_blockers[0].text[:80]}",
+                            )
+                        elif failed_agents:
+                            _send_desktop_notification(
+                                "Juggle: Agent Failed",
+                                f"Agent {failed_agents[0].role} went stale",
+                            )
+
+            # Update previous-state snapshots (always, even if bell disabled)
+            self._prev_action_ids = {a.id for a in state.actions}
+            self._prev_agent_statuses = {a.id_short: a.status for a in state.agents}
 
             # Apply active filters
             filtered_actions = _apply_filter_actions(

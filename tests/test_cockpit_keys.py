@@ -7,6 +7,7 @@ Cycles:
   4. HelpModal deduplication (no repeated action rows)
   5. action_switch — Textual Pilot (label not found, success)
   6. action_ack — Textual Pilot (no open actions, success)
+  7. _new_blocker_actions / _newly_failed_agents — Phase 4 bell helpers
 """
 
 import os
@@ -392,3 +393,87 @@ async def test_action_ack_dismisses_all_for_label(tmp_path):
     assert all(a["thread_id"] == t2 for a in remaining), (
         f"Expected only t2 actions remaining, got: {remaining}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Cycle 7 — Phase 4 bell helpers: _new_blocker_actions / _newly_failed_agents
+# ---------------------------------------------------------------------------
+
+
+def _blocker(id: str) -> "Action":  # noqa: F821
+    from juggle_cockpit_model import Action
+    return Action(id=id, topic_id="MA", text="blocker text", tier=0, age_secs=5)
+
+
+def _normal(id: str) -> "Action":  # noqa: F821
+    from juggle_cockpit_model import Action
+    return Action(id=id, topic_id="MA", text="normal text", tier=1, age_secs=5)
+
+
+def _bell_agent(id_short: str, status: str) -> "Agent":  # noqa: F821
+    from juggle_cockpit_model import Agent
+    return Agent(id_short=id_short, role="coder", status=status, topic_id="MA", age_secs=10)
+
+
+# _new_blocker_actions
+def test_new_blocker_returns_unseen_tier0():
+    """Tier-0 actions not in prev_ids are returned."""
+    from juggle_cockpit import _new_blocker_actions
+    actions = [_blocker("b1")]
+    result = _new_blocker_actions(set(), actions)
+    assert result == [actions[0]]
+
+
+def test_new_blocker_already_seen_excluded():
+    """Tier-0 action whose id is in prev_ids is NOT returned."""
+    from juggle_cockpit import _new_blocker_actions
+    actions = [_blocker("b1")]
+    assert _new_blocker_actions({"b1"}, actions) == []
+
+
+def test_new_blocker_only_tier0():
+    """Non-tier-0 actions are never returned."""
+    from juggle_cockpit import _new_blocker_actions
+    actions = [_blocker("b1"), _normal("n1")]
+    assert _new_blocker_actions(set(), actions) == [actions[0]]
+
+
+def test_new_blocker_mixed_seen_unseen():
+    """Only the unseen blocker is returned when one is seen and one is new."""
+    from juggle_cockpit import _new_blocker_actions
+    actions = [_blocker("b1"), _blocker("b2")]
+    result = _new_blocker_actions({"b1"}, actions)
+    assert result == [actions[1]]
+
+
+# _newly_failed_agents
+def test_newly_failed_busy_to_stale():
+    """Agent transitioning busy→stale is returned."""
+    from juggle_cockpit import _newly_failed_agents
+    agents = [_bell_agent("abc12345", "stale")]
+    prev = {"abc12345": "busy"}
+    assert _newly_failed_agents(prev, agents) == [agents[0]]
+
+
+def test_newly_failed_already_stale_excluded():
+    """Agent that was already stale is NOT returned."""
+    from juggle_cockpit import _newly_failed_agents
+    agents = [_bell_agent("abc12345", "stale")]
+    prev = {"abc12345": "stale"}
+    assert _newly_failed_agents(prev, agents) == []
+
+
+def test_newly_failed_no_prev_entry_skipped():
+    """Unknown agent going stale (new agent) does NOT trigger alert."""
+    from juggle_cockpit import _newly_failed_agents
+    agents = [_bell_agent("newagent0", "stale")]
+    prev: dict = {}
+    assert _newly_failed_agents(prev, agents) == []
+
+
+def test_newly_failed_busy_stays_busy():
+    """Agent that remains busy is NOT returned."""
+    from juggle_cockpit import _newly_failed_agents
+    agents = [_bell_agent("abc12345", "busy")]
+    prev = {"abc12345": "busy"}
+    assert _newly_failed_agents(prev, agents) == []
