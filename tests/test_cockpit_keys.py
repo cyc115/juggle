@@ -186,6 +186,85 @@ def test_resolve_agent_by_index_empty():
 
 
 # ---------------------------------------------------------------------------
+# Cycle 8 — Filter pure helpers
+# ---------------------------------------------------------------------------
+
+from juggle_cockpit import _parse_filter, _apply_filter_actions, _apply_filter_text
+from juggle_cockpit_model import Action, Notification
+
+
+def _make_action(id: str, text: str, tier: int, topic: str = "MA") -> Action:
+    return Action(id=id, topic_id=topic, text=text, tier=tier, age_secs=10)
+
+
+def _make_notif(text: str) -> Notification:
+    return Notification(text=text, kind="info", age_secs=5)
+
+
+# _parse_filter
+def test_parse_filter_plain():
+    assert _parse_filter("deploy") == (None, "deploy")
+
+
+def test_parse_filter_priority_only():
+    assert _parse_filter("priority:high") == ("high", "")
+
+
+def test_parse_filter_priority_with_text():
+    assert _parse_filter("priority:blocker ssh") == ("blocker", "ssh")
+
+
+def test_parse_filter_empty():
+    assert _parse_filter("") == (None, "")
+
+
+# _apply_filter_actions
+def test_filter_actions_empty_text_passthrough():
+    acts = [_make_action("a1", "deploy DB", tier=0)]
+    assert _apply_filter_actions(acts, "") is acts
+
+
+def test_filter_actions_substring_match():
+    acts = [_make_action("a1", "deploy DB", 0), _make_action("a2", "write tests", 1)]
+    result = _apply_filter_actions(acts, "deploy")
+    assert result == [acts[0]]
+
+
+def test_filter_actions_priority_high():
+    acts = [_make_action("a1", "x", 0), _make_action("a2", "y", 1)]
+    assert _apply_filter_actions(acts, "priority:high") == [acts[0]]
+
+
+def test_filter_actions_priority_blocker_alias():
+    acts = [_make_action("a1", "x", 0), _make_action("a2", "y", 2)]
+    assert _apply_filter_actions(acts, "priority:blocker") == [acts[0]]
+
+
+def test_filter_actions_priority_with_substring():
+    acts = [_make_action("a1", "deploy ssh", 0), _make_action("a2", "deploy api", 0)]
+    result = _apply_filter_actions(acts, "priority:high ssh")
+    assert result == [acts[0]]
+
+
+def test_filter_actions_topic_match():
+    acts = [_make_action("a1", "thing", 1, topic="MA"), _make_action("a2", "thing", 1, topic="ZZ")]
+    result = _apply_filter_actions(acts, "MA")
+    assert result == [acts[0]]
+
+
+# _apply_filter_text (generic)
+def test_filter_text_notifs_match():
+    notifs = [_make_notif("agent completed"), _make_notif("watchdog fired")]
+    result = _apply_filter_text(notifs, "complete")
+    assert result == [notifs[0]]
+
+
+def test_filter_text_empty_passthrough():
+    notifs = [_make_notif("x")]
+    assert _apply_filter_text(notifs, "") is notifs
+
+
+# ---------------------------------------------------------------------------
 # Cycles 5 & 6 — Textual Pilot (switch + ack)  [require textual]
 # ---------------------------------------------------------------------------
 

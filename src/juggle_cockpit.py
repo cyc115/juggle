@@ -241,6 +241,71 @@ def _resolve_agent_by_index(agents: list, index_1based: int):
     return agents[idx]
 
 
+_PRIORITY_TIER_MAP: dict[str, int] = {
+    "high": 0, "blocker": 0,
+    "normal": 1, "review": 1,
+    "low": 2, "note": 2,
+}
+
+
+def _parse_filter(text: str) -> tuple[str | None, str]:
+    """Parse filter text into (priority_key_or_None, substring).
+
+    'priority:high foo' → ('high', 'foo')
+    'foo bar'           → (None, 'foo bar')
+    'priority:blocker'  → ('blocker', '')
+    ''                  → (None, '')
+    """
+    if text.startswith("priority:"):
+        rest = text[len("priority:"):].strip()
+        parts = rest.split(None, 1)
+        key = parts[0] if parts else ""
+        sub = parts[1] if len(parts) > 1 else ""
+        return key, sub
+    return None, text
+
+
+def _apply_filter_actions(actions: list, text: str) -> list:
+    """Filter Action list. Empty text returns the same list object (fast path).
+
+    Supports 'priority:<key> [substring]' prefix.
+    Keys: high/blocker → tier 0; normal/review → tier 1; low/note → tier 2.
+    Substring matches action.text and action.topic_id (case-insensitive).
+    """
+    if not text:
+        return actions
+    priority_key, substring = _parse_filter(text)
+    result = actions
+    if priority_key is not None:
+        tier = _PRIORITY_TIER_MAP.get(priority_key.lower())
+        if tier is not None:
+            result = [a for a in result if a.tier == tier]
+    if substring:
+        low = substring.lower()
+        result = [
+            a for a in result
+            if low in a.text.lower() or low in (a.topic_id or "").lower()
+        ]
+    return result
+
+
+def _apply_filter_text(items: list, text: str) -> list:
+    """Generic text-substring filter for Agent and Notification lists.
+
+    Matches against .text, .role, and .topic_id attributes (whichever exist).
+    Empty text returns the same list object (fast path).
+    """
+    if not text:
+        return items
+    low = text.lower()
+    return [
+        item for item in items
+        if low in getattr(item, "text", "").lower()
+        or low in getattr(item, "role", "").lower()
+        or low in (getattr(item, "topic_id", None) or "").lower()
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Modal screens
 # ---------------------------------------------------------------------------
