@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-05-25 (v1.33.0)
+- cockpit: tail is now a **modal overlay** (`_TailModal`) — `t` pushes a centered ~80%×70% bordered overlay over the UI with a 1s `set_interval` live refresh (injected `capture_fn`), replacing the inline `#tail` Static drawer; drawer state (`_tail_active`/`_tail_pane_id`), the `#tail` widget, and the `_refresh` drawer block are removed from `juggle_cockpit.py`
+- cockpit: `_tmux_capture_pane` reads scrollback via `capture-pane -S -<lines>` so tail returns the last N lines regardless of pane display height (was visible-region-only)
+- cockpit refactor: `juggle_cockpit.py` (1396L) split into `juggle_cockpit_helpers.py` (pure helpers), `juggle_cockpit_modals.py` (modal screens), `juggle_cockpit_widgets.py` (`Splitter`/`HSplitter`); re-exports preserve all existing imports (main file → ~1008L)
+- watchdog: `alive_slow` (alive-but-slow) agents now surface as a passive notification via `add_notification_v2` instead of a `failure` action item — the Enter nudge is unchanged
+- watchdog/start: `/juggle:start` is **idempotent per Claude session** — pidfile is session-scoped (`watchdog-<CLAUDE_CODE_SESSION_ID>.pid`, falls back to `watchdog.pid` when unset) and `_start_watchdog` kill-then-restarts only this session's watchdog (SIGTERM → 2s poll → SIGKILL → unlink → respawn); other sessions' watchdogs are never touched; talkback (shared singleton) untouched
+- tests: full suite 858 passed / 5 skipped
+
 ## 2026-05-25 (v1.32.3)
 - fix(tmux): `wait_for_submission` now captures scrollback tail via `capture-pane -S -10` instead of visible-only `capture-pane -pt`; submission markers and stuck-state (`[Pasted text`, head, ❯/> prompt) are evaluated against the last `_DETECT_TAIL_LINES=10` lines of the returned output, making detection pane-size-independent; `_BOTTOM_REGION_LINES` constant removed (superseded by `_DETECT_TAIL_LINES`)
 - tests: 3 new TDD tests — `test_wait_for_submission_capture_uses_scrollback_flag` (asserts -S present in capture-pane args), `test_wait_for_submission_detects_marker_in_scrollback_tail` (marker in last 10 lines of 50-line buffer), `test_wait_for_submission_detects_stuck_in_scrollback_tail` (stuck placeholder in tail triggers C-m retry)
