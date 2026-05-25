@@ -123,6 +123,7 @@ def cmd_cockpit(args):
     """Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).
 
     With --out: render all panes as plain text to stdout then exit (no TUI).
+    With --profile: run headless resource-usage profiling harness (no TUI).
     """
     import subprocess as _sp
     src = Path(__file__).parent
@@ -132,6 +133,8 @@ def cmd_cockpit(args):
         cmd += ["--db", args.db_path]
     if getattr(args, "out", False):
         cmd += ["--out"]
+    elif getattr(args, "profile", False):
+        cmd += ["--profile", "--duration", str(getattr(args, "duration", 60))]
     sys.exit(_sp.call(cmd))
 
 
@@ -654,6 +657,18 @@ def main():
         "--out",
         action="store_true",
         help="Render panes as plain text to stdout then exit (no TUI)",
+    )
+    p_cockpit.add_argument(
+        "--profile",
+        action="store_true",
+        help="Run headless resource-usage profiling loop (no TUI)",
+    )
+    p_cockpit.add_argument(
+        "--duration",
+        type=int,
+        default=60,
+        metavar="N",
+        help="Duration in seconds for --profile (default: 60)",
     )
     p_cockpit.set_defaults(func=cmd_cockpit)
 

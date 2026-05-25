@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-24 (v1.31.0)
+- cockpit: add `--profile [--duration N]` harness — spawns a headless worker child that runs the 1-second snapshot+render loop for N seconds (default 60), profiles it with `psrecord` via `uvx`, then prints a summary: avg/peak CPU%, RSS start/end/growth/peak; flags RSS growth > 20 MB (possible leak) and avg CPU > 15% (battery concern); degrades gracefully if `uvx`/`psrecord` is unavailable (exits 0 with a clear message); available as `cockpit --profile` and `juggle_cockpit.py --profile`
+- tests: 6 new TDD tests in `tests/test_cockpit_profile.py` covering `_parse_psrecord_log` (basic parse, empty log, threshold detection) and `_profile_worker_loop` (N-iteration count and zero-duration via mocked clock)
+
 ## 2026-05-24 (v1.30.2)
 - cockpit: removed legacy v1 (Rich) cockpit; the Textual cockpit is now the only one; dropped the `--v2` flag from `juggle_cli.py cockpit`
 - cockpit: add `--out` static render mode — prints all four panes as plain text to stdout then exits (no TUI); available as `juggle_cli.py cockpit --out` and `juggle_cockpit.py --out`; backed by `render_static_from_state` / `render_static` in juggle_cockpit_view.py

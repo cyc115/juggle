@@ -451,6 +451,225 @@ def run(db_path: str | None = None) -> None:
     app.run()
 
 
+# ---------------------------------------------------------------------------
+# Profile harness (--profile mode)
+# ---------------------------------------------------------------------------
+
+
+def _parse_psrecord_log(log_text: str) -> dict:
+    """Parse a psrecord log and return summary stats.
+
+    psrecord log format::
+
+        # Elapsed time   CPU (%)     Real (MB)   Virtual (MB)
+        0.000            5.0         100.0       500.0
+        ...
+
+    Returns a dict with keys: avg_cpu, peak_cpu, rss_start, rss_end,
+    rss_growth, peak_rss.  Returns ``{}`` if no data rows are found.
+    """
+    cpu_vals: list[float] = []
+    rss_vals: list[float] = []
+
+    for line in log_text.splitlines():
+        line = line.strip()
+        if line.startswith("#") or not line:
+            continue
+        parts = line.split()
+        if len(parts) >= 3:
+            try:
+                cpu_vals.append(float(parts[1]))
+                rss_vals.append(float(parts[2]))
+            except ValueError:
+                continue
+
+    if not cpu_vals:
+        return {}
+
+    return {
+        "avg_cpu": sum(cpu_vals) / len(cpu_vals),
+        "peak_cpu": max(cpu_vals),
+        "rss_start": rss_vals[0],
+        "rss_end": rss_vals[-1],
+        "rss_growth": rss_vals[-1] - rss_vals[0],
+        "peak_rss": max(rss_vals),
+    }
+
+
+def _profile_worker_loop(
+    duration: int,
+    db_path: str | None = None,
+    _tick_fn=None,
+) -> int:
+    """Run a headless snapshot+render loop for *duration* seconds.
+
+    Each iteration calls ``snapshot(db)`` + ``render_static_from_state`` — the
+    same work as the live 1-second tick — without a TTY or Textual App.
+
+    Parameters
+    ----------
+    duration:
+        How many seconds to run.
+    db_path:
+        Optional path to juggle.db.
+    _tick_fn:
+        Replacement tick callable (injected by tests).  When ``None`` the
+        real snapshot+render cycle is used.
+
+    Returns
+    -------
+    int
+        Number of completed iterations.
+    """
+    if _tick_fn is not None:
+        tick_callable = _tick_fn
+    else:
+        from juggle_cockpit_model import snapshot as _snapshot
+        from juggle_cockpit_view import render_static_from_state
+
+        db = _make_cockpit_db(db_path)
+
+        def _default_tick() -> None:
+            state = _snapshot(db)
+            render_static_from_state(state)
+
+        tick_callable = _default_tick
+
+    end = time.time() + duration
+    iterations = 0
+    while time.time() < end:
+        tick_start = time.time()
+        tick_callable()
+        iterations += 1
+        elapsed = time.time() - tick_start
+        sleep_time = max(0.0, 1.0 - elapsed)
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+    return iterations
+
+
+def run_profile(duration: int = 60, db_path: str | None = None) -> None:
+    """Run the cockpit profiling harness.
+
+    Spawns a headless worker child (``--profile-worker``) that mimics the live
+    1-second cockpit tick for *duration* seconds.  Concurrently, ``psrecord``
+    (via ``uvx``) samples the child's CPU and RSS every 0.5 s.  After both
+    finish the log is parsed and a summary printed to stdout.
+
+    Degrades gracefully if ``uvx``/``psrecord`` are unavailable — exits 0 with
+    a clear message so CI is not broken.
+    """
+    log_path = Path("/tmp/cockpit_profile.log")
+    plot_path = Path("/tmp/cockpit_profile.png")
+
+    # --- spawn worker child ------------------------------------------------
+    cockpit_script = str(Path(__file__).resolve())
+    worker_cmd = [
+        "uv", "run", cockpit_script,
+        "--profile-worker",
+        "--duration", str(duration),
+    ]
+    if db_path:
+        worker_cmd += ["--db", db_path]
+
+    print(f"[profile] Starting headless worker ({duration}s) …", flush=True)
+    try:
+        child = subprocess.Popen(
+            worker_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        print("ERROR: 'uv' not found — cannot spawn worker process.", file=sys.stderr)
+        sys.exit(1)
+
+    pid = child.pid
+    print(f"[profile] Worker PID: {pid}", flush=True)
+
+    # --- start psrecord via uvx --------------------------------------------
+    psrecord_cmd = [
+        "uvx", "psrecord", str(pid),
+        "--interval", "0.5",
+        "--duration", str(duration + 2),
+        "--plot", str(plot_path),
+        "--log", str(log_path),
+    ]
+    print(f"[profile] Running: {' '.join(psrecord_cmd)}", flush=True)
+    psrecord_ok = True
+    psrecord_proc: subprocess.Popen | None = None
+    try:
+        psrecord_proc = subprocess.Popen(
+            psrecord_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        psrecord_ok = False
+        print("[profile] WARNING: 'uvx' not found — skipping psrecord sampling.", flush=True)
+
+    # --- wait for worker ---------------------------------------------------
+    try:
+        child.wait(timeout=duration + 15)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait()
+
+    # --- wait for psrecord -------------------------------------------------
+    if psrecord_ok and psrecord_proc is not None:
+        try:
+            psrecord_proc.wait(timeout=duration + 15)
+        except subprocess.TimeoutExpired:
+            psrecord_proc.kill()
+            psrecord_proc.wait()
+
+    # --- print summary -----------------------------------------------------
+    if not psrecord_ok or not log_path.exists():
+        print(
+            "\n[profile] psrecord log not available"
+            " (uvx/psrecord not installed or failed).",
+            flush=True,
+        )
+        print("[profile] Install: pip install psrecord  (no restart needed)", flush=True)
+        print("[profile] Profiling run complete (no metrics collected).", flush=True)
+        return
+
+    try:
+        log_text = log_path.read_text()
+    except OSError as exc:
+        print(f"[profile] ERROR reading log: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    stats = _parse_psrecord_log(log_text)
+    if not stats:
+        print("[profile] WARNING: psrecord log is empty or unparseable.", flush=True)
+        return
+
+    w = 52
+    print(f"\n{'=' * w}")
+    print("  Cockpit Profile Summary")
+    print(f"{'=' * w}")
+    print(f"  CPU avg:    {stats['avg_cpu']:.1f}%")
+    print(f"  CPU peak:   {stats['peak_cpu']:.1f}%")
+    print(f"  RSS start:  {stats['rss_start']:.1f} MB")
+    print(f"  RSS end:    {stats['rss_end']:.1f} MB")
+    print(f"  RSS growth: {stats['rss_growth']:+.1f} MB")
+    print(f"  RSS peak:   {stats['peak_rss']:.1f} MB")
+    print(f"{'=' * w}")
+
+    if stats["rss_growth"] > 20.0:
+        print(
+            f"  ⚠  POSSIBLE LEAK: RSS grew {stats['rss_growth']:.1f} MB"
+            f" (threshold: 20 MB)"
+        )
+    if stats["avg_cpu"] > 15.0:
+        print(
+            f"  ⚠  BATTERY CONCERN: avg CPU {stats['avg_cpu']:.1f}%"
+            f" (threshold: 15%)"
+        )
+
+    print(f"\n  Plot: {plot_path}")
+
+
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
     parser = argparse.ArgumentParser(description="Juggle Cockpit (Textual)")
@@ -460,9 +679,33 @@ if __name__ == "__main__":
         action="store_true",
         help="Render panes as plain text to stdout then exit (no TUI)",
     )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Run headless resource-usage profiling loop (no TUI)",
+    )
+    parser.add_argument(
+        "--duration",
+        type=int,
+        default=60,
+        metavar="N",
+        help="Duration in seconds for --profile (default: 60)",
+    )
+    parser.add_argument(
+        "--profile-worker",
+        action="store_true",
+        dest="profile_worker",
+        help=argparse.SUPPRESS,  # internal: child process spawned by run_profile
+    )
     args = parser.parse_args()
     if args.out:
         from juggle_cockpit_view import render_static
         sys.stdout.write(render_static(db_path=args.db_path))
+        sys.exit(0)
+    if args.profile_worker:
+        _profile_worker_loop(args.duration, db_path=args.db_path)
+        sys.exit(0)
+    if args.profile:
+        run_profile(duration=args.duration, db_path=args.db_path)
         sys.exit(0)
     run(db_path=args.db_path)
