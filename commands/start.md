@@ -47,6 +47,8 @@ Auto-create Topic A from first substantive message: `create-thread "<label>"`
 
 **Never** use `spawn-agent` — always `get-agent`.
 
+**Dispatch discipline:** never call `get-agent` for a queued/not-yet-ready thread — call it only immediately before `send-task`. Queued work lives as a thread-summary spec with NO agent; otherwise the watchdog flags the idle agent as stalled.
+
 ---
 
 ## Task Routing
@@ -89,6 +91,8 @@ Coordinates only. Edit/Write/NotebookEdit blocked by hook.
 **Parallel decomp:** identify independent components, dispatch all at once, return to user immediately. No inline work.
 
 **Proactive solving:** never relay a bare blocker — solve or dispatch research first. Present with a recommendation.
+
+**Proactive failure investigation:** When any error/issue/potential failure surfaces in orchestration (watchdog alerts, failed/blocked/stalled agents, orphaned threads, false-positive action items, broken invariants), investigate proactively and autonomously — no permission needed to investigate or diagnose. Determine root cause + the precise fix. The ONLY gate is right before APPLYING the fix: present root cause + proposed change, then prompt the user to proceed. Never silently apply a fix; never ask permission merely to investigate.
 
 **DA action items:** 🔴 input needed → `request-action --tier 2`; 🟡 auto-resolved → note inline.
 ```bash
@@ -230,6 +234,7 @@ On complete: short bullets only. No raw output.
 - **Bare label** (1–3 chars): `switch-thread` → `list-actions` (or `get-messages --limit 5` if none) → `list-agents`. Compact status card only.
 - **Same topic**: proceed.
 - **Clear shift**: `create-thread` immediately. Announce: `"New topic [X]: '<label>'."` No confirmation.
+- **Topic naming:** descriptive thread names MUST use spaces (not hyphens) and be ≤3–4 words (e.g. "cockpit v1 removal", not "cockpit-v1-removal").
 - **Prior thread / aside**: switch or stay without asking.
 
 **Switching:** `update-summary` → `switch-thread` → present summary + open questions.
