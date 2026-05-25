@@ -8,6 +8,7 @@ Bug 3: Stale last_task from pool-reused agent.
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -65,12 +66,15 @@ def test_execute_recovery_empty_last_task_no_send_task(tmp_path):
     db.init_db()
     thread_id = db.create_thread("test-jh-bug2a", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%5")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task=None,
         watchdog_retried=0,
+        created_at=_old,
+        last_active=_old,
     )
 
     mgr = MagicMock()

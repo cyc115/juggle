@@ -41,6 +41,10 @@ _BOX_TOP_RE = re.compile(r"^╭─+╮\s*$")
 # Sentinel: caller did not supply last_send_task_at, so backward-compat applies.
 _NO_DISPATCH_INFO: object = object()
 
+# Grace period before a never-tasked agent can be decommissioned.
+# Overridable via juggle_settings key "agent_boot_grace_secs".
+_BOOT_GRACE_SECS: float = 120.0
+
 # ---------------------------------------------------------------------------
 # Stale-code detection (pure helper — used by daemon process)
 # ---------------------------------------------------------------------------
@@ -354,6 +358,28 @@ def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Age helper
+# ---------------------------------------------------------------------------
+
+
+def _get_agent_age_secs(agent: dict) -> float:
+    """Return age of the agent in seconds using created_at, falling back to last_active."""
+    from datetime import datetime, timezone
+
+    for key in ("created_at", "last_active"):
+        ts_str = agent.get(key)
+        if ts_str:
+            try:
+                dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds())
+            except (ValueError, TypeError):
+                continue
+    return float("inf")  # unknown age → treat as old (safe to decommission)
+
+
+# ---------------------------------------------------------------------------
 # Recovery
 # ---------------------------------------------------------------------------
 
@@ -394,10 +420,24 @@ def execute_recovery(
 
     # Never-tasked agent: silently decommission — no snapshot, no thread=failed,
     # no action item.  The orchestrator hadn't sent work yet so this is not a
-    # real failure.
+    # real failure.  Guard: skip decommission during cold-boot grace period so
+    # freshly-spawned agents aren't reaped before Claude UI has rendered.
     if not last_task:
+        try:
+            from juggle_settings import get_settings as _get_settings
+            _grace = float(_get_settings().get("agent_boot_grace_secs", _BOOT_GRACE_SECS))
+        except Exception:
+            _grace = _BOOT_GRACE_SECS
+        _age = _get_agent_age_secs(live)
+        if _age < _grace:
+            _log.info(
+                "Watchdog: agent %s never-tasked but young (age=%.0fs < grace=%.0fs) — skipping",
+                agent_id[:8], _age, _grace,
+            )
+            return
         _log.info(
-            "Watchdog: agent %s never tasked — silently decommissioning", agent_id[:8]
+            "Watchdog: agent %s never tasked (age=%.0fs >= grace=%.0fs) — silently decommissioning",
+            agent_id[:8], _age, _grace,
         )
         try:
             mgr.kill_pane(live["pane_id"])

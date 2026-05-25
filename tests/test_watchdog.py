@@ -311,16 +311,21 @@ def test_execute_recovery_no_last_task(tmp_path):
     from juggle_watchdog import execute_recovery
     from juggle_db import JuggleDB
 
+    from datetime import datetime, timezone, timedelta
+
     db = JuggleDB(str(tmp_path / "test.db"))
     db.init_db()
     thread_id = db.create_thread("test", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%5")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task=None,
         watchdog_retried=0,
+        created_at=_old,
+        last_active=_old,
     )
 
     mgr = MagicMock()
@@ -337,7 +342,7 @@ def test_execute_recovery_no_last_task(tmp_path):
     # No action items (silent decommission)
     items = db.get_open_action_items()
     assert items == []
-    # Agent must still be deleted
+    # Agent must still be deleted (past grace period)
     assert db.get_agent(agent_id) is None
 
 

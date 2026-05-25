@@ -28,6 +28,7 @@ DEFAULTS: dict = {
     "context_injection_char_limit": 8000,
     "context_teaser_chars": 80,
     "stale_summary_message_threshold": 3,
+    "agent_boot_grace_secs": 120,
     "summary_max_chars": 250,
     "thread_idle_threshold_secs": 1800,
     "thread_archive_threshold_secs": 172800,

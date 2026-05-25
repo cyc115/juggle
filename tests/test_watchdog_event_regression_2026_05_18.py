@@ -8,6 +8,7 @@ These tests verify event detection, snapshot creation, and action item escalatio
 """
 
 import sys
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -196,12 +197,15 @@ def test_stalled_event_no_task_content(db, mock_mgr, tmp_path):
     """
     thread_id = db.create_thread("no task stall", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%40")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task=None,
         watchdog_retried=0,
+        created_at=_old,
+        last_active=_old,
     )
 
     agent = db.get_agent(agent_id)
@@ -247,12 +251,15 @@ def test_stalled_event_empty_task_string(db, mock_mgr, tmp_path):
     """Empty task string treated same as no task — silently decommissioned."""
     thread_id = db.create_thread("empty task stall", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%50")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task="",
         watchdog_retried=0,
+        created_at=_old,
+        last_active=_old,
     )
 
     agent = db.get_agent(agent_id)
@@ -284,12 +291,15 @@ def test_stalled_event_snapshot_preserved(db, mock_mgr, tmp_path):
     """
     thread_id = db.create_thread("stalled snapshot", session_id="test-session")
     agent_id = db.create_agent(role="researcher", pane_id="%60")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task=None,
         watchdog_retried=0,
+        created_at=_old,
+        last_active=_old,
     )
 
     agent = db.get_agent(agent_id)
@@ -354,12 +364,15 @@ def test_stalled_deletes_original_agent(db, mock_mgr, tmp_path):
     """Stalled must delete original agent from DB."""
     agent_id = db.create_agent(role="researcher", pane_id="%80")
     thread_id = db.create_thread("delete stalled", session_id="test-session")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task=None,
         watchdog_retried=0,
+        created_at=_old,
+        last_active=_old,
     )
 
     agent = db.get_agent(agent_id)
@@ -407,12 +420,15 @@ def test_stalled_kills_original_pane(db, mock_mgr, tmp_path):
     """Stalled must attempt to kill original pane."""
     agent_id = db.create_agent(role="researcher", pane_id="%110")
     thread_id = db.create_thread("kill stalled pane", session_id="test-session")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task=None,
         watchdog_retried=0,
+        created_at=_old,
+        last_active=_old,
     )
 
     agent = db.get_agent(agent_id)
@@ -531,12 +547,15 @@ def test_stalled_event_has_correct_fields(db, mock_mgr, tmp_path):
     """Decommissioned_untasked event record has all required fields (no snapshot_path)."""
     thread_id = db.create_thread("stalled fields", session_id="test-session")
     agent_id = db.create_agent(role="researcher", pane_id="%150")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task=None,
         watchdog_retried=0,
+        created_at=_old,
+        last_active=_old,
     )
 
     agent = db.get_agent(agent_id)

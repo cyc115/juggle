@@ -155,15 +155,23 @@ def test_execute_recovery_no_last_task_thread_not_failed(db, mock_mgr, tmp_path)
 
 def test_execute_recovery_no_last_task_agent_decommissioned(db, mock_mgr, tmp_path):
     """execute_recovery with last_task=None decommissions the agent (pane killed,
-    agent deleted from DB) with a 'decommissioned_untasked' watchdog event."""
+    agent deleted from DB) with a 'decommissioned_untasked' watchdog event.
+
+    Uses an OLD created_at (300s ago) so the agent is past the grace period.
+    """
+    from datetime import datetime, timezone, timedelta
+
     thread_id = db.create_thread("decommission thread", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%12")
+    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task=None,
         watchdog_retried=0,
+        created_at=old_ts,
+        last_active=old_ts,
     )
 
     agent = db.get_agent(agent_id)
@@ -191,6 +199,78 @@ def test_execute_recovery_no_last_task_agent_decommissioned(db, mock_mgr, tmp_pa
 # ---------------------------------------------------------------------------
 # 4. Regression: agent with last_task still goes through normal recovery
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# 5. Grace period: young never-tasked agents must NOT be decommissioned
+# ---------------------------------------------------------------------------
+
+
+def test_young_never_tasked_agent_not_decommissioned(db, mock_mgr, tmp_path):
+    """execute_recovery MUST NOT decommission a never-tasked agent younger than grace.
+
+    Freshly-spawned agents haven't had time to complete cold-boot. Reaping them
+    mid-startup produces false-positive 'decommissioned_untasked' events.
+    """
+    thread_id = db.create_thread("young cold-boot thread", session_id="")
+    agent_id = db.create_agent(role="coder", pane_id="%40")
+    # created_at is set to NOW by create_agent — well within 120s grace
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task=None,
+        watchdog_retried=0,
+    )
+
+    agent = db.get_agent(agent_id)
+    recovery_dir = tmp_path / "recovery"
+
+    execute_recovery(
+        db, mock_mgr, agent, "idle output",
+        recovery_dir=recovery_dir, session_id="test",
+    )
+
+    # Agent must NOT have been killed — still in grace period
+    assert db.get_agent(agent_id) is not None, (
+        "Young never-tasked agent should NOT be decommissioned during grace period"
+    )
+    mock_mgr.kill_pane.assert_not_called()
+
+
+def test_old_never_tasked_agent_still_decommissioned(db, mock_mgr, tmp_path):
+    """execute_recovery MUST decommission never-tasked agents older than grace (120s).
+
+    Ensures old stale-boot agents are still cleaned up after grace expires.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    thread_id = db.create_thread("old cold-boot thread", session_id="")
+    agent_id = db.create_agent(role="coder", pane_id="%41")
+    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task=None,
+        watchdog_retried=0,
+        created_at=old_ts,
+        last_active=old_ts,
+    )
+
+    agent = db.get_agent(agent_id)
+    recovery_dir = tmp_path / "recovery"
+
+    execute_recovery(
+        db, mock_mgr, agent, "idle",
+        recovery_dir=recovery_dir, session_id="test",
+    )
+
+    # Old agent MUST be decommissioned
+    assert db.get_agent(agent_id) is None, (
+        "Never-tasked agent older than grace (300s > 120s) should be decommissioned"
+    )
+    mock_mgr.kill_pane.assert_called_once()
 
 
 def test_execute_recovery_with_last_task_creates_action_item(db, mock_mgr, tmp_path):

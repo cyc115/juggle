@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-25 (v1.32.1)
+- watchdog: cold-boot grace period — `execute_recovery` skips decommission for never-tasked agents younger than `agent_boot_grace_secs` (default 120s); uses `created_at` (fallback `last_active`) for age; old stale-boot agents (age ≥ grace) still decommissioned; `_BOOT_GRACE_SECS=120` module constant; `agent_boot_grace_secs` added to `juggle_settings` DEFAULTS; `_get_agent_age_secs` pure helper
+- tests: 2 new TDD tests (`test_young_never_tasked_agent_not_decommissioned`, `test_old_never_tasked_agent_still_decommissioned`); updated 9 existing tests across 4 files to backdate `created_at` so old-agent paths still exercise decommission
+
 ## 2026-05-25 (v1.32.0)
 - cockpit: keyboard shortcuts — `s` switch thread by label (PromptModal → set_current_thread), `a` ack all open actions on a thread by label (PromptModal → dismiss_action_items_for_thread), `?` help overlay (deduplicates aliased scroll-key rows), `j`/`k`/`↑`/`↓`/`PgUp`/`PgDn` scroll active pane via named BINDINGS (replaces on_key handler), `Tab` cycles pane; no manual-refresh key (`r` removed — 1s auto-tick is sufficient); pure helpers `_resolve_thread_by_label` / `_resolve_actions_by_thread_label` module-level for testability
 - tests: 14 new TDD tests in `tests/test_cockpit_keys.py` (pure-helper unit tests + Textual Pilot integration tests for switch/ack/not-found paths)

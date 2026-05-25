@@ -8,6 +8,7 @@ Tests are auto-generated from actual watchdog snapshots and cover:
 """
 
 import sys
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -317,13 +318,16 @@ def test_stalled_with_no_task_content(db, mock_mgr, tmp_path):
     """
     thread_id = db.create_thread("no task stall", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%5")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task=None,
         watchdog_retried=0,
-    )  # No task content
+        created_at=_old,
+        last_active=_old,
+    )  # No task content; backdated past grace period
 
     agent = db.get_agent(agent_id)
     pane_content = "Agent frozen\nno output"
@@ -354,13 +358,16 @@ def test_stalled_with_empty_task_string(db, mock_mgr, tmp_path):
     """Test empty task string treated as never-tasked — silently decommissioned."""
     thread_id = db.create_thread("empty task stall", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%5")
+    _old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
         last_task="",
         watchdog_retried=0,
-    )  # Empty string
+        created_at=_old,
+        last_active=_old,
+    )  # Empty string; backdated past grace period
 
     agent = db.get_agent(agent_id)
     pane_content = "frozen"
