@@ -640,3 +640,109 @@ async def test_bell_no_fire_on_first_tick(tmp_path):
                 f"bell must NOT fire on first tick even with pre-existing blockers "
                 f"(called {mock_bell.call_count}x)"
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Task 12+13: tail drawer state, action_focus_pane, action_tail_toggle
+# ---------------------------------------------------------------------------
+
+
+def test_action_focus_pane_method_exists():
+    from juggle_cockpit import CockpitApp
+    assert hasattr(CockpitApp, "action_focus_pane")
+
+
+def test_action_tail_toggle_method_exists():
+    from juggle_cockpit import CockpitApp
+    assert hasattr(CockpitApp, "action_tail_toggle")
+
+
+def test_tail_state_attrs_in_init():
+    """CockpitApp.__init__ initialises _tail_active and _tail_pane_id."""
+    import inspect
+    from juggle_cockpit import CockpitApp
+    src = inspect.getsource(CockpitApp.__init__)
+    assert "_tail_active" in src
+    assert "_tail_pane_id" in src
+
+
+@pytest.mark.asyncio
+async def test_action_focus_pane_calls_tmux_with_correct_pane_id(tmp_path):
+    """f → type 1 → enter → _tmux_focus_pane called with agent's pane_id."""
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+    import juggle_cockpit
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    db.create_agent("coder", pane_id="%100")
+
+    app = CockpitApp(db_path=db_path)
+    calls: list = []
+
+    def mock_focus(pane_id: str) -> bool:
+        calls.append(pane_id)
+        return True
+
+    async with app.run_test(size=(160, 40)) as pilot:
+        with patch.object(juggle_cockpit, "_tmux_focus_pane", mock_focus):
+            await pilot.press("f")
+            await pilot.pause(0.1)
+            await pilot.press("1")
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+
+    assert calls == ["%100"], f"Expected ['%100'], got {calls}"
+
+
+@pytest.mark.asyncio
+async def test_action_tail_toggle_shows_then_hides(tmp_path):
+    """t → 1 → enter shows tail drawer; t again hides it."""
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+    import juggle_cockpit
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    db.create_agent("coder", pane_id="%200")
+
+    app = CockpitApp(db_path=db_path)
+    capture_calls: list = []
+
+    def mock_capture(pane_id: str, lines: int = 20) -> str:
+        capture_calls.append(pane_id)
+        return "line1\nline2"
+
+    async with app.run_test(size=(160, 40)) as pilot:
+        with patch.object(juggle_cockpit, "_tmux_capture_pane", mock_capture):
+            # First press t: open index modal, type 1, enter
+            await pilot.press("t")
+            await pilot.pause(0.1)
+            await pilot.press("1")
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+
+            # Tail should be visible
+            assert app._tail_active is True, "tail_active should be True"
+            assert app._tail_pane_id == "%200", (
+                f"tail_pane_id should be %200, got {app._tail_pane_id}"
+            )
+            tail_widget = app.query_one("#tail")
+            assert tail_widget.styles.display == "block", (
+                f"tail display should be block, got {tail_widget.styles.display}"
+            )
+            assert len(capture_calls) >= 1, "_tmux_capture_pane not called"
+            assert capture_calls[0] == "%200", f"capture called with {capture_calls[0]}"
+
+            # Second press t: toggle off (no modal — instant dismiss)
+            await pilot.press("t")
+            await pilot.pause(0.2)
+
+        assert app._tail_active is False, "tail_active should be False after second t"
+        assert app.query_one("#tail").styles.display == "none", (
+            "tail display should be none after close"
+        )

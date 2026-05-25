@@ -240,14 +240,17 @@ def render_agents(
     if active_agents:
         parts.append(Text("Active", style=Style(dim=True)))
         t_active = Table.grid(padding=(0, 1))
+        t_active.add_column(no_wrap=True)  # #N
         t_active.add_column(no_wrap=True)  # glyph
         t_active.add_column(no_wrap=True)  # [topic]
         t_active.add_column(no_wrap=True)  # role
         t_active.add_column(no_wrap=True)  # age
         for agent in active_agents:
+            i = sorted_agents.index(agent) + 1
             glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
             st = _row_style(agent.status)
             t_active.add_row(
+                Text(f"#{i}", style=Style(dim=True)),
                 Text(glyph),
                 Text(f"[{agent.topic_id}]", style=st),
                 Text(agent.role, style=st),
@@ -261,14 +264,17 @@ def render_agents(
             parts.append(Text("─" * 22, style=Style(dim=True)))
         parts.append(Text("Pool", style=Style(dim=True)))
         t_pool = Table.grid(padding=(0, 1))
+        t_pool.add_column(no_wrap=True)  # #N
         t_pool.add_column(no_wrap=True)  # glyph
         t_pool.add_column(no_wrap=True)  # name
         t_pool.add_column(no_wrap=True)  # duration
 
         for agent in pool_agents:
+            i = sorted_agents.index(agent) + 1
             glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
             st = _row_style(agent.status)
             t_pool.add_row(
+                Text(f"#{i}", style=Style(dim=True)),
                 Text(glyph),
                 Text(agent.role, style=st),
                 Text(format_age(agent.age_secs), style=st),

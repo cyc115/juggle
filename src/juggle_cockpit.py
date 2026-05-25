@@ -350,6 +350,41 @@ def _send_desktop_notification(title: str, body: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Phase 5 — tmux pane helpers
+# ---------------------------------------------------------------------------
+
+
+def _tmux_focus_pane(pane_id: str) -> bool:
+    """Run `tmux select-pane -t <pane_id>`. Returns True on success."""
+    try:
+        result = subprocess.run(
+            ["tmux", "select-pane", "-t", pane_id],
+            capture_output=True,
+            timeout=2,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _tmux_capture_pane(pane_id: str, lines: int = 20) -> str:
+    """Capture last N lines of tmux pane output. Returns '' on failure."""
+    try:
+        result = subprocess.run(
+            ["tmux", "capture-pane", "-p", "-t", pane_id],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode != 0:
+            return ""
+        captured = result.stdout.splitlines()
+        return "\n".join(captured[-lines:]) if captured else ""
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+
+
+# ---------------------------------------------------------------------------
 # Modal screens
 # ---------------------------------------------------------------------------
 
@@ -488,6 +523,8 @@ class CockpitApp(App):
         Binding("x",            "archive",       "Archive"),
         Binding("d",            "decommission",  "Decommission"),
         Binding("slash",        "filter",        "Filter"),
+        Binding("f",            "focus_pane",    "Focus"),
+        Binding("t",            "tail_toggle",   "Tail"),
     ]
 
     CSS = """
@@ -511,6 +548,13 @@ class CockpitApp(App):
     #agents {
         height: 100%;
     }
+    #tail {
+        height: 8;
+        display: none;
+        border: round $warning;
+        padding: 0 1;
+        color: $text-muted;
+    }
     """
 
     def __init__(self, db_path: str | None = None) -> None:
@@ -528,6 +572,9 @@ class CockpitApp(App):
         # Phase 4: Bell / desktop notification diff state
         self._prev_action_ids: set[str] = set()
         self._prev_agent_statuses: dict[str, str] = {}  # id_short → status
+        # Phase 5: tail drawer state
+        self._tail_active: bool = False
+        self._tail_pane_id: str | None = None
         _settings = _get_settings()
         self._bell_enabled: bool = bool(
             _settings.get("cockpit", {}).get("bell", True)
@@ -580,6 +627,7 @@ class CockpitApp(App):
                     yield Static("", id="agents")
                 yield HSplitter("upper", "notifications")
                 yield Static("", id="notifications")
+        yield Static("", id="tail")  # Phase 5: tail drawer — hidden by default
         yield Footer()
 
     def on_mount(self) -> None:
@@ -716,6 +764,13 @@ class CockpitApp(App):
                     filter_label=self._filter.get("notifications", ""),
                 )
             )
+
+            # Update tail drawer if active
+            if self._tail_active and self._tail_pane_id:
+                tail_text = _tmux_capture_pane(self._tail_pane_id, lines=7)
+                header = f"[dim]tail {self._tail_pane_id}[/]  [dim]t — close[/]\n"
+                self.query_one("#tail").update(header + (tail_text or "[dim](no output)[/]"))
+
         except Exception as e:
             self.notify(str(e), severity="error")
 
@@ -924,6 +979,92 @@ class CockpitApp(App):
 
         # dismiss_empty_as="" so blank submit clears the filter (passes "" not None)
         self.push_screen(_PromptModal(prompt, dismiss_empty_as=""), _on_text)
+
+    def action_focus_pane(self) -> None:
+        """f — focus the tmux pane of an agent by 1-based index."""
+        from juggle_cockpit_model import snapshot as _snapshot
+        state = _snapshot(self._db)
+        agents = state.agents
+        if not agents:
+            self.notify("No agents", severity="warning", timeout=2)
+            return
+
+        def _on_index(raw: str | None) -> None:
+            if raw is None:
+                return
+            try:
+                idx_1based = int(raw.strip())
+            except ValueError:
+                self.notify("Type a number (e.g. 2)", severity="warning", timeout=2)
+                return
+            agent = _resolve_agent_by_index(agents, idx_1based)
+            if agent is None:
+                self.notify(
+                    f"Agent index out of range (1–{len(agents)})",
+                    severity="warning", timeout=2,
+                )
+                return
+            if not agent.pane_id:
+                self.notify(
+                    f"Agent #{idx_1based} has no tmux pane",
+                    severity="warning", timeout=2,
+                )
+                return
+            ok = _tmux_focus_pane(agent.pane_id)
+            if ok:
+                self.notify(f"Focused {agent.pane_id} ({agent.role})", timeout=2)
+            else:
+                self.notify(
+                    f"tmux select-pane failed for {agent.pane_id}",
+                    severity="error", timeout=3,
+                )
+
+        self.push_screen(_PromptModal(f"Focus agent (1–{len(agents)}):"), _on_index)
+
+    def action_tail_toggle(self) -> None:
+        """t — toggle tail drawer. Second press dismisses without prompt."""
+        if self._tail_active:
+            # Toggle off
+            self._tail_active = False
+            self._tail_pane_id = None
+            self.query_one("#tail").styles.display = "none"
+            self._refresh()
+            return
+
+        from juggle_cockpit_model import snapshot as _snapshot
+        state = _snapshot(self._db)
+        agents = state.agents
+        if not agents:
+            self.notify("No agents", severity="warning", timeout=2)
+            return
+
+        def _on_index(raw: str | None) -> None:
+            if raw is None:
+                return
+            try:
+                idx_1based = int(raw.strip())
+            except ValueError:
+                self.notify("Type a number", severity="warning", timeout=2)
+                return
+            agent = _resolve_agent_by_index(agents, idx_1based)
+            if agent is None:
+                self.notify(
+                    f"Agent index out of range (1–{len(agents)})",
+                    severity="warning", timeout=2,
+                )
+                return
+            if not agent.pane_id:
+                self.notify(
+                    f"Agent #{idx_1based} has no tmux pane",
+                    severity="warning", timeout=2,
+                )
+                return
+            self._tail_active = True
+            self._tail_pane_id = agent.pane_id
+            self.query_one("#tail").styles.display = "block"
+            self._refresh()
+
+        self.push_screen(_PromptModal(f"Tail agent (1–{len(agents)}):"), _on_index)
 
     def on_key(self, event: events.Key) -> None:
         """Clear ALL filters + reset active pane offset on Escape (when no modal open)."""

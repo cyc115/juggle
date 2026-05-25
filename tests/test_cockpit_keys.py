@@ -477,3 +477,50 @@ def test_newly_failed_busy_stays_busy():
     agents = [_bell_agent("abc12345", "busy")]
     prev = {"abc12345": "busy"}
     assert _newly_failed_agents(prev, agents) == []
+
+
+# ---------------------------------------------------------------------------
+# Task 10 — _tmux_focus_pane / _tmux_capture_pane helpers
+# ---------------------------------------------------------------------------
+
+from unittest.mock import patch, MagicMock
+
+
+def test_tmux_focus_pane_success():
+    from juggle_cockpit import _tmux_focus_pane
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        assert _tmux_focus_pane("%123") is True
+        mock_run.assert_called_once_with(
+            ["tmux", "select-pane", "-t", "%123"],
+            capture_output=True, timeout=2,
+        )
+
+
+def test_tmux_focus_pane_failure():
+    from juggle_cockpit import _tmux_focus_pane
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=1)
+        assert _tmux_focus_pane("%123") is False
+
+
+def test_tmux_focus_pane_not_found():
+    from juggle_cockpit import _tmux_focus_pane
+    with patch("subprocess.run", side_effect=FileNotFoundError):
+        assert _tmux_focus_pane("%123") is False
+
+
+def test_tmux_capture_pane_returns_last_n_lines():
+    from juggle_cockpit import _tmux_capture_pane
+    output = "\n".join(f"line{i}" for i in range(50))
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout=output)
+        result = _tmux_capture_pane("%123", lines=5)
+    assert result == "\n".join(f"line{i}" for i in range(45, 50))
+
+
+def test_tmux_capture_pane_failure_returns_empty():
+    from juggle_cockpit import _tmux_capture_pane
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=1, stdout="")
+        assert _tmux_capture_pane("%123") == ""

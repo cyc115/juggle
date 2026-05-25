@@ -530,3 +530,27 @@ def test_render_notifications_filter_label_shown():
 def test_render_notifications_no_filter_label():
     panel = render_notifications([], filter_label="")
     assert "filter:" not in str(panel.title)
+
+
+# ---------------------------------------------------------------------------
+# Task 11 — #N index prefix in render_agents
+# ---------------------------------------------------------------------------
+
+
+def _busy_agent(n: int) -> Agent:
+    return Agent(
+        id_short=f"abc1234{n}", role="coder", status="busy",
+        topic_id="MA", age_secs=5, pane_id=f"%{100 + n}",
+    )
+
+
+def test_render_agents_shows_index_prefix():
+    agents = [_busy_agent(1), _busy_agent(2)]
+    panel = render_agents(agents)
+    import io
+    from rich.console import Console
+    buf = io.StringIO()
+    Console(file=buf, no_color=True).print(panel)
+    text = buf.getvalue()
+    assert "#1" in text
+    assert "#2" in text
