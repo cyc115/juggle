@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-05-25 (v1.34.1)
+- **title gen**: fix fallback regression from PR #26 merge — restore 5-word cap (was accidentally widened to 6) alongside Title Case coercion; align `test_title_gen` expectations to Title-Cased, 5-word-capped contract
+
 ## 2026-05-25 (v1.34.0)
 - **schedule infra**: selective merge of PR #26 — adds `/schedule:autofix`, `/schedule:dogfood`, `/schedule:reflect` modules (`juggle_schedule_{autofix,dogfood,reflect,common}.py`); schedule skills updated; `juggle schedule-{autofix,dogfood,reflect}` CLI subcommands registered
 - **search**: new `juggle_cmd_search.py` backend + `/juggle:search` skill — async KB vector search + Haiku filter pass; companion to research-kb
