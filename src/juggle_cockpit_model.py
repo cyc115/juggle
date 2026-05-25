@@ -37,6 +37,7 @@ class Agent:
     status: str  # "busy" | "idle" | "stale"
     topic_id: str | None  # assigned thread label or None
     age_secs: int
+    pane_id: str | None = None  # tmux pane ID e.g. "%664"; None if missing
 
 
 @dataclass(frozen=True)
@@ -355,10 +356,10 @@ def snapshot(db) -> CockpitState:
             )
         )
 
-    # --- Agents (unchanged) ---
+    # --- Agents ---
     agent_rows = conn.execute(
         """
-        SELECT id, role, assigned_thread, status, last_active
+        SELECT id, role, assigned_thread, status, last_active, pane_id
         FROM agents ORDER BY created_at
         """
     ).fetchall()
@@ -389,6 +390,7 @@ def snapshot(db) -> CockpitState:
                 status=display_status,
                 topic_id=topic_label_a,
                 age_secs=_age_secs(r["last_active"]),
+                pane_id=r["pane_id"] or None,
             )
         )
 

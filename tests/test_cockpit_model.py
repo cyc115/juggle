@@ -340,3 +340,27 @@ def test_snapshot_fetched_at_is_recent():
     state = snapshot(db)
     after = _time.time()
     assert before <= state.fetched_at <= after
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — pane_id field on Agent (TDD: RED first)
+# ---------------------------------------------------------------------------
+
+
+def test_agent_has_pane_id_field():
+    a = Agent(id_short="abc12345", role="coder", status="busy", topic_id="MA", age_secs=10, pane_id="%123")
+    assert a.pane_id == "%123"
+
+
+def test_agent_pane_id_defaults_none():
+    a = Agent(id_short="abc12345", role="coder", status="busy", topic_id="MA", age_secs=10)
+    assert a.pane_id is None
+
+
+def test_snapshot_agent_pane_id_populated():
+    """snapshot() must expose pane_id from the agents table."""
+    conn = _make_in_memory_db()
+    db = _FakeDB(conn)
+    state = snapshot(db)
+    assert len(state.agents) == 1
+    assert state.agents[0].pane_id == "juggle:1"  # set in _make_in_memory_db
