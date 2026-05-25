@@ -216,49 +216,130 @@ def test_wait_for_ready_to_paste_returns_false_after_timeout(mgr):
     assert result is False
 
 
+# --- wait_for_submission (collapsed-paste regression) --------------------
+
+
+def test_wait_for_submission_collapsed_paste_does_not_false_positive(mgr):
+    """Collapsed-paste placeholder must NOT count as 'input cleared' (false positive).
+
+    Old code: 'head not in bottom → True' fires immediately on a collapsed placeholder
+    because the placeholder text is not the head. This is the root cause of the bug
+    where tasks sit unsubmitted at the prompt (0 tokens) until a human presses Enter.
+
+    Fixed code: SUCCESS requires a _SUBMISSION_MARKERS token. No marker → timeout → False.
+    """
+    prompt = "Implement a comprehensive refactoring across the entire codebase\nmore lines\nhere"
+    # Bottom shows collapsed placeholder — head is NOT present, so old code returns True
+    collapsed_output = "  ❯ [Pasted text #1 +2 lines]\n"
+
+    with (
+        patch.object(mgr, "_run_tmux", return_value=MagicMock(stdout=collapsed_output)),
+        patch("time.sleep"),
+    ):
+        result = mgr.wait_for_submission("%3", prompt, timeout=3, max_enter_retries=0)
+
+    assert result is False, (
+        "collapsed-paste placeholder must not trigger 'cleared' false positive; "
+        "expected False (no marker), got True"
+    )
+
+
+def test_wait_for_submission_collapsed_paste_retries_enter_then_succeeds(mgr):
+    """While stuck on collapsed-paste, retry C-m each stuck poll; succeed when marker fires.
+
+    Old code: returns True on first poll (false positive), never sends any Enter retry.
+    Fixed code: detects stuck via '[Pasted text', sends C-m each poll, returns True on marker.
+    """
+    prompt = "Do a comprehensive refactor of the entire codebase and all modules"
+
+    collapsed = "  ❯ [Pasted text #1 +1 lines]\n"
+    marker_output = "✻ Working…  (esc to interrupt)\n"
+
+    # poll 1 & 2: collapsed (stuck); poll 3: submission marker fires
+    outputs = iter([collapsed, collapsed, marker_output])
+    enter_calls: list = []
+
+    def fake_run(*args):
+        if args[0] == "capture-pane":
+            return MagicMock(stdout=next(outputs))
+        if args[0] == "send-keys":
+            enter_calls.append(args)
+        return MagicMock(stdout="")
+
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run), patch("time.sleep"):
+        result = mgr.wait_for_submission("%3", prompt, timeout=10, max_enter_retries=5)
+
+    assert result is True
+    assert len(enter_calls) >= 1, (
+        f"should have retried Enter while stuck on collapsed paste; "
+        f"got {len(enter_calls)} calls (old code returns True immediately with 0 retries)"
+    )
+    assert enter_calls[0][-1] == "C-m", (
+        f"retry should send C-m, got {enter_calls[0][-1]!r}"
+    )
+
+
 # --- wait_for_submission --------------------------------------------------
 
 
-def test_wait_for_submission_returns_true_when_cleared(mgr):
-    """If the pasted prompt disappears from the input box, treat as submitted."""
+def test_wait_for_submission_returns_true_when_cleared_then_marker(mgr):
+    """Input clears then submission marker fires → success; no C-m while not stuck."""
     prompt = "do the thing across the codebase quickly and quietly"
     head = prompt[:40]
-    captures = [
-        MagicMock(stdout=f"> {head} more stuff\n"),  # iter 0: still in input
-        MagicMock(stdout="(empty input box)\n>\n"),  # iter 1: cleared
-    ]
-    with (
-        patch.object(mgr, "_run_tmux", side_effect=captures) as mock_tmux,
-        patch("time.sleep"),
-    ):
+
+    # poll 0: stuck (head in bottom); poll 1: cleared input + marker (realistic: Claude
+    # clears the input and immediately starts processing)
+    outputs = iter([
+        MagicMock(stdout=f"> {head} more stuff\n"),        # stuck
+        MagicMock(stdout="✻ Thinking… (esc to interrupt)\n"),  # submitted + processing
+    ])
+    send_key_calls: list = []
+
+    def fake_run(*args):
+        if args[0] == "capture-pane":
+            return next(outputs)
+        if args[0] == "send-keys":
+            send_key_calls.append(args)
+        return MagicMock(stdout="")
+
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run), patch("time.sleep"):
         result = mgr.wait_for_submission("%3", prompt, timeout=10, max_enter_retries=3)
+
     assert result is True
-    send_key_calls = [c for c in mock_tmux.call_args_list if c.args[0] == "send-keys"]
-    assert len(send_key_calls) == 0, (
-        "should not retry Enter when cleared on first non-stuck poll"
+    # Only 1 stuck poll before marker fires — exactly 1 C-m (fired immediately on first stuck)
+    assert len(send_key_calls) == 1, (
+        f"expected 1 Enter retry on the stuck poll; got {len(send_key_calls)}"
     )
 
 
 def test_wait_for_submission_returns_true_when_processing_marker_present(mgr):
-    """If 'esc to interrupt' appears, the prompt was submitted."""
+    """'esc to interrupt' / '✻' marker means the prompt was submitted; return True."""
     prompt = "hello"
-    captures = [
-        MagicMock(stdout=f"> {prompt}\n"),
-        MagicMock(stdout="✻ Thinking… (esc to interrupt)\n"),
-    ]
-    with patch.object(mgr, "_run_tmux", side_effect=captures), patch("time.sleep"):
+    # Use a function-based side_effect so send-keys calls don't consume capture outputs
+    outputs = iter([
+        MagicMock(stdout=f"> {prompt}\n"),                  # poll 0: stuck (head in bottom)
+        MagicMock(stdout="✻ Thinking… (esc to interrupt)\n"),  # poll 1: marker
+    ])
+
+    def fake_run(*args):
+        if args[0] == "capture-pane":
+            return next(outputs)
+        return MagicMock(stdout="")
+
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run), patch("time.sleep"):
         assert mgr.wait_for_submission("%3", prompt, timeout=10) is True
 
 
-def test_wait_for_submission_retries_enter_when_stuck(mgr):
-    """If stuck for two consecutive polls, send Enter (1 retry), then succeed on next poll."""
+def test_wait_for_submission_retries_enter_when_stuck_then_marker(mgr):
+    """Each stuck poll fires C-m; success when marker eventually appears."""
     prompt = "do the thing across the codebase quickly and quietly"
     head = prompt[:40]
     stuck = MagicMock(stdout=f"> {head} more stuff\n")
-    cleared = MagicMock(stdout="(empty input box)\n>\n")
+    submitted = MagicMock(stdout="✻ Thinking… (esc to interrupt)\n")
 
-    # Sequence: stuck, stuck, cleared. First stuck = observe. Second stuck = retry. Third = cleared → True.
-    capture_outputs = [stuck, stuck, cleared]
+    # Sequence: stuck, stuck, submitted.
+    # New code fires C-m immediately on each stuck poll (no consecutive_stuck wait).
+    capture_outputs = [stuck, stuck, submitted]
     capture_iter = iter(capture_outputs)
     send_key_calls = []
 
@@ -273,10 +354,9 @@ def test_wait_for_submission_retries_enter_when_stuck(mgr):
     with patch.object(mgr, "_run_tmux", side_effect=fake_run_tmux), patch("time.sleep"):
         result = mgr.wait_for_submission("%3", prompt, timeout=10, max_enter_retries=3)
     assert result is True
-    assert len(send_key_calls) == 1, (
-        f"expected exactly 1 Enter retry, got {len(send_key_calls)}"
+    assert len(send_key_calls) == 2, (
+        f"expected 2 Enter retries (one per stuck poll), got {len(send_key_calls)}"
     )
-    # The retry should be a C-m to the target pane
     assert send_key_calls[0][-1] == "C-m"
     assert "%3" in send_key_calls[0]
 

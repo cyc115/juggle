@@ -159,17 +159,22 @@ class JuggleTmuxManager:
         pane_id: str,
         pasted_prompt: str,
         timeout: int = 15,
-        max_enter_retries: int = 3,
+        max_enter_retries: int = 5,
     ) -> bool:
         """Verify a pasted prompt was submitted; retry Enter if stuck.
 
-        Success: a processing marker (e.g. "esc to interrupt") appears, OR
-        the first ~40 chars of the prompt are no longer visible in the
-        bottom region of the pane (input box has cleared).
+        Success: a _SUBMISSION_MARKERS token ("esc to interrupt" / "✻" / "✶")
+        appears in the pane output.
 
-        On consecutive stuck observations, sends an extra C-m. The very
-        first stuck observation only records the state — the retry fires
-        on the second stuck poll. Bounded by `max_enter_retries`.
+        Stuck: the bottom region still contains input — either a
+        "[Pasted text" collapsed-paste placeholder, the first 40 chars of
+        the prompt (short prompts), or a non-empty ❯/> prompt line. Sends
+        C-m on each stuck poll up to max_enter_retries.
+
+        NOTE: the old "head not in bottom → True" branch has been removed.
+        Claude Code collapses large pastes into "[Pasted text #N +M lines]"
+        so the head is never present in the bottom, causing an immediate
+        false-positive that left tasks unsubmitted at the prompt.
 
         Returns True on success, False on timeout.
         """
@@ -178,7 +183,6 @@ class JuggleTmuxManager:
         )
         head = first_line[:_PROMPT_HEAD_CHARS]
 
-        consecutive_stuck = 0
         retries = 0
         for _ in range(max(1, timeout)):
             result = self._run_tmux("capture-pane", "-pt", pane_id)
@@ -186,10 +190,15 @@ class JuggleTmuxManager:
             if any(m in out for m in _SUBMISSION_MARKERS):
                 return True
             bottom = "\n".join(out.splitlines()[-_BOTTOM_REGION_LINES:])
-            if head and head not in bottom:
-                return True
-            consecutive_stuck += 1
-            if consecutive_stuck >= 2 and retries < max_enter_retries:
+            stuck = (
+                "[Pasted text" in bottom
+                or (head and head in bottom)
+                or any(
+                    line.strip().startswith(("❯ ", "> ")) and len(line.strip()) > 2
+                    for line in bottom.splitlines()
+                )
+            )
+            if stuck and retries < max_enter_retries:
                 self._run_tmux("send-keys", "-t", pane_id, "C-m")
                 retries += 1
             time.sleep(1)
@@ -234,7 +243,9 @@ class JuggleTmuxManager:
             self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
             self._run_tmux("delete-buffer", "-b", buf_name)
             # Capture pane tail BEFORE sending Enter for stuck-at-prompt detection
-            _time.sleep(0.15)
+            # 0.4s gives the TUI time to render the collapsed-paste placeholder
+            # before we take the snapshot and send the first C-m.
+            _time.sleep(0.4)
             cap = self._run_tmux("capture-pane", "-pt", pane_id, "-S", "-10")
             tail = (cap.stdout or "") if cap else ""
             pane_hash = _hashlib.sha256(tail.encode()).hexdigest()[:16]

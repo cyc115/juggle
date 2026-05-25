@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-25 (v1.32.2)
+- fix(tmux): `wait_for_submission` now requires a `_SUBMISSION_MARKERS` token ("esc to interrupt" / "✻" / "✶") for success — removed the `head not in bottom → True` false-positive branch that caused tasks to sit unsubmitted when Claude Code collapses large pastes into a `[Pasted text #N +M lines]` placeholder; stuck detection covers collapsed-paste placeholder, head-in-bottom (short prompts), and non-empty ❯/> prompt lines; C-m retry fires immediately on every stuck poll (no consecutive-stuck delay); `max_enter_retries` raised 3→5; settle delay before first C-m bumped 0.15s→0.4s
+- tests: 2 new RED→GREEN regression tests (`test_wait_for_submission_collapsed_paste_does_not_false_positive`, `test_wait_for_submission_collapsed_paste_retries_enter_then_succeeds`); 3 existing tests updated to new marker-only success contract
+
 ## 2026-05-25 (v1.32.1)
 - watchdog: cold-boot grace period — `execute_recovery` skips decommission for never-tasked agents younger than `agent_boot_grace_secs` (default 120s); uses `created_at` (fallback `last_active`) for age; old stale-boot agents (age ≥ grace) still decommissioned; `_BOOT_GRACE_SECS=120` module constant; `agent_boot_grace_secs` added to `juggle_settings` DEFAULTS; `_get_agent_age_secs` pure helper
 - tests: 2 new TDD tests (`test_young_never_tasked_agent_not_decommissioned`, `test_old_never_tasked_agent_still_decommissioned`); updated 9 existing tests across 4 files to backdate `created_at` so old-agent paths still exercise decommission
