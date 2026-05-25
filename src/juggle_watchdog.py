@@ -309,10 +309,11 @@ def _classify_agent_state(pane_content: str, pane_exists: bool) -> str:
 
 
 def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
-    """Send a harmless Enter nudge and file a request-action for user visibility.
+    """Send a harmless Enter nudge and emit a notification for passive user visibility.
 
-    Does NOT kill the pane or spawn a replacement. The orchestrator handles
-    escalation if the agent remains stuck after a human reviews the action item.
+    Does NOT kill the pane or spawn a replacement, and does NOT file a blocking
+    action item.  alive-but-slow is informational — it surfaces as a notification
+    so the user can glance at it without being forced to act.
     """
     from datetime import datetime, timezone
 
@@ -344,9 +345,23 @@ def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
         f"⚠️ [{label}] [{role}] alive-but-stalled on pane {pane_id}, "
         f"stalled_for={stalled_for}s. Last pane tail:\n{tail_lines}"
     )
+
+    # Derive session_id the same way cmd_notify does.
+    session_id = ""
+    try:
+        with db._connect() as conn:
+            srow = conn.execute(
+                "SELECT value FROM session WHERE key = 'session_id'"
+            ).fetchone()
+        if srow:
+            session_id = srow["value"] or ""
+    except Exception:
+        pass
+
+    # Send a passive notification — alive-but-slow is informational, not a blocker.
     if thread_id:
-        db.add_action_item(
-            thread_id=thread_id, message=message, type_="failure", priority="normal"
+        db.add_notification_v2(
+            thread_id=thread_id, message=message, session_id=session_id
         )
 
     _log.info(

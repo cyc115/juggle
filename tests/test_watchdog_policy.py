@@ -95,7 +95,8 @@ def test_nudge_and_notify_sends_enter():
     mgr._run_tmux.assert_called_once_with("send-keys", "-t", "%99", "Enter")
 
 
-def test_nudge_and_notify_files_action_item():
+def test_nudge_and_notify_sends_notification_not_action_item():
+    """alive-but-slow is informational — must send a notification, NOT file an action item."""
     from juggle_watchdog import nudge_and_notify
 
     db = _make_db_mock()
@@ -103,10 +104,11 @@ def test_nudge_and_notify_files_action_item():
 
     nudge_and_notify(db, mgr, _make_agent(), content="Cogitated\nline2\nline3")
 
-    db.add_action_item.assert_called_once()
-    kwargs = db.add_action_item.call_args
-    assert kwargs[1]["type_"] == "failure"
-    assert "alive-but-stalled" in kwargs[1]["message"]
+    db.add_notification_v2.assert_called_once()
+    notif_kwargs = db.add_notification_v2.call_args[1]
+    assert "alive-but-stalled" in notif_kwargs["message"]
+    # Must NOT file a blocking action item
+    db.add_action_item.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -153,8 +155,9 @@ def test_execute_recovery_short_circuits_for_alive_slow(tmp_path):
     mgr.spawn_agent.assert_not_called()
     # Must not write a recovery snapshot
     assert list(tmp_path.glob("*.txt")) == []
-    # Must file an action item (via nudge_and_notify)
-    db.add_action_item.assert_called_once()
+    # Must send a notification (via nudge_and_notify) — not a blocking action item
+    db.add_notification_v2.assert_called_once()
+    db.add_action_item.assert_not_called()
 
 
 def test_execute_recovery_proceeds_for_dead_pane(tmp_path):
