@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-24 (v1.31.2)
+- watchdog: fix false high-priority alert for "spawned but never tasked" agents — `execute_recovery` now detects `last_task=None/""` with an early-return path that silently decommissions (kill pane, delete agent, `decommissioned_untasked` watchdog event) without writing a snapshot, filing an action item, or marking the thread failed; `scripts/juggle-agent-watchdog` now passes `last_send_task_at=agent.get("last_send_task_at")` to `classify_pane_state` so agents waiting for their first dispatch are classified as `awaiting_dispatch` (not `stalled`) and recovery is skipped
+- tests: 6 new TDD tests in `tests/test_watchdog_never_tasked.py`; updated 10 existing tests across 4 files that asserted the old buggy behaviour
+
 ## 2026-05-24 (v1.31.1)
 - talkback: event-driven device selection via CoreAudio `AudioObjectAddPropertyListener` — callback sets `_devices_dirty=True` on any device-list change; `_play_audio` reinitialises PortAudio (`sd._terminate/initialize`) + re-picks + caches the chain only when dirty, zero overhead on clean calls; falls back to per-call detection if reinit fails so audio never breaks; logs old→new device name on change; `pyobjc-framework-CoreAudio` added to inline deps, guarded with try/except for non-macOS
 - tests: 4 new TDD tests in `tests/test_talkback_device_cache.py` covering cached-chain reuse, dirty-flag reinit+repick+clear, cold-start cache build, and listener-unavailable fallback

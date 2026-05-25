@@ -186,12 +186,13 @@ def test_retry_blocked_snapshot_preserved(db, mock_mgr, tmp_path):
 
 
 def test_stalled_event_no_task_content(db, mock_mgr, tmp_path):
-    """Regression: stalled event created when agent has no task to replay.
+    """Regression: agent with last_task=None is silently decommissioned (not 'stalled').
 
     Event ID: e86a33f5-4ec6-46a8-8129-e5b5021e9547 (2026-05-18 05:25:09)
 
-    Scenario: Agent stalls with last_task=None. Cannot auto-retry without task content.
-    Must create stalled event and escalate to manual re-dispatch.
+    OLD (buggy) behaviour: created a high-priority action item + marked thread failed.
+    NEW (correct) behaviour: silently decommissioned — no action item, thread not failed,
+    event_type='decommissioned_untasked'.
     """
     thread_id = db.create_thread("no task stall", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%40")
@@ -216,40 +217,34 @@ def test_stalled_event_no_task_content(db, mock_mgr, tmp_path):
         session_id="test-session",
     )
 
-    # Must NOT spawn new agent (cannot replay without task)
+    # Must NOT spawn new agent
     mock_mgr.spawn_agent.assert_not_called()
 
-    # Must create stalled event
+    # Must create decommissioned_untasked event (NOT 'stalled')
     with db._connect() as conn:
         events = conn.execute(
             "SELECT * FROM watchdog_events WHERE agent_id=?", (agent_id,)
         ).fetchall()
     assert len(events) == 1
-    assert events[0]["event_type"] == "stalled"
+    assert events[0]["event_type"] == "decommissioned_untasked"
 
-    # Must create high-priority action item
+    # Must NOT create any action items (was a false alert)
     with db._connect() as conn:
         items = conn.execute(
-            "SELECT * FROM action_items WHERE thread_id=? ORDER BY created_at DESC",
-            (thread_id,),
+            "SELECT * FROM action_items WHERE thread_id=?", (thread_id,)
         ).fetchall()
-    assert len(items) > 0
-    assert items[0]["priority"] == "high"
-    assert "no task content" in items[0]["message"].lower()
+    assert len(items) == 0
 
     # Original agent must be deleted
     assert db.get_agent(agent_id) is None
 
-    # Thread must be marked failed
+    # Thread must NOT be marked failed
     thread = db.get_thread(thread_id)
-    assert thread["status"] == "failed"
+    assert thread["status"] != "failed"
 
 
 def test_stalled_event_empty_task_string(db, mock_mgr, tmp_path):
-    """Stalled event also triggered when last_task is empty string.
-
-    Empty string should be treated as no task (cannot replay).
-    """
+    """Empty task string treated same as no task — silently decommissioned."""
     thread_id = db.create_thread("empty task stall", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%50")
     db.update_agent(
@@ -279,13 +274,13 @@ def test_stalled_event_empty_task_string(db, mock_mgr, tmp_path):
             "SELECT event_type FROM watchdog_events WHERE agent_id=?", (agent_id,)
         ).fetchall()
     assert len(events) == 1
-    assert events[0][0] == "stalled"
+    assert events[0][0] == "decommissioned_untasked"
 
 
 def test_stalled_event_snapshot_preserved(db, mock_mgr, tmp_path):
-    """Stalled event snapshot preserved for debugging.
+    """Decommissioned_untasked event has no snapshot (not needed — no task was sent).
 
-    Snapshot contains pane output at time of stall detection.
+    The decommission path is a clean teardown, not a failure debug snapshot.
     """
     thread_id = db.create_thread("stalled snapshot", session_id="test-session")
     agent_id = db.create_agent(role="researcher", pane_id="%60")
@@ -315,15 +310,12 @@ def test_stalled_event_snapshot_preserved(db, mock_mgr, tmp_path):
     with db._connect() as conn:
         events = conn.execute(
             "SELECT snapshot_path FROM watchdog_events WHERE agent_id=? AND event_type=?",
-            (agent_id, "stalled"),
+            (agent_id, "decommissioned_untasked"),
         ).fetchall()
 
     assert len(events) == 1
-    snap_path = Path(events[0][0])
-    assert snap_path.exists()
-
-    snap_content = snap_path.read_text()
-    assert pane_output in snap_content
+    # snapshot_path is None for the decommission path
+    assert events[0][0] is None
 
 
 # =============================================================================
@@ -465,7 +457,7 @@ def test_retry_blocked_thread_marked_failed(db, mock_mgr, tmp_path):
 
 
 def test_stalled_thread_marked_failed(db, mock_mgr, tmp_path):
-    """Stalled must mark thread as failed (no retry possible)."""
+    """Decommissioned_untasked must NOT mark thread as failed (was never tasked)."""
     thread_id = db.create_thread("stalled thread failed", session_id="test-session")
     agent_id = db.create_agent(role="coder", pane_id="%130")
     db.update_agent(
@@ -488,7 +480,7 @@ def test_stalled_thread_marked_failed(db, mock_mgr, tmp_path):
     )
 
     thread = db.get_thread(thread_id)
-    assert thread["status"] == "failed"
+    assert thread["status"] != "failed"
 
 
 # =============================================================================
@@ -536,7 +528,7 @@ def test_retry_blocked_event_has_correct_fields(db, mock_mgr, tmp_path):
 
 
 def test_stalled_event_has_correct_fields(db, mock_mgr, tmp_path):
-    """Stalled event record has all required fields."""
+    """Decommissioned_untasked event record has all required fields (no snapshot_path)."""
     thread_id = db.create_thread("stalled fields", session_id="test-session")
     agent_id = db.create_agent(role="researcher", pane_id="%150")
     db.update_agent(
@@ -569,6 +561,6 @@ def test_stalled_event_has_correct_fields(db, mock_mgr, tmp_path):
     evt = events[0]
     assert evt[0] == agent_id
     assert evt[1] == thread_id
-    assert evt[2] == "stalled"
-    assert evt[3] is not None
+    assert evt[2] == "decommissioned_untasked"
+    assert evt[3] is None   # no snapshot for silent decommission
     assert evt[4] is not None

@@ -303,7 +303,11 @@ def test_execute_recovery_aborts_if_agent_gone(tmp_path):
 
 
 def test_execute_recovery_no_last_task(tmp_path):
-    """Recovery aborts and files action item when last_task is None."""
+    """Recovery silently decommissions agent when last_task is None.
+
+    Old behaviour: filed a high-priority action item.
+    New behaviour: silently decommissions — no action item, no thread=failed.
+    """
     from juggle_watchdog import execute_recovery
     from juggle_db import JuggleDB
 
@@ -330,8 +334,10 @@ def test_execute_recovery_no_last_task(tmp_path):
         session_id="",
     )
 
+    # No action items (silent decommission)
     items = db.get_open_action_items()
-    assert any("no task content" in it["message"] for it in items)
+    assert items == []
+    # Agent must still be deleted
     assert db.get_agent(agent_id) is None
 
 

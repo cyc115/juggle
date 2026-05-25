@@ -392,6 +392,26 @@ def execute_recovery(
     last_task = live.get("last_task")
     label = _get_thread_label(db, thread_id) if thread_id else agent_id[:8]
 
+    # Never-tasked agent: silently decommission — no snapshot, no thread=failed,
+    # no action item.  The orchestrator hadn't sent work yet so this is not a
+    # real failure.
+    if not last_task:
+        _log.info(
+            "Watchdog: agent %s never tasked — silently decommissioning", agent_id[:8]
+        )
+        try:
+            mgr.kill_pane(live["pane_id"])
+        except Exception:
+            pass
+        db.delete_agent(agent_id)
+        db.add_watchdog_event(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            event_type="decommissioned_untasked",
+            snapshot_path=None,
+        )
+        return
+
     snap_path = write_recovery_snapshot(agent_id, pane_content, recovery_dir)
     _log.info("Watchdog: recovery snapshot saved to %s", snap_path)
 
@@ -429,25 +449,6 @@ def execute_recovery(
             agent_id=agent_id,
             thread_id=thread_id,
             event_type="retry_blocked",
-            snapshot_path=str(snap_path),
-        )
-        return
-
-    if not last_task:
-        if thread_id:
-            db.add_action_item(
-                thread_id=thread_id,
-                message=(
-                    f"🚨 [{label}] agent stalled — no task content to replay; "
-                    f"re-dispatch manually. Snapshot: {snap_path}"
-                ),
-                type_="failure",
-                priority="high",
-            )
-        db.add_watchdog_event(
-            agent_id=agent_id,
-            thread_id=thread_id,
-            event_type="stalled",
             snapshot_path=str(snap_path),
         )
         return

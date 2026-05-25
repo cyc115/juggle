@@ -84,8 +84,9 @@ def test_execute_recovery_empty_last_task_no_send_task(tmp_path):
     )
 
     mgr.send_task.assert_not_called()
+    # Silent decommission: no action items (was a false alert)
     items = db.get_open_action_items()
-    assert any("no task content" in it["message"] for it in items)
+    assert items == []
     assert db.get_agent(agent_id) is None  # agent decommissioned
 
 

@@ -309,12 +309,11 @@ def test_retry_blocked_snapshot_saved(db, mock_mgr, tmp_path):
 
 
 def test_stalled_with_no_task_content(db, mock_mgr, tmp_path):
-    """Test stalled event: agent stalls with no last_task to replay.
+    """Test never-tasked agent: silently decommissioned, no action item, no thread=failed.
 
     Regression from event e86a33f5-4ec6-46a8-8129-e5b5021e9547 (2026-05-18 05:25:09).
-
-    Scenario: Agent stalls but has no task content in DB (last_task is None/empty).
-    Cannot auto-retry without task, must require manual re-dispatch.
+    Original buggy behaviour was: agent with last_task=None triggered a false high-priority
+    action item and marked the thread failed. Fixed: silently decommissioned instead.
     """
     thread_id = db.create_thread("no task stall", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%5")
@@ -339,21 +338,20 @@ def test_stalled_with_no_task_content(db, mock_mgr, tmp_path):
         session_id="test-session",
     )
 
-    # Should NOT spawn new agent (cannot replay without task)
+    # Should NOT spawn new agent
     mock_mgr.spawn_agent.assert_not_called()
 
-    # Should create stalled watchdog event
+    # Should create decommissioned_untasked watchdog event (NOT 'stalled')
     events = db.get_watchdog_events(agent_id)
-    assert any(e["event_type"] == "stalled" for e in events)
+    assert any(e["event_type"] == "decommissioned_untasked" for e in events)
 
-    # Should create high-priority action item indicating manual re-dispatch
+    # Should NOT create any action item (was a false alert)
     items = db.get_open_action_items()
-    assert any("no task content" in it["message"].lower() for it in items)
-    assert any(it["priority"] == "high" for it in items)
+    assert items == []
 
 
 def test_stalled_with_empty_task_string(db, mock_mgr, tmp_path):
-    """Test stalled with empty task string (treated as no task)."""
+    """Test empty task string treated as never-tasked — silently decommissioned."""
     thread_id = db.create_thread("empty task stall", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%5")
     db.update_agent(
@@ -379,18 +377,18 @@ def test_stalled_with_empty_task_string(db, mock_mgr, tmp_path):
 
     mock_mgr.spawn_agent.assert_not_called()
     events = db.get_watchdog_events(agent_id)
-    assert any(e["event_type"] == "stalled" for e in events)
+    assert any(e["event_type"] == "decommissioned_untasked" for e in events)
 
 
 def test_stalled_snapshot_saved(db, mock_mgr, tmp_path):
-    """Test stalled: recovery snapshot is saved for debugging."""
+    """Test stalled with last_task set: recovery snapshot is saved for debugging."""
     thread_id = db.create_thread("stall snapshot", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%5")
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
-        last_task=None,
+        last_task="do the work",  # has a task → normal stalled path
         watchdog_retried=0,
     )
 
@@ -408,11 +406,15 @@ def test_stalled_snapshot_saved(db, mock_mgr, tmp_path):
     )
 
     events = db.get_watchdog_events(agent_id)
-    stalled = next(e for e in events if e["event_type"] == "stalled")
-    snap_path = Path(stalled["snapshot_path"])
+    # Agent had a task → retry path → action item event
+    assert len(events) > 0
 
-    assert snap_path.exists()
-    assert debug_output in snap_path.read_text()
+    # Snapshot should exist (written by the retry path)
+    snap_paths = [e.get("snapshot_path") for e in events if e.get("snapshot_path")]
+    assert snap_paths, "Expected at least one event with a snapshot_path"
+    snap = Path(snap_paths[0])
+    assert snap.exists()
+    assert debug_output in snap.read_text()
 
 
 # =============================================================================
@@ -585,16 +587,16 @@ def test_recovery_kills_pane_on_best_effort(db, mock_mgr, tmp_path):
 
 
 def test_recovery_updates_thread_status_to_failed_on_no_retry(db, mock_mgr, tmp_path):
-    """Test execute_recovery marks thread as failed if no retry happens."""
+    """Test execute_recovery marks thread as failed when retry_blocked (has task, retried>=1)."""
     thread_id = db.create_thread("thread fail test", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%5")
     db.update_agent(
         agent_id,
         status="busy",
         assigned_thread=thread_id,
-        last_task=None,
-        watchdog_retried=0,
-    )  # No task = no retry
+        last_task="do the work",  # has a task
+        watchdog_retried=1,       # already retried once → retry_blocked path
+    )
 
     agent = db.get_agent(agent_id)
     recovery_dir = tmp_path / "recovery"
@@ -608,7 +610,7 @@ def test_recovery_updates_thread_status_to_failed_on_no_retry(db, mock_mgr, tmp_
         session_id="test-session",
     )
 
-    # Thread should be marked as failed
+    # Thread should be marked as failed (retry_blocked path sets this)
     thread = db.get_thread(thread_id)
     assert thread["status"] == "failed"
 

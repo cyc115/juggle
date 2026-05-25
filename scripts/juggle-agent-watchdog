@@ -112,6 +112,7 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
             stalled_for=stalled_for,
             threshold=threshold,
             last_send_task_pane_hash=agent.get("last_send_task_pane_hash"),
+            last_send_task_at=agent.get("last_send_task_at"),
         )
 
         if state == "working":
@@ -152,6 +153,10 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
                          agent_id[:8], state, stalled_for, threshold)
             execute_recovery(db, mgr, agent, content or "",
                              recovery_dir=recovery_dir, session_id=session_id)
+
+        elif state == "awaiting_dispatch":
+            _log.info("Watchdog: agent %s awaiting first dispatch — skipping recovery",
+                      agent_id[:8])
 
         # "quiet" — no action
 
