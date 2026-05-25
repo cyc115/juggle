@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-05-25 (v1.34.0)
+- **schedule infra**: selective merge of PR #26 — adds `/schedule:autofix`, `/schedule:dogfood`, `/schedule:reflect` modules (`juggle_schedule_{autofix,dogfood,reflect,common}.py`); schedule skills updated; `juggle schedule-{autofix,dogfood,reflect}` CLI subcommands registered
+- **search**: new `juggle_cmd_search.py` backend + `/juggle:search` skill — async KB vector search + Haiku filter pass; companion to research-kb
+- **watchdog**: `awaiting_dispatch` state in `classify_pane_state` — agents with `last_send_task_at=None` no longer misclassified as stalled; `execute_recovery` wraps `send_task` in try/except RuntimeError with `add_action_item(type_="failure")` on cold-start-failed + `add_watchdog_event`; `inspect_agent` early-return guard for undispatched agents
+- **cmd_release_agent**: Bug 3 fix — clears `last_task`, `last_send_task_at`, `last_send_task_pane_hash`, and resets `watchdog_retried=0` on agent release to prevent stale task replay during recovery
+- **research KB**: `get_latest_hn_date()` method; `run_hn_ingest` uses latest ingested date as cutoff (incremental) instead of fixed N-years look-back
+- **cockpit**: `(A)`/`(L)` role-type prefixes in agent/task rows; import deduplication
+- **title gen**: stricter `_valid()` guard (min 3 words, no hyphens, not all-lowercase); Title Case coercion on tier1/tier2 outputs; improved fallback using `.title()`
+- tests: schedule test suite (conftest + test_schedule_{autofix,common,dogfood,reflect}); watchdog JH regression tests (Bug 1 awaiting_dispatch, Bug 2a/b execute_recovery, Bug 3 release-clears-task)
+
 ## 2026-05-25 (v1.33.0)
 - cockpit: tail is now a **modal overlay** (`_TailModal`) — `t` pushes a centered ~80%×70% bordered overlay over the UI with a 1s `set_interval` live refresh (injected `capture_fn`), replacing the inline `#tail` Static drawer; drawer state (`_tail_active`/`_tail_pane_id`), the `#tail` widget, and the `_refresh` drawer block are removed from `juggle_cockpit.py`
 - cockpit: `_tmux_capture_pane` reads scrollback via `capture-pane -S -<lines>` so tail returns the last N lines regardless of pane display height (was visible-region-only)
