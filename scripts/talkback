@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.12,<3.14"
-# dependencies = ["kokoro", "sounddevice", "numpy", "flask"]
+# dependencies = ["kokoro", "sounddevice", "numpy", "flask", "pyobjc-framework-CoreAudio"]
 # ///
 """Talkback — local TTS service using Kokoro. CLI + HTTP server modes."""
 
@@ -52,6 +52,77 @@ _current_event: threading.Event | None = None  # set → stop
 
 _HEADPHONE_KEYWORDS = ["WH-", "WF-", "AirPods", "Headphones", "Headset", "Buds", "PLT", "PL focus"]
 _FALLBACK_DEVICE = "MacBook Pro Speakers"
+
+# ---------------------------------------------------------------------------
+# Event-driven device caching
+# ---------------------------------------------------------------------------
+
+_devices_dirty: bool = False          # set True by CoreAudio callback on device change
+_cached_chain: list[int | None] | None = None  # None = not yet built
+_cached_device_name: str | None = None         # for change-log
+_listener_proc_ref = None             # keeps CoreAudio callback alive (prevent GC)
+
+
+def _register_device_listener() -> None:
+    """Register a CoreAudio AudioObjectAddPropertyListener for device changes.
+
+    On any device-list change the callback sets ``_devices_dirty = True``.
+    The next ``_play_audio`` call will then reinitialise PortAudio and re-pick
+    the best output device.
+
+    No-op if ``pyobjc-framework-CoreAudio`` is unavailable (non-macOS or not
+    installed).  Audio never breaks — we fall back to per-call detection.
+    """
+    global _listener_proc_ref
+    try:
+        from CoreAudio import (  # type: ignore[import]
+            AudioObjectAddPropertyListener,
+            AudioObjectPropertyAddress,
+            kAudioHardwarePropertyDevices,
+            kAudioObjectPropertyElementMain,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectSystemObject,
+        )
+
+        def _on_devices_changed(object_id, num_addrs, addrs, client_data) -> int:  # type: ignore[return]
+            global _devices_dirty
+            _devices_dirty = True
+            return 0  # OSStatus OK
+
+        addr = AudioObjectPropertyAddress(
+            kAudioHardwarePropertyDevices,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain,
+        )
+        _listener_proc_ref = _on_devices_changed  # prevent GC of the callable
+        status = AudioObjectAddPropertyListener(
+            kAudioObjectSystemObject,
+            addr,
+            _on_devices_changed,
+            None,
+        )
+        if status == 0:
+            print("[talkback] CoreAudio device-change listener registered", file=sys.stderr)
+        else:
+            print(
+                f"[talkback] CoreAudio listener registration returned status={status}",
+                file=sys.stderr,
+            )
+    except Exception as exc:
+        print(
+            f"[talkback] CoreAudio listener unavailable ({exc!r}), using per-call detection",
+            file=sys.stderr,
+        )
+
+
+def _device_name_str(device_idx: int | None) -> str | None:
+    """Return the device name for logging, or None on any error."""
+    if device_idx is None:
+        return None
+    try:
+        return sd.query_devices(device_idx)["name"]  # type: ignore[index]
+    except Exception:
+        return None
 
 
 def _pick_device() -> int | None:
@@ -143,18 +214,71 @@ def _try_play(audio: np.ndarray, samplerate: int, device: int | str | None) -> N
 def _play_audio(audio: np.ndarray, samplerate: int = 24000) -> None:
     """Play audio array with device fallback chain, respecting cancellation.
 
-    Re-detects the best output device on every call so headphone/device switches
-    take effect immediately without stale state.
+    Device selection is event-driven:
+    - On first call or when ``_devices_dirty`` is True (CoreAudio notified a
+      device change): reinitialise PortAudio (dirty only), re-pick the best
+      output device, cache the resulting chain, and clear the flag.
+    - On subsequent clean calls: reuse the cached chain — zero steady-state cost.
+
+    Falls back to per-call detection if PortAudio reinit fails, so audio never
+    stops working even if the reinit path errors.
     """
-    primary = _pick_device()
-    fallback = _find_fallback_index()
-    chain: list[int | None] = []
-    if primary is not None:
-        chain.append(primary)
-    if fallback is not None and fallback != primary:
-        chain.append(fallback)
-    if not chain:
-        chain.append(None)  # let PortAudio pick default
+    global _devices_dirty, _cached_chain, _cached_device_name, _current_event
+
+    if _cached_chain is None or _devices_dirty:
+        try:
+            if _devices_dirty:
+                # Cancel any active stream under the lock before reinit.
+                with _playback_lock:
+                    if _current_event is not None:
+                        _current_event.set()
+                    sd.stop()
+                    _current_event = None
+                # Reinit PortAudio so it enumerates devices connected since startup.
+                sd._terminate()
+                sd._initialize()
+
+            # (Re-)detect device chain.
+            primary = _pick_device()
+            fallback = _find_fallback_index()
+            new_chain: list[int | None] = []
+            if primary is not None:
+                new_chain.append(primary)
+            if fallback is not None and fallback != primary:
+                new_chain.append(fallback)
+            if not new_chain:
+                new_chain.append(None)  # let PortAudio pick default
+
+            # Log when the chosen device changes.
+            new_name = _device_name_str(primary)
+            if new_name != _cached_device_name:
+                print(
+                    f"[talkback] device: {_cached_device_name!r} → {new_name!r}",
+                    file=sys.stderr,
+                )
+                _cached_device_name = new_name
+
+            _cached_chain = new_chain
+            _devices_dirty = False
+            chain = new_chain
+
+        except Exception as exc:
+            # Fallback: detect per-call (original behaviour), don't touch cache.
+            print(
+                f"[talkback] PortAudio reinit failed ({exc}), falling back to per-call detection",
+                file=sys.stderr,
+            )
+            primary = _pick_device()
+            fallback = _find_fallback_index()
+            chain = []
+            if primary is not None:
+                chain.append(primary)
+            if fallback is not None and fallback != primary:
+                chain.append(fallback)
+            if not chain:
+                chain.append(None)
+    else:
+        chain = _cached_chain
 
     for dev in chain:
         try:
@@ -253,6 +377,7 @@ def create_app(voice: str = "af_heart", speed: float = 1.0):
 
 def run_server(port: int, voice: str, speed: float) -> None:
     app = create_app(voice=voice, speed=speed)
+    _register_device_listener()
     print(f"[talkback] Loading Kokoro model...")
     _get_pipeline()
     print(f"[talkback] Listening on http://localhost:{port} (auto device)")
