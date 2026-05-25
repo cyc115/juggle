@@ -22,7 +22,7 @@ Juggle threads live in one of four states:
 - `unarchive-thread`            → active
 - auto-archive (build_startup)  → archived, when closed & last_active_at < now - TTL
 
-Default TTL: 24h (`settings.thread_auto_archive_ttl_secs = '86400'`).
+Default TTL: 1h (`settings.thread_auto_archive_ttl_secs = '3600'`).
 
 ## Completion commands
 
