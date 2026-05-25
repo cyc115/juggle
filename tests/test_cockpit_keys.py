@@ -526,6 +526,17 @@ def test_tmux_capture_pane_failure_returns_empty():
         assert _tmux_capture_pane("%123") == ""
 
 
+def test_tmux_capture_pane_uses_scrollback_flag():
+    """_tmux_capture_pane must pass -S -N to read from scrollback, not just visible region."""
+    from juggle_cockpit import _tmux_capture_pane
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="a\nb\nc")
+        _tmux_capture_pane("%99", lines=15)
+    argv = mock_run.call_args[0][0]
+    assert "-S" in argv, f"Expected '-S' in tmux argv, got {argv}"
+    assert "-15" in argv, f"Expected '-15' in tmux argv, got {argv}"
+
+
 # ---------------------------------------------------------------------------
 # Tab / Shift+Tab pane-cycle — Pilot functional tests
 # (Regression: Tab was eaten by Textual focus traversal; fix in on_key)

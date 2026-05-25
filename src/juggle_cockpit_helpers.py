@@ -179,10 +179,15 @@ def _tmux_focus_pane(pane_id: str) -> bool:
 
 
 def _tmux_capture_pane(pane_id: str, lines: int = 20) -> str:
-    """Capture last N lines of tmux pane output. Returns '' on failure."""
+    """Capture last N lines of tmux pane output. Returns '' on failure.
+
+    Uses -S -N to read from scrollback buffer so the result is independent of
+    the pane's visible height. The final slice is a safety clamp in case tmux
+    returns more lines than requested.
+    """
     try:
         result = subprocess.run(
-            ["tmux", "capture-pane", "-p", "-t", pane_id],
+            ["tmux", "capture-pane", "-p", "-t", pane_id, "-S", f"-{lines}"],
             capture_output=True,
             text=True,
             timeout=2,
