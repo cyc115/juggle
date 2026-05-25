@@ -148,6 +148,7 @@ def render_actions(
     actions: list[Action],
     scroll_offset: int = 0,
     active: bool = False,
+    filter_label: str = "",
 ) -> Panel:
     """Render actions panel.
 
@@ -160,7 +161,10 @@ def render_actions(
         table = Table.grid()
         table.add_column()
         table.add_row(Text("no actions", style=Style(dim=True, color="green")))
-        return Panel(table, title="Action Items", border_style=border)
+        title = "Action Items"
+        if filter_label:
+            title = f"{title} [filter: {filter_label}]"
+        return Panel(table, title=title, border_style=border)
 
     visible = actions[scroll_offset:]
     table = Table.grid(padding=(0, 1))
@@ -190,9 +194,10 @@ def render_actions(
             Text(action.text, style=text_style),  # action.text is always a str field
         )
 
-    return Panel(
-        table, title=_scroll_title("Action Items", scroll_offset), border_style=border
-    )
+    title = _scroll_title("Action Items", scroll_offset)
+    if filter_label:
+        title = f"{title} [filter: {filter_label}]"
+    return Panel(table, title=title, border_style=border)
 
 
 def render_agents(
@@ -200,6 +205,7 @@ def render_agents(
     scheduled: list[ScheduledTask] | None = None,
     scroll_offset: int = 0,
     active: bool = False,
+    filter_label: str = "",
 ) -> Panel:
     """Render agents panel split into Active (topic-assigned) and Pool (idle/scheduled) sections."""
     border = _pane_border(active)
@@ -207,7 +213,10 @@ def render_agents(
         table = Table.grid()
         table.add_column()
         table.add_row(Text("no agents", style=Style(dim=True)))
-        return Panel(table, title="Agents", border_style=border)
+        title = "Agents"
+        if filter_label:
+            title = f"{title} [filter: {filter_label}]"
+        return Panel(table, title=title, border_style=border)
 
     _sort_order = {"busy": 0, "stale": 1, "idle": 2}
     sorted_agents = sorted(
@@ -294,15 +303,17 @@ def render_agents(
 
         parts.append(t_pool)
 
-    return Panel(
-        Group(*parts), title=_scroll_title("Agents", scroll_offset), border_style=border
-    )
+    title = _scroll_title("Agents", scroll_offset)
+    if filter_label:
+        title = f"{title} [filter: {filter_label}]"
+    return Panel(Group(*parts), title=title, border_style=border)
 
 
 def render_notifications(
     notifications: list[Notification],
     scroll_offset: int = 0,
     active: bool = False,
+    filter_label: str = "",
 ) -> Panel:
     """Render notifications panel. Input is expected newest-first (from snapshot).
     scroll_offset skips that many rows from the top; active highlights the border.
@@ -312,7 +323,10 @@ def render_notifications(
         table = Table.grid()
         table.add_column()
         table.add_row(Text("no notifications", style=Style(dim=True)))
-        return Panel(table, title="Notifications", border_style=border)
+        title = "Notifications"
+        if filter_label:
+            title = f"{title} [filter: {filter_label}]"
+        return Panel(table, title=title, border_style=border)
 
     visible = notifications[scroll_offset:]
     table = Table.grid(padding=(0, 1))
@@ -338,9 +352,10 @@ def render_notifications(
             Text(notif.text, style=text_style),
         )
 
-    return Panel(
-        table, title=_scroll_title("Notifications", scroll_offset), border_style=border
-    )
+    title = _scroll_title("Notifications", scroll_offset)
+    if filter_label:
+        title = f"{title} [filter: {filter_label}]"
+    return Panel(table, title=title, border_style=border)
 
 
 # ---------------------------------------------------------------------------

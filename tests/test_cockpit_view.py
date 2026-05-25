@@ -491,3 +491,42 @@ def test_render_notifications_active_border():
     assert panel_active.border_style != panel_inactive.border_style
 
 
+# ---------------------------------------------------------------------------
+# filter_label param on render_*
+# ---------------------------------------------------------------------------
+
+
+def test_render_actions_filter_label_shown():
+    actions = [Action(id="a1", topic_id="MA", text="do thing", tier=1, age_secs=5)]
+    panel = render_actions(actions, filter_label="foo")
+    assert "filter: foo" in str(panel.title)
+
+
+def test_render_actions_no_filter_label():
+    panel = render_actions([], filter_label="")
+    assert "filter:" not in str(panel.title)
+
+
+def test_render_agents_filter_label_shown():
+    from juggle_cockpit_model import Agent
+    agents = [Agent(id_short="abc12345", role="coder", status="busy",
+                    topic_id="MA", age_secs=10, pane_id="%100")]
+    panel = render_agents(agents, filter_label="coder")
+    assert "filter: coder" in str(panel.title)
+
+
+def test_render_agents_no_filter_label():
+    panel = render_agents([], filter_label="")
+    assert "filter:" not in str(panel.title)
+
+
+def test_render_notifications_filter_label_shown():
+    from juggle_cockpit_model import Notification
+    notifs = [Notification(text="agent done", kind="info", age_secs=5)]
+    panel = render_notifications(notifs, filter_label="agent")
+    assert "filter: agent" in str(panel.title)
+
+
+def test_render_notifications_no_filter_label():
+    panel = render_notifications([], filter_label="")
+    assert "filter:" not in str(panel.title)
