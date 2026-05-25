@@ -181,11 +181,15 @@ class CockpitApp(App):
     }
     #upper {
         layout: horizontal;
+        height: 100%;
     }
     #actions {
         height: 100%;
     }
     #agents {
+        height: 100%;
+    }
+    #notifications {
         height: 100%;
     }
     """
@@ -240,7 +244,8 @@ class CockpitApp(App):
                     yield Static("", id="actions")
                     yield Splitter("actions", "agents")
                     yield Static("", id="agents")
-                yield Static("", id="notifications")
+                    yield Splitter("agents", "notifications")
+                    yield Static("", id="notifications")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -252,21 +257,24 @@ class CockpitApp(App):
             self.exit(1)
             return
 
-        # Apply settings-driven initial widths
+        # Apply settings-driven initial widths.
+        # Notifications is now the third column in #upper (horizontally resizable).
         t, a, ag = _COL_RATIOS
         topics_w = int(t * 100)
         right_w = 100 - topics_w
-        actions_pct = int(a / (a + ag) * 100)
-        agents_pct = 100 - actions_pct
+        # Distribute #upper width across actions / agents / notifications.
+        # _NOTIF_RATIO (originally a height %) is repurposed as initial notif column width %.
         notif_pct = _NOTIF_RATIO
-        upper_pct = 100 - notif_pct
+        inner_pct = 100 - notif_pct  # split between actions and agents
+        inner_total = a + ag
+        actions_pct = int(a / inner_total * inner_pct) if inner_total > 0 else int(inner_pct / 2)
+        agents_pct = inner_pct - actions_pct
 
         self.query_one("#topics").styles.width = f"{topics_w}%"
         self.query_one("#right").styles.width = f"{right_w}%"
         self.query_one("#actions").styles.width = f"{actions_pct}%"
         self.query_one("#agents").styles.width = f"{agents_pct}%"
-        self.query_one("#upper").styles.height = f"{upper_pct}%"
-        self.query_one("#notifications").styles.height = f"{notif_pct}%"
+        self.query_one("#notifications").styles.width = f"{notif_pct}%"
 
         self._check_tmux_mouse()
         self.set_interval(REFRESH_INTERVAL, self._refresh)
@@ -365,18 +373,22 @@ class CockpitApp(App):
             if bp == "wide":
                 if self._last_bp != "wide":
                     # Transitioning narrow/medium → wide: restore all columns from config.
-                    # Also resets #actions/#agents so they fit the restored #right width.
                     t, a, ag = _COL_RATIOS
                     topics_w = int(t * 100)
                     self.query_one("#topics").styles.display = "block"
                     self.query_one("#topics").styles.width = f"{topics_w}%"
                     self.query_one("#right").styles.width = f"{100 - topics_w}%"
-                    actions_pct = int(a / (a + ag) * 100)
+                    notif_pct = _NOTIF_RATIO
+                    inner_pct = 100 - notif_pct
+                    inner_total = a + ag
+                    actions_pct = int(a / inner_total * inner_pct) if inner_total > 0 else int(inner_pct / 2)
+                    agents_pct = inner_pct - actions_pct
                     self.query_one("#actions").styles.width = f"{actions_pct}%"
-                    self.query_one("#agents").styles.width = f"{100 - actions_pct}%"
+                    self.query_one("#agents").styles.width = f"{agents_pct}%"
+                    self.query_one("#notifications").styles.width = f"{notif_pct}%"
                 # else: already wide — preserve user-dragged widths unchanged
             else:
-                # medium/narrow: collapse topics column into notifications area
+                # medium/narrow: collapse topics column
                 self.query_one("#topics").styles.display = "none"
                 self.query_one("#right").styles.width = "100%"
             self._last_bp = bp
@@ -396,7 +408,16 @@ def run(db_path: str | None = None) -> None:
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
-    parser = argparse.ArgumentParser(description="Juggle Cockpit v2 (Textual)")
+    parser = argparse.ArgumentParser(description="Juggle Cockpit (Textual)")
     parser.add_argument("--db", dest="db_path", default=None, help="Path to juggle.db")
+    parser.add_argument(
+        "--out",
+        action="store_true",
+        help="Render panes as plain text to stdout then exit (no TUI)",
+    )
     args = parser.parse_args()
+    if args.out:
+        from juggle_cockpit_view import render_static
+        sys.stdout.write(render_static(db_path=args.db_path))
+        sys.exit(0)
     run(db_path=args.db_path)

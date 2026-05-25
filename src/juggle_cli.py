@@ -120,13 +120,18 @@ from juggle_cmd_research import cmd_research
 
 
 def cmd_cockpit(args):
-    """Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize)."""
+    """Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).
+
+    With --out: render all panes as plain text to stdout then exit (no TUI).
+    """
     import subprocess as _sp
     src = Path(__file__).parent
     script = src / "juggle_cockpit.py"
     cmd = ["uv", "run", str(script)]
     if getattr(args, "db_path", None):
         cmd += ["--db", args.db_path]
+    if getattr(args, "out", False):
+        cmd += ["--out"]
     sys.exit(_sp.call(cmd))
 
 
@@ -645,6 +650,11 @@ def main():
     # cockpit
     p_cockpit = subparsers.add_parser("cockpit", help="Open live cockpit dashboard")
     p_cockpit.add_argument("--db", dest="db_path", default=None, help="Path to juggle.db")
+    p_cockpit.add_argument(
+        "--out",
+        action="store_true",
+        help="Render panes as plain text to stdout then exit (no TUI)",
+    )
     p_cockpit.set_defaults(func=cmd_cockpit)
 
     # schedule-reflect (Mon 03:00 local / 0 8 * * 1 UTC)

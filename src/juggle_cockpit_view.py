@@ -1,4 +1,8 @@
-"""Juggle Cockpit View — dataclasses → Rich renderables. Zero I/O."""
+"""Juggle Cockpit View — dataclasses → Rich renderables.
+
+render_static_from_state / render_static are utility functions at the bottom
+that do DB I/O; all other functions are pure (no I/O).
+"""
 
 from __future__ import annotations
 
@@ -14,6 +18,7 @@ from juggle_cockpit_model import (
     Agent,
     Notification,
     ScheduledTask,
+    CockpitState,
     format_age,
 )
 # ---------------------------------------------------------------------------
@@ -338,3 +343,53 @@ def render_notifications(
     )
 
 
+# ---------------------------------------------------------------------------
+# Static render helpers (no Textual dependency — safe to import in test env)
+# ---------------------------------------------------------------------------
+
+
+def render_static_from_state(state: CockpitState, width: int = 120) -> str:
+    """Render all four cockpit panes as plain text from a CockpitState.
+
+    Prints Topics → Actions → Agents → Notifications, each as a Rich panel,
+    into a fixed-width console and returns the exported text. No DB I/O.
+    Suitable for unit tests and CI smoke checks.
+    """
+    from rich.console import Console
+
+    console = Console(width=width, record=True, no_color=True, highlight=False)
+    with console:
+        console.print(render_topics(state.topics, "wide"))
+        console.print(render_actions(state.actions))
+        console.print(render_agents(state.agents, state.scheduled))
+        console.print(render_notifications(state.notifications))
+    return console.export_text()
+
+
+def render_static(db_path: str | None = None, width: int = 120) -> str:
+    """Snapshot the live juggle.db and render all four cockpit panes as plain text.
+
+    Creates its own DB connection (does not reuse an existing one). Suitable for
+    the ``--out`` CLI flag and CI health checks.
+    """
+    import sqlite3 as _sqlite3
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _src = _Path(__file__).parent
+    if str(_src) not in _sys.path:
+        _sys.path.insert(0, str(_src))
+
+    from juggle_cockpit_model import snapshot as _snapshot
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    conn = _sqlite3.connect(str(db.db_path))
+    conn.row_factory = _sqlite3.Row
+    db._connect = lambda: conn  # noqa: E731
+    try:
+        state = _snapshot(db)
+        return render_static_from_state(state, width)
+    finally:
+        conn.close()
