@@ -86,14 +86,14 @@ _SCROLL_PANES = ("actions", "agents", "notifications")
 
 
 def _make_cockpit_db(db_path: str | None = None) -> JuggleDB:
-    """Create a JuggleDB with a cached connection — avoids file-descriptor leak in 1s loop."""
-    import sqlite3 as _sqlite3
+    """Create and initialise a JuggleDB for the cockpit.
 
+    snapshot() opens its own fresh connection per call, so no connection caching
+    is needed here.  Other JuggleDB methods (is_active, get_all_threads, …) open
+    and close their own connections normally.
+    """
     db = JuggleDB(db_path=db_path)
     db.init_db()
-    conn = _sqlite3.connect(str(db.db_path))
-    conn.row_factory = _sqlite3.Row
-    db._connect = lambda: conn  # noqa: E731 — intentional monkey-patch
     return db
 
 

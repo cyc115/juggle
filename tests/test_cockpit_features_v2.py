@@ -576,60 +576,37 @@ async def test_bell_fires_on_new_blocker(tmp_path):
 
 @pytest.mark.asyncio
 async def test_bell_fires_on_agent_failure(tmp_path):
-    """Agent transitioning busy→stale on 2nd _refresh fires self.bell().
-
-    NOTE: Full-tick simulation is not feasible here because the cockpit's
-    cached SQLite connection (monkey-patched by _make_cockpit_db) does not
-    see writes made by a separate connection inside Textual's run_test context
-    due to read-isolation within the implicit open transaction. We therefore
-    patch _snapshot to return controlled state data, which exercises the
-    exact same bell-diff code path.
-    """
-    import time
+    """Agent transitioning busy→stale on 2nd _refresh fires self.bell()."""
     from unittest.mock import patch
     from juggle_db import JuggleDB
     from juggle_cockpit import CockpitApp
-    from juggle_cockpit_model import Agent, CockpitState
 
     db_path = str(tmp_path / "juggle.db")
     db = JuggleDB(db_path=db_path)
     db.init_db()
     db.set_active(True)
+    db.create_thread("beta", session_id="")
 
-    agent_short = "abcd1234"
-
-    # Build a controlled snapshot where the agent shows as "stale"
-    stale_agent = Agent(
-        id_short=agent_short,
-        role="coder",
-        status="stale",
-        topic_id=None,
-        age_secs=60,
-        pane_id="%99",
-    )
-    fake_state = CockpitState(
-        topics=[],
-        actions=[],
-        agents=[stale_agent],
-        notifications=[],
-        scheduled=[],
-        fetched_at=time.time(),
-    )
+    # Create an agent in busy state
+    agent_id = db.create_agent("coder", pane_id="%99")
 
     app = CockpitApp(db_path=db_path)
 
     with patch.object(app, "bell") as mock_bell:
         async with app.run_test(size=(160, 40)):
-            # Seed prev state: agent was busy (not stale) → transition triggers bell
+            # Disable the throttled reaper: it fires on first tick (_last_reap=0) when
+            # tmux is available, deleting decommission_pending agents before snapshot reads them.
+            app._cockpit_mgr = None
+
+            # Seed prev state: agent was busy
+            agent_short = agent_id[:8]
             app._prev_action_ids = {"dummy"}
             app._prev_agent_statuses = {agent_short: "busy"}
 
-            # Patch snapshot (imported locally in _refresh from juggle_cockpit_model)
-            # so _refresh sees the stale agent without DB cached-connection isolation issues.
-            import juggle_cockpit_model
-            with patch.object(juggle_cockpit_model, "snapshot", return_value=fake_state):
-                app._refresh()
+            # Transition agent to display-stale (decommission_pending maps to display "stale")
+            db.update_agent(agent_id, status="decommission_pending")
 
+            app._refresh()
             assert mock_bell.call_count >= 1, (
                 f"bell must fire when agent goes stale (called {mock_bell.call_count}x)"
             )

@@ -239,10 +239,21 @@ _ARCHIVED_DISPLAY_LIMIT = 10  # spec: most-recent N, default 10
 
 
 def snapshot(db) -> CockpitState:
-    """Read DB state into a frozen CockpitState. Only function that touches DB."""
+    """Read DB state into a frozen CockpitState. Only function that touches DB.
+
+    Opens a fresh SQLite connection each call so every snapshot sees the latest
+    committed writes from any connection (avoids WAL read-transaction pinning).
+    """
+    import sqlite3 as _sqlite3
     from datetime import datetime, timezone, timedelta
 
-    conn = db._connect()
+    # Open a fresh connection each call to avoid WAL read-transaction pinning.
+    # Fall back to db._connect() for in-memory / fake DBs that expose no db_path.
+    if hasattr(db, "db_path"):
+        conn = _sqlite3.connect(str(db.db_path))
+        conn.row_factory = _sqlite3.Row
+    else:
+        conn = db._connect()
 
     # --- Session ---
     row = conn.execute(
@@ -418,7 +429,7 @@ def snapshot(db) -> CockpitState:
     except Exception:
         notifications = []
 
-    return CockpitState(
+    result = CockpitState(
         topics=topics,
         actions=actions,
         agents=agents,
@@ -426,3 +437,5 @@ def snapshot(db) -> CockpitState:
         scheduled=fetch_scheduled_tasks(),
         fetched_at=time.time(),
     )
+    conn.close()
+    return result
