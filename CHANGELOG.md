@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-25 (v1.32.0)
+- cockpit: keyboard shortcuts — `s` switch thread by label (PromptModal → set_current_thread), `a` ack all open actions on a thread by label (PromptModal → dismiss_action_items_for_thread), `?` help overlay (deduplicates aliased scroll-key rows), `j`/`k`/`↑`/`↓`/`PgUp`/`PgDn` scroll active pane via named BINDINGS (replaces on_key handler), `Tab` cycles pane; no manual-refresh key (`r` removed — 1s auto-tick is sufficient); pure helpers `_resolve_thread_by_label` / `_resolve_actions_by_thread_label` module-level for testability
+- tests: 14 new TDD tests in `tests/test_cockpit_keys.py` (pure-helper unit tests + Textual Pilot integration tests for switch/ack/not-found paths)
+
 ## 2026-05-24 (v1.31.2)
 - watchdog: fix false high-priority alert for "spawned but never tasked" agents — `execute_recovery` now detects `last_task=None/""` with an early-return path that silently decommissions (kill pane, delete agent, `decommissioned_untasked` watchdog event) without writing a snapshot, filing an action item, or marking the thread failed; `scripts/juggle-agent-watchdog` now passes `last_send_task_at=agent.get("last_send_task_at")` to `classify_pane_state` so agents waiting for their first dispatch are classified as `awaiting_dispatch` (not `stalled`) and recovery is skipped
 - tests: 6 new TDD tests in `tests/test_watchdog_never_tasked.py`; updated 10 existing tests across 4 files that asserted the old buggy behaviour

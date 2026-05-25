@@ -29,7 +29,8 @@ from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header, Static
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Header, Input, Label, Static
 
 from juggle_db import JuggleDB
 from juggle_settings import get_settings as _get_settings
@@ -208,6 +209,102 @@ class HSplitter(Static):
 
 
 # ---------------------------------------------------------------------------
+# Pure helpers (module-level for unit testability)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_thread_by_label(threads: list[dict], label: str) -> dict | None:
+    """Return the first thread dict whose user_label matches label (case-insensitive)."""
+    label_up = label.upper()
+    return next(
+        (t for t in threads if (t.get("user_label") or "").upper() == label_up),
+        None,
+    )
+
+
+def _resolve_actions_by_thread_label(
+    threads: list[dict], open_actions: list[dict], label: str
+) -> list[dict]:
+    """Return all open action dicts whose thread_id belongs to the named thread."""
+    thread = _resolve_thread_by_label(threads, label)
+    if thread is None:
+        return []
+    thread_id = thread.get("id")
+    return [a for a in open_actions if a.get("thread_id") == thread_id]
+
+
+# ---------------------------------------------------------------------------
+# Modal screens
+# ---------------------------------------------------------------------------
+
+
+class _PromptModal(ModalScreen):
+    """Generic one-line input modal. Dismisses with the stripped value or None."""
+
+    DEFAULT_CSS = """
+    _PromptModal {
+        align: center middle;
+    }
+    _PromptModal > Vertical {
+        width: 44;
+        height: 6;
+        border: round $accent;
+        padding: 1 2;
+    }
+    """
+
+    def __init__(self, prompt: str) -> None:
+        super().__init__()
+        self._prompt = prompt
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label(self._prompt)
+            yield Input(placeholder="…")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value.strip() or None)
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
+
+class _HelpModal(ModalScreen):
+    """Help overlay listing all bindings, generated from CockpitApp.BINDINGS."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+        Binding("q", "dismiss", "Close", show=False),
+    ]
+
+    DEFAULT_CSS = """
+    _HelpModal {
+        align: center middle;
+    }
+    _HelpModal > Static {
+        width: 50;
+        border: round $accent;
+        padding: 1 2;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        # De-duplicate aliased scroll keys: show one row per unique action name.
+        seen_actions: set[str] = set()
+        lines: list[str] = ["Keyboard Shortcuts", "─" * 34]
+        for b in CockpitApp.BINDINGS:
+            if not b.description:
+                continue
+            if b.action in seen_actions:
+                continue
+            seen_actions.add(b.action)
+            lines.append(f"  {b.key:<14} {b.description}")
+        lines += ["", "Esc / q — close"]
+        yield Static("\n".join(lines))
+
+
+# ---------------------------------------------------------------------------
 # CockpitApp
 # ---------------------------------------------------------------------------
 
@@ -216,8 +313,18 @@ class CockpitApp(App):
     """Juggle Cockpit v2."""
 
     BINDINGS = [
-        Binding("q", "quit", "Quit"),
-        Binding("ctrl+c", "quit", "Quit", show=False),
+        Binding("q",            "quit",          "Quit"),
+        Binding("ctrl+c",       "quit",          "Quit",    show=False),
+        Binding("question_mark","help",          "Help"),
+        Binding("j",            "scroll_down",   "↓",       show=False),
+        Binding("k",            "scroll_up",     "↑",       show=False),
+        Binding("down",         "scroll_down",   "↓",       show=False),
+        Binding("up",           "scroll_up",     "↑",       show=False),
+        Binding("pagedown",     "page_down",     "PgDn",    show=False),
+        Binding("pageup",       "page_up",       "PgUp",    show=False),
+        Binding("tab",          "cycle_pane",    "Tab",     show=False),
+        Binding("s",            "switch",        "Switch"),
+        Binding("a",            "ack",           "Ack"),
     ]
 
     CSS = """
@@ -392,16 +499,24 @@ class CockpitApp(App):
         except Exception as e:
             self.notify(str(e), severity="error")
 
-    def on_key(self, event: events.Key) -> None:
-        if event.key in ("up", "k"):
-            self._scroll(-1)
-            event.stop()
-        elif event.key in ("down", "j"):
-            self._scroll(+1)
-            event.stop()
-        elif event.key == "tab":
-            self._cycle_pane()
-            event.stop()
+    # ------------------------------------------------------------------
+    # Scroll / pane-cycle actions (replace old on_key handler)
+    # ------------------------------------------------------------------
+
+    def action_scroll_down(self) -> None:
+        self._scroll(+1)
+
+    def action_scroll_up(self) -> None:
+        self._scroll(-1)
+
+    def action_page_down(self) -> None:
+        self._scroll(+5)
+
+    def action_page_up(self) -> None:
+        self._scroll(-5)
+
+    def action_cycle_pane(self) -> None:
+        self._cycle_pane()
 
     def _scroll(self, delta: int) -> None:
         pane = self._active_pane
@@ -412,6 +527,59 @@ class CockpitApp(App):
         idx = _SCROLL_PANES.index(self._active_pane) if self._active_pane in _SCROLL_PANES else 0
         self._active_pane = _SCROLL_PANES[(idx + 1) % len(_SCROLL_PANES)]
         self._refresh()
+
+    # ------------------------------------------------------------------
+    # Safe actions: switch thread, ack actions, help overlay
+    # ------------------------------------------------------------------
+
+    def action_switch(self) -> None:
+        """s — switch active thread by label."""
+        def _on_label(label: str | None) -> None:
+            if label is None:
+                return
+            label_up = label.strip().upper()
+            threads = self._db.get_all_threads()
+            match = _resolve_thread_by_label(threads, label_up)
+            if match is None:
+                self.notify(f"Thread '{label_up}' not found", severity="warning", timeout=3)
+                return
+            try:
+                self._db.set_current_thread(match["id"])
+                self.notify(f"Switched to [{label_up}]", timeout=2)
+                self._refresh()
+            except Exception as exc:
+                self.notify(f"Switch failed: {exc}", severity="error", timeout=4)
+
+        self.push_screen(_PromptModal("Switch to thread (label):"), _on_label)
+
+    def action_ack(self) -> None:
+        """a — ack all open action items on a thread by label."""
+        def _on_label(label: str | None) -> None:
+            if label is None:
+                return
+            label_up = label.strip().upper()
+            threads = self._db.get_all_threads()
+            match = _resolve_thread_by_label(threads, label_up)
+            if match is None:
+                self.notify(f"Thread '{label_up}' not found", severity="warning", timeout=3)
+                return
+            open_actions = self._db.get_open_action_items()
+            matching = _resolve_actions_by_thread_label(threads, open_actions, label_up)
+            if not matching:
+                self.notify(f"No open actions on [{label_up}]", severity="warning", timeout=3)
+                return
+            try:
+                count = self._db.dismiss_action_items_for_thread(match["id"])
+                self.notify(f"Acked {count} action(s) on [{label_up}]", timeout=2)
+                self._refresh()
+            except Exception as exc:
+                self.notify(f"Ack failed: {exc}", severity="error", timeout=4)
+
+        self.push_screen(_PromptModal("Ack action(s) for thread (label):"), _on_label)
+
+    def action_help(self) -> None:
+        """? — show help overlay."""
+        self.push_screen(_HelpModal())
 
     def on_resize(self, event: events.Resize) -> None:
         from juggle_cockpit_view import pick_breakpoint
