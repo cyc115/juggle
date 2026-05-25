@@ -13,15 +13,33 @@ TALKBACK_PATH = Path(__file__).parent.parent / "scripts" / "talkback"
 
 
 def _load_talkback():
-    """Load talkback script with audio deps mocked out."""
-    sys.modules.setdefault("sounddevice", MagicMock())
-    sys.modules.setdefault("numpy", MagicMock())
-    loader = importlib.machinery.SourceFileLoader("talkback", str(TALKBACK_PATH))
-    spec = importlib.util.spec_from_loader("talkback", loader)
-    assert spec is not None
-    mod = importlib.util.module_from_spec(spec)
-    loader.exec_module(mod)
-    return mod
+    """Load talkback script with audio deps mocked out.
+
+    Stubs sounddevice and numpy only for the duration of the import so
+    the MagicMock does not persist in sys.modules and contaminate
+    pytest.approx (which does isinstance checks against np.bool_) in
+    other test files.
+    """
+    _saved: dict = {}
+    for key in ("sounddevice", "numpy"):
+        _saved[key] = sys.modules.get(key, _SENTINEL)
+        sys.modules[key] = MagicMock()
+    try:
+        loader = importlib.machinery.SourceFileLoader("talkback", str(TALKBACK_PATH))
+        spec = importlib.util.spec_from_loader("talkback", loader)
+        assert spec is not None
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod
+    finally:
+        for key, orig in _saved.items():
+            if orig is _SENTINEL:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = orig
+
+
+_SENTINEL = object()  # distinct from None so we can tell "was absent" vs "was None"
 
 
 _tb = _load_talkback()

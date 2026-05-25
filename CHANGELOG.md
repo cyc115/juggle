@@ -1,8 +1,9 @@
 # Changelog
 
-## 2026-05-24
+## 2026-05-24 (v1.30.2)
 - cockpit: removed legacy v1 (Rich) cockpit; the Textual cockpit is now the only one; dropped the `--v2` flag from `juggle_cli.py cockpit`
 - cockpit: add `--out` static render mode — prints all four panes as plain text to stdout then exits (no TUI); available as `juggle_cli.py cockpit --out` and `juggle_cockpit.py --out`; backed by `render_static_from_state` / `render_static` in juggle_cockpit_view.py
+- fix(tests): restore sys.modules["numpy"] after _load_talkback() import — MagicMock was leaking into pytest.approx, breaking persist_ratios tests in full-suite runs
 - cockpit: restore Notifications to full-width bottom of the right region (was incorrectly a 3rd column in #upper); `--out` now mirrors the 2D layout (Topics left, Actions+Agents top-right, Notifications full-width bottom-right); add `HSplitter` for vertical drag-to-resize between the Actions/Agents row and Notifications
 
 ## 2026-05-21
