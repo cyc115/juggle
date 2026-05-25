@@ -25,10 +25,10 @@ schedule:
 cd ~/github/juggle
 
 # Live run
-uv run src/juggle_cli.py schedule-dogfood
+python3 src/juggle_cli.py schedule-dogfood
 
 # Dry run (no Git/GitHub side effects; report written to /tmp/)
-uv run src/juggle_cli.py schedule-dogfood --dry-run
+python3 src/juggle_cli.py schedule-dogfood --dry-run
 ```
 
 The script automatically chooses:
@@ -55,7 +55,7 @@ The script automatically chooses:
 | Agent timeout | Write partial report, file `[DOGFOOD-TIMEOUT]` action item |
 | Prior open dogfood thread | Skip run, file action item to resolve prior thread first |
 | Active session conflict | Defer 60s, retry once, then abort with action item |
-| Zero findings | File `[NO FINDINGS THIS WEEK]` action item |
+| Zero findings | File `[NO FINDINGS THIS WEEK]` action item (suppress after 3 consecutive weeks) |
 
 ## Cross-routine coupling
 
@@ -64,5 +64,5 @@ Autofix (Sunday 03:00, ~24h later) reads the dogfood report at startup and embed
 ## complete-agent format
 
 ```
-uv run src/juggle_cli.py complete-agent <THREAD_ID> "Dogfood complete: reports/dogfood-YYYY-MM-DD.md written. Cost=$X.XX. Action item filed." --retain "Dogfood ran YYYY-MM-DD. Top finding: <summary>."
+python3 src/juggle_cli.py complete-agent <THREAD_ID> "Dogfood complete: reports/dogfood-YYYY-MM-DD.md written. Cost=$X.XX. Action item filed." --retain "Dogfood ran YYYY-MM-DD. Top finding: <summary>."
 ```

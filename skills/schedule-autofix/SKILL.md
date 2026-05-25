@@ -17,7 +17,7 @@ schedule:
 ## Deliverable
 
 - PR `cyc_schedule-autofix-YYYY-MM-DD` → `main`
-- GitHub issues for security findings (IS-1), skill retirement candidates (IS-2), low-confidence dead code (IS-3)
+- GitHub issues for security findings (IS-1), skill retirement candidates (IS-2), low-confidence dead code (IS-3/FX-2 <95%)
 - PR opened but NOT merged — human review gate is mandatory
 
 ## Commands
@@ -26,10 +26,10 @@ schedule:
 cd ~/github/juggle
 
 # Live run (creates branch, commits fixes, opens PR)
-uv run src/juggle_cli.py schedule-autofix
+python3 src/juggle_cli.py schedule-autofix
 
 # Dry run (runs analysis, writes would-be PR to /tmp/schedule-autofix-sample-PR.md)
-uv run src/juggle_cli.py schedule-autofix --dry-run
+python3 src/juggle_cli.py schedule-autofix --dry-run
 ```
 
 ## Fix sections (each = one commit on branch)
@@ -73,5 +73,5 @@ uv run src/juggle_cli.py schedule-autofix --dry-run
 ## complete-agent format
 
 ```
-uv run src/juggle_cli.py complete-agent <THREAD_ID> "Autofix complete: PR cyc_schedule-autofix-YYYY-MM-DD created. N sections committed. Cost=$X.XX." --retain "Autofix ran YYYY-MM-DD. PR: <URL>."
+python3 src/juggle_cli.py complete-agent <THREAD_ID> "Autofix complete: PR cyc_schedule-autofix-YYYY-MM-DD created. N sections committed. Cost=$X.XX." --retain "Autofix ran YYYY-MM-DD. PR: <URL>."
 ```

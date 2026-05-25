@@ -149,15 +149,26 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
     from juggle_settings import get_settings
 
     cfg = get_settings().get("title_gen", {})
-    fallback = " ".join(topic.split()[:5])
+    fallback = " ".join(topic.replace("-", " ").replace("_", " ").split()[:6]).title()
     prompt = (
-        f'Give a 5-10 word title for this task: "{topic}". '
-        f"Reply with the title only. No punctuation. No quotes. No explanation."
+        f'Convert this task identifier into a concise 4-8 word descriptive title in Title Case. '
+        f'Task: "{topic}". Reply with the title only. No punctuation. No quotes. No explanation. Use Title Case.'
     )
     timeout = cfg.get("timeout_secs", 10)
 
     def _valid(text: str) -> bool:
-        return bool(text) and len(text.split()) <= 15
+        if not text:
+            return False
+        words = text.split()
+        if len(words) > 15:
+            return False
+        if len(words) < 3:
+            return False
+        if "-" in text:
+            return False
+        if all(w.islower() for w in words):
+            return False
+        return True
 
     # Tier 1: OpenRouter (free tier, zero cost). Key lives in ~/.juggle/.env as OPENROUTER_KEY.
     api_key = os.environ.get("OPENROUTER_KEY", "")
@@ -185,7 +196,9 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
             )
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = _json.loads(resp.read())
-            title = data["choices"][0]["message"]["content"].strip()
+            title = (data["choices"][0]["message"].get("content") or "").strip()
+            if not any(c.isupper() for c in title):
+                title = title.title()
             if _valid(title):
                 logging.info("title_gen: tier1 openrouter -> %r", title)
                 db.update_thread(thread_uuid, title=title)
@@ -206,6 +219,8 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
         )
         if result.returncode == 0:
             title = result.stdout.strip()
+            if not any(c.isupper() for c in title):
+                title = title.title()
             if _valid(title):
                 logging.info("title_gen: tier2 haiku -> %r", title)
                 db.update_thread(thread_uuid, title=title)

@@ -147,9 +147,13 @@ async def run_hn_ingest(
 ) -> None:
     from datetime import timedelta
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=365 * years_back)).strftime(
-        "%Y-%m-%d"
-    )
+    latest = kb.get_latest_hn_date()
+    if latest:
+        cutoff = latest
+    else:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=365 * years_back)).strftime(
+            "%Y-%m-%d"
+        )
     query = (
         f"SELECT title, url, score, time, text "
         f"FROM `bigquery-public-data.hacker_news.full` "
@@ -157,7 +161,8 @@ async def run_hn_ingest(
         f"AND TIMESTAMP_SECONDS(time) >= '{cutoff}' "
         f"LIMIT 100000"
     )
-    print(f"Running BigQuery export (score>={score_threshold}, since {cutoff})...")
+    source = "latest ingested" if latest else f"{years_back}y default"
+    print(f"Running BigQuery export (score>={score_threshold}, since {cutoff} [{source}])...")
     result = subprocess.run(
         [
             "bq",
