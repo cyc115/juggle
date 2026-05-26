@@ -288,7 +288,7 @@ python3 juggle_cli.py fail-agent B "API timeout"
 | `record-pending-decision --tool-use-id ID --questions-json JSON` | Record user decision questions |
 | `clear-pending-decision --tool-use-id ID` | Clear pending decisions |
 
-## Status Symbols (show-topics)
+## Status Symbols
 
 | Symbol | Meaning |
 |---|---|
@@ -318,7 +318,6 @@ juggle/
 │   └── juggle_context.py   # Builds additionalContext string
 ├── commands/
 │   ├── start.md            # /juggle:start orchestration prompt
-│   ├── show-topics.md      # /juggle:show-topics prompt
 │   └── resume-topic.md     # /juggle:resume-topic prompt
 ├── hooks/
 │   └── hooks.json          # Maps Claude Code events → Python handlers

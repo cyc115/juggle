@@ -58,7 +58,7 @@ After `/juggle:start`, talk normally. Juggle detects topic shifts and opens new 
 - **Topics** — each line of work gets a label (`A`–`ZZ`), its own SQLite-backed message history, and an independent context window. Switch anytime with `/juggle:resume-topic`.
 - **Agents** — background workers (researcher / planner / coder) run in tmux panes, up to 20 concurrent. An auto-approver handles permission prompts so agents don't stall while you're focused elsewhere.
 - **Cockpit** — a live dashboard (Topics | Action Items | Agents) updated every second. Textual-based with mouse drag-to-resize between panels (tmux mouse mode required).
-- **Action Items** — persistent follow-ups created by agents or manually. Survive sessions until dismissed with `/juggle:action-item-dismiss`.
+- **Action Items** — persistent follow-ups created by agents or manually. Survive sessions until dismissed from the cockpit.
 - **Hindsight memory** — opt-in long-term memory across sessions. Enable via `hindsight.enabled` in `~/.juggle/config.json`. See [docs/architecture.md](docs/architecture.md).
 
 ## Slash commands
@@ -67,10 +67,7 @@ After `/juggle:start`, talk normally. Juggle detects topic shifts and opens new 
 |---------|-------------|
 | `/juggle:start` | Activate juggle mode for the session |
 | `/juggle:delegate` | Wizard: pick role, write prompt, dispatch agent |
-| `/juggle:show-topics` | List all open topics with status |
 | `/juggle:resume-topic <id>` | Switch to a topic, restoring full context |
-| `/juggle:show-agents` | List all agents and their state |
-| `/juggle:action-item-dismiss` | Acknowledge a completed action item |
 | `/juggle:remember <text>` | Explicitly save something to Hindsight memory |
 | `/juggle:toggle-talkback` | Toggle TTS voice notifications (macOS) |
 
