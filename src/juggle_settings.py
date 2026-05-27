@@ -54,6 +54,12 @@ DEFAULTS: dict = {
         "session_width": 220,
         "session_height": 50,
         "agent_idle_detection_secs": 30,
+        # send-task readiness backoff: poll the pane for a Claude-UI readiness
+        # marker up to N times, sleeping `ready_poll_interval_secs` between
+        # attempts, before giving up. Total wait ≈ attempts × interval.
+        # Default: 1s poll for ~120s — fast detection, generous cold-start budget.
+        "ready_poll_attempts": 120,
+        "ready_poll_interval_secs": 1,
     },
     # Hindsight
     "hindsight": {
@@ -186,6 +192,14 @@ def get_settings() -> dict:
     if "JUGGLE_IDLE_THRESHOLD_SECS" in os.environ:
         settings["tmux"]["agent_idle_detection_secs"] = int(
             os.environ["JUGGLE_IDLE_THRESHOLD_SECS"]
+        )
+    if "JUGGLE_READY_POLL_ATTEMPTS" in os.environ:
+        settings["tmux"]["ready_poll_attempts"] = int(
+            os.environ["JUGGLE_READY_POLL_ATTEMPTS"]
+        )
+    if "JUGGLE_READY_POLL_INTERVAL_SECS" in os.environ:
+        settings["tmux"]["ready_poll_interval_secs"] = float(
+            os.environ["JUGGLE_READY_POLL_INTERVAL_SECS"]
         )
     # Expand ~ in all path values
     for key in ("data_dir", "config_dir", "digest_log_dir"):

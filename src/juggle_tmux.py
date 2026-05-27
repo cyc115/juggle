@@ -140,18 +140,34 @@ class JuggleTmuxManager:
             return
         self._run_tmux("kill-pane", "-t", pane_id)
 
-    def wait_for_ready_to_paste(self, pane_id: str, timeout: int = 30) -> bool:
+    def wait_for_ready_to_paste(
+        self,
+        pane_id: str,
+        attempts: int | None = None,
+        interval: float | None = None,
+    ) -> bool:
         """Poll capture-pane until a Claude UI readiness marker appears.
 
-        Returns True once any marker in _READY_MARKERS appears in the pane
-        contents; False after `timeout` seconds. Polls at 1s intervals.
+        Backoff: check the pane up to `attempts` times, sleeping `interval`
+        seconds between checks (total wait ≈ attempts × interval). Returns True
+        once any marker in _READY_MARKERS appears; False once all attempts are
+        exhausted. Both knobs default from settings (`tmux.ready_poll_attempts`
+        / `tmux.ready_poll_interval_secs`) and are overridable via the
+        JUGGLE_READY_POLL_ATTEMPTS / JUGGLE_READY_POLL_INTERVAL_SECS env vars.
         """
-        for _ in range(max(1, timeout)):
+        tmux_cfg = _get_settings()["tmux"]
+        if attempts is None:
+            attempts = tmux_cfg["ready_poll_attempts"]
+        if interval is None:
+            interval = tmux_cfg["ready_poll_interval_secs"]
+        attempts = max(1, int(attempts))
+        for i in range(attempts):
             result = self._run_tmux("capture-pane", "-pt", pane_id)
             out = getattr(result, "stdout", "") or ""
             if any(m in out for m in _READY_MARKERS):
                 return True
-            time.sleep(1)
+            if i < attempts - 1:  # don't sleep after the final attempt
+                time.sleep(interval)
         return False
 
     def wait_for_submission(
@@ -232,9 +248,13 @@ class JuggleTmuxManager:
         if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
             return _hashlib.sha256(prompt.encode()).hexdigest()[:16]
 
-        if not self.wait_for_ready_to_paste(pane_id, timeout=30):
+        _tmux_cfg = _get_settings()["tmux"]
+        _attempts = _tmux_cfg["ready_poll_attempts"]
+        _interval = _tmux_cfg["ready_poll_interval_secs"]
+        if not self.wait_for_ready_to_paste(pane_id):
             raise RuntimeError(
-                f"Claude UI not ready in pane {pane_id} after 30s — aborting send_task"
+                f"Claude UI not ready in pane {pane_id} after "
+                f"{_attempts}×{_interval:g}s (~{_attempts * _interval:g}s) — aborting send_task"
             )
 
         tmp = f"/tmp/juggle_task_{uuid.uuid4().hex[:8]}.txt"

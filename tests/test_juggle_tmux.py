@@ -185,7 +185,7 @@ def test_wait_for_ready_to_paste_returns_true_when_marker_appears(mgr):
         patch.object(mgr, "_run_tmux", side_effect=captures) as mock_tmux,
         patch("time.sleep"),
     ):
-        result = mgr.wait_for_ready_to_paste("%3", timeout=10)
+        result = mgr.wait_for_ready_to_paste("%3", attempts=10, interval=1)
     assert result is True
     assert mock_tmux.call_count == 4
     # Each call should be capture-pane for the pane
@@ -201,7 +201,7 @@ def test_wait_for_ready_to_paste_recognises_effort_marker(mgr):
         MagicMock(stdout="model: claude-opus  /effort high  /context 200k"),
     ]
     with patch.object(mgr, "_run_tmux", side_effect=captures), patch("time.sleep"):
-        assert mgr.wait_for_ready_to_paste("%3", timeout=5) is True
+        assert mgr.wait_for_ready_to_paste("%3", attempts=5, interval=1) is True
 
 
 def test_wait_for_ready_to_paste_returns_false_after_timeout(mgr):
@@ -212,8 +212,30 @@ def test_wait_for_ready_to_paste_returns_false_after_timeout(mgr):
         ),
         patch("time.sleep"),
     ):
-        result = mgr.wait_for_ready_to_paste("%3", timeout=2)
+        result = mgr.wait_for_ready_to_paste("%3", attempts=2, interval=1)
     assert result is False
+
+
+def test_wait_for_ready_to_paste_uses_settings_defaults(mgr):
+    """With no args, attempts/interval come from settings; no sleep after the
+    final attempt; total polls == configured attempts."""
+    cfg = {
+        "session_name": "juggle",
+        "ready_poll_attempts": 4,
+        "ready_poll_interval_secs": 10,
+    }
+    with (
+        patch.object(
+            mgr, "_run_tmux", return_value=MagicMock(stdout="no marker here")
+        ) as mock_tmux,
+        patch("juggle_tmux._get_settings", return_value={"tmux": cfg}),
+        patch("time.sleep") as mock_sleep,
+    ):
+        result = mgr.wait_for_ready_to_paste("%3")
+    assert result is False
+    assert mock_tmux.call_count == 4  # configured attempts
+    assert mock_sleep.call_count == 3  # attempts - 1 (no sleep after last)
+    mock_sleep.assert_called_with(10)  # configured interval
 
 
 # --- wait_for_submission (collapsed-paste regression) --------------------
