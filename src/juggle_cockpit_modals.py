@@ -10,7 +10,7 @@ from typing import Callable
 
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
 
@@ -132,10 +132,14 @@ class _TailModal(ModalScreen):
 
     Pops on top of the cockpit when the user presses 't' + agent index.
     Refreshes every 1 s via set_interval; dismiss on 't' or 'escape'.
+    Shows the last 100 lines in a scrollable pane (↑/↓/PgUp/PgDn) and
+    follows the tail (auto-scrolls to newest) unless the user scrolls up.
 
     capture_fn is injected (not imported) so the modal stays testable
     without subprocess access.
     """
+
+    TAIL_LINES = 100
 
     DEFAULT_CSS = """
     _TailModal {
@@ -147,6 +151,9 @@ class _TailModal(ModalScreen):
         border: round $accent;
         padding: 1 2;
     }
+    _TailModal #tail-scroll {
+        height: 1fr;
+    }
     """
 
     def __init__(self, pane_id: str, capture_fn: Callable[..., str]) -> None:
@@ -156,16 +163,27 @@ class _TailModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Static(f"tail {self.pane_id}   (t / esc to close)", markup=False)
-            yield Static("", id="tail-modal-body")
+            yield Static(
+                f"tail {self.pane_id}   (↑/↓/PgUp/PgDn to scroll · t / esc to close)",
+                markup=False,
+            )
+            with VerticalScroll(id="tail-scroll"):
+                yield Static("", id="tail-modal-body")
 
     def on_mount(self) -> None:
+        self.query_one("#tail-scroll", VerticalScroll).focus()
         self._refresh_tail()
         self.set_interval(1.0, self._refresh_tail)
 
     def _refresh_tail(self) -> None:
-        text = self._capture_fn(self.pane_id, lines=20)
+        scroll = self.query_one("#tail-scroll", VerticalScroll)
+        # Follow the tail only when the user is already pinned to the bottom;
+        # if they've scrolled up to read history, leave their position alone.
+        at_bottom = scroll.scroll_offset.y >= scroll.max_scroll_y
+        text = self._capture_fn(self.pane_id, lines=self.TAIL_LINES)
         self.query_one("#tail-modal-body", Static).update(text or "[dim](no output)[/]")
+        if at_bottom:
+            scroll.scroll_end(animate=False)
 
     def on_key(self, event: events.Key) -> None:
         if event.key in ("t", "escape"):

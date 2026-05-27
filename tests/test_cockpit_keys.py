@@ -638,7 +638,7 @@ async def test_shift_tab_cycles_pane_backward(tmp_path):
 
 
 def test_tail_modal_refresh_calls_capture_fn():
-    """_refresh_tail calls capture_fn(pane_id, lines=20) and updates Static body."""
+    """_refresh_tail captures TAIL_LINES (100) lines and updates the Static body."""
     from unittest.mock import MagicMock, patch
 
     from juggle_cockpit_modals import _TailModal
@@ -651,12 +651,20 @@ def test_tail_modal_refresh_calls_capture_fn():
 
     modal = _TailModal("%99", fake_capture)
     mock_body = MagicMock()
+    # Scroll container: pinned to the bottom (offset == max) so the tail follows.
+    mock_scroll = MagicMock()
+    mock_scroll.scroll_offset.y = 0
+    mock_scroll.max_scroll_y = 0
 
-    with patch.object(modal, "query_one", return_value=mock_body):
+    def fake_query_one(selector, _type=None):
+        return mock_scroll if selector == "#tail-scroll" else mock_body
+
+    with patch.object(modal, "query_one", side_effect=fake_query_one):
         modal._refresh_tail()
 
-    assert calls == [("%99", 20)], f"Expected [('%99', 20)], got {calls}"
+    assert calls == [("%99", 100)], f"Expected [('%99', 100)], got {calls}"
     mock_body.update.assert_called_once_with("line1\nline2")
+    mock_scroll.scroll_end.assert_called_once()  # followed the tail (was at bottom)
 
 
 @pytest.mark.asyncio
