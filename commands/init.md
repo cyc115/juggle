@@ -44,24 +44,28 @@ Options:
 - "No — skip memory, agents run without recall/retain"
 
 If No → run the config-write snippet below with `HINDSIGHT_ENABLED=0`, then stop.
-**Skip if `~/.juggle/config.json` already exists** — tell the user their existing config was preserved:
+This **regenerates** `config.json` from the current `DEFAULTS` (picking up any new
+keys added since the last init) and **merges the old config's values back on top**,
+so nothing the user customized is lost. Safe on both fresh and existing installs:
 
 ```bash
-if [ ! -f "$HOME/.juggle/config.json" ]; then
-  PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=0 \
-  python3 - << 'PYEOF'
+PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=0 \
+python3 - << 'PYEOF'
 import os, json, sys, copy
 sys.path.insert(0, os.environ["PLUGIN_SRC"])
-from juggle_settings import DEFAULTS
-cfg = copy.deepcopy(DEFAULTS)
-cfg["hindsight"]["enabled"] = os.environ.get("HINDSIGHT_ENABLED") == "1"
-with open(os.environ["CONFIG_OUT"], "w") as f:
-    json.dump(cfg, f, indent=2)
+from juggle_settings import DEFAULTS, _deep_merge
+from pathlib import Path
+config_path = Path(os.environ["CONFIG_OUT"])
+existed = config_path.exists()
+current = json.loads(config_path.read_text()) if existed else {}
+# New config from current DEFAULTS as base; old values merged on top (override wins).
+merged = _deep_merge(copy.deepcopy(DEFAULTS), current)
+if not existed:
+    merged["hindsight"]["enabled"] = os.environ.get("HINDSIGHT_ENABLED") == "1"
+config_path.write_text(json.dumps(merged, indent=2))
+print("Regenerated config.json (merged old values)" if existed else "Created config.json")
 PYEOF
-  python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
-else
-  echo "config.json already exists — skipping (preserved existing)"
-fi
+python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
 ```
 
 **Q2: OpenRouter API Key**
@@ -112,22 +116,26 @@ else
   echo ".env already exists — skipping (preserved existing)"
 fi
 
-# Write config.json only if it doesn't already exist
-if [ ! -f "$HOME/.juggle/config.json" ]; then
-  PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=1 \
-  python3 - << 'PYEOF'
+# Write config.json. On a rerun we DON'T skip — we backfill any new default
+# keys (e.g. tmux.ready_poll_*) into the existing file while preserving every
+# value the user already set. Fresh installs get the full DEFAULTS.
+PLUGIN_SRC="${CLAUDE_PLUGIN_ROOT}/src" CONFIG_OUT="$HOME/.juggle/config.json" HINDSIGHT_ENABLED=1 \
+python3 - << 'PYEOF'
 import os, json, sys, copy
 sys.path.insert(0, os.environ["PLUGIN_SRC"])
-from juggle_settings import DEFAULTS
-cfg = copy.deepcopy(DEFAULTS)
-cfg["hindsight"]["enabled"] = os.environ.get("HINDSIGHT_ENABLED") == "1"
-with open(os.environ["CONFIG_OUT"], "w") as f:
-    json.dump(cfg, f, indent=2)
+from juggle_settings import DEFAULTS, _deep_merge
+from pathlib import Path
+config_path = Path(os.environ["CONFIG_OUT"])
+existed = config_path.exists()
+current = json.loads(config_path.read_text()) if existed else {}
+# Backfill missing defaults; user-set values win (override beats base).
+merged = _deep_merge(copy.deepcopy(DEFAULTS), current)
+if not existed:
+    merged["hindsight"]["enabled"] = os.environ.get("HINDSIGHT_ENABLED") == "1"
+config_path.write_text(json.dumps(merged, indent=2))
+print(("Backfilled new default keys into" if existed else "Created") + " config.json")
 PYEOF
-  python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
-else
-  echo "config.json already exists — skipping (preserved existing)"
-fi
+python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
 
 # Start service
 docker compose --env-file ~/.juggle/.env -f ${CLAUDE_PLUGIN_ROOT}/docker/docker-compose.yml up -d
