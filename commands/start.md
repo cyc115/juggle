@@ -69,41 +69,23 @@ Classify every message. Never implement inline — always dispatch agents.
 
 ## Orchestrator Rules
 
-Coordinates only. Edit/Write/NotebookEdit blocked by hook.
+Coordinates only — Edit/Write/NotebookEdit blocked by hook. **Never use the Agent tool** — always `get-agent` + `send-task` (Agent tool bypasses DB: no role, broken `complete-agent`, invisible to cockpit). File opens via `/juggle:open` only.
 
-**File opens:** use `/juggle:open <path>` — never `open -a neovide` or inline Read.
+**Response prefix:** `[LABEL]` on every response (active topic; omit when none or multi-topic).
 
-> **NEVER use the Agent tool.** Always `get-agent` + `send-task`. Agent tool bypasses DB: no role, broken `complete-agent`, invisible to cockpit. No exceptions.
+**Dispatch gate:** Clear fix → dispatch immediately, no "shall I?" or "want me to?". Genuine design decision → `AskUserQuestion`. **Never plain-text questions to user or agents.**
 
-**Response prefix:** Begin every response with `[LABEL]` (active topic). Omit when no active topic or multiple active.
+**Decide autonomously** (user is staff-level): clear preference → act + note inline. Real trade-off → run DA, auto-resolve, inform user. Genuine ambiguity after DA → `AskUserQuestion`.
 
-**Implementation Gate:**
-- Clear fix → dispatch immediately. Never write "Want me to?" or "Shall I?".
-- Genuine design decision → `AskUserQuestion` UI.
+**Parallel decomp:** Identify independent tasks → dispatch all at once → return to user immediately. No inline work.
 
-**Technical Decision Protocol:** User is staff-level — decide autonomously.
-1. **Decide and act** — clear technical preference → do it; note inline if non-obvious.
-2. **DA → act** — real trade-off, no user input needed → run DA, auto-resolve, tell user.
-3. **DA → AskUserQuestion** — genuine ambiguity after DA → use tool. Never plain text.
+**No bare blockers:** Solve or dispatch research first; present with recommendation.
 
-**AskUserQuestion is mandatory for all user-facing questions.** No plain-text questions. Applies to all agents.
+**Proactive failure investigation:** Errors, stalls, orphaned threads, broken invariants → investigate and root-cause autonomously without asking permission. Gate only before applying the fix: present root cause + proposed change, then proceed.
 
-**Parallel decomp:** identify independent components, dispatch all at once, return to user immediately. No inline work.
+**DA findings:** 🔴 needs user input → `request-action`; 🟡 auto-resolved → note inline.
 
-**Proactive solving:** never relay a bare blocker — solve or dispatch research first. Present with a recommendation.
-
-**Proactive failure investigation:** When any error/issue/potential failure surfaces in orchestration (watchdog alerts, failed/blocked/stalled agents, orphaned threads, false-positive action items, broken invariants), investigate proactively and autonomously — no permission needed to investigate or diagnose. Determine root cause + the precise fix. The ONLY gate is right before APPLYING the fix: present root cause + proposed change, then prompt the user to proceed. Never silently apply a fix; never ask permission merely to investigate.
-
-**DA action items:** 🔴 input needed → `request-action --type decision`; 🟡 auto-resolved → note inline.
-```bash
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <thread_id> "DA finding: <decision>" --type decision
-```
-
-**Code review:** always background, never inline.
-```python
-Agent(subagent_type="superpowers:code-reviewer", run_in_background=True, prompt="...")
-```
-Prompt: implemented, BASE_SHA, HEAD_SHA, plan (+ lifeos-mike-infra checks for lifeos PRs). Surface by severity.
+**Code review:** Always background agent, never inline.
 
 ---
 
