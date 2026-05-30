@@ -248,6 +248,64 @@ def cmd_open_in_editor(args):
     _obsidian_fallback(abs_file)
 
 
+def _cmd_list_selfheal(args):
+    from juggle_db import JuggleDB, DB_PATH
+    from pathlib import Path as _Path
+    db = JuggleDB(getattr(args, "db_path", None) or str(DB_PATH))
+    db.init_db()
+    rows = db.get_open_error_events()
+    if not rows:
+        print("No pending self-heal errors.")
+        return
+    for row in rows:
+        sig8 = (row["signature_hash"] or "")[:8]
+        cls = row["error_class"]
+        status = row["status"]
+        count = row["count"]
+        last = (row["last_seen"] or "")[:16]
+        if cls == "A":
+            detail = f"{row['exc_type'] or '?'} in {row['entrypoint'] or '?'}"
+        else:
+            ref = _Path(row["juggle_ref"] or "").name or row["juggle_ref"] or "?"
+            detail = f"{row['entrypoint'] or '?'} error via {ref}"
+        print(f"{row['id']:>4}  [{cls}]  {status:<20} count={count}  last={last}  sig={sig8}  {detail}")
+
+
+def _cmd_selfheal_set_status(args):
+    from juggle_db import JuggleDB, DB_PATH
+    db = JuggleDB(getattr(args, "db_path", None) or str(DB_PATH))
+    db.init_db()
+    valid = ("open", "diagnosing", "awaiting_approval", "resolved")
+    if args.status not in valid:
+        print(f"error: invalid status {args.status!r}; choose from {valid}")
+        sys.exit(1)
+    updated = db.set_error_event_status(args.id, args.status, action_item_id=args.action_item_id)
+    if updated:
+        print(f"error_event {args.id} status \u2192 {args.status}")
+    else:
+        print(f"error: row {args.id} not found")
+        sys.exit(1)
+
+
+def _cmd_selfheal_reset_diagnosing(args):
+    from juggle_db import JuggleDB, DB_PATH
+    db = JuggleDB(getattr(args, "db_path", None) or str(DB_PATH))
+    db.init_db()
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT status FROM error_events WHERE id = ?", (args.id,)
+        ).fetchone()
+    if not row:
+        print(f"error: row {args.id} not found")
+        sys.exit(1)
+    if row["status"] != "diagnosing":
+        print(f"error: row {args.id} not in diagnosing state (current: {row['status']})")
+        sys.exit(1)
+    db.set_error_event_status(args.id, "open")
+    print(f"reset error_event {args.id} diagnosing\u2192open")
+
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Juggle CLI - multi-topic conversation orchestrator"
@@ -547,6 +605,20 @@ def main():
     p_recall_bg.add_argument("query")
     p_recall_bg.set_defaults(func=cmd_recall_bg)
 
+    # selfheal subcommands
+    p_list_selfheal = subparsers.add_parser("list-selfheal", help="List pending self-heal errors")
+    p_list_selfheal.set_defaults(func=_cmd_list_selfheal)
+
+    p_sh_set = subparsers.add_parser("selfheal-set-status", help="Update error_event status")
+    p_sh_set.add_argument("id", type=int, help="error_events.id")
+    p_sh_set.add_argument("status", help="open|diagnosing|awaiting_approval|resolved")
+    p_sh_set.add_argument("--action-item-id", type=int, dest="action_item_id", default=None)
+    p_sh_set.set_defaults(func=_cmd_selfheal_set_status)
+
+    p_sh_reset = subparsers.add_parser("selfheal-reset-diagnosing", help="Reset stuck diagnosing->open")
+    p_sh_reset.add_argument("id", type=int, help="error_events.id")
+    p_sh_reset.set_defaults(func=_cmd_selfheal_reset_diagnosing)
+
     # recall-if-cold
     p_recall_cold = subparsers.add_parser(
         "recall-if-cold", help="Recall only if thread is cold"
@@ -699,6 +771,8 @@ def main():
     try:
         args.func(args)
     except Exception as e:
+        from juggle_selfheal import record_error
+        record_error(e, "juggle_cli.main", {"argv": sys.argv})
         print(f"Error: {e}")
         sys.exit(1)
 

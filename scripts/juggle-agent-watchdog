@@ -191,8 +191,13 @@ def main() -> None:
                 sys.exit(0)
             try:
                 _poll_once(db, mgr)
-            except Exception:
+            except Exception as exc:
                 _log.exception("Watchdog: unhandled error in poll — continuing")
+                try:
+                    from juggle_selfheal import record_error
+                    record_error(exc, "juggle_watchdog.poll")
+                except Exception:
+                    pass
             time.sleep(_POLL_INTERVAL)
     finally:
         pid_file.unlink(missing_ok=True)

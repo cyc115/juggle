@@ -1,0 +1,81 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12,<3.14"
+# dependencies = []
+# ///
+"""juggle-selfheal-monitor — streams self-heal events to stdout for Monitor tool.
+
+Format:
+  Class A: [SELFHEAL-A] <exc_type> in <entrypoint>: <truncated_tb> (count=N)
+  Class B: [SELFHEAL-B] <tool_name> error via <juggle_ref_basename>: <err_fragment> (count=N)
+
+Re-emits open rows not yet claimed after 60s (starvation mitigation).
+"""
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from juggle_settings import get_settings
+
+
+def _db_path() -> Path:
+    return Path(get_settings()["paths"]["data_dir"]) / "juggle.db"
+
+
+def _format_line(row: sqlite3.Row) -> str:
+    cls = row["error_class"]
+    count = row["count"]
+    if cls == "A":
+        exc = row["exc_type"] or "?"
+        ep = row["entrypoint"] or "?"
+        tb = (row["traceback"] or "")[:60].replace("\n", " ")
+        return f"[SELFHEAL-A] {exc} in {ep}: {tb} (count={count})"
+    else:
+        tool = row["entrypoint"] or "?"
+        ref = row["juggle_ref"] or ""
+        ref_base = Path(ref).name if "/" in ref else ref.split(":")[0] or ref
+        err = (row["traceback"] or "")[:60].replace("\n", " ")
+        return f"[SELFHEAL-B] {tool} error via {ref_base}: {err} (count={count})"
+
+
+def _poll(db_path: Path, emitted: dict[int, float]) -> dict[int, float]:
+    now = time.time()
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM error_events WHERE status = 'open' ORDER BY id"
+        ).fetchall()
+        conn.close()
+    except sqlite3.OperationalError:
+        return emitted
+
+    current_ids = {row["id"] for row in rows}
+    emitted = {k: v for k, v in emitted.items() if k in current_ids}
+
+    for row in rows:
+        rid = row["id"]
+        first_emitted = emitted.get(rid)
+        if first_emitted is None:
+            print(_format_line(row), flush=True)
+            emitted[rid] = now
+        elif now - first_emitted >= 60:
+            print(_format_line(row), flush=True)
+            emitted[rid] = now
+
+    return emitted
+
+
+def main() -> None:
+    db_path = _db_path()
+    emitted: dict[int, float] = {}
+
+    while True:
+        emitted = _poll(db_path, emitted)
+        time.sleep(2)
+
+
+if __name__ == "__main__":
+    main()
