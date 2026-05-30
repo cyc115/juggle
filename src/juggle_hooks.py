@@ -25,6 +25,11 @@ from juggle_settings import get_settings as _get_settings
 _DATA_DIR = Path(_get_settings()["paths"]["data_dir"]).expanduser()
 DB_PATH = _DATA_DIR / "juggle.db"
 
+# Flag file written by /juggle:toggle-autopilot. Its presence means autopilot
+# mode is ON. Read here so the directive is re-asserted on every prompt — a
+# prompt-only toggle would be forgotten on the next turn.
+AUTOPILOT_FLAG = Path.home() / ".juggle" / "autopilot"
+
 logging.basicConfig(
     filename=str(_DATA_DIR / "juggle.log"),
     level=logging.INFO,
@@ -56,6 +61,35 @@ def is_active() -> bool:
 
 def get_db() -> JuggleDB:
     return JuggleDB(str(DB_PATH))
+
+
+# Concise re-assertion of the /juggle:toggle-autopilot loop. The full loop lives
+# in commands/toggle-autopilot.md; this is injected every turn so the behavior
+# persists once the flag is set, instead of relying on the model remembering it.
+_AUTOPILOT_DIRECTIVE = (
+    "--- AUTOPILOT MODE: ON ---\n"
+    "Autopilot is engaged (~/.juggle/autopilot present). Drive every requested "
+    "feature to completion autonomously — do NOT pause for approval:\n"
+    "1. Per feature: brainstorm/spec → devil's-advocate critique → resolve open "
+    "questions yourself at staff level (decide, note why, proceed).\n"
+    "2. Implement on a feature branch via dispatched agents (TDD); verify each "
+    "feature with a harness before starting the next.\n"
+    "3. Self-unblock: on a blocker or stalled agent, diagnose → recover → continue.\n"
+    "4. Escalate ONLY for: missing credentials, an irreversible/destructive "
+    "external action, or a product-direction fork with no defensible default.\n"
+    "Toggle off with /juggle:toggle-autopilot. See commands/toggle-autopilot.md "
+    "for the full loop."
+)
+
+
+def _autopilot_context() -> str:
+    """Return the autopilot directive if the flag file is set, else ''."""
+    try:
+        if AUTOPILOT_FLAG.exists():
+            return _AUTOPILOT_DIRECTIVE
+    except Exception as exc:
+        logging.warning("autopilot flag check failed: %s", exc)
+    return ""
 
 
 def _get_session_id(db) -> str:
@@ -209,19 +243,34 @@ def auto_approve_blocked_agents() -> None:
 
 
 def handle_user_prompt_submit(data: dict) -> None:
-    """Inject juggle context and record the user prompt."""
+    """Inject juggle context (plus autopilot directive) and record the user prompt."""
+    autopilot = _autopilot_context()
+
+    # Autopilot is independent of juggle mode — re-assert it even when inactive.
     if not is_active():
+        if autopilot:
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "UserPromptSubmit",
+                            "additionalContext": autopilot,
+                        }
+                    }
+                )
+            )
         sys.exit(0)
 
     auto_approve_blocked_agents()
 
     try:
         context = build_context_string()
-        if context:
+        combined = "\n\n".join(part for part in (autopilot, context) if part)
+        if combined:
             output = {
                 "hookSpecificOutput": {
                     "hookEventName": "UserPromptSubmit",
-                    "additionalContext": context,
+                    "additionalContext": combined,
                 }
             }
             print(json.dumps(output))
