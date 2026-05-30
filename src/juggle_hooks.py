@@ -22,9 +22,7 @@ from juggle_db import JuggleDB
 from juggle_context import build_context_string
 from juggle_settings import get_settings as _get_settings
 
-_DATA_DIR = Path(
-    os.environ.get("CLAUDE_PLUGIN_DATA", _get_settings()["paths"]["data_dir"])
-)
+_DATA_DIR = Path(_get_settings()["paths"]["data_dir"]).expanduser()
 DB_PATH = _DATA_DIR / "juggle.db"
 
 logging.basicConfig(
