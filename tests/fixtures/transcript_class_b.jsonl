@@ -1,0 +1,3 @@
+{"type":"user","message":{"role":"user","content":"start juggle"},"sessionId":"test-session"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_001","name":"Skill","input":{"skill":"juggle:start"},"caller":"user"}]},"sessionId":"test-session"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_001","is_error":true,"content":"InputValidationError: 'command' is a required property"}]},"sessionId":"test-session"}
