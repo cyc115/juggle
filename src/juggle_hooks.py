@@ -334,6 +334,17 @@ def handle_session_start(data: dict) -> None:
             from juggle_context import build_startup_output
 
             additional_context = build_startup_output(db)
+            # Append self-heal pending count
+            try:
+                from juggle_selfheal import _get_pending_selfheal_count
+                pending = _get_pending_selfheal_count(db)
+                if pending > 0:
+                    additional_context += (
+                        f"\n\u26a0\ufe0f {pending} pending self-heal error(s) \u2014 "
+                        "run `list-selfheal` to review."
+                    )
+            except Exception:
+                pass
             output = {
                 "hookSpecificOutput": {
                     "hookEventName": "SessionStart",
