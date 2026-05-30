@@ -32,10 +32,18 @@ def _get_hindsight_client():
     return HindsightClient.from_config()
 
 
-def get_db():
+def get_db(db_path=None, init=False):
+    """Return a JuggleDB handle.
+
+    db_path: optional override; falls back to the module DB_PATH (which honors
+             _JUGGLE_TEST_DB). init: call init_db() before returning.
+    """
     from juggle_db import JuggleDB
 
-    return JuggleDB(str(DB_PATH))
+    db = JuggleDB(str(db_path) if db_path else str(DB_PATH))
+    if init:
+        db.init_db()
+    return db
 
 
 def _resolve_thread(db, thread_id_input: str) -> str:

@@ -83,18 +83,6 @@ def _matches_plan(summary: str) -> bool:
     return any(p.search(summary) for p in _PLAN_PATTERNS)
 
 
-def cmd_set_agent(args):
-    db = get_db()
-    thread_uuid = _resolve_thread(db, args.thread_id)
-    thread = db.get_thread(thread_uuid)
-    if not thread:
-        print(f"Error: Thread {args.thread_id} not found.")
-        sys.exit(1)
-    db.update_thread(thread_uuid, agent_task_id=args.task_id, status="background")
-    label = thread.get("user_label") or thread.get("label") or args.thread_id
-    print(f"Thread {label} agent task set: {args.task_id}")
-
-
 def cmd_complete_agent(args):
     """Mark agent complete: thread → closed, create notifications_v2 row,
     convert any open_questions to action_items."""

@@ -237,7 +237,6 @@ python3 juggle_cli.py fail-agent B "API timeout"
 | `get-agent <id> [--role ROLE] [--model MODEL]` | Get idle agent or spawn new |
 | `release-agent <id> [--force]` | Return agent to idle pool |
 | `decommission-agent <id>` | Kill agent pane + remove from DB |
-| `set-agent <id> <task_id>` | Link agent task to thread |
 | `check-agents` | List agents as JSON |
 | `send-task <agent_id> <prompt_file>` | Send prompt to agent |
 | `set-watchdog <agent_id> <minutes\|off>` | Configure watchdog threshold |
@@ -281,12 +280,6 @@ python3 juggle_cli.py fail-agent B "API timeout"
 | `schedule-dogfood [--dry-run]` | Run /schedule:dogfood (Sat 03:00) |
 | `schedule-autofix [--dry-run]` | Run /schedule:autofix (Sun 03:00) |
 | `schedule-reflect [--dry-run]` | Run /schedule:reflect (Mon 03:00) |
-
-### Internal
-| Command | Description |
-|---|---|
-| `record-pending-decision --tool-use-id ID --questions-json JSON` | Record user decision questions |
-| `clear-pending-decision --tool-use-id ID` | Clear pending decisions |
 
 ## Status Symbols
 
