@@ -5003,18 +5003,18 @@
       "file_type": "rationale",
       "source_file": "tests/test_juggle_tmux.py",
       "source_location": "L611",
-      "id": "tests_test_juggle_tmux_rationale_611",
       "community": 0,
-      "norm_label": "when stuck on collapsed paste (no insert mode), escape is not sent \u2014 only c-m."
+      "norm_label": "when stuck on collapsed paste (no insert mode), escape is not sent \u2014 only c-m.",
+      "id": "tests_test_juggle_tmux_rationale_611"
     },
     {
       "label": "Stuck-at-prompt state buried in scrollback tail is still detected and retried.",
       "file_type": "rationale",
       "source_file": "tests/test_juggle_tmux.py",
       "source_location": "L637",
-      "id": "tests_test_juggle_tmux_rationale_637",
       "community": 0,
-      "norm_label": "stuck-at-prompt state buried in scrollback tail is still detected and retried."
+      "norm_label": "stuck-at-prompt state buried in scrollback tail is still detected and retried.",
+      "id": "tests_test_juggle_tmux_rationale_637"
     },
     {
       "label": "test_cockpit_model.py",
@@ -13148,27 +13148,27 @@
       "file_type": "rationale",
       "source_file": "tests/test_context_injection_v2.py",
       "source_location": "L107",
-      "id": "tests_test_context_injection_v2_rationale_107",
       "community": 10,
-      "norm_label": "session with no watermark gets at most 5 most-recent notifications."
+      "norm_label": "session with no watermark gets at most 5 most-recent notifications.",
+      "id": "tests_test_context_injection_v2_rationale_107"
     },
     {
       "label": "Session with watermark only sees notifications added after it.",
       "file_type": "rationale",
       "source_file": "tests/test_context_injection_v2.py",
       "source_location": "L117",
-      "id": "tests_test_context_injection_v2_rationale_117",
       "community": 10,
-      "norm_label": "session with watermark only sees notifications added after it."
+      "norm_label": "session with watermark only sees notifications added after it.",
+      "id": "tests_test_context_injection_v2_rationale_117"
     },
     {
       "label": "Two CLAUDE_CODE_SESSION_IDs each get their own independent watermark.",
       "file_type": "rationale",
       "source_file": "tests/test_context_injection_v2.py",
       "source_location": "L130",
-      "id": "tests_test_context_injection_v2_rationale_130",
       "community": 10,
-      "norm_label": "two claude_code_session_ids each get their own independent watermark."
+      "norm_label": "two claude_code_session_ids each get their own independent watermark.",
+      "id": "tests_test_context_injection_v2_rationale_130"
     },
     {
       "label": "conftest.py",
@@ -15659,18 +15659,18 @@
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1054",
-      "id": "src_juggle_db_rationale_1054",
       "community": 0,
-      "norm_label": "return notifications with id > last_id for session_id (oldest-first)."
+      "norm_label": "return notifications with id > last_id for session_id (oldest-first).",
+      "id": "src_juggle_db_rationale_1054"
     },
     {
       "label": "Return the last-seen notification ID for this Claude session, or None if unseen.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1065",
-      "id": "src_juggle_db_rationale_1065",
       "community": 0,
-      "norm_label": "return the last-seen notification id for this claude session, or none if unseen."
+      "norm_label": "return the last-seen notification id for this claude session, or none if unseen.",
+      "id": "src_juggle_db_rationale_1065"
     },
     {
       "label": "Open action items ordered by (priority: high > normal > low), then created_at DE",
@@ -15686,144 +15686,144 @@
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1076",
-      "id": "src_juggle_db_rationale_1076",
       "community": 0,
-      "norm_label": "delete notifications_v2 whose session_id != current. returns rows deleted."
+      "norm_label": "delete notifications_v2 whose session_id != current. returns rows deleted.",
+      "id": "src_juggle_db_rationale_1076"
     },
     {
       "label": "Open action items ordered by (priority: high > normal > low), then created_at DE",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1103",
-      "id": "src_juggle_db_rationale_1103",
       "community": 0,
-      "norm_label": "open action items ordered by (priority: high > normal > low), then created_at de"
+      "norm_label": "open action items ordered by (priority: high > normal > low), then created_at de",
+      "id": "src_juggle_db_rationale_1103"
     },
     {
       "label": "Dismiss all open action items for thread_id. Returns count dismissed.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1127",
-      "id": "src_juggle_db_rationale_1127",
       "community": 0,
-      "norm_label": "dismiss all open action items for thread_id. returns count dismissed."
+      "norm_label": "dismiss all open action items for thread_id. returns count dismissed.",
+      "id": "src_juggle_db_rationale_1127"
     },
     {
       "label": "Insert new error_events row or increment count on duplicate.          Returns ne",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1153",
-      "id": "src_juggle_db_rationale_1153",
       "community": 0,
-      "norm_label": "insert new error_events row or increment count on duplicate.          returns ne"
+      "norm_label": "insert new error_events row or increment count on duplicate.          returns ne",
+      "id": "src_juggle_db_rationale_1153"
     },
     {
       "label": "Update status (and optionally action_item_id) for an error_events row.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1190",
-      "id": "src_juggle_db_rationale_1190",
       "community": 0,
-      "norm_label": "update status (and optionally action_item_id) for an error_events row."
+      "norm_label": "update status (and optionally action_item_id) for an error_events row.",
+      "id": "src_juggle_db_rationale_1190"
     },
     {
       "label": "Return all non-resolved error_events rows, newest last.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1210",
-      "id": "src_juggle_db_rationale_1210",
       "community": 0,
-      "norm_label": "return all non-resolved error_events rows, newest last."
+      "norm_label": "return all non-resolved error_events rows, newest last.",
+      "id": "src_juggle_db_rationale_1210"
     },
     {
       "label": "Return count of non-resolved error_events rows.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1218",
-      "id": "src_juggle_db_rationale_1218",
       "community": 0,
-      "norm_label": "return count of non-resolved error_events rows."
+      "norm_label": "return count of non-resolved error_events rows.",
+      "id": "src_juggle_db_rationale_1218"
     },
     {
       "label": "Set status='archived', show_in_list=0. Preserves user_label.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1233",
-      "id": "src_juggle_db_rationale_1233",
       "community": 0,
-      "norm_label": "set status='archived', show_in_list=0. preserves user_label."
+      "norm_label": "set status='archived', show_in_list=0. preserves user_label.",
+      "id": "src_juggle_db_rationale_1233"
     },
     {
       "label": "Unarchive: status=active, show_in_list=1, user_label preserved.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1244",
-      "id": "src_juggle_db_rationale_1244",
       "community": 0,
-      "norm_label": "unarchive: status=active, show_in_list=1, user_label preserved."
+      "norm_label": "unarchive: status=active, show_in_list=1, user_label preserved.",
+      "id": "src_juggle_db_rationale_1244"
     },
     {
       "label": "Create a new agent record. Returns the agent UUID.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1261",
-      "id": "src_juggle_db_rationale_1261",
       "community": 0,
-      "norm_label": "create a new agent record. returns the agent uuid."
+      "norm_label": "create a new agent record. returns the agent uuid.",
+      "id": "src_juggle_db_rationale_1261"
     },
     {
       "label": "Look up an agent by UUID. Returns None if not found.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1277",
-      "id": "src_juggle_db_rationale_1277",
       "community": 0,
-      "norm_label": "look up an agent by uuid. returns none if not found."
+      "norm_label": "look up an agent by uuid. returns none if not found.",
+      "id": "src_juggle_db_rationale_1277"
     },
     {
       "label": "Return all agents ordered by creation time.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1285",
-      "id": "src_juggle_db_rationale_1285",
       "community": 0,
-      "norm_label": "return all agents ordered by creation time."
+      "norm_label": "return all agents ordered by creation time.",
+      "id": "src_juggle_db_rationale_1285"
     },
     {
       "label": "Update any column(s) on an agent row. Serializes list values to JSON.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1291",
-      "id": "src_juggle_db_rationale_1291",
       "community": 0,
-      "norm_label": "update any column(s) on an agent row. serializes list values to json."
+      "norm_label": "update any column(s) on an agent row. serializes list values to json.",
+      "id": "src_juggle_db_rationale_1291"
     },
     {
       "label": "Delete an agent record.",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1307",
-      "id": "src_juggle_db_rationale_1307",
       "community": 0,
-      "norm_label": "delete an agent record."
+      "norm_label": "delete an agent record.",
+      "id": "src_juggle_db_rationale_1307"
     },
     {
       "label": "Return the best idle agent for a given thread using scoring.          Scoring (h",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1313",
-      "id": "src_juggle_db_rationale_1313",
       "community": 0,
-      "norm_label": "return the best idle agent for a given thread using scoring.          scoring (h"
+      "norm_label": "return the best idle agent for a given thread using scoring.          scoring (h",
+      "id": "src_juggle_db_rationale_1313"
     },
     {
       "label": "Return threads that are candidates for archiving.          A thread qualifies if",
       "file_type": "rationale",
       "source_file": "src/juggle_db.py",
       "source_location": "L1414",
-      "id": "src_juggle_db_rationale_1414",
       "community": 0,
-      "norm_label": "return threads that are candidates for archiving.          a thread qualifies if"
+      "norm_label": "return threads that are candidates for archiving.          a thread qualifies if",
+      "id": "src_juggle_db_rationale_1414"
     },
     {
       "label": "juggle_cmd_threads.py",
@@ -19709,63 +19709,63 @@
       "file_type": "rationale",
       "source_file": "src/juggle_context.py",
       "source_location": "L247",
-      "id": "src_juggle_context_rationale_247",
       "community": 10,
-      "norm_label": "trim text to at most `limit` chars while preserving the header/footer lines"
+      "norm_label": "trim text to at most `limit` chars while preserving the header/footer lines",
+      "id": "src_juggle_context_rationale_247"
     },
     {
       "label": "Module-level convenience function for use by the UserPromptSubmit hook.      Ret",
       "file_type": "rationale",
       "source_file": "src/juggle_context.py",
       "source_location": "L287",
-      "id": "src_juggle_context_rationale_287",
       "community": 10,
-      "norm_label": "module-level convenience function for use by the userpromptsubmit hook.      ret"
+      "norm_label": "module-level convenience function for use by the userpromptsubmit hook.      ret",
+      "id": "src_juggle_context_rationale_287"
     },
     {
       "label": "Return emoji state string for a thread dict.      Returns one of: \"\ud83d\udc49\", \"\ud83c\udfc3\u200d\u2642\ufe0f\", \"",
       "file_type": "rationale",
       "source_file": "src/juggle_context.py",
       "source_location": "L298",
-      "id": "src_juggle_context_rationale_298",
       "community": 8,
-      "norm_label": "return emoji state string for a thread dict.      returns one of: \"\ud83d\udc49\", \"\ud83c\udfc3\u200d\u2642\ufe0f\", \""
+      "norm_label": "return emoji state string for a thread dict.      returns one of: \"\ud83d\udc49\", \"\ud83c\udfc3\u200d\u2642\ufe0f\", \"",
+      "id": "src_juggle_context_rationale_298"
     },
     {
       "label": "Return up to 2 Hindsight snippet lines for a topic. Empty list on any failure.",
       "file_type": "rationale",
       "source_file": "src/juggle_context.py",
       "source_location": "L389",
-      "id": "src_juggle_context_rationale_389",
       "community": 10,
-      "norm_label": "return up to 2 hindsight snippet lines for a topic. empty list on any failure."
+      "norm_label": "return up to 2 hindsight snippet lines for a topic. empty list on any failure.",
+      "id": "src_juggle_context_rationale_389"
     },
     {
       "label": "Render the topics tree as a string. Returns 'No topics.' if no visible threads.",
       "file_type": "rationale",
       "source_file": "src/juggle_context.py",
       "source_location": "L407",
-      "id": "src_juggle_context_rationale_407",
       "community": 10,
-      "norm_label": "render the topics tree as a string. returns 'no topics.' if no visible threads."
+      "norm_label": "render the topics tree as a string. returns 'no topics.' if no visible threads.",
+      "id": "src_juggle_context_rationale_407"
     },
     {
       "label": "Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou",
       "file_type": "rationale",
       "source_file": "src/juggle_context.py",
       "source_location": "L522",
-      "id": "src_juggle_context_rationale_522",
       "community": 10,
-      "norm_label": "archive any closed thread whose last_active_at exceeds the ttl.      returns cou"
+      "norm_label": "archive any closed thread whose last_active_at exceeds the ttl.      returns cou",
+      "id": "src_juggle_context_rationale_522"
     },
     {
       "label": "Full enriched startup string: topics tree + per-thread Hindsight recalls.      C",
       "file_type": "rationale",
       "source_file": "src/juggle_context.py",
       "source_location": "L548",
-      "id": "src_juggle_context_rationale_548",
       "community": 10,
-      "norm_label": "full enriched startup string: topics tree + per-thread hindsight recalls.      c"
+      "norm_label": "full enriched startup string: topics tree + per-thread hindsight recalls.      c",
+      "id": "src_juggle_context_rationale_548"
     },
     {
       "label": "juggle_cockpit_modals.py",
@@ -47422,9 +47422,9 @@
       "weight": 0.8,
       "_src": "tests_test_juggle_tmux_rationale_611",
       "_tgt": "src_juggle_tmux_juggletmuxmanager",
+      "confidence_score": 0.5,
       "source": "tests_test_juggle_tmux_rationale_611",
-      "target": "src_juggle_tmux_juggletmuxmanager",
-      "confidence_score": 0.5
+      "target": "src_juggle_tmux_juggletmuxmanager"
     },
     {
       "relation": "uses",
@@ -47434,9 +47434,9 @@
       "weight": 0.8,
       "_src": "tests_test_juggle_tmux_rationale_611",
       "_tgt": "src_juggle_db_juggledb",
+      "confidence_score": 0.5,
       "source": "tests_test_juggle_tmux_rationale_611",
-      "target": "src_juggle_db_juggledb",
-      "confidence_score": 0.5
+      "target": "src_juggle_db_juggledb"
     },
     {
       "relation": "uses",
@@ -47446,9 +47446,9 @@
       "weight": 0.8,
       "_src": "tests_test_juggle_tmux_rationale_637",
       "_tgt": "src_juggle_tmux_juggletmuxmanager",
+      "confidence_score": 0.5,
       "source": "tests_test_juggle_tmux_rationale_637",
-      "target": "src_juggle_tmux_juggletmuxmanager",
-      "confidence_score": 0.5
+      "target": "src_juggle_tmux_juggletmuxmanager"
     },
     {
       "relation": "uses",
@@ -47458,9 +47458,9 @@
       "weight": 0.8,
       "_src": "tests_test_juggle_tmux_rationale_637",
       "_tgt": "src_juggle_db_juggledb",
+      "confidence_score": 0.5,
       "source": "tests_test_juggle_tmux_rationale_637",
-      "target": "src_juggle_db_juggledb",
-      "confidence_score": 0.5
+      "target": "src_juggle_db_juggledb"
     },
     {
       "relation": "contains",
@@ -68854,9 +68854,9 @@
       "weight": 0.8,
       "_src": "tests_test_context_injection_v2_rationale_107",
       "_tgt": "src_juggle_db_juggledb",
+      "confidence_score": 0.5,
       "source": "tests_test_context_injection_v2_rationale_107",
-      "target": "src_juggle_db_juggledb",
-      "confidence_score": 0.5
+      "target": "src_juggle_db_juggledb"
     },
     {
       "relation": "uses",
@@ -68866,9 +68866,9 @@
       "weight": 0.8,
       "_src": "tests_test_context_injection_v2_rationale_117",
       "_tgt": "src_juggle_db_juggledb",
+      "confidence_score": 0.5,
       "source": "tests_test_context_injection_v2_rationale_117",
-      "target": "src_juggle_db_juggledb",
-      "confidence_score": 0.5
+      "target": "src_juggle_db_juggledb"
     },
     {
       "relation": "uses",
@@ -68878,9 +68878,9 @@
       "weight": 0.8,
       "_src": "tests_test_context_injection_v2_rationale_130",
       "_tgt": "src_juggle_db_juggledb",
+      "confidence_score": 0.5,
       "source": "tests_test_context_injection_v2_rationale_130",
-      "target": "src_juggle_db_juggledb",
-      "confidence_score": 0.5
+      "target": "src_juggle_db_juggledb"
     },
     {
       "relation": "contains",
@@ -74984,11 +74984,11 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L7",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_247",
-      "_tgt": "src_juggle_db_juggledb",
+      "_src": "src_juggle_db_juggledb",
+      "_tgt": "src_juggle_context_rationale_247",
+      "confidence_score": 0.5,
       "source": "src_juggle_db_juggledb",
-      "target": "src_juggle_context_rationale_247",
-      "confidence_score": 0.5
+      "target": "src_juggle_context_rationale_247"
     },
     {
       "relation": "uses",
@@ -74996,11 +74996,11 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L7",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_287",
-      "_tgt": "src_juggle_db_juggledb",
+      "_src": "src_juggle_db_juggledb",
+      "_tgt": "src_juggle_context_rationale_287",
+      "confidence_score": 0.5,
       "source": "src_juggle_db_juggledb",
-      "target": "src_juggle_context_rationale_287",
-      "confidence_score": 0.5
+      "target": "src_juggle_context_rationale_287"
     },
     {
       "relation": "uses",
@@ -75008,11 +75008,11 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L7",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_298",
-      "_tgt": "src_juggle_db_juggledb",
+      "_src": "src_juggle_db_juggledb",
+      "_tgt": "src_juggle_context_rationale_298",
+      "confidence_score": 0.5,
       "source": "src_juggle_db_juggledb",
-      "target": "src_juggle_context_rationale_298",
-      "confidence_score": 0.5
+      "target": "src_juggle_context_rationale_298"
     },
     {
       "relation": "uses",
@@ -75020,11 +75020,11 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L7",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_389",
-      "_tgt": "src_juggle_db_juggledb",
+      "_src": "src_juggle_db_juggledb",
+      "_tgt": "src_juggle_context_rationale_389",
+      "confidence_score": 0.5,
       "source": "src_juggle_db_juggledb",
-      "target": "src_juggle_context_rationale_389",
-      "confidence_score": 0.5
+      "target": "src_juggle_context_rationale_389"
     },
     {
       "relation": "uses",
@@ -75032,11 +75032,11 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L7",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_407",
-      "_tgt": "src_juggle_db_juggledb",
+      "_src": "src_juggle_db_juggledb",
+      "_tgt": "src_juggle_context_rationale_407",
+      "confidence_score": 0.5,
       "source": "src_juggle_db_juggledb",
-      "target": "src_juggle_context_rationale_407",
-      "confidence_score": 0.5
+      "target": "src_juggle_context_rationale_407"
     },
     {
       "relation": "uses",
@@ -75044,11 +75044,11 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L7",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_522",
-      "_tgt": "src_juggle_db_juggledb",
+      "_src": "src_juggle_db_juggledb",
+      "_tgt": "src_juggle_context_rationale_522",
+      "confidence_score": 0.5,
       "source": "src_juggle_db_juggledb",
-      "target": "src_juggle_context_rationale_522",
-      "confidence_score": 0.5
+      "target": "src_juggle_context_rationale_522"
     },
     {
       "relation": "uses",
@@ -75056,11 +75056,11 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L7",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_548",
-      "_tgt": "src_juggle_db_juggledb",
+      "_src": "src_juggle_db_juggledb",
+      "_tgt": "src_juggle_context_rationale_548",
+      "confidence_score": 0.5,
       "source": "src_juggle_db_juggledb",
-      "target": "src_juggle_context_rationale_548",
-      "confidence_score": 0.5
+      "target": "src_juggle_context_rationale_548"
     },
     {
       "relation": "calls",
@@ -99202,9 +99202,9 @@
       "weight": 0.8,
       "_src": "src_juggle_context_rationale_247",
       "_tgt": "src_juggle_hindsight_hindsightclient",
+      "confidence_score": 0.5,
       "source": "src_juggle_context_rationale_247",
-      "target": "src_juggle_hindsight_hindsightclient",
-      "confidence_score": 0.5
+      "target": "src_juggle_hindsight_hindsightclient"
     },
     {
       "relation": "uses",
@@ -99214,9 +99214,9 @@
       "weight": 0.8,
       "_src": "src_juggle_context_rationale_287",
       "_tgt": "src_juggle_hindsight_hindsightclient",
+      "confidence_score": 0.5,
       "source": "src_juggle_context_rationale_287",
-      "target": "src_juggle_hindsight_hindsightclient",
-      "confidence_score": 0.5
+      "target": "src_juggle_hindsight_hindsightclient"
     },
     {
       "relation": "uses",
@@ -99226,9 +99226,9 @@
       "weight": 0.8,
       "_src": "src_juggle_context_rationale_298",
       "_tgt": "src_juggle_hindsight_hindsightclient",
+      "confidence_score": 0.5,
       "source": "src_juggle_context_rationale_298",
-      "target": "src_juggle_hindsight_hindsightclient",
-      "confidence_score": 0.5
+      "target": "src_juggle_hindsight_hindsightclient"
     },
     {
       "relation": "uses",
@@ -99238,9 +99238,9 @@
       "weight": 0.8,
       "_src": "src_juggle_context_rationale_389",
       "_tgt": "src_juggle_hindsight_hindsightclient",
+      "confidence_score": 0.5,
       "source": "src_juggle_context_rationale_389",
-      "target": "src_juggle_hindsight_hindsightclient",
-      "confidence_score": 0.5
+      "target": "src_juggle_hindsight_hindsightclient"
     },
     {
       "relation": "uses",
@@ -99250,9 +99250,9 @@
       "weight": 0.8,
       "_src": "src_juggle_context_rationale_407",
       "_tgt": "src_juggle_hindsight_hindsightclient",
+      "confidence_score": 0.5,
       "source": "src_juggle_context_rationale_407",
-      "target": "src_juggle_hindsight_hindsightclient",
-      "confidence_score": 0.5
+      "target": "src_juggle_hindsight_hindsightclient"
     },
     {
       "relation": "uses",
@@ -99262,9 +99262,9 @@
       "weight": 0.8,
       "_src": "src_juggle_context_rationale_522",
       "_tgt": "src_juggle_hindsight_hindsightclient",
+      "confidence_score": 0.5,
       "source": "src_juggle_context_rationale_522",
-      "target": "src_juggle_hindsight_hindsightclient",
-      "confidence_score": 0.5
+      "target": "src_juggle_hindsight_hindsightclient"
     },
     {
       "relation": "uses",
@@ -99274,9 +99274,9 @@
       "weight": 0.8,
       "_src": "src_juggle_context_rationale_548",
       "_tgt": "src_juggle_hindsight_hindsightclient",
+      "confidence_score": 0.5,
       "source": "src_juggle_context_rationale_548",
-      "target": "src_juggle_hindsight_hindsightclient",
-      "confidence_score": 0.5
+      "target": "src_juggle_hindsight_hindsightclient"
     },
     {
       "relation": "contains",
@@ -100736,8 +100736,8 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L382",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_238",
-      "_tgt": "src_juggle_hindsight_hindsightclient",
+      "_src": "src_juggle_hindsight_hindsightclient",
+      "_tgt": "src_juggle_context_rationale_238",
       "confidence_score": 0.5,
       "source": "src_juggle_hindsight_hindsightclient",
       "target": "src_juggle_context_rationale_238"
@@ -100748,8 +100748,8 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L382",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_278",
-      "_tgt": "src_juggle_hindsight_hindsightclient",
+      "_src": "src_juggle_hindsight_hindsightclient",
+      "_tgt": "src_juggle_context_rationale_278",
       "confidence_score": 0.5,
       "source": "src_juggle_hindsight_hindsightclient",
       "target": "src_juggle_context_rationale_278"
@@ -100760,8 +100760,8 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L382",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_289",
-      "_tgt": "src_juggle_hindsight_hindsightclient",
+      "_src": "src_juggle_hindsight_hindsightclient",
+      "_tgt": "src_juggle_context_rationale_289",
       "confidence_score": 0.5,
       "source": "src_juggle_hindsight_hindsightclient",
       "target": "src_juggle_context_rationale_289"
@@ -100772,8 +100772,8 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L382",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_380",
-      "_tgt": "src_juggle_hindsight_hindsightclient",
+      "_src": "src_juggle_hindsight_hindsightclient",
+      "_tgt": "src_juggle_context_rationale_380",
       "confidence_score": 0.5,
       "source": "src_juggle_hindsight_hindsightclient",
       "target": "src_juggle_context_rationale_380"
@@ -100784,8 +100784,8 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L382",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_398",
-      "_tgt": "src_juggle_hindsight_hindsightclient",
+      "_src": "src_juggle_hindsight_hindsightclient",
+      "_tgt": "src_juggle_context_rationale_398",
       "confidence_score": 0.5,
       "source": "src_juggle_hindsight_hindsightclient",
       "target": "src_juggle_context_rationale_398"
@@ -100796,8 +100796,8 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L382",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_513",
-      "_tgt": "src_juggle_hindsight_hindsightclient",
+      "_src": "src_juggle_hindsight_hindsightclient",
+      "_tgt": "src_juggle_context_rationale_513",
       "confidence_score": 0.5,
       "source": "src_juggle_hindsight_hindsightclient",
       "target": "src_juggle_context_rationale_513"
@@ -100808,8 +100808,8 @@
       "source_file": "src/juggle_context.py",
       "source_location": "L382",
       "weight": 0.8,
-      "_src": "src_juggle_context_rationale_539",
-      "_tgt": "src_juggle_hindsight_hindsightclient",
+      "_src": "src_juggle_hindsight_hindsightclient",
+      "_tgt": "src_juggle_context_rationale_539",
       "confidence_score": 0.5,
       "source": "src_juggle_hindsight_hindsightclient",
       "target": "src_juggle_context_rationale_539"

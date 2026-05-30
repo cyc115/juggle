@@ -211,6 +211,7 @@ class JuggleTmuxManager:
             bottom = "\n".join(tail)
             stuck = (
                 "[Pasted text" in bottom
+                or "-- INSERT --" in bottom
                 or (head and head in bottom)
                 or any(
                     line.strip().startswith(("❯ ", "> ")) and len(line.strip()) > 2
@@ -218,6 +219,9 @@ class JuggleTmuxManager:
                 )
             )
             if stuck and retries < max_enter_retries:
+                if "-- INSERT --" in bottom:
+                    self._run_tmux("send-keys", "-t", pane_id, "Escape")
+                    time.sleep(0.1)
                 self._run_tmux("send-keys", "-t", pane_id, "C-m")
                 retries += 1
             time.sleep(1)
