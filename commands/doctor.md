@@ -15,13 +15,13 @@ Runs the `juggle doctor` CLI which:
 ## Run
 
 ```bash
-uv run ~/github/juggle/src/juggle_cli.py doctor
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py doctor
 ```
 
 For a preview without writes:
 
 ```bash
-uv run ~/github/juggle/src/juggle_cli.py doctor --dry-run
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py doctor --dry-run
 ```
 
 Report the output. If the user wants to revert, restore `~/.juggle/config.json.bak-pre-1.21` and downgrade Juggle to a 1.20.x release.

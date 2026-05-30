@@ -59,6 +59,16 @@ def _get_vault_name() -> str:
     return _get_vault_root().name
 
 
+def cmd_vault_path(args):
+    """Print the absolute vault root path (single source of truth for commands)."""
+    print(str(_get_vault_root()))
+
+
+def cmd_vault_name(args):
+    """Print the vault name (used for obsidian:// URIs)."""
+    print(_get_vault_name())
+
+
 VAULT_ROOT = _get_vault_root()
 
 # Re-export commonly used symbols for backward compatibility with tests
@@ -598,6 +608,12 @@ def main():
     p_open = subparsers.add_parser("open-in-editor", help="Open file in nvim server")
     p_open.add_argument("file", help="Path to file to open")
     p_open.set_defaults(func=cmd_open_in_editor)
+
+    # vault-path / vault-name (single source of truth for commands resolving the vault)
+    p_vault_path = subparsers.add_parser("vault-path", help="Print absolute vault root path")
+    p_vault_path.set_defaults(func=cmd_vault_path)
+    p_vault_name = subparsers.add_parser("vault-name", help="Print vault name (for obsidian:// URIs)")
+    p_vault_name.set_defaults(func=cmd_vault_name)
 
     # research
     p_research = subparsers.add_parser("research", help="Search research KB")

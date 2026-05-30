@@ -164,13 +164,7 @@ REPORT=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_W
 rm -f "$WEB_FILE"
 
 ### Step 5 — Save report to vault
-VAULT_PATH=$(uv run python -c "
-import sys, os
-sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
-from juggle_settings import get_settings
-vault_rel = get_settings()['paths'].get('vault', '')
-print(os.path.expanduser('~') + vault_rel if vault_rel else '')
-" 2>/dev/null)
+VAULT_PATH=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py vault-path)
 REPORT_FILE="${VAULT_PATH}/research/$(date +%Y-%m-%d)-<SLUG>.md"
 {
   printf "# Research: <TOPIC>\nDate: $(date +%Y-%m-%d)\n\n"
