@@ -26,24 +26,24 @@ Auto-create Topic A from first substantive message: `create-thread "<label>"`
 | Command | Signature | Notes |
 | ------- | --------- | ----- |
 | `create-thread` | `<label>` | New topic |
-| `doctor`        | `[--dry-run]` | Migrate config + DB to current schema |
-| `switch-thread` | `<thread_id>` | Switch active |
-| `show-topics` | — | List all |
-| `close-thread` | `<thread_id>` | Mark done |
-| `archive-thread` | `<thread_id>` | Archive |
 | `get-agent` | `<thread_id> [--role {researcher,planner,coder}] [--model M]` | Get/spawn agent |
 | `send-task` | `<agent_id> <prompt_file>` | Send task |
 | `complete-agent` | `<thread_id> "<result>" [--retain TEXT] [--open-questions JSON] [--role R]` | Done + notify. researcher → auto action item |
-| `fail-agent` | `<thread_id> "<error>" [--type {transient,persistent}] [--recovery-dispatched]` | `--recovery-dispatched`: notify only |
-| `release-agent` | `<agent_id> [--force]` | Return to pool |
-| `list-agents` | — | All agents + status |
-| `notify` | `<thread_id> "<msg>"` | Mid-task status |
-| `update-summary` | `<thread_id> "<text>"` | Update summary |
-| `get-messages` | `<thread_id> [--plain] [--limit N]` | Thread messages |
-| `get-archive-candidates` | — | Archivable threads |
 | `request-action` | `<thread_id> "<msg>" [--type {question,manual_step,decision,failure}] [--priority {low,normal,high}]` | Action item. No `--tier`. |
 | `ack-action` | `<action_id>` | Dismiss |
+| `notify` | `<thread_id> "<msg>"` | Mid-task status |
 | `list-actions` | — | Open action items |
+| `doctor` | `[--dry-run]` | migrate DB schema |
+| `switch-thread` | `<id>` | switch active topic |
+| `show-topics` | — | list all topics |
+| `close-thread` | `<id>` | mark done |
+| `archive-thread` | `<id>` | archive thread |
+| `fail-agent` | `<id> "<error>" [--type T] [--recovery-dispatched]` | failure; --recovery-dispatched = notify only |
+| `release-agent` | `<id> [--force]` | return to pool |
+| `list-agents` | — | all agents + status |
+| `update-summary` | `<id> "<text>"` | update thread summary |
+| `get-messages` | `<id> [--plain] [--limit N]` | thread messages |
+| `get-archive-candidates` | — | archivable threads |
 
 **Never** use `spawn-agent` — always `get-agent`.
 
@@ -245,15 +245,7 @@ On complete: short bullets only. No raw output.
 
 ## Cockpit
 
-Launch the live dashboard (Textual, mouse drag-to-resize between panels):
-
-```bash
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cockpit.py
-# or via CLI:
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py cockpit
-```
-
-> **tmux users:** `set -g mouse on` required for drag-to-resize. Cockpit warns on startup if mouse mode is off.
+`juggle cockpit` — launch live dashboard (Textual, requires tmux mouse mode on).
 
 ---
 
