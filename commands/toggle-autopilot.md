@@ -5,6 +5,11 @@ description: Toggle autonomous development mode on/off. When ON, hand off a list
 
 # /juggle:toggle-autopilot
 
+The flag below (`~/.juggle/autopilot`) is read by the `UserPromptSubmit` hook
+(`src/juggle_hooks.py`), which re-injects the autopilot directive on every turn
+while it's set — so the mode persists instead of being forgotten after this
+command scrolls out of context.
+
 Flip the flag, then act on the new state:
 
 ```bash

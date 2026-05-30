@@ -18,11 +18,11 @@ Required environment variables (no defaults):
 After every major implementation:
 1. Bump `version` in `.claude-plugin/plugin.json` (patch = bug/minor, minor = feature)
 2. Commit with `feat:`/`fix:` prefix and version in body
-3. Mark done in `/Users/mikechen/Documents/personal/projects/juggle/TODO.md`
+3. Mark done in `TODO.md` (repo root)
 
 # Task Tracking
 
-Track in `/Users/mikechen/Documents/personal/projects/juggle/TODO.md`:
+Track in `TODO.md` (repo root):
 - New: `- [ ] <description>`
 - In-progress: prefix with `🔄 [IN PLANNING]` or `🔄 [IN PROGRESS]`
 - Done: `- [x] <description> ✅ YYYY-MM-DD` (move to Done section)
