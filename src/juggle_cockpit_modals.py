@@ -164,7 +164,7 @@ class _TailModal(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static(
-                f"tail {self.pane_id}   (↑/↓/PgUp/PgDn to scroll · t / esc to close)",
+                f"tail {self.pane_id}   (↑/↓/j/k/PgUp/PgDn to scroll · q / t / esc to close)",
                 markup=False,
             )
             with VerticalScroll(id="tail-scroll"):
@@ -186,6 +186,12 @@ class _TailModal(ModalScreen):
             scroll.scroll_end(animate=False)
 
     def on_key(self, event: events.Key) -> None:
-        if event.key in ("t", "escape"):
+        if event.key in ("q", "t", "escape"):
             event.stop()
             self.dismiss()
+        elif event.key == "j":
+            self.query_one("#tail-scroll", VerticalScroll).scroll_down()
+            event.stop()
+        elif event.key == "k":
+            self.query_one("#tail-scroll", VerticalScroll).scroll_up()
+            event.stop()

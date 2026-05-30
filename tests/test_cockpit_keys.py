@@ -759,3 +759,99 @@ async def test_tail_toggle_pushes_modal_for_valid_agent(tmp_path):
         assert isinstance(pilot.app.screen_stack[-1], _TailModal), (
             f"Expected _TailModal, got {type(pilot.app.screen_stack[-1])}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Cycle 10 — _TailModal: q-to-close + j/k scrolling (TDD)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tail_modal_dismiss_on_q():
+    """_TailModal dismisses itself when 'q' is pressed."""
+    from textual.app import App
+
+    from juggle_cockpit_modals import _TailModal
+
+    def fake_capture(pane_id, lines=20):
+        return "output"
+
+    class TestApp(App):
+        async def on_mount(self) -> None:
+            await self.push_screen(_TailModal("%3", fake_capture))
+
+    async with TestApp().run_test(size=(80, 24)) as pilot:
+        assert len(pilot.app.screen_stack) == 2, "modal should be open"
+        await pilot.press("q")
+        await pilot.pause(0.2)
+        assert len(pilot.app.screen_stack) == 1, "modal should be dismissed after 'q'"
+
+
+def test_tail_modal_j_calls_scroll_down():
+    """on_key('j') calls scroll_down() on #tail-scroll and stops event propagation."""
+    from unittest.mock import MagicMock, patch
+
+    from textual import events
+    from textual.containers import VerticalScroll
+
+    from juggle_cockpit_modals import _TailModal
+
+    modal = _TailModal("%5", lambda pane_id, lines=20: "")
+    mock_scroll = MagicMock(spec=VerticalScroll)
+    mock_event = MagicMock(spec=events.Key)
+    mock_event.key = "j"
+
+    with patch.object(modal, "query_one", return_value=mock_scroll):
+        modal.on_key(mock_event)
+
+    mock_scroll.scroll_down.assert_called_once()
+    mock_event.stop.assert_called()
+
+
+def test_tail_modal_k_calls_scroll_up():
+    """on_key('k') calls scroll_up() on #tail-scroll and stops event propagation."""
+    from unittest.mock import MagicMock, patch
+
+    from textual import events
+    from textual.containers import VerticalScroll
+
+    from juggle_cockpit_modals import _TailModal
+
+    modal = _TailModal("%6", lambda pane_id, lines=20: "")
+    mock_scroll = MagicMock(spec=VerticalScroll)
+    mock_event = MagicMock(spec=events.Key)
+    mock_event.key = "k"
+
+    with patch.object(modal, "query_one", return_value=mock_scroll):
+        modal.on_key(mock_event)
+
+    mock_scroll.scroll_up.assert_called_once()
+    mock_event.stop.assert_called()
+
+
+def test_tail_modal_hint_string_mentions_q_and_jk():
+    """compose() header hints include q, j, k in the hint string."""
+    from unittest.mock import MagicMock, patch
+
+    from juggle_cockpit_modals import _TailModal
+
+    modal = _TailModal("%7", lambda pane_id, lines=20: "")
+    yielded: list = []
+
+    with patch("juggle_cockpit_modals.VerticalScroll") as mock_vs, \
+         patch("juggle_cockpit_modals.Static") as mock_static, \
+         patch("juggle_cockpit_modals.Vertical"):
+        mock_vs.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_vs.return_value.__exit__ = MagicMock(return_value=False)
+        # Capture the first Static call (the header)
+        # Iterate compose() generator
+        try:
+            for _ in modal.compose():
+                pass
+        except Exception:
+            pass
+        if mock_static.call_args_list:
+            hint = mock_static.call_args_list[0][0][0]
+            assert "j" in hint, f"header hint missing 'j': {hint!r}"
+            assert "k" in hint, f"header hint missing 'k': {hint!r}"
+            assert "q" in hint, f"header hint missing 'q': {hint!r}"
