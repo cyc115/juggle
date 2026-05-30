@@ -86,7 +86,6 @@ from juggle_cmd_threads import (
 )
 
 from juggle_cmd_agents import (
-    cmd_set_agent,
     cmd_complete_agent,
     cmd_fail_agent,
     cmd_check_agents,
@@ -138,71 +137,6 @@ def cmd_cockpit(args):
     sys.exit(_sp.call(cmd))
 
 
-def cmd_record_pending_decision(args):
-    """Record pending user decisions in current thread's open_questions."""
-    import json
-
-    db = get_db()
-
-    thread = db.get_current_thread()
-    if not thread:
-        return
-
-    thread_obj = db.get_thread(thread)
-    if thread_obj is None:
-        print(f"Error: thread {thread!r} not found", file=sys.stderr)
-        sys.exit(1)
-
-    try:
-        questions = json.loads(args.questions_json)
-    except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON in --questions-json: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    open_questions = thread_obj.get("open_questions") or []
-    if isinstance(open_questions, str):
-        open_questions = json.loads(open_questions)
-
-    for i, q in enumerate(questions):
-        if "q" not in q:
-            print(f"Error: question {i} missing 'q' field", file=sys.stderr)
-            sys.exit(1)
-        open_questions.append(
-            {
-                "id": f"{args.tool_use_id}:{i}",
-                "text": q["q"],
-                "source": "askuser",
-            }
-        )
-
-    db.update_thread(thread, open_questions=open_questions)
-
-
-def cmd_clear_pending_decision(args):
-    """Clear pending decisions by tool_use_id prefix."""
-    import json
-
-    db = get_db()
-
-    thread = db.get_current_thread()
-    if not thread:
-        return
-
-    thread_obj = db.get_thread(thread)
-    if thread_obj is None:
-        print(f"Error: thread {thread!r} not found", file=sys.stderr)
-        sys.exit(1)
-    open_questions = thread_obj.get("open_questions") or []
-    if isinstance(open_questions, str):
-        open_questions = json.loads(open_questions)
-
-    open_questions = [
-        q for q in open_questions if not q.get("id", "").startswith(args.tool_use_id)
-    ]
-
-    db.update_thread(thread, open_questions=open_questions)
-
-
 def _obsidian_fallback(abs_file: str) -> None:
     """Open via Obsidian (vault files) or macOS system open (non-vault files)."""
     try:
@@ -249,10 +183,8 @@ def cmd_open_in_editor(args):
 
 
 def _cmd_list_selfheal(args):
-    from juggle_db import JuggleDB, DB_PATH
     from pathlib import Path as _Path
-    db = JuggleDB(getattr(args, "db_path", None) or str(DB_PATH))
-    db.init_db()
+    db = get_db(getattr(args, "db_path", None), init=True)
     rows = db.get_open_error_events()
     if not rows:
         print("No pending self-heal errors.")
@@ -272,9 +204,7 @@ def _cmd_list_selfheal(args):
 
 
 def _cmd_selfheal_set_status(args):
-    from juggle_db import JuggleDB, DB_PATH
-    db = JuggleDB(getattr(args, "db_path", None) or str(DB_PATH))
-    db.init_db()
+    db = get_db(getattr(args, "db_path", None), init=True)
     valid = ("open", "diagnosing", "awaiting_approval", "resolved")
     if args.status not in valid:
         print(f"error: invalid status {args.status!r}; choose from {valid}")
@@ -288,9 +218,7 @@ def _cmd_selfheal_set_status(args):
 
 
 def _cmd_selfheal_reset_diagnosing(args):
-    from juggle_db import JuggleDB, DB_PATH
-    db = JuggleDB(getattr(args, "db_path", None) or str(DB_PATH))
-    db.init_db()
+    db = get_db(getattr(args, "db_path", None), init=True)
     with db._connect() as conn:
         row = conn.execute(
             "SELECT status FROM error_events WHERE id = ?", (args.id,)
@@ -384,12 +312,6 @@ def main():
     p_unarchive = subparsers.add_parser("unarchive-thread", help="Unarchive a thread")
     p_unarchive.add_argument("thread_id", help="Thread ID to unarchive (label or UUID)")
     p_unarchive.set_defaults(func=cmd_unarchive_thread)
-
-    # set-agent
-    p_set_agent = subparsers.add_parser("set-agent", help="Set agent task for a thread")
-    p_set_agent.add_argument("thread_id", help="Thread ID")
-    p_set_agent.add_argument("task_id", help="Agent task ID")
-    p_set_agent.set_defaults(func=cmd_set_agent)
 
     # complete-agent
     p_complete = subparsers.add_parser(
@@ -671,21 +593,6 @@ def main():
         "next-action", help="Switch to highest-priority action item"
     )
     p_next.set_defaults(func=cmd_next_action)
-
-    # record-pending-decision
-    record_parser = subparsers.add_parser(
-        "record-pending-decision", help="Record pending user decisions"
-    )
-    record_parser.add_argument("--tool-use-id", required=True)
-    record_parser.add_argument("--questions-json", required=True)
-    record_parser.set_defaults(func=cmd_record_pending_decision)
-
-    # clear-pending-decision
-    clear_parser = subparsers.add_parser(
-        "clear-pending-decision", help="Clear pending decisions by tool_use_id"
-    )
-    clear_parser.add_argument("--tool-use-id", required=True)
-    clear_parser.set_defaults(func=cmd_clear_pending_decision)
 
     # open-in-editor
     p_open = subparsers.add_parser("open-in-editor", help="Open file in nvim server")

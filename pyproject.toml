@@ -1,0 +1,37 @@
+# Project config exists so `uv run pytest` resolves the dependencies the test
+# suite (and the src modules it imports) need. The plugin itself ships as
+# standalone uv scripts with inline `# /// script` metadata — package = false
+# tells uv not to try to build/install this directory as a wheel.
+#
+# The authoritative plugin version lives in .claude-plugin/plugin.json; the
+# version here is a placeholder and is not published.
+[project]
+name = "juggle"
+version = "0.0.0"
+description = "Multi-topic conversation orchestrator (Claude Code plugin) — test/dev environment."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "httpx",
+    "rich",
+    "textual",
+]
+
+[dependency-groups]
+# Installed by default by `uv run` / `uv sync`, so `uv run pytest` just works.
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "numpy",
+    "sqlite-vec",
+    "flask",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "asyncio: mark an async test to run under pytest-asyncio",
+]
