@@ -1040,6 +1040,38 @@ class JuggleDB:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_notifications_last_n(self, session_id: str, n: int = 5) -> list[dict]:
+        """Return the n most-recent notifications for session_id (newest-first)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, thread_id, message, created_at, session_id "
+                "FROM notifications_v2 WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+                (session_id, n),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_notifications_since_id(self, session_id: str, last_id: int) -> list[dict]:
+        """Return notifications with id > last_id for session_id (oldest-first)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, thread_id, message, created_at, session_id "
+                "FROM notifications_v2 WHERE session_id = ? AND id > ? "
+                "ORDER BY id ASC",
+                (session_id, last_id),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_notif_watermark(self, claude_session_id: str) -> int | None:
+        """Return the last-seen notification ID for this Claude session, or None if unseen."""
+        with self._connect() as conn:
+            val = self._get_session_key(conn, f"notif_watermark:{claude_session_id}")
+        return int(val) if val is not None else None
+
+    def set_notif_watermark(self, claude_session_id: str, last_id: int) -> None:
+        """Record the last-seen notification ID for this Claude session."""
+        with self._connect() as conn:
+            self._set_session_key(conn, f"notif_watermark:{claude_session_id}", str(last_id))
+
     def clear_notifications_v2_for_other_sessions(self, current_session_id: str) -> int:
         """Delete notifications_v2 whose session_id != current. Returns rows deleted."""
         with self._connect() as conn:

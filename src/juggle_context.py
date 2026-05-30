@@ -208,8 +208,17 @@ def _build(db: JuggleDB) -> str:
             parts.append(_render_tier2(t))
         parts.append("")
 
-    # --- Notifications (current session only) ---
-    notifs = db.get_notifications_for_session(session_id)
+    # --- Notifications with per-Claude-session watermark (ID-based) ---
+    import os as _os
+    claude_sess = _os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    last_id = db.get_notif_watermark(claude_sess) if claude_sess else None
+    if last_id is None:
+        notifs = db.get_notifications_last_n(session_id, n=5)
+    else:
+        notifs = db.get_notifications_since_id(session_id, last_id)
+    if claude_sess:
+        new_last = max((n["id"] for n in notifs), default=last_id or 0)
+        db.set_notif_watermark(claude_sess, new_last)
     if notifs:
         parts.append("# Notifications (this session)")
         for n in notifs:

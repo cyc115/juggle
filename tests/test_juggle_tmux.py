@@ -575,6 +575,64 @@ def test_wait_for_submission_detects_marker_in_scrollback_tail(mgr):
     )
 
 
+def test_wait_for_submission_sends_escape_before_enter_in_insert_mode(mgr):
+    """When pane is in vim INSERT mode, Escape is sent before C-m to exit the mode first."""
+    # First poll: vim INSERT mode with CC status bar (wait_for_ready_to_paste would say ready)
+    insert_output = "-- INSERT -- ⏵⏵ bypass permissions on\n"
+    marker_output = "✻ Working… (esc to interrupt)\n"
+
+    outputs = iter([insert_output, marker_output])
+    key_calls: list = []
+
+    def fake_run(*args):
+        if args[0] == "capture-pane":
+            return MagicMock(stdout=next(outputs))
+        if args[0] == "send-keys":
+            key_calls.append(list(args))
+        return MagicMock(stdout="")
+
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run), patch("time.sleep"):
+        result = mgr.wait_for_submission("%3", "hello", timeout=10, max_enter_retries=3)
+
+    assert result is True
+    sent_keys = [c[-1] for c in key_calls]
+    assert "Escape" in sent_keys, (
+        f"INSERT mode must trigger an Escape before C-m; sent keys: {sent_keys}"
+    )
+    escape_idx = sent_keys.index("Escape")
+    cm_indices = [i for i, k in enumerate(sent_keys) if k == "C-m"]
+    assert cm_indices, f"C-m must still be sent after Escape; sent keys: {sent_keys}"
+    assert escape_idx < cm_indices[0], (
+        f"Escape must precede C-m; sent keys: {sent_keys}"
+    )
+
+
+def test_wait_for_submission_normal_mode_no_escape(mgr):
+    """When stuck on collapsed paste (no INSERT mode), Escape is NOT sent — only C-m."""
+    collapsed = "  ❯ [Pasted text #1 +5 lines]\n"
+    marker_output = "✻ Working… (esc to interrupt)\n"
+
+    outputs = iter([collapsed, marker_output])
+    key_calls: list = []
+
+    def fake_run(*args):
+        if args[0] == "capture-pane":
+            return MagicMock(stdout=next(outputs))
+        if args[0] == "send-keys":
+            key_calls.append(list(args))
+        return MagicMock(stdout="")
+
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run), patch("time.sleep"):
+        result = mgr.wait_for_submission("%3", "hello", timeout=10, max_enter_retries=3)
+
+    assert result is True
+    sent_keys = [c[-1] for c in key_calls]
+    assert "Escape" not in sent_keys, (
+        f"Non-INSERT stuck must NOT send Escape; sent keys: {sent_keys}"
+    )
+    assert "C-m" in sent_keys, f"C-m must be sent; sent keys: {sent_keys}"
+
+
 def test_wait_for_submission_detects_stuck_in_scrollback_tail(mgr):
     """Stuck-at-prompt state buried in scrollback tail is still detected and retried.
 

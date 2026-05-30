@@ -1,6 +1,7 @@
 """Tests for Task 5 tiered context injection."""
 
 import json
+import os
 import pytest
 from juggle_db import JuggleDB
 from juggle_context import _build
@@ -96,3 +97,49 @@ def test_timestamps_are_minute_precision(db):
     import re
 
     assert not re.search(r"\d{2}:\d{2}:\d{2}", out)
+
+
+# ---------------------------------------------------------------------------
+# Notification watermark tests
+# ---------------------------------------------------------------------------
+
+def test_first_message_gets_last_5_notifications(db, monkeypatch):
+    """Session with no watermark gets at most 5 most-recent notifications."""
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "cc-sess-first")
+    for i in range(7):
+        db.add_notification_v2(thread_id=None, message=f"notif-{i}", session_id="sessA")
+    out = _build(db)
+    matches = [line for line in out.splitlines() if line.startswith("✓ notif-")]
+    assert len(matches) <= 5
+
+
+def test_subsequent_message_gets_only_new_notifications(db, monkeypatch):
+    """Session with watermark only sees notifications added after it."""
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "cc-sess-sub")
+    db.add_notification_v2(thread_id=None, message="old-notif", session_id="sessA")
+    # First call sets watermark
+    _build(db)
+    # Add a new notification after watermark is set
+    db.add_notification_v2(thread_id=None, message="new-notif", session_id="sessA")
+    out = _build(db)
+    assert "new-notif" in out
+    assert "old-notif" not in out
+
+
+def test_multiple_sessions_independent_watermarks(db, monkeypatch):
+    """Two CLAUDE_CODE_SESSION_IDs each get their own independent watermark."""
+    db.add_notification_v2(thread_id=None, message="shared-notif", session_id="sessA")
+
+    # Session A sees it (first message, sets watermark)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "cc-sess-A")
+    out_a1 = _build(db)
+    assert "shared-notif" in out_a1
+
+    # Session A second call: watermark set, no new notifs → nothing shown
+    out_a2 = _build(db)
+    assert "shared-notif" not in out_a2
+
+    # Session B (different CLAUDE_CODE_SESSION_ID) has no watermark yet → sees the notif
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "cc-sess-B")
+    out_b = _build(db)
+    assert "shared-notif" in out_b
