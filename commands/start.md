@@ -59,6 +59,7 @@ Classify every message. Never implement inline — always dispatch agents.
 | --- | ----------- | ----- |
 | 0 | Feature/idea | Main thread: clarify or brainstorm skill → researcher drafts spec → `/juggle:open` |
 | 1 | Question / conversation | Answer directly. No agent. |
+| 1.5p | Personal lookup | Answer inline after Hindsight recall. No agent. |
 | 1.5 | Simple file op | Background agent. Returns path + result only. |
 | 2 | Research / investigation | Background researcher. `complete-agent` auto-creates review item. |
 | 3 | Implementation | Plan (planner) → review → implement (coder). See protocols below. |
@@ -86,6 +87,10 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. **Never use the Ag
 **DA findings:** 🔴 needs user input → `request-action`; 🟡 auto-resolved → note inline.
 
 **Code review:** Always background agent, never inline.
+
+**Personal questions — recall first:** Any question about personal info (finances, accounts, health, preferences, past decisions, measurements, personal history) → call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<question>"` before answering. Never answer from training data alone. If Hindsight returns nothing, say so explicitly.
+
+**Auto-retain personal data:** When the user shares a personal data point (a metric, account info, a preference, a decision, a measurement) → immediately call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain "<fact>"` in background. Don't wait to be asked. Facts only — not passing mentions or hypotheticals.
 
 ---
 
