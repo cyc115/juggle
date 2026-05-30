@@ -297,3 +297,66 @@ def test_post_tool_use_no_agent_task_id_tracking(active_db, monkeypatch):
 
     thread = active_db.get_thread(thread_id)
     assert thread["status"] != "background"
+
+
+# ---------------------------------------------------------------------------
+# Autopilot enforcement tests (/juggle:toggle-autopilot flag is hook-read)
+# ---------------------------------------------------------------------------
+
+
+def test_autopilot_context_empty_when_flag_absent(active_db, monkeypatch, tmp_path):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", tmp_path / "autopilot")
+    assert juggle_hooks._autopilot_context() == ""
+
+
+def test_autopilot_context_present_when_flag_set(active_db, monkeypatch, tmp_path):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    flag = tmp_path / "autopilot"
+    flag.touch()
+    monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", flag)
+    assert "AUTOPILOT MODE: ON" in juggle_hooks._autopilot_context()
+
+
+def test_user_prompt_submit_injects_autopilot_when_active(
+    active_db, monkeypatch, tmp_path, capsys
+):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    flag = tmp_path / "autopilot"
+    flag.touch()
+    monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", flag)
+
+    with pytest.raises(SystemExit):
+        juggle_hooks.handle_user_prompt_submit({"prompt": ""})
+
+    out = json.loads(capsys.readouterr().out)
+    assert "AUTOPILOT MODE: ON" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_user_prompt_submit_injects_autopilot_when_inactive(
+    active_db, monkeypatch, tmp_path, capsys
+):
+    active_db.set_active(False)
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    flag = tmp_path / "autopilot"
+    flag.touch()
+    monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", flag)
+
+    with pytest.raises(SystemExit):
+        juggle_hooks.handle_user_prompt_submit({"prompt": ""})
+
+    out = json.loads(capsys.readouterr().out)
+    assert "AUTOPILOT MODE: ON" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_user_prompt_submit_no_autopilot_when_inactive_and_flag_absent(
+    active_db, monkeypatch, tmp_path, capsys
+):
+    active_db.set_active(False)
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", tmp_path / "autopilot")
+
+    with pytest.raises(SystemExit):
+        juggle_hooks.handle_user_prompt_submit({"prompt": ""})
+
+    assert capsys.readouterr().out == ""

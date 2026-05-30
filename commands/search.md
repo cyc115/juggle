@@ -1,3 +1,8 @@
+---
+description: Search the web and research KB, filter with Haiku, and report ranked results
+allowed-tools: Bash, mcp__web-search__search-web
+---
+
 # /juggle:search — Search + Filter
 
 Search the web MCP and research KB, filter with Haiku, and report results.
@@ -14,7 +19,7 @@ Search the web MCP and research KB, filter with Haiku, and report results.
 
 ```bash
 source ~/.juggle/.env 2>/dev/null; true
-KB_JSON=$(python3 /Users/mikechen/github/juggle//src/juggle_cmd_search.py "<QUERY>" --no-web <EXTRA_FLAGS>)
+KB_JSON=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_search.py "<QUERY>" --no-web <EXTRA_FLAGS>)
 echo "$KB_JSON"
 ```
 
@@ -32,7 +37,7 @@ Pass both result sets to the filter script:
 
 ```bash
 source ~/.juggle/.env 2>/dev/null; true
-FILTERED=$(python3 /Users/mikechen/github/juggle//src/juggle_cmd_search.py "<QUERY>" \
+FILTERED=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_search.py "<QUERY>" \
   --no-kb --filter \
   --web-results '<WEB_RESULTS_JSON>')
 echo "$FILTERED"
@@ -42,7 +47,7 @@ But since KB results are already in `$KB_JSON`, inject them by calling with both
 
 ```bash
 source ~/.juggle/.env 2>/dev/null; true
-FILTERED=$(python3 /Users/mikechen/github/juggle//src/juggle_cmd_search.py "<QUERY>" \
+FILTERED=$(python3 ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_search.py "<QUERY>" \
   --filter \
   --web-results '<WEB_RESULTS_JSON>' \
   <EXTRA_FLAGS>)
