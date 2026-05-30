@@ -94,9 +94,9 @@ Coordinates only. Edit/Write/NotebookEdit blocked by hook.
 
 **Proactive failure investigation:** When any error/issue/potential failure surfaces in orchestration (watchdog alerts, failed/blocked/stalled agents, orphaned threads, false-positive action items, broken invariants), investigate proactively and autonomously — no permission needed to investigate or diagnose. Determine root cause + the precise fix. The ONLY gate is right before APPLYING the fix: present root cause + proposed change, then prompt the user to proceed. Never silently apply a fix; never ask permission merely to investigate.
 
-**DA action items:** 🔴 input needed → `request-action --tier 2`; 🟡 auto-resolved → note inline.
+**DA action items:** 🔴 input needed → `request-action --type decision`; 🟡 auto-resolved → note inline.
 ```bash
-uv run juggle_cli.py request-action <thread_id> "DA finding: <decision>" --tier 2
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <thread_id> "DA finding: <decision>" --type decision
 ```
 
 **Code review:** always background, never inline.

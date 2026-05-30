@@ -24,29 +24,8 @@ allowed-tools: Read, Edit, Write, Bash, mcp__personal-mcp__extract_text_from_fil
 At the start of each mode, resolve VAULT_PATH, VAULT_NAME, and INBOX via:
 
 ```bash
-VAULT_PATH=$(python3 -c "
-import sys, os
-sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
-from juggle_settings import get_settings
-s = get_settings()
-vault_rel = s['paths'].get('vault', '/Documents/personal')
-print(os.path.expanduser('~') + vault_rel)
-" 2>/dev/null)
-
-VAULT_NAME=$(python3 -c "
-import sys, os
-from pathlib import Path
-sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
-from juggle_settings import get_settings
-s = get_settings()
-explicit = s['paths'].get('vault_name', '')
-if explicit:
-    print(explicit)
-else:
-    vault_rel = s['paths'].get('vault', '/Documents/personal')
-    print(Path(vault_rel.rstrip('/')).name)
-" 2>/dev/null)
-
+VAULT_PATH=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py vault-path)
+VAULT_NAME=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py vault-name)
 INBOX="${VAULT_PATH}/inbox.md"
 ```
 

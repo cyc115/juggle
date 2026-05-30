@@ -152,17 +152,18 @@ changes must follow the cycle.
 ## Always finalize — never wait at the prompt
 
 Your task ENDS with a `complete-agent` or `fail-agent` Bash call. You must
-NOT emit a final recap and wait at the input prompt. Examples of correct
-final actions:
+NOT emit a final recap and wait at the input prompt. Use the juggle_cli
+path from your AGENT ROLE block's COMPLETION line (written `<juggle-cli>`
+below) — do not hardcode an absolute path. Examples of correct final actions:
 
 - Work done cleanly:
-  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
+  <juggle-cli> complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
 
 - Hit a wall:
-  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
+  <juggle-cli> complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
 
 - Have unresolved questions:
-  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
+  <juggle-cli> complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
 
 Do NOT ask the user "want me to commit?" or "shall I proceed?" — decide
 autonomously from the task spec. The orchestrator already approved scope
@@ -201,17 +202,18 @@ VERSION BUMP: patch=fix, minor=feature, major=breaking. State target version in 
 ## Always finalize — never wait at the prompt
 
 Your task ENDS with a `complete-agent` or `fail-agent` Bash call. You must
-NOT emit a final recap and wait at the input prompt. Examples of correct
-final actions:
+NOT emit a final recap and wait at the input prompt. Use the juggle_cli
+path from your AGENT ROLE block's COMPLETION line (written `<juggle-cli>`
+below) — do not hardcode an absolute path. Examples of correct final actions:
 
 - Work done cleanly:
-  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
+  <juggle-cli> complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
 
 - Hit a wall:
-  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
+  <juggle-cli> complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
 
 - Have unresolved questions:
-  uv run /Users/mikechen/github/juggle/src/juggle_cli.py complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
+  <juggle-cli> complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
 
 Do NOT ask the user "want me to commit?" or "shall I proceed?" — decide
 autonomously from the task spec. The orchestrator already approved scope
