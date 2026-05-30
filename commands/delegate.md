@@ -65,7 +65,7 @@ From the answers:
 
 ---
 
-## Step 3: Display plan card and confirm
+## Step 3: Display plan card and dispatch
 
 Print a fenced plan card:
 
@@ -77,15 +77,25 @@ Output: <Q1 answer>
 Constraints: <Q2 answer or "none">
 ```
 
-Then load `AskUserQuestion` again and issue a **single confirmation question**:
+**Determine whether to auto-dispatch or confirm:**
 
+**Auto-dispatch** (print `"Auto-dispatching..."` then proceed to Step 4) if ALL of:
+- Q1 answer is NOT "Other" — OR — Q1 is "Other" but `$ARGUMENTS` contains a non-empty task description or the answer text is meaningful
+- Q2 answer is not empty
+- Q3 answer is not empty
+
+**Confirm first** (load `AskUserQuestion` and ask before dispatching) if ANY of:
+- Q1 = "Other" with no task description in `$ARGUMENTS` and no meaningful answer text
+- The task scope is unclear based on answers
+
+When confirming, issue a **single confirmation question**:
 - `header: "Dispatch"`
 - Question: `"Fire this plan?"`
 - Options:
   - `Yes — dispatch now`
   - `Cancel`
 
-**On Cancel:** print `"Cancelled — no thread created."` and stop. Do not run any CLI commands.
+**On Cancel** (either from confirmation or if `$ARGUMENTS` contains an explicit cancellation intent like `cancel` before the wizard runs): print `"Cancelled — no thread created."` and stop. Do not run any CLI commands.
 
 ---
 
