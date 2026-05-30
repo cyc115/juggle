@@ -500,7 +500,8 @@ def test_session_start_includes_selfheal_count(tmp_path):
         output_lines.append(s)
 
     with patch("juggle_hooks.DB_PATH", Path(db_path)), \
-         patch("builtins.print", side_effect=fake_print):
+         patch("builtins.print", side_effect=fake_print), \
+         patch("sys.exit"):
         handle_session_start({"reason": "resume"})
 
     combined = " ".join(output_lines)

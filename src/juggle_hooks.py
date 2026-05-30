@@ -34,6 +34,16 @@ logging.basicConfig(
 )
 
 
+
+def _record_error_safe(exc: Exception, entrypoint: str) -> None:
+    """Import record_error lazily to avoid circular import at module load."""
+    try:
+        from juggle_selfheal import record_error
+        record_error(exc, entrypoint)
+    except Exception:
+        pass  # record_error itself failed; already logged inside
+
+
 def is_active() -> bool:
     """Return True if juggle is enabled and active."""
     if not DB_PATH.exists():
@@ -236,6 +246,7 @@ def handle_user_prompt_submit(data: dict) -> None:
                     daemon=True,
                 ).start()
     except Exception as exc:
+        _record_error_safe(exc, "juggle_hooks.UserPromptSubmit")
         logging.error("UserPromptSubmit handler error: %s", exc, exc_info=True)
 
     sys.exit(0)
@@ -298,6 +309,7 @@ def handle_stop(data: dict) -> None:
                         "Stop: permission-asking detected in thread %s", thread_id
                     )
     except Exception as exc:
+        _record_error_safe(exc, "juggle_hooks.Stop")
         logging.error("Stop handler error: %s", exc, exc_info=True)
 
     sys.exit(0)
@@ -328,6 +340,7 @@ def handle_session_start(data: dict) -> None:
             }
             print(json.dumps(output))
     except Exception as exc:
+        _record_error_safe(exc, "juggle_hooks.SessionStart")
         logging.error("SessionStart handler error: %s", exc, exc_info=True)
 
     sys.exit(0)
@@ -455,6 +468,7 @@ def handle_pre_tool_use(data: dict) -> None:
                 logging.warning("AskUserQuestion PreToolUse handler error: %s", exc)
 
     except Exception as exc:
+        _record_error_safe(exc, "juggle_hooks.PreToolUse")
         logging.error("PreToolUse handler error: %s", exc, exc_info=True)
 
     sys.exit(0)
@@ -560,6 +574,7 @@ def handle_post_tool_use(data: dict) -> None:
             )
 
     except Exception as exc:
+        _record_error_safe(exc, "juggle_hooks.PostToolUse")
         logging.error("PostToolUse handler error: %s", exc, exc_info=True)
 
     sys.exit(0)
@@ -597,7 +612,12 @@ def main() -> None:
         logging.warning("Unknown hook event: %s", event_name)
         sys.exit(0)
 
-    handler(data)
+    try:
+        handler(data)
+    except Exception as exc:
+        _record_error_safe(exc, f"juggle_hooks.{event_name}")
+        logging.error("Unhandled error in hook %s: %s", event_name, exc, exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

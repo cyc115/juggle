@@ -716,8 +716,16 @@ class CockpitApp(App):
 
 
 def run(db_path: str | None = None) -> None:
-    app = CockpitApp(db_path=db_path)
-    app.run()
+    try:
+        app = CockpitApp(db_path=db_path)
+        app.run()
+    except Exception as exc:
+        try:
+            from juggle_selfheal import record_error
+            record_error(exc, "juggle_cockpit.run")
+        except Exception:
+            pass
+        raise
 
 
 # ---------------------------------------------------------------------------

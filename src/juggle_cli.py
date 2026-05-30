@@ -771,6 +771,8 @@ def main():
     try:
         args.func(args)
     except Exception as e:
+        from juggle_selfheal import record_error
+        record_error(e, "juggle_cli.main", {"argv": sys.argv})
         print(f"Error: {e}")
         sys.exit(1)
 
