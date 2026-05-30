@@ -234,7 +234,7 @@ class JuggleDB:
             conn.execute(CREATE_ERROR_EVENTS)
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_error_events_sig "
-                "ON error_events(signature_hash)"
+                "ON error_events(signature_hash) WHERE status != 'resolved'"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_error_events_status "
@@ -602,7 +602,7 @@ class JuggleDB:
                 conn.execute(CREATE_ERROR_EVENTS)
                 conn.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_error_events_sig "
-                    "ON error_events(signature_hash)"
+                    "ON error_events(signature_hash) WHERE status != 'resolved'"
                 )
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_error_events_status "
