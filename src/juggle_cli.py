@@ -127,6 +127,15 @@ from juggle_cmd_context import (
 
 from juggle_cmd_research import cmd_research
 
+from juggle_cmd_projects import (
+    cmd_project_list,
+    cmd_project_show,
+    cmd_project_assign,
+    cmd_project_edit,
+    cmd_project_create,
+    cmd_project_critique,
+)
+
 
 def cmd_cockpit(args):
     """Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).
@@ -677,6 +686,41 @@ def main():
             __import__("juggle_schedule_reflect").run(dry_run=a.dry_run) or None
         )
     )
+
+    # juggle project <subcmd>
+    p_project = subparsers.add_parser("project", help="Manage projects")
+    _ps = p_project.add_subparsers(dest="project_command", required=True)
+
+    _p = _ps.add_parser("list")
+    _p.set_defaults(func=cmd_project_list)
+
+    _p = _ps.add_parser("show")
+    _p.add_argument("project_id")
+    _p.set_defaults(func=cmd_project_show)
+
+    _p = _ps.add_parser("assign")
+    _p.add_argument("thread_id")
+    _p.add_argument("project_id")
+    _p.set_defaults(func=cmd_project_assign)
+
+    _p = _ps.add_parser("edit")
+    _p.add_argument("project_id")
+    _p.add_argument("--name")
+    _p.add_argument("--objective")
+    _p.add_argument("--out-of-scope", dest="out_of_scope")
+    _p.set_defaults(func=cmd_project_edit)
+
+    _p = _ps.add_parser("create")
+    _p.add_argument("--force", action="store_true")
+    _p.add_argument("--name")
+    _p.add_argument("--objective")
+    _p.add_argument("--success-criteria", dest="success_criteria")
+    _p.add_argument("--out-of-scope", dest="out_of_scope", default="")
+    _p.set_defaults(func=cmd_project_create)
+
+    _p = _ps.add_parser("critique")
+    _p.add_argument("project_id")
+    _p.set_defaults(func=cmd_project_critique)
 
     args = parser.parse_args()
 
