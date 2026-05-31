@@ -79,15 +79,22 @@ def _discover_harness_cfgs() -> dict[str, dict]:
         agent_cfg["harness"] = hid
         cfgs[hid] = agent_cfg
 
-    # 2. Every registered adapter type — synthesise a minimal viable config so
-    #    even a brand-new adapter class with no DEFAULTS entry is exercised.
+    # 2. Every registered adapter type — exercised with the adapter's OWN shipped
+    #    defaults (registered via register_adapter(..., defaults=...)). This
+    #    means a new adapter is gated against a realistic config of its own
+    #    shape, not a generic stub. Falls back to a minimal template-shaped
+    #    config for a type that registered no defaults.
+    juggle_harness._ensure_adapters_loaded()
     for type_name in juggle_harness._ADAPTERS:
         synth_id = f"_synth_{type_name}"
-        if type_name == "claude":
+        type_defaults = juggle_harness._DEFAULTS_BY_TYPE.get(type_name)
+        if type_defaults is not None:
+            hcfg = dict(type_defaults)
+        elif type_name == "claude":
             hcfg = dict(_CLAUDE_DEFAULTS)
         else:
             # Minimal template-shaped harness; mirrors the documented schema so
-            # the contract checks something realistic for non-claude types.
+            # the contract checks something realistic for a defaults-less type.
             hcfg = {
                 "type": type_name,
                 "command": "fakeharness",

@@ -115,19 +115,32 @@ DEFAULTS: dict = {
                 "submission_markers": ["esc to interrupt", "✻", "✶"],
                 "supports_hooks": True,
             },
-            # Example config-only adapter — copy, rename, fill in your CLI's real
-            # flags and TUI markers, then set `harness` (or `harness_by_role`):
-            # "codex": {
-            #     "type": "template",
-            #     "command": "codex",
-            #     "model_flag": "--model {model}",
-            #     "restrictions_flag": "",        # e.g. "--sandbox workspace-write"
-            #     "env": {"JUGGLE_IS_AGENT": "1"},
-            #     "env_unset": [],
-            #     "readiness_markers": ["» "],
-            #     "submission_markers": ["Esc to interrupt"],
-            #     "supports_hooks": False,         # no juggle hooks → anchor inlined
-            # },
+            # Built-in Codex CLI adapter (src/harnesses/codex.py). Inactive
+            # until selected via `harness` / `harness_by_role`. Codex restricts
+            # via sandbox/approval MODES (not a tool-deny list), reads AGENTS.md
+            # for context, and has version-skewed hooks — so per-role limits are
+            # materialized as `-a/-s` flags and the role anchor is inlined
+            # (supports_hooks=False). Confirm the `command`/markers against your
+            # installed `codex` and override here if needed; no code change.
+            "codex": {
+                "type": "codex",
+                "command": "codex",
+                "model_flag": "-m {model}",
+                "approval_policy": "never",
+                "sandbox_by_role": {
+                    "researcher": "read-only",
+                    "planner": "read-only",
+                    "coder": "workspace-write",
+                },
+                "sandbox_default": "read-only",
+                "sandbox_audit": "workspace-write",
+                "restrictions_flag": "",
+                "env": {"JUGGLE_IS_AGENT": "1"},
+                "env_unset": [],
+                "readiness_markers": ["Ctrl+C to exit", "› "],
+                "submission_markers": ["Esc to interrupt", "working", "thinking"],
+                "supports_hooks": False,
+            },
         },
         # --- Agent settings.json overlay -------------------------------------
         # Each agent's settings.json is generated from these two keys

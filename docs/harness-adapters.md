@@ -5,11 +5,21 @@ tmux pane. By default that CLI is **Claude Code**, but the launcher is pluggable
 you can point juggle at **Codex**, **reasonix**, or any other harness — usually
 with **config only, no code**.
 
-This is implemented by `src/juggle_harness.py` (`HarnessAdapter`) and consumed by
-`JuggleTmuxManager.start_agent_in_pane` (`src/juggle_tmux.py`). Everything that
-used to be hard-wired to Claude — the binary, flags, per-role tool restriction,
-env scrubbing, and the tmux readiness/submission markers — now lives behind the
-adapter and is selected from config.
+`src/juggle_harness.py` is the **framework** (the `HarnessAdapter` contract, the
+registry, and `get_adapter`), consumed by `JuggleTmuxManager.start_agent_in_pane`
+(`src/juggle_tmux.py`). Each concrete harness is **self-contained in its own
+module** under `src/harnesses/` and owns, in one place: launch (binary/flags/env),
+restriction materialization, context delivery, and capabilities. Shipped:
+
+| Module | Type | Restriction strategy | Context delivery |
+|--------|------|----------------------|------------------|
+| `harnesses/claude.py` | `claude` | per-role `permissions.deny` written to a JSON `--settings` overlay | juggle hooks (`UserPromptSubmit`) |
+| `harnesses/codex.py` | `codex` | per-role sandbox/approval **modes** (`-a/-s` flags) — Codex has no tool-deny list | anchor **inlined** into the prompt (Codex hooks are version-skewed) |
+| (built-in) | `template` | static `restrictions_flag` from config | inlined if `supports_hooks:false` |
+
+A new harness = drop `src/harnesses/<name>.py` that subclasses `HarnessAdapter`
+and calls `register_adapter(...)` at import; add it to `harnesses/__init__.py`.
+It is then auto-discovered and **gated by the conformance suite** (below).
 
 ## How selection works
 
@@ -47,9 +57,16 @@ working unchanged.**
 
 Notes:
 
-- **`type: "claude"`** uses `ClaudeCodeAdapter`, which generates the additive
-  per-role `--settings` overlay via `juggle_agent_settings` (your per-role tool
-  deny lists). This is the only `type` that needs real Python logic.
+- **`type: "claude"`** uses `ClaudeCodeAdapter` (`harnesses/claude.py`), which
+  generates the additive per-role `--settings` overlay via `juggle_agent_settings`.
+- **`type: "codex"`** uses `CodexAdapter` (`harnesses/codex.py`). Codex restricts
+  via sandbox + approval **modes**, not a tool list, so its config keys differ:
+  `approval_policy`, `sandbox_by_role` (e.g. `{"coder":"workspace-write","researcher":"read-only"}`),
+  `sandbox_default`, `sandbox_audit`. It materializes these as `-a <approval>
+  -s <sandbox>` launch flags. Codex auto-reads `AGENTS.md` for context and its
+  hooks engine is version-skewed, so `supports_hooks` defaults to `false` (anchor
+  inlined); set it `true` on a hook-capable Codex. Confirm `command`/markers
+  against your installed `codex` and override in config — no code change.
 - **`type: "template"`** uses the fully config-driven `TemplateHarnessAdapter`.
   This is the "bring your own harness" path — no Python required.
 - **`supports_hooks: false`** means the harness does **not** run juggle's

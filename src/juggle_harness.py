@@ -1,52 +1,45 @@
 #!/usr/bin/env python3
-"""Pluggable harness adapters for launching juggle sub-agents.
+"""Pluggable harness adapters for launching juggle sub-agents — framework.
 
 Juggle spawns each background agent as a full interactive CLI process inside a
 tmux pane (see ``juggle_tmux.JuggleTmuxManager``). Historically that process was
-hard-wired to Claude Code: the launch command, the per-role tool-restriction
-mechanism (``--settings <overlay.json>``) and the tmux readiness / submission
-markers were all Claude-specific and lived inline in ``start_claude_in_pane``.
+hard-wired to Claude Code. This module is the **framework**: the
+``HarnessAdapter`` contract plus the registry and resolver. Each concrete
+harness is **self-contained in its own module** under ``src/harnesses/`` and
+owns, in one place:
 
-This module factors every harness-specific decision behind a ``HarnessAdapter``
-so a deployment can point juggle at a different CLI (Codex, or any future
-harness) **purely through config**. Two layers, per the project's
-"code over prompts / reuse before new abstractions" philosophy:
+  * launch          — binary, flags, env (``build_launch_command``)
+  * restriction     — how per-role tool/permission limits are materialized
+                      (``_restrictions_part`` — inline flags or a written file)
+  * context delivery — how the role anchor reaches the agent
+                      (``decorate_task`` — via hooks, or inlined into the prompt)
+  * capabilities    — ``supports_hooks`` + tmux readiness/submission markers
 
-  * Built-in adapters encode behaviour that needs real logic. ``ClaudeCodeAdapter``
-    generates Claude's additive settings overlay via ``juggle_agent_settings``.
-  * ``TemplateHarnessAdapter`` is fully config-driven: a harness defined only by a
-    command template + markers in ``config.json`` works with **no Python**. This
-    is the "bring your own harness" path (codex, reasonix, …).
+Harnesses differ in ways a single launch string cannot capture:
+  * Claude Code: JSON ``~/.claude`` settings, ``--settings <file>`` overlay,
+    ``permissions.deny`` tool-name list, full hooks engine.
+  * Codex CLI: TOML ``~/.codex/config.toml``, ``-c key=value`` overrides,
+    sandbox/approval *modes* (not a tool list), ``AGENTS.md`` context, hooks
+    only in newer versions. So the Codex adapter materializes restrictions as
+    ``-a/-s`` flags and inlines the anchor by default — a different *strategy*,
+    encapsulated in ``harnesses/codex.py``.
 
-Selection is configurable:
-  * ``agent.harness``              — global default harness id.
-  * ``agent.harness_by_role[role]`` — optional per-role override.
-  * ``agent.harnesses[id]``        — the harness definitions (see schema below).
+Config selection (in ``~/.juggle/config.json`` under ``agent``):
+  * ``harness``            — global default harness id.
+  * ``harness_by_role``    — optional per-role override.
+  * ``harnesses[id]``      — harness definitions (schema in docs/harness-adapters.md).
 
-A harness definition is a dict with keys:
-  * ``type``                — ``"claude"`` (built-in overlay) or ``"template"``.
-  * ``command``             — launch command (falls back to ``agent.claude_launch_command``).
-  * ``model_flag``          — format string applied when a model is given, e.g. ``"--model {model}"``.
-  * ``restrictions_flag``   — (template only) static flag fragment for tool restriction.
-  * ``env``                 — dict of env vars to export before the command.
-  * ``env_unset``           — list of env vars to ``env -u`` (scrub) before the command.
-  * ``readiness_markers``   — substrings that signal the REPL is ready for paste.
-  * ``submission_markers``  — substrings that signal a pasted prompt was submitted.
-  * ``supports_hooks``      — whether the harness runs juggle's Claude Code hooks.
-                              When false, the role anchor is inlined into the task
-                              prompt instead of injected via UserPromptSubmit.
-
-Backward compatibility: if ``agent.harnesses`` is absent (or omits the selected
-id) a built-in "claude" harness is synthesised from the legacy
-``agent.claude_launch_command`` so existing configs keep working unchanged.
+Back-compat: a config with no ``harnesses`` block synthesises the built-in
+claude harness from ``agent.claude_launch_command`` so older configs are
+unchanged.
 """
-
-import shlex
 
 from juggle_settings import get_settings
 
 # Built-in Claude Code defaults. Doubles as the synthesised fallback when a
 # config has no `harnesses` block (older configs) — keeps behaviour identical.
+# The concrete logic lives in harnesses/claude.py; this dict is the data the
+# framework falls back to so it must stay importable without that module.
 _CLAUDE_DEFAULTS: dict = {
     "type": "claude",
     "model_flag": "--model {model}",
@@ -56,6 +49,44 @@ _CLAUDE_DEFAULTS: dict = {
     "submission_markers": ["esc to interrupt", "✻", "✶"],
     "supports_hooks": True,
 }
+
+
+# --------------------------------------------------------------------------
+# Registry — concrete adapters self-register from their own modules.
+# --------------------------------------------------------------------------
+_ADAPTERS: dict = {}
+_DEFAULTS_BY_TYPE: dict = {}
+_LOADED = False
+
+
+def register_adapter(type_name: str, cls, defaults: dict | None = None) -> None:
+    """Register a concrete adapter class under a ``type`` name.
+
+    ``defaults`` (optional) is the shipped harness-definition dict for this
+    type, used by tooling/tests to synthesise a realistic config for the type.
+    Called from each ``harnesses/<name>.py`` module at import time.
+    """
+    _ADAPTERS[type_name] = cls
+    if defaults is not None:
+        _DEFAULTS_BY_TYPE[type_name] = defaults
+
+
+def _ensure_adapters_loaded() -> None:
+    """Import the harnesses package once so all adapters self-register.
+
+    Idempotent and lazy — keeps ``import juggle_harness`` free of a hard
+    dependency on the concrete adapter modules (which import back from here).
+    """
+    global _LOADED
+    if _LOADED:
+        return
+    _LOADED = True
+    try:
+        import harnesses  # noqa: F401  (its __init__ imports every adapter module)
+    except Exception:
+        # A broken/optional adapter module must not break harness resolution;
+        # the built-in template adapter is always available as a fallback.
+        pass
 
 
 def _env_prefix(env: dict | None, env_unset, role: str | None, audit: bool) -> str:
@@ -91,9 +122,11 @@ class HarnessAdapter:
     """Base adapter — config-driven command, markers and task decoration.
 
     Subclasses override ``_restrictions_part`` to apply a harness's per-role
-    tool-restriction mechanism. The base class itself is a usable, purely
-    config-driven adapter (no restrictions) — ``TemplateHarnessAdapter`` is a
-    thin named alias of it for readability in config (``"type": "template"``).
+    tool-restriction mechanism (and may override ``decorate_task`` for a
+    harness-specific context-delivery strategy). The base class itself is a
+    usable, purely config-driven adapter (no restrictions) —
+    ``TemplateHarnessAdapter`` is a thin named alias of it for readability in
+    config (``"type": "template"``).
     """
 
     def __init__(self, harness_id: str, harness_cfg: dict, agent_cfg: dict):
@@ -130,7 +163,8 @@ class HarnessAdapter:
         """Flag fragment that applies per-role tool restrictions.
 
         Base / template behaviour: emit the static ``restrictions_flag`` from
-        config (empty by default). Override in subclasses that generate files.
+        config (empty by default). Override in subclasses that generate files
+        (Claude) or emit harness-native flags (Codex).
         """
         return self._cfg.get("restrictions_flag", "") or ""
 
@@ -150,14 +184,15 @@ class HarnessAdapter:
             parts.append(restrictions)
         return " ".join(parts)
 
-    # -- task decoration ----------------------------------------------------
+    # -- task decoration (context delivery) ---------------------------------
     def decorate_task(self, role: str | None, prompt: str) -> str:
         """Adjust a task prompt before it is pasted into the agent.
 
-        Claude runs juggle's ``UserPromptSubmit`` hook, which injects the role
-        anchor, so the default leaves the prompt untouched. Harnesses without
-        juggle hooks get the anchor prepended here instead, so the agent still
-        learns its role + completion command.
+        Default strategy: hook-capable harnesses inject the role anchor via
+        their UserPromptSubmit-equivalent hook, so the prompt is left untouched;
+        harnesses without juggle hooks get the anchor prepended here so the
+        agent still learns its role + completion command. A harness with a
+        different mechanism (e.g. writing AGENTS.md) may override this.
         """
         if self.supports_hooks:
             return prompt
@@ -174,24 +209,8 @@ class TemplateHarnessAdapter(HarnessAdapter):
     """Fully config-driven adapter (the "bring your own harness" path)."""
 
 
-class ClaudeCodeAdapter(HarnessAdapter):
-    """Built-in Claude Code adapter: per-role denies via a ``--settings`` overlay."""
-
-    def _restrictions_part(self, role: str | None, audit: bool) -> str:
-        # Per-role denied tools (and any future per-role settings) are written to
-        # a settings overlay file and passed via `--settings <path>` — one short,
-        # fixed token that pastes reliably into the pane. Imported at call time so
-        # tests patching `juggle_agent_settings.write_agent_overlay` take effect.
-        import juggle_agent_settings as _jas
-
-        overlay_path = _jas.write_agent_overlay(role)
-        return "--settings " + shlex.quote(str(overlay_path))
-
-
-_ADAPTERS = {
-    "claude": ClaudeCodeAdapter,
-    "template": TemplateHarnessAdapter,
-}
+# The template type needs no dedicated module — register it here.
+register_adapter("template", TemplateHarnessAdapter)
 
 
 def get_adapter(role: str | None = None, agent_cfg: dict | None = None) -> HarnessAdapter:
@@ -201,6 +220,7 @@ def get_adapter(role: str | None = None, agent_cfg: dict | None = None) -> Harne
     ``"claude"``. Pass ``agent_cfg`` to inject settings (used by callers that
     monkeypatch their own ``get_settings``); otherwise it is read globally.
     """
+    _ensure_adapters_loaded()
     if agent_cfg is None:
         agent_cfg = get_settings().get("agent", {})
 
@@ -218,3 +238,16 @@ def get_adapter(role: str | None = None, agent_cfg: dict | None = None) -> Harne
 
     cls = _ADAPTERS.get(hcfg.get("type", "template"), TemplateHarnessAdapter)
     return cls(hid, hcfg, agent_cfg)
+
+
+def __getattr__(name: str):
+    """Lazily re-export concrete adapters for back-compat (e.g.
+    ``from juggle_harness import ClaudeCodeAdapter``) without importing the
+    harnesses package at module load."""
+    if name in ("ClaudeCodeAdapter", "CodexAdapter"):
+        _ensure_adapters_loaded()
+        module = {"ClaudeCodeAdapter": "claude", "CodexAdapter": "codex"}[name]
+        import importlib
+
+        return getattr(importlib.import_module(f"harnesses.{module}"), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
