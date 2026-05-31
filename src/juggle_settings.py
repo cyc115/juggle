@@ -91,6 +91,44 @@ DEFAULTS: dict = {
         # base temporarily if you need to audit those too. Costs tokens while on
         # (tools re-enter context); turn off to bank the savings again.
         "audit_mode": False,
+        # --- Sub-agent harness adapters --------------------------------------
+        # Which CLI juggle launches for each background agent. Default "claude"
+        # (Claude Code). Point a deployment at a different harness (Codex, or any
+        # future CLI) WITHOUT code changes: add an entry under `harnesses` and
+        # set `harness` (global) or `harness_by_role` (per role). See
+        # juggle_harness.py and docs/harness-adapters.md for the full schema and
+        # a worked Codex/reasonix example.
+        "harness": "claude",
+        # Optional per-role override, e.g. {"researcher": "codex"}.
+        "harness_by_role": {},
+        "harnesses": {
+            "claude": {
+                # Built-in adapter: per-role tool denies via a `--settings`
+                # overlay (juggle_agent_settings). `command` is omitted so it
+                # falls back to `agent.claude_launch_command` above — one source
+                # of truth for the Claude launch string.
+                "type": "claude",
+                "model_flag": "--model {model}",
+                "env": {"JUGGLE_IS_AGENT": "1"},
+                "env_unset": ["CLAUDE_PLUGIN_DATA"],
+                "readiness_markers": ["bypass permissions on", "/effort"],
+                "submission_markers": ["esc to interrupt", "✻", "✶"],
+                "supports_hooks": True,
+            },
+            # Example config-only adapter — copy, rename, fill in your CLI's real
+            # flags and TUI markers, then set `harness` (or `harness_by_role`):
+            # "codex": {
+            #     "type": "template",
+            #     "command": "codex",
+            #     "model_flag": "--model {model}",
+            #     "restrictions_flag": "",        # e.g. "--sandbox workspace-write"
+            #     "env": {"JUGGLE_IS_AGENT": "1"},
+            #     "env_unset": [],
+            #     "readiness_markers": ["» "],
+            #     "submission_markers": ["Esc to interrupt"],
+            #     "supports_hooks": False,         # no juggle hooks → anchor inlined
+            # },
+        },
         # --- Agent settings.json overlay -------------------------------------
         # Each agent's settings.json is generated from these two keys
         # (juggle_agent_settings.build_agent_overlay) and passed via

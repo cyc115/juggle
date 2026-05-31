@@ -117,13 +117,15 @@ def _render_tier2(t: dict) -> str:
     return f"[{label}] ✅ closed  | {title}"
 
 
-def _render_agent_role_anchor() -> str:
-    """Return the AGENT ROLE anchor block for agent panes. Empty string otherwise."""
-    import os
+def render_agent_role_anchor_for(role: str) -> str:
+    """Return the AGENT ROLE anchor block for an explicit ``role``.
 
-    if os.environ.get("JUGGLE_IS_AGENT") != "1":
-        return ""
-    role = os.environ.get("JUGGLE_AGENT_ROLE", "")
+    Shared by the env-driven hook path (``_render_agent_role_anchor``, used by
+    Claude Code's UserPromptSubmit hook) and by harness adapters that inline the
+    anchor into the task prompt for harnesses without juggle hooks
+    (``juggle_harness.HarnessAdapter.decorate_task``). Returns "" for an unknown
+    or unconfigured role.
+    """
     if not role:
         return ""
     role_context = _get_settings().get("agent", {}).get("role_context", {})
@@ -140,6 +142,13 @@ def _render_agent_role_anchor() -> str:
         f"ROLE: {role}. {identity}\n"
         f'COMPLETION: python3 {plugin_root}/src/juggle_cli.py complete-agent <THREAD> "<summary>" --retain "<key finding>"'
     )
+
+
+def _render_agent_role_anchor() -> str:
+    """Return the AGENT ROLE anchor block for agent panes. Empty string otherwise."""
+    if os.environ.get("JUGGLE_IS_AGENT") != "1":
+        return ""
+    return render_agent_role_anchor_for(os.environ.get("JUGGLE_AGENT_ROLE", ""))
 
 
 def _build(db: JuggleDB) -> str:
