@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Juggle Context - builds additionalContext for UserPromptSubmit hook."""
 
+import os
 import re
 
 from juggle_cli_common import _humanize_dt, _extract_decision_prompt
@@ -142,6 +143,15 @@ def _render_agent_role_anchor() -> str:
 
 
 def _build(db: JuggleDB) -> str:
+    # Agent sessions get ONLY their role anchor — never the orchestrator
+    # dashboard. The "JUGGLE ACTIVE" block is orchestrator-only context
+    # (explicitly tagged "do not forward to sub-agents") and an agent is told
+    # to ignore all of it, so injecting it wastes up to context_injection_char_limit
+    # (~2000 tokens) per task prompt on every dispatched agent. Returned before
+    # any DB query so it costs nothing and needs no active orchestrator.
+    if os.environ.get("JUGGLE_IS_AGENT") == "1":
+        return _render_agent_role_anchor()
+
     if not db.is_active():
         return ""
 

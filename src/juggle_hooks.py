@@ -244,6 +244,31 @@ def auto_approve_blocked_agents() -> None:
 
 def handle_user_prompt_submit(data: dict) -> None:
     """Inject juggle context (plus autopilot directive) and record the user prompt."""
+    # Agent sessions: inject ONLY the role anchor (build_context_string returns
+    # anchor-only when JUGGLE_IS_AGENT=1). Skip the orchestrator dashboard, the
+    # autopilot directive, the agent-pane auto-approve sweep, the thread message
+    # write, and Hindsight retention — an agent's prompt is a task, not a user
+    # turn, so writing it into orchestrator history (and re-injecting ~2000 tokens
+    # of dashboard every turn) is pure waste.
+    if os.environ.get("JUGGLE_IS_AGENT") == "1":
+        try:
+            anchor = build_context_string()
+            if anchor:
+                print(
+                    json.dumps(
+                        {
+                            "hookSpecificOutput": {
+                                "hookEventName": "UserPromptSubmit",
+                                "additionalContext": anchor,
+                            }
+                        }
+                    )
+                )
+        except Exception as exc:
+            _record_error_safe(exc, "juggle_hooks.UserPromptSubmit")
+            logging.error("UserPromptSubmit agent-anchor error: %s", exc, exc_info=True)
+        sys.exit(0)
+
     autopilot = _autopilot_context()
 
     # Autopilot is independent of juggle mode — re-assert it even when inactive.
@@ -366,6 +391,12 @@ def handle_stop(data: dict) -> None:
 
 def handle_session_start(data: dict) -> None:
     """Inject restoration context on resume or compact."""
+    # Agent sessions never need the orchestrator's startup dashboard (topics tree
+    # + Hindsight recalls). Without this guard every dispatched agent effectively
+    # "calls /juggle:start" at boot, paying for context it is told to ignore.
+    if os.environ.get("JUGGLE_IS_AGENT") == "1":
+        sys.exit(0)
+
     if not is_active():
         db = get_db()
         if db.get_threads_by_status("open"):
@@ -536,6 +567,14 @@ def handle_pre_tool_use(data: dict) -> None:
 
 def handle_post_tool_use(data: dict) -> None:
     """Detect orchestrator violations and JUGGLE ACTIVE leaks in tool calls."""
+    # Agent sessions: none of the orchestrator-violation logic applies. Agents
+    # are SUPPOSED to Read/Grep/Glob and they never call Agent. Without this
+    # guard every file read in an agent injects a ~40-word "ORCHESTRATOR
+    # VIOLATION" warning into the agent's context — a per-tool-call token leak
+    # and a false accusation. Exit before any check.
+    if os.environ.get("JUGGLE_IS_AGENT") == "1":
+        sys.exit(0)
+
     if not is_active():
         sys.exit(0)
 
