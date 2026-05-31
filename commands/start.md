@@ -45,6 +45,19 @@ Auto-create Topic A from first substantive message: `create-thread "<label>"`
 | `get-messages` | `<id> [--plain] [--limit N]` | thread messages |
 | `get-archive-candidates` | — | archivable threads |
 
+**Project commands:**
+
+| Command | Signature | Notes |
+| ------- | --------- | ----- |
+| `project list` | — | All projects with thread counts |
+| `project show` | `<id>` | Full project card + assigned threads |
+| `project create` | `[--force --name N --objective O]` | LLM coach wizard (interactive) or --force for non-interactive |
+| `project assign` | `<thread_id> <project_id>` | Manually assign thread to project |
+| `project edit` | `<id> [--name] [--objective] [--out-of-scope]` | Update project fields |
+| `project critique` | `<id>` | Re-run LLM coach on existing project |
+
+Auto-assignment: every new thread is silently assigned to the best-matching project in the background. Failures are silent — thread stays in Inbox.
+
 **Never** use `spawn-agent` — always `get-agent`.
 
 **Dispatch discipline:** never call `get-agent` for a queued/not-yet-ready thread — call it only immediately before `send-task`. Queued work lives as a thread-summary spec with NO agent; otherwise the watchdog flags the idle agent as stalled.
