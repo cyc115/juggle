@@ -116,6 +116,7 @@ from juggle_cmd_agents import (
 from juggle_cmd_context import (
     cmd_get_context,
     cmd_init_db,
+    cmd_configure_harness,
     cmd_recall,
     cmd_recall_bg,
     cmd_recall_if_cold,
@@ -571,6 +572,26 @@ def main():
     # init-db
     p_init = subparsers.add_parser("init-db", help="Initialize DB schema")
     p_init.set_defaults(func=cmd_init_db)
+
+    # configure-harness
+    p_harness = subparsers.add_parser(
+        "configure-harness",
+        help="Select/tune the sub-agent harness in config.json",
+    )
+    p_harness.add_argument("harness", help="Harness id, e.g. claude | codex")
+    p_harness.add_argument(
+        "--role",
+        default=None,
+        help="Apply to one role only (agent.harness_by_role); default: global",
+    )
+    p_harness.add_argument("--model", default=None, help="Pin the harness model")
+    p_harness.add_argument(
+        "--extra-flags", dest="extra_flags", default=None, help="Extra CLI flags"
+    )
+    p_harness.add_argument(
+        "--command", default=None, help="Override the harness launch command"
+    )
+    p_harness.set_defaults(func=cmd_configure_harness)
 
     # set-summarized-count
     p_set_count = subparsers.add_parser(

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Juggle CLI — Shared context, memory, and misc commands."""
 
+import copy
 import json
 import subprocess
 import sys
@@ -32,6 +33,77 @@ def cmd_init_db(_):
     db = get_db()
     db.init_db()
     print("DB initialized.")
+
+
+def cmd_configure_harness(args):
+    """Select / tune the sub-agent harness in config.json (code, not hand-edits).
+
+    Sets which CLI runs background agents and, optionally, that harness's model,
+    extra CLI flags, or launch command. Writes ``~/.juggle/config.json`` in place,
+    preserving everything else. Used by ``/juggle:init`` and runnable directly.
+    """
+    from juggle_settings import DEFAULTS, config_path
+
+    path = config_path()
+    cfg = {}
+    if path.exists():
+        try:
+            cfg = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            print(f"Error: {path} is unreadable/corrupt — run /juggle:init first.")
+            sys.exit(1)
+
+    agent = cfg.setdefault("agent", {})
+    harnesses = agent.setdefault("harnesses", {})
+    hid = args.harness
+
+    # The harness must have a definition. Seed it from DEFAULTS when known
+    # (claude/codex ship there); otherwise the user must define it in config.
+    if hid not in harnesses:
+        default_def = (DEFAULTS.get("agent", {}).get("harnesses", {}) or {}).get(hid)
+        if default_def is not None:
+            harnesses[hid] = copy.deepcopy(default_def)
+        else:
+            available = sorted(set(harnesses) | set(
+                (DEFAULTS.get("agent", {}).get("harnesses", {}) or {})
+            ))
+            print(
+                f"Error: unknown harness {hid!r}. Available: {', '.join(available)}. "
+                f"Define it under agent.harnesses in config.json first, or pass --command."
+            )
+            if not args.command:
+                sys.exit(1)
+            harnesses[hid] = {"type": "template"}
+
+    # Per-harness overrides (only the ones provided).
+    hdef = harnesses[hid]
+    if args.model is not None:
+        hdef["model"] = args.model
+    if args.extra_flags is not None:
+        hdef["extra_flags"] = args.extra_flags
+    if args.command is not None:
+        hdef["command"] = args.command
+
+    # Selection: per-role override, or the global default.
+    if args.role:
+        agent.setdefault("harness_by_role", {})[args.role] = hid
+        scope = f"role {args.role!r}"
+    else:
+        agent["harness"] = hid
+        scope = "all roles (global)"
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cfg, indent=2))
+
+    extras = []
+    if args.model is not None:
+        extras.append(f"model={args.model}")
+    if args.extra_flags is not None:
+        extras.append(f"extra_flags={args.extra_flags!r}")
+    if args.command is not None:
+        extras.append(f"command={args.command!r}")
+    suffix = f" ({', '.join(extras)})" if extras else ""
+    print(f"Sub-agent harness for {scope} set to {hid!r}{suffix} in {path}.")
 
 
 def cmd_recall(args):
