@@ -59,9 +59,18 @@ All paths below use `${VAULT_PATH}`, `${VAULT_NAME}`, and `${INBOX}` — never h
 
 Attachments go in a `res/` subdirectory within the destination.
 
-**Step 3 — Write to vault:**
-- `cp` original file to `<destination>/res/<filename>`
-- Write a companion `.md` file with frontmatter: `date`, `source`, `type` + extracted facts/summary
+**Step 3 — Write to vault (MANDATORY: copy original file):**
+
+1. Create the destination `res/` subdirectory:
+   `mkdir -p <destination>/res/`
+2. **Copy the original file** into `res/`:
+   `cp "<source_path>" "<destination>/res/<clean-filename>"`
+   Use a clean filename: `YYYY-MM-DD-<slug>.<ext>` (no URL-encoded chars, no spaces).
+3. Write a companion `.md` file at `<destination>/<clean-filename>.md` with:
+   - Frontmatter: `date`, `source`, `type`
+   - Extracted facts/summary
+   - **A wikilink to the copied file**: `[[<vault-relative-path-to-res-file>|Source PDF]]`
+   The wikilink must use a vault-relative path (e.g. `areas/finance/tax/2024/res/filename.pdf`), not an absolute filesystem path.
 
 **Step 4 — Log to inbox:**
 Append to `${INBOX}`:
