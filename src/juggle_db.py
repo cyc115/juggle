@@ -142,6 +142,26 @@ CREATE TABLE IF NOT EXISTS watchdog_events (
 """
 
 
+# Per-agent tool-usage telemetry. Aggregated by (role, tool, mode) so the table
+# stays tiny regardless of volume: each tool call increments `count` rather than
+# inserting a row. `mode` distinguishes steady-state usage ('normal') from
+# audit-mode runs ('audit', per-role denies relaxed) so the report can tell
+# "what a role uses" from "what a role would use if not blocked".
+CREATE_AGENT_TOOL_EVENTS = """
+CREATE TABLE IF NOT EXISTS agent_tool_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  role        TEXT NOT NULL,
+  tool_name   TEXT NOT NULL,
+  mode        TEXT NOT NULL DEFAULT 'normal',
+  count       INTEGER NOT NULL DEFAULT 1,
+  first_seen  TEXT NOT NULL,
+  last_seen   TEXT NOT NULL,
+  last_input  TEXT,
+  UNIQUE(role, tool_name, mode)
+);
+"""
+
+
 CREATE_ERROR_EVENTS = """
 CREATE TABLE IF NOT EXISTS error_events (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -231,6 +251,7 @@ class JuggleDB:
             conn.execute(CREATE_SETTINGS)
             conn.execute(CREATE_AGENT_COMPLETIONS)
             conn.execute(CREATE_WATCHDOG_EVENTS)
+            conn.execute(CREATE_AGENT_TOOL_EVENTS)
             conn.execute(CREATE_ERROR_EVENTS)
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_error_events_sig "
@@ -612,6 +633,15 @@ class JuggleDB:
                 _log.info("Migration 24: error_events table created")
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 24 (error_events) skipped: %s", e)
+
+        # Migration 25: agent_tool_events telemetry table
+        if "agent_tool_events" not in tables_now:
+            try:
+                conn.execute(CREATE_AGENT_TOOL_EVENTS)
+                conn.commit()
+                _log.info("Migration 25: agent_tool_events table created")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 25 (agent_tool_events) skipped: %s", e)
 
     # ------------------------------------------------------------------
     # Session helpers
@@ -1373,6 +1403,75 @@ class JuggleDB:
         if len(vals) % 2 == 0:
             return (vals[mid - 1] + vals[mid]) / 2.0
         return vals[mid]
+
+    def record_agent_tool_use(
+        self,
+        role: str,
+        tool_name: str,
+        mode: str = "normal",
+        last_input: str | None = None,
+    ) -> None:
+        """Increment the usage counter for (role, tool_name, mode).
+
+        This runs on the agent's PreToolUse critical path (the tool call waits
+        for the hook), so it is engineered to NEVER stall an agent:
+          * a 250 ms busy-timeout caps any wait when the shared DB's single WAL
+            writer is held by another agent/the orchestrator — past that the
+            write raises `database is locked`, the caller drops the sample, and
+            the tool proceeds. Telemetry is lossy-tolerant; responsiveness wins.
+          * `CREATE TABLE` is attempted only if the insert hits a missing table
+            (once, on a pre-migration DB) — it stays off the hot path otherwise.
+        Upsert keeps the table aggregated (one row per tuple) so volume is O(1).
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        params = (role, tool_name, mode, now, now, last_input)
+        insert = (
+            "INSERT INTO agent_tool_events "
+            "(role, tool_name, mode, count, first_seen, last_seen, last_input) "
+            "VALUES (?, ?, ?, 1, ?, ?, ?) "
+            "ON CONFLICT(role, tool_name, mode) DO UPDATE SET "
+            "count = count + 1, last_seen = excluded.last_seen, "
+            "last_input = excluded.last_input"
+        )
+        conn = sqlite3.connect(str(self.db_path), timeout=0.25)
+        try:
+            try:
+                conn.execute(insert, params)
+            except sqlite3.OperationalError as exc:
+                if "no such table" in str(exc):
+                    conn.execute(CREATE_AGENT_TOOL_EVENTS)
+                    conn.execute(insert, params)
+                else:
+                    raise  # e.g. "database is locked" → caller drops the sample
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_agent_tool_usage(self, role: str | None = None) -> list[dict]:
+        """Return aggregated tool-usage rows, optionally filtered to one role."""
+        with self._connect() as conn:
+            conn.execute(CREATE_AGENT_TOOL_EVENTS)
+            if role:
+                rows = conn.execute(
+                    "SELECT role, tool_name, mode, count, first_seen, last_seen, "
+                    "last_input FROM agent_tool_events WHERE role = ? "
+                    "ORDER BY count DESC, tool_name",
+                    (role,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT role, tool_name, mode, count, first_seen, last_seen, "
+                    "last_input FROM agent_tool_events ORDER BY role, count DESC, tool_name"
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+    def reset_agent_tool_usage(self) -> int:
+        """Delete all agent_tool_events rows; return number removed."""
+        with self._connect() as conn:
+            conn.execute(CREATE_AGENT_TOOL_EVENTS)
+            cur = conn.execute("DELETE FROM agent_tool_events")
+            conn.commit()
+            return cur.rowcount
 
     def add_watchdog_event(
         self,

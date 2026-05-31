@@ -6,6 +6,33 @@ Required environment variables (no defaults):
 - _JUGGLE_TEST_DB, CLAUDE_PLUGIN_DATA (juggle_cli.py)
 - JUGGLE_MAX_BACKGROUND_AGENTS, JUGGLE_MAX_THREADS (juggle_db.py)
 
+# Testing
+
+Most tests use an isolated `tmp_path` DB and need no setup. Tests that exercise
+the hooks (e.g. `test_juggle_hooks.py`) run against the **shared** DB at
+`~/.claude/juggle/juggle.db` (the path `juggle_hooks.DB_PATH` resolves from
+`paths.data_dir`, independent of `_JUGGLE_TEST_DB`). Without setup they fail with
+`no such table: session`; some also assert active/inactive state.
+
+Set up the shared DB once per fresh checkout/container before running the suite:
+
+```bash
+export _JUGGLE_TEST_DB="$HOME/.claude/juggle/juggle.db"   # point CLI at the shared DB
+export CLAUDE_PLUGIN_DATA="$HOME/.claude/juggle"
+export JUGGLE_MAX_BACKGROUND_AGENTS=5 JUGGLE_MAX_THREADS=10
+uv run python src/juggle_cli.py init-db   # create all tables (fresh DB)
+uv run python src/juggle_cli.py start     # activate session (hook tests need active state)
+uv run pytest -q
+```
+
+Notes:
+- `juggle:doctor` only **migrates** an existing/stale DB — it does NOT create a
+  fresh one (it prints "will be created on first juggle command"). Use `init-db`
+  on a fresh checkout, then `doctor` for schema migrations on an existing DB.
+- The hook tests share the active-state of the one DB, so a few that assert
+  `juggle inactive` will fail once `start` has activated it — a known
+  test-isolation limitation, unrelated to product code.
+
 # Design Philosophy
 
 - **Code over prompts.** Logic and behavioral rules go in code or hooks — never prompt-only. Prompts can be forgotten; CLI commands and hooks cannot.

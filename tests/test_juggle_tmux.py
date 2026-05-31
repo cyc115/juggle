@@ -91,9 +91,14 @@ def test_start_claude_sets_juggle_is_agent(mgr):
     )
 
 
-def test_start_claude_large_command_no_truncation(mgr):
-    """A >4KB launch command must arrive intact in the temp file, not via send-keys."""
+def test_start_claude_denials_go_to_settings_file_not_command_line(mgr, tmp_path):
+    """A large deny list must NOT bloat the pasted command. It is written to a
+    `--settings <file>` overlay (short, fixed token) instead of a long
+    `--disallowedTools a,b,c,...` flag, which pastes unreliably."""
+    import json as _json
     from pathlib import Path as _Path
+
+    import juggle_agent_settings as _jas
 
     big_denied = [f"mcp__tool_{i}__action" for i in range(200)]
 
@@ -110,25 +115,77 @@ def test_start_claude_large_command_no_truncation(mgr):
                 pass
         return m
 
-    fake_settings = {
+    tmux_settings = {
+        "agent": {"claude_launch_command": "claude --dangerously-skip-permissions"}
+    }
+    overlay_settings = {
+        "paths": {"config_dir": str(tmp_path)},
         "agent": {
-            "claude_launch_command": "claude --dangerously-skip-permissions",
-            "disallowed_tools_universal": big_denied,
-            "disallowed_tools_by_role": {},
-        }
+            "settings_overlay_base": {"permissions": {"deny": big_denied}},
+            "settings_overlay_by_role": {
+                "coder": {"permissions": {"deny": ["NotebookEdit"]}}
+            },
+        },
     }
     with (
-        patch("juggle_tmux._get_settings", return_value=fake_settings),
+        patch("juggle_tmux._get_settings", return_value=tmux_settings),
+        patch.object(_jas, "get_settings", return_value=overlay_settings),
         patch.object(mgr, "_run_tmux", side_effect=capture_tmux),
     ):
-        mgr.start_claude_in_pane("%5")
+        mgr.start_claude_in_pane("%5", role="coder")
 
     assert written_content, "load-buffer was never called"
     cmd = written_content[0]
-    assert len(cmd) > 4096, f"Expected cmd > 4KB, got {len(cmd)} bytes"
-    assert all(f"mcp__tool_{i}__action" in cmd for i in range(200)), (
-        "Tool names missing from written command — truncation detected"
-    )
+    # The fragile long list is OFF the command line...
+    assert "--disallowedTools" not in cmd
+    assert "mcp__tool_0__action" not in cmd
+    # ...and replaced by a short, fixed --settings token.
+    assert "--settings " in cmd
+    settings_path = _Path(cmd.split("--settings ")[1].split()[0].strip("'\""))
+    overlay = _json.loads(settings_path.read_text())
+    deny = overlay["permissions"]["deny"]
+    assert all(f"mcp__tool_{i}__action" in deny for i in range(200))
+    assert "NotebookEdit" in deny  # role-specific denial included
+    assert "JUGGLE_AGENT_AUDIT" not in cmd  # audit mode off by default
+
+
+def test_start_claude_sets_audit_env_when_audit_mode(mgr, tmp_path):
+    """With agent.audit_mode on, the agent is tagged JUGGLE_AGENT_AUDIT=1 so its
+    PreToolUse telemetry is recorded as 'audit'."""
+    from pathlib import Path as _Path
+
+    import juggle_agent_settings as _jas
+
+    written = []
+
+    def capture_tmux(*args):
+        m = MagicMock()
+        m.returncode = 0
+        m.stdout = ""
+        if args[0] == "load-buffer":
+            written.append(_Path(args[-1]).read_text())
+        return m
+
+    tmux_settings = {
+        "agent": {"claude_launch_command": "claude -p", "audit_mode": True}
+    }
+    overlay_settings = {
+        "paths": {"config_dir": str(tmp_path)},
+        "agent": {
+            "settings_overlay_base": {},
+            "settings_overlay_by_role": {"coder": {}},
+            "audit_mode": True,
+        },
+    }
+    with (
+        patch("juggle_tmux._get_settings", return_value=tmux_settings),
+        patch.object(_jas, "get_settings", return_value=overlay_settings),
+        patch.object(mgr, "_run_tmux", side_effect=capture_tmux),
+    ):
+        mgr.start_claude_in_pane("%1", role="coder")
+
+    assert written
+    assert "JUGGLE_AGENT_AUDIT=1" in written[0]
 
 
 def test_verify_pane_true_when_present(mgr):

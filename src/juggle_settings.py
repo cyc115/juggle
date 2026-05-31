@@ -73,33 +73,6 @@ DEFAULTS: dict = {
     # Agent Launch
     "agent": {
         "claude_launch_command": "claude --dangerously-skip-permissions",
-        # Tools denied for ALL agent roles (reduces tool-definition token cost).
-        # opentabs (78 browser tools) + meta tools agents never invoke.
-        "disallowed_tools_universal": [
-            # opentabs browser tools (78 tools) — wildcard collapses to single entry
-            "mcp__opentabs__*",
-            # personal-mcp financial tools (not for agents)
-            "mcp__personal-mcp__plaid_get_accounts",
-            "mcp__personal-mcp__plaid_get_statements",
-            "mcp__personal-mcp__plaid_sync_transactions",
-            # meta / orchestrator tools agents don't invoke
-            "ScheduleWakeup",
-            "CronCreate",
-            "CronList",
-            "CronDelete",
-            "ShareOnboardingGuide",
-            "ExitPlanMode",
-            "EnterPlanMode",
-            "EnterWorktree",
-            "ExitWorktree",
-            "PushNotification",
-            # sub-agent spawning and remote triggers — orchestrator-only
-            "Agent",
-            "RemoteTrigger",
-            # MCP resource browsing — not used by any agent role
-            "ListMcpResourcesTool",
-            "ReadMcpResourceTool",
-        ],
         # Per-role role identity sentences injected into agent context anchor.
         "role_context": {
             "researcher": "Produce comprehensive, well-structured, cited reports. Never fabricate URLs.",
@@ -108,24 +81,115 @@ DEFAULTS: dict = {
         },
         # Skill invoked by coder agents before complete-agent (configurable per deployment).
         "quality_gate_skill": "mike:pre-pr",
-        # Per-role additional denylists (merged with universal at spawn time).
-        "disallowed_tools_by_role": {
-            "researcher": [
-                "Edit",  # researchers don't patch code
-                "NotebookEdit",  # no Jupyter in Juggle
-            ],
-            "coder": [
-                "NotebookEdit",  # no Jupyter in Juggle
-                "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for coding
-            ],
-            "planner": [
-                "Edit",  # planners write plans, not code
-                "NotebookEdit",  # no Jupyter in Juggle
-                "Monitor",  # planners don't run bg processes
-                "TaskOutput",  # no bg tasks to monitor
-                "TaskStop",  # no bg tasks to stop
-                "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for planning
-            ],
+        # Audit (measurement) mode for right-sizing the deny block. When true,
+        # build_agent_overlay drops the PER-ROLE denials so those tools stay in
+        # the agent's context and `juggle agent-tools` can observe real per-role
+        # demand (stripped tools are invisible — they're never offered to the
+        # model, so they leave no usage signal). Agents launched in this mode set
+        # JUGGLE_AGENT_AUDIT=1 so their telemetry is tagged 'audit'. Universal
+        # (settings_overlay_base) denials stay in effect — flip an entry out of
+        # base temporarily if you need to audit those too. Costs tokens while on
+        # (tools re-enter context); turn off to bank the savings again.
+        "audit_mode": False,
+        # --- Agent settings.json overlay -------------------------------------
+        # Each agent's settings.json is generated from these two keys
+        # (juggle_agent_settings.build_agent_overlay) and passed via
+        # `--settings <file>`. `--settings` LAYERS over the host settings
+        # hierarchy — omitted keys keep their host values, and permission
+        # allow/deny/ask arrays UNION across sources — so this overlay is
+        # purely ADDITIVE and portable: it never replaces the host's settings.
+        #
+        # Composition: settings_overlay_base (universal, applied to EVERY
+        # agent) is merged first, then settings_overlay_by_role[role] is merged
+        # on top. List values (e.g. permissions.deny) union; nested dicts
+        # deep-merge; scalars (model, defaultMode, …) override.
+        #
+        # permissions.deny here doubles as the token-saving lever: a bare tool
+        # name removes that tool from the agent's context entirely.
+        "settings_overlay_base": {
+            "permissions": {
+                "deny": [
+                    # opentabs browser tools (78 tools) — wildcard collapses to one entry
+                    "mcp__opentabs__*",
+                    # GitHub MCP (60+ tools) — the orchestrator owns all GitHub/PR
+                    # work; agents do code via the git CLI (Bash). Largest single
+                    # context saving. (Standard `github` MCP namespace.)
+                    "mcp__github__*",
+                    # otterai (meeting transcription) — not used by any agent role.
+                    "mcp__otterai__*",
+                    # NOTE: the claude.ai Google Workspace connectors (Drive,
+                    # Calendar, Gmail) are NOT denied universally — researchers
+                    # need them. They are denied per-role for coder + planner in
+                    # settings_overlay_by_role below.
+                    # personal-mcp financial tools (not for agents)
+                    "mcp__personal-mcp__plaid_get_accounts",
+                    "mcp__personal-mcp__plaid_get_statements",
+                    "mcp__personal-mcp__plaid_sync_transactions",
+                    # meta / orchestrator tools agents don't invoke
+                    "ScheduleWakeup",
+                    "CronCreate",
+                    "CronList",
+                    "CronDelete",
+                    "ShareOnboardingGuide",
+                    "ExitPlanMode",
+                    "EnterPlanMode",
+                    "EnterWorktree",
+                    "ExitWorktree",
+                    "PushNotification",
+                    # sub-agent spawning and remote triggers — orchestrator-only
+                    "Agent",
+                    "RemoteTrigger",
+                    # MCP resource browsing — not used by any agent role
+                    "ListMcpResourcesTool",
+                    "ReadMcpResourceTool",
+                ]
+            }
+        },
+        # Per-role overlay merged ON TOP of settings_overlay_base. Today only
+        # adds role-specific denials; a role may also diverge on env / model /
+        # hooks / sandbox here with no code change.
+        "settings_overlay_by_role": {
+            "researcher": {
+                "permissions": {
+                    "deny": [
+                        "Edit",  # researchers don't patch code
+                        "NotebookEdit",  # no Jupyter in Juggle
+                    ]
+                }
+            },
+            "coder": {
+                "permissions": {
+                    "deny": [
+                        "NotebookEdit",  # no Jupyter in Juggle
+                        "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for coding
+                        # claude.ai Google Workspace connectors — researchers only.
+                        # VERIFY these slugs on the host via `/permissions` (add a
+                        # deny rule, type `mcp__` to autocomplete): the server names
+                        # contain spaces/dots and Claude Code's slug sanitization
+                        # for those is undocumented. A wrong slug fails silently.
+                        "mcp__claude.ai Google Drive__*",
+                        "mcp__claude.ai Google Calendar__*",
+                        "mcp__claude.ai Gmail__*",
+                    ]
+                }
+            },
+            "planner": {
+                "permissions": {
+                    "deny": [
+                        "Edit",  # planners write plans, not code
+                        "NotebookEdit",  # no Jupyter in Juggle
+                        "Monitor",  # planners don't run bg processes
+                        "TaskOutput",  # no bg tasks to monitor
+                        "TaskStop",  # no bg tasks to stop
+                        "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for planning
+                        # claude.ai Google Workspace connectors — researchers only.
+                        # (Verify slugs via `/permissions`; see coder note above.)
+                        "mcp__claude.ai Google Drive__*",
+                        "mcp__claude.ai Google Calendar__*",
+                        "mcp__claude.ai Gmail__*",
+                    ]
+                }
+            },
         },
     },
     # Talkback TTS
