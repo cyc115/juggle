@@ -115,6 +115,36 @@ launches Claude Code.
 ```
 Set `"harness": "reasonix"` to make it the default for all roles.
 
+## Conformance: every harness must pass the contract suite
+
+`tests/test_harness_conformance.py` is an **executable contract** that runs
+against *every* harness juggle knows about — auto-discovered from both the
+registered adapter types (`juggle_harness._ADAPTERS`) and the shipped
+`DEFAULTS["agent"]["harnesses"]`. A new harness (config-only or a new Python
+adapter) is picked up automatically and **must pass it, or CI is red.** There is
+no opt-out.
+
+The contract each harness must satisfy:
+
+| ID | Behaviour | Why juggle needs it |
+|----|-----------|---------------------|
+| C1 | Constructs via `get_adapter`; exposes id + capability/marker API | basic wiring |
+| C2 | Launch command exports `JUGGLE_IS_AGENT=1` and `JUGGLE_AGENT_ROLE=<role>` | hooks/telemetry/watchdog identify the agent process |
+| C3 | `audit=True` ⇒ `JUGGLE_AGENT_AUDIT=1`; `audit=False` ⇒ absent | tool-usage telemetry tagging |
+| C4 | Model appears when given; no dangling flag when omitted | model selection |
+| C5 | Launch command is a single shell line | it is pasted into a tmux pane |
+| C6 | Readiness + submission markers are non-empty strings | the paste/submit poll loop needs them |
+| C7 | Per-role restriction is materialized (inline **or** in a written artifact); audit relaxes per-role denies | the token-saving deny guarantee |
+| C8 | Role anchor reaches the agent exactly once (hook harnesses keep the prompt clean; non-hook harnesses inline it) | the agent must learn its role without double injection |
+| C9 | Repeated identical builds are stable (modulo per-run temp paths) | no hidden global state |
+
+To add a new **required** behaviour for all harnesses, add one test to that
+file — it instantly applies to every present and future harness. Run it with:
+
+```bash
+uv run pytest -q tests/test_harness_conformance.py
+```
+
 ## When config isn't enough: write a Python adapter
 
 If a harness needs real logic for its tool restriction (e.g. generating a
