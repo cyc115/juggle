@@ -133,6 +133,30 @@ def test_build_does_not_mutate_settings_defaults(fake_settings):
     assert "MUTATED" not in planner["permissions"]["deny"]
 
 
+def test_audit_mode_strips_per_role_deny_keeps_base(fake_settings):
+    settings = fake_settings()
+    settings["agent"]["audit_mode"] = True
+    deny = jas.build_agent_overlay("coder")["permissions"]["deny"]
+    assert "NotebookEdit" not in deny  # per-role denial relaxed for measurement
+    assert "mcp__opentabs__*" in deny  # universal base denial stays in effect
+
+
+def test_audit_mode_off_keeps_per_role_deny(fake_settings):
+    fake_settings()  # audit_mode absent → falsy
+    deny = jas.build_agent_overlay("coder")["permissions"]["deny"]
+    assert "NotebookEdit" in deny
+
+
+def test_audit_mode_preserves_non_deny_role_keys(fake_settings):
+    settings = fake_settings(
+        overlay_by_role={"coder": {"model": "x", "permissions": {"deny": ["NotebookEdit"]}}}
+    )
+    settings["agent"]["audit_mode"] = True
+    overlay = jas.build_agent_overlay("coder")
+    assert overlay["model"] == "x"  # only deny is stripped, scalars survive
+    assert "NotebookEdit" not in overlay["permissions"]["deny"]
+
+
 def test_write_overlay_round_trips(fake_settings, tmp_path):
     fake_settings()
     path = jas.write_agent_overlay("coder")

@@ -66,6 +66,22 @@ def _merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _strip_deny(overlay: dict) -> dict:
+    """Return a copy of ``overlay`` with ``permissions.deny`` removed.
+
+    Used in audit mode to keep per-role-denied tools in the agent's context so
+    their demand becomes observable. Drops ``permissions`` entirely if ``deny``
+    was its only key.
+    """
+    if "permissions" not in overlay:
+        return overlay
+    perms = {k: v for k, v in overlay["permissions"].items() if k != "deny"}
+    out = {k: v for k, v in overlay.items() if k != "permissions"}
+    if perms:
+        out["permissions"] = perms
+    return out
+
+
 def build_agent_overlay(role: str | None, overrides: dict | None = None) -> dict:
     """Return the additive settings overlay dict for ``role``.
 
@@ -84,7 +100,13 @@ def build_agent_overlay(role: str | None, overrides: dict | None = None) -> dict
     agent = get_settings().get("agent", {})
 
     overlay = copy.deepcopy(agent.get("settings_overlay_base") or {})
-    overlay = _merge(overlay, (agent.get("settings_overlay_by_role") or {}).get(role) or {})
+    role_overlay = copy.deepcopy((agent.get("settings_overlay_by_role") or {}).get(role) or {})
+    # Audit mode: relax the per-role denials so those tools remain in context
+    # and `juggle agent-tools` can measure real demand. Universal (base) denials
+    # are left intact.
+    if agent.get("audit_mode"):
+        role_overlay = _strip_deny(role_overlay)
+    overlay = _merge(overlay, role_overlay)
     if overrides:
         overlay = _merge(overlay, overrides)
 

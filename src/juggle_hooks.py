@@ -467,15 +467,55 @@ def _bash_write_pattern(command: str) -> str | None:
     return None
 
 
+def _tool_input_sample(tool_input) -> str | None:
+    """Return a short (<=120 char) representative sample of a tool's input.
+
+    Used only for human-readable context in the usage report — not parsed. Picks
+    the most telling field per tool (Bash command, file path, query) and
+    truncates, so the telemetry row never stores large payloads.
+    """
+    if not isinstance(tool_input, dict) or not tool_input:
+        return None
+    for key in ("command", "file_path", "path", "pattern", "query", "url", "prompt"):
+        val = tool_input.get(key)
+        if isinstance(val, str) and val:
+            sample = val if len(val) <= 120 else val[:117] + "..."
+            return f"{key}={sample}"
+    # Fall back to the first key name so the report still hints at shape.
+    return next(iter(tool_input), None)
+
+
+def _log_agent_tool_use(data: dict) -> None:
+    """Best-effort: record this agent's tool call for usage analytics.
+
+    Runs out-of-band in the hook subprocess, so it adds ZERO tokens to the
+    agent's context. Must never raise — a telemetry failure must not block the
+    agent's tool call.
+    """
+    try:
+        tool_name = data.get("tool_name", "")
+        if not tool_name:
+            return
+        role = os.environ.get("JUGGLE_AGENT_ROLE") or "unknown"
+        mode = "audit" if os.environ.get("JUGGLE_AGENT_AUDIT") else "normal"
+        sample = _tool_input_sample(data.get("tool_input"))
+        JuggleDB(str(DB_PATH)).record_agent_tool_use(role, tool_name, mode, sample)
+    except Exception as exc:  # telemetry is never allowed to break the agent
+        logging.warning("agent tool-use logging failed: %s", exc)
+
+
 def handle_pre_tool_use(data: dict) -> None:
     """Hard-block Edit/Write/NotebookEdit/Bash-writes in the orchestrator main thread.
 
-    Agent sessions bypass via JUGGLE_IS_AGENT=1 (set by start_claude_in_pane).
+    Agent sessions bypass the orchestrator guard via JUGGLE_IS_AGENT=1 (set by
+    start_claude_in_pane), but first log the tool call for usage analytics.
     Trust model: JUGGLE_IS_AGENT is an anti-accidental-edit guard, not a hard
     security boundary — see juggle_tmux.py for details.
     """
-    # Agent panes are explicitly tagged — let them write freely.
+    # Agent panes are explicitly tagged — record what they use, then let them
+    # write freely (no orchestrator blocking applies to agents).
     if os.environ.get("JUGGLE_IS_AGENT"):
+        _log_agent_tool_use(data)
         sys.exit(0)
 
     if not is_active():

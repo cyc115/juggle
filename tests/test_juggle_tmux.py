@@ -146,6 +146,46 @@ def test_start_claude_denials_go_to_settings_file_not_command_line(mgr, tmp_path
     deny = overlay["permissions"]["deny"]
     assert all(f"mcp__tool_{i}__action" in deny for i in range(200))
     assert "NotebookEdit" in deny  # role-specific denial included
+    assert "JUGGLE_AGENT_AUDIT" not in cmd  # audit mode off by default
+
+
+def test_start_claude_sets_audit_env_when_audit_mode(mgr, tmp_path):
+    """With agent.audit_mode on, the agent is tagged JUGGLE_AGENT_AUDIT=1 so its
+    PreToolUse telemetry is recorded as 'audit'."""
+    from pathlib import Path as _Path
+
+    import juggle_agent_settings as _jas
+
+    written = []
+
+    def capture_tmux(*args):
+        m = MagicMock()
+        m.returncode = 0
+        m.stdout = ""
+        if args[0] == "load-buffer":
+            written.append(_Path(args[-1]).read_text())
+        return m
+
+    tmux_settings = {
+        "agent": {"claude_launch_command": "claude -p", "audit_mode": True}
+    }
+    overlay_settings = {
+        "paths": {"config_dir": str(tmp_path)},
+        "agent": {
+            "settings_overlay_base": {},
+            "settings_overlay_by_role": {"coder": {}},
+            "audit_mode": True,
+        },
+    }
+    with (
+        patch("juggle_tmux._get_settings", return_value=tmux_settings),
+        patch.object(_jas, "get_settings", return_value=overlay_settings),
+        patch.object(mgr, "_run_tmux", side_effect=capture_tmux),
+    ):
+        mgr.start_claude_in_pane("%1", role="coder")
+
+    assert written
+    assert "JUGGLE_AGENT_AUDIT=1" in written[0]
 
 
 def test_verify_pane_true_when_present(mgr):

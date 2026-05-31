@@ -113,7 +113,10 @@ class JuggleTmuxManager:
         cmd += " --settings " + shlex.quote(str(overlay_path))
 
         role_env = f" JUGGLE_AGENT_ROLE={role}" if role else ""
-        cmd = f"env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1{role_env} {cmd}"
+        # In audit mode the overlay leaves per-role-denied tools in context;
+        # tag the agent so PreToolUse telemetry records its usage as 'audit'.
+        audit_env = " JUGGLE_AGENT_AUDIT=1" if agent_cfg.get("audit_mode") else ""
+        cmd = f"env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1{role_env}{audit_env} {cmd}"
 
         tmp = f"/tmp/juggle_launch_{uuid.uuid4().hex[:8]}.txt"
         buf_name = f"juggle_{uuid.uuid4().hex[:8]}"

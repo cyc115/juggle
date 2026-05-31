@@ -81,6 +81,16 @@ DEFAULTS: dict = {
         },
         # Skill invoked by coder agents before complete-agent (configurable per deployment).
         "quality_gate_skill": "mike:pre-pr",
+        # Audit (measurement) mode for right-sizing the deny block. When true,
+        # build_agent_overlay drops the PER-ROLE denials so those tools stay in
+        # the agent's context and `juggle agent-tools` can observe real per-role
+        # demand (stripped tools are invisible — they're never offered to the
+        # model, so they leave no usage signal). Agents launched in this mode set
+        # JUGGLE_AGENT_AUDIT=1 so their telemetry is tagged 'audit'. Universal
+        # (settings_overlay_base) denials stay in effect — flip an entry out of
+        # base temporarily if you need to audit those too. Costs tokens while on
+        # (tools re-enter context); turn off to bank the savings again.
+        "audit_mode": False,
         # --- Agent settings.json overlay -------------------------------------
         # Each agent's settings.json is generated from these two keys
         # (juggle_agent_settings.build_agent_overlay) and passed via
