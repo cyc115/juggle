@@ -18,7 +18,7 @@ Owns everything Claude-Code-specific in one place:
 
 import shlex
 
-from juggle_harness import HarnessAdapter, _CLAUDE_DEFAULTS, register_adapter
+from juggle_harness import HarnessAdapter, register_adapter
 
 
 class ClaudeCodeAdapter(HarnessAdapter):
@@ -35,4 +35,4 @@ class ClaudeCodeAdapter(HarnessAdapter):
         return "--settings " + shlex.quote(str(overlay_path))
 
 
-register_adapter("claude", ClaudeCodeAdapter, defaults=_CLAUDE_DEFAULTS)
+register_adapter("claude", ClaudeCodeAdapter)

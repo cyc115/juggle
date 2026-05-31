@@ -8,7 +8,11 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from juggle_harness import get_adapter
-from harnesses.codex import CODEX_DEFAULTS, CodexAdapter
+from harnesses.codex import CodexAdapter
+from juggle_settings import DEFAULTS
+
+# Single source of truth for the shipped codex config.
+CODEX_DEFAULTS = DEFAULTS["agent"]["harnesses"]["codex"]
 
 
 def _cfg(**overrides):

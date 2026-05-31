@@ -720,14 +720,13 @@ def cmd_send_task(args):
 
     pane_id = agent["pane_id"]
 
-    # Interactive harnesses reuse a warm REPL pane; a missing pane is recreated
-    # by relaunching the REPL. One-shot harnesses don't keep a REPL — they only
-    # need a live pane to run the fresh process in, created on demand below.
+    # Recreate a missing pane. start_agent_in_pane relaunches the REPL for an
+    # interactive harness and is a no-op for a one-shot one (which just needs a
+    # live shell pane to run the per-task process in, dispatched below).
     if not mgr.verify_pane(pane_id):
         mgr.ensure_session()
         new_pane_id = mgr.spawn_pane()
-        if adapter.is_interactive:
-            mgr.start_agent_in_pane(new_pane_id, role=_role)
+        mgr.start_agent_in_pane(new_pane_id, role=_role)
         db.update_agent(args.agent_id, pane_id=new_pane_id)
         pane_id = new_pane_id
         agent = db.get_agent(args.agent_id)

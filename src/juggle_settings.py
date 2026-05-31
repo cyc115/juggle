@@ -146,8 +146,8 @@ DEFAULTS: dict = {
                 "restrictions_flag": "",
                 "env": {"JUGGLE_IS_AGENT": "1"},
                 "env_unset": [],
-                "readiness_markers": ["codex"],
-                "submission_markers": ["tokens used", "codex"],
+                # No readiness/submission markers: one-shot harnesses don't poll
+                # a REPL (see is_interactive=False above).
                 "supports_hooks": False,
             },
         },

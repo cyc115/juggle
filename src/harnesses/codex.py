@@ -38,58 +38,14 @@ https://developers.openai.com/codex/config-reference
 
 from juggle_harness import HarnessAdapter, register_adapter
 
-# Shipped defaults for a `"type": "codex"` harness. A deployment overrides any
-# of these in agent.harnesses[<id>] without touching code.
-CODEX_DEFAULTS: dict = {
-    "type": "codex",
-    # One-shot subcommand. `codex exec` runs non-interactively and exits.
-    "command": "codex exec",
-    # Non-interactive: spawn a fresh process per task (no warm REPL).
-    "interactive": False,
-    # Model flag + optional pinned model. Codex's model namespace is gpt-*, not
-    # the orchestrator's sonnet/opus — set `model` (e.g. "gpt-5") to force the
-    # Codex model regardless of the agent's configured model. Empty = use the
-    # per-agent model as-is.
-    "model_flag": "-m {model}",
-    "model": "",
-    # Arbitrary extra CLI flags appended verbatim, e.g. "-c model_reasoning_effort=high".
-    "extra_flags": "",
-    # The task prompt is read from the file via stdin. `-` is Codex's documented
-    # "read prompt from stdin" sentinel; combined with the shell redirect this is
-    # `codex exec - < prompt.txt`. Passing by file (not a positional arg) avoids
-    # the OS ARG_MAX limit on large prompts and a known hang on non-TTY pipes
-    # (openai/codex#20919). Ref: developers.openai.com/codex/cli/reference
-    "prompt_arg": "- < {prompt_file}",
-    # Approval policy for non-interactive autonomy. "never" = no approval
-    # prompts (juggle agents run unattended). Overridable.
-    "approval_policy": "never",
-    # Per-role sandbox mode → Codex `-s` value. read-only blocks file writes.
-    "sandbox_by_role": {
-        "researcher": "read-only",
-        "planner": "read-only",
-        "coder": "workspace-write",
-    },
-    # Sandbox used when no role-specific entry / unknown role.
-    "sandbox_default": "read-only",
-    # Audit mode sandbox — relaxed so the agent can exercise (and reveal demand
-    # for) tools it would otherwise be blocked from.
-    "sandbox_audit": "workspace-write",
-    # Optional extra static restriction flags appended verbatim, e.g. a
-    # `-c key=value` config override.
-    "restrictions_flag": "",
-    "env": {"JUGGLE_IS_AGENT": "1"},
-    "env_unset": [],
-    # One-shot harnesses don't poll for REPL markers, but the conformance
-    # contract still requires non-empty markers; keep minimal sentinels.
-    "readiness_markers": ["codex"],
-    "submission_markers": ["tokens used", "codex"],
-    # Anchor inlined into the prompt (no juggle hooks in one-shot runs).
-    "supports_hooks": False,
-}
-
-
 class CodexAdapter(HarnessAdapter):
-    """Codex CLI adapter: per-role sandbox/approval flags instead of a deny list."""
+    """Codex CLI adapter: per-role sandbox/approval flags instead of a deny list.
+
+    The shipped config (one-shot ``codex exec``, ``sandbox_by_role``, etc.) lives
+    in ``juggle_settings.DEFAULTS["agent"]["harnesses"]["codex"]`` — the single
+    source of truth for harness defaults. This module holds only the *logic* that
+    a flat config dict can't express: translating a role into a sandbox mode.
+    """
 
     def _sandbox_for(self, role: str | None, audit: bool) -> str:
         if audit:
@@ -107,4 +63,4 @@ class CodexAdapter(HarnessAdapter):
         return " ".join(parts)
 
 
-register_adapter("codex", CodexAdapter, defaults=CODEX_DEFAULTS)
+register_adapter("codex", CodexAdapter)

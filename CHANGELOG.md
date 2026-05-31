@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-05-31 (v1.42.1)
+- **lean harness layer** (no behaviour change, −125 lines): single source of truth for shipped harness configs — removed the duplicated `_CLAUDE_DEFAULTS` (juggle_harness) and `CODEX_DEFAULTS` (harnesses/codex) dicts; the framework + tests now read `juggle_settings.DEFAULTS["agent"]["harnesses"]`. Adapter modules keep only the *logic* a flat config can't express. Replaced the lazy-load/`__getattr__`/`_DEFAULTS_BY_TYPE` machinery with a plain bottom `import harnesses` (fail-loud) and a simpler `register_adapter(type, cls)`. Conformance discovery covers shipped harnesses + one synthetic template; C6 (markers) skips one-shot harnesses, so Codex no longer needs sentinel markers. `start_agent_in_pane` is now a no-op for one-shot harnesses (they launch per-task), fixing spawn for non-interactive harnesses.
+
 ## 2026-05-31 (v1.42.0)
 - **configurable model + CLI flags per harness**: two new base-adapter config keys (available to every harness). `model` pins a harness's model, overriding the per-agent model — needed because a harness's model namespace can differ from the orchestrator's (Codex uses `gpt-*`, not `sonnet`/`opus`); empty = use the agent's model. `extra_flags` is appended verbatim to the launch/task command as an escape hatch for flags juggle doesn't model explicitly (e.g. `-c model_reasoning_effort=high`). The model *flag* itself (`model_flag`) and `command` were already configurable. Codex DEFAULTS expose both keys (empty).
 

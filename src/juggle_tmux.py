@@ -133,6 +133,11 @@ class JuggleTmuxManager:
 
         agent_cfg = _get_settings().get("agent", {})
         adapter = get_adapter(role, agent_cfg=agent_cfg)
+        if not adapter.is_interactive:
+            # One-shot harness (e.g. codex exec): nothing to launch up front — the
+            # per-task process is spawned at send time (run_task_oneshot). The
+            # pane stays a ready shell.
+            return
         cmd = adapter.build_launch_command(
             role=role, model=model, audit=bool(agent_cfg.get("audit_mode"))
         )

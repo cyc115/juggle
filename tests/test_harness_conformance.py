@@ -53,7 +53,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import juggle_harness
-from juggle_harness import get_adapter, _CLAUDE_DEFAULTS
+from juggle_harness import get_adapter
 from juggle_settings import DEFAULTS
 
 
@@ -62,57 +62,37 @@ from juggle_settings import DEFAULTS
 # suite covers everything without per-harness boilerplate.
 # --------------------------------------------------------------------------
 def _discover_harness_cfgs() -> dict[str, dict]:
-    """Return {harness_id: agent_cfg} for every harness the suite must cover.
-
-    Sources, unioned:
-      * harnesses declared in shipped DEFAULTS["agent"]["harnesses"]
-      * a synthetic harness per registered adapter type in _ADAPTERS, so a new
-        adapter class is exercised even before DEFAULTS ships a config for it.
+    """Return {harness_id: agent_cfg} for every harness the suite must cover:
+    every harness shipped in DEFAULTS["agent"]["harnesses"] (claude, codex),
+    plus a synthetic ``template`` harness — the one registered adapter type with
+    no shipped config — so the config-only "bring your own harness" path is
+    gated too. A new real harness is auto-covered the moment it lands in DEFAULTS.
     """
     base_agent = DEFAULTS["agent"]
-    shipped = base_agent.get("harnesses") or {}
     cfgs: dict[str, dict] = {}
 
-    # 1. Every harness present in shipped DEFAULTS.
-    for hid, hcfg in shipped.items():
+    for hid in (base_agent.get("harnesses") or {}):
         agent_cfg = dict(base_agent)
         agent_cfg["harness"] = hid
         cfgs[hid] = agent_cfg
 
-    # 2. Every registered adapter type — exercised with the adapter's OWN shipped
-    #    defaults (registered via register_adapter(..., defaults=...)). This
-    #    means a new adapter is gated against a realistic config of its own
-    #    shape, not a generic stub. Falls back to a minimal template-shaped
-    #    config for a type that registered no defaults.
-    juggle_harness._ensure_adapters_loaded()
-    for type_name in juggle_harness._ADAPTERS:
-        synth_id = f"_synth_{type_name}"
-        type_defaults = juggle_harness._DEFAULTS_BY_TYPE.get(type_name)
-        if type_defaults is not None:
-            hcfg = dict(type_defaults)
-        elif type_name == "claude":
-            hcfg = dict(_CLAUDE_DEFAULTS)
-        else:
-            # Minimal template-shaped harness; mirrors the documented schema so
-            # the contract checks something realistic for a defaults-less type.
-            hcfg = {
-                "type": type_name,
-                "command": "fakeharness",
-                "model_flag": "--model {model}",
-                "restrictions_flag": "--deny-tools {role}",
-                "env": {"JUGGLE_IS_AGENT": "1"},
-                "env_unset": [],
-                "readiness_markers": ["ready>"],
-                "submission_markers": ["running"],
-                "supports_hooks": False,
-            }
-        agent_cfg = {
-            **{k: v for k, v in base_agent.items() if k != "harnesses"},
-            "harness": synth_id,
-            "harnesses": {synth_id: hcfg},
-        }
-        cfgs[synth_id] = agent_cfg
-
+    # A minimal config-only (template) harness, mirroring the documented schema.
+    synth = {
+        "type": "template",
+        "command": "fakeharness",
+        "model_flag": "--model {model}",
+        "restrictions_flag": "--deny-tools {role}",
+        "env": {"JUGGLE_IS_AGENT": "1"},
+        "env_unset": [],
+        "readiness_markers": ["ready>"],
+        "submission_markers": ["running"],
+        "supports_hooks": False,
+    }
+    cfgs["_synth_template"] = {
+        **{k: v for k, v in base_agent.items() if k != "harnesses"},
+        "harness": "_synth_template",
+        "harnesses": {"_synth_template": synth},
+    }
     return cfgs
 
 
@@ -196,6 +176,8 @@ def test_c5_command_is_single_line(harness, tmp_path):
 def test_c6_markers_nonempty(harness):
     hid, agent_cfg = harness
     adapter = get_adapter("coder", agent_cfg=agent_cfg)
+    if not adapter.is_interactive:
+        pytest.skip("one-shot harness: no REPL to poll, markers unused")
     for name, markers in (
         ("readiness", adapter.readiness_markers()),
         ("submission", adapter.submission_markers()),
