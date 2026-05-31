@@ -191,6 +191,54 @@ def test_pre_tool_use_allows_non_blocked_tool(
 
 
 # ---------------------------------------------------------------------------
+# Agent-session context-injection guards (token saving)
+# ---------------------------------------------------------------------------
+
+
+def test_session_start_agent_injects_nothing(monkeypatch, capsys):
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    import juggle_hooks
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_session_start({"reason": "startup"})
+
+    assert exc_info.value.code == 0
+    assert capsys.readouterr().out.strip() == ""
+
+
+def test_user_prompt_submit_agent_anchor_only_no_dashboard(monkeypatch, capsys):
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.setenv("JUGGLE_AGENT_ROLE", "coder")
+    import juggle_hooks
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_user_prompt_submit(
+            {"prompt": "[JUGGLE_THREAD:x] implement the widget"}
+        )
+
+    assert exc_info.value.code == 0
+    out = capsys.readouterr().out.strip()
+    payload = json.loads(out)
+    ctx = payload["hookSpecificOutput"]["additionalContext"]
+    assert "AGENT ROLE" in ctx
+    assert "ROLE: coder" in ctx
+    # Orchestrator dashboard must NOT be present in an agent session.
+    assert "JUGGLE ACTIVE" not in ctx
+
+
+def test_post_tool_use_agent_no_violation_warning(monkeypatch, capsys):
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    import juggle_hooks
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_post_tool_use({"tool_name": "Read"})
+
+    assert exc_info.value.code == 0
+    # No "ORCHESTRATOR VIOLATION" warning injected for an agent's own reads.
+    assert capsys.readouterr().out.strip() == ""
+
+
+# ---------------------------------------------------------------------------
 # Classification candidate filter tests
 # ---------------------------------------------------------------------------
 

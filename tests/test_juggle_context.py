@@ -6,7 +6,57 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from juggle_db import JuggleDB
-from juggle_context import ContextBuilder
+from juggle_context import ContextBuilder, build_context_string
+
+
+# ---------------------------------------------------------------------------
+# Agent sessions must get ONLY the role anchor — never the orchestrator
+# dashboard (token-saving: the "JUGGLE ACTIVE" block is orchestrator-only and
+# explicitly tagged "do not forward to sub-agents").
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def busy_active_db(tmp_path):
+    """An active DB with content that WOULD render a fat dashboard."""
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    db.set_active(True)
+    tid = db.create_thread("Topic A", session_id="s1")
+    db.set_current_thread(tid)
+    db.add_message(tid, "user", "a real question about the auth flow")
+    db.add_message(tid, "assistant", "a real answer about the auth flow")
+    db.add_action_item(thread_id=tid, message="do the thing", type_="task")
+    return db
+
+
+def test_agent_session_gets_only_role_anchor(busy_active_db, monkeypatch):
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.setenv("JUGGLE_AGENT_ROLE", "coder")
+    ctx = ContextBuilder(busy_active_db).build()
+    # Anchor present...
+    assert "--- AGENT ROLE ---" in ctx
+    assert "ROLE: coder" in ctx
+    # ...and NONE of the orchestrator dashboard.
+    assert "JUGGLE ACTIVE" not in ctx
+    assert "Q&A history" not in ctx
+    assert "real question" not in ctx
+
+
+def test_agent_session_anchorless_role_returns_empty(busy_active_db, monkeypatch):
+    # JUGGLE_IS_AGENT but no recognised role → no anchor, and still no dashboard.
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.delenv("JUGGLE_AGENT_ROLE", raising=False)
+    ctx = ContextBuilder(busy_active_db).build()
+    assert "JUGGLE ACTIVE" not in ctx
+    assert ctx == ""
+
+
+def test_orchestrator_session_still_gets_dashboard(busy_active_db, monkeypatch):
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+    ctx = build_context_string(db_path=str(busy_active_db.db_path))
+    assert "JUGGLE ACTIVE" in ctx
+    assert "Q&A history" in ctx
 
 
 @pytest.fixture
