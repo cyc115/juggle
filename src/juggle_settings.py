@@ -105,13 +105,12 @@ DEFAULTS: dict = {
                     # work; agents do code via the git CLI (Bash). Largest single
                     # context saving. (Standard `github` MCP namespace.)
                     "mcp__github__*",
-                    # Personal-productivity MCP servers agents never need (mail,
-                    # calendar, drive). Add the host's actual server slugs as
-                    # `mcp__<server>__*` — pending confirmation of the real names
-                    # (this env exposes them only as UUID namespaces).
-                    #   "mcp__<gmail>__*",
-                    #   "mcp__<google-calendar>__*",
-                    #   "mcp__<google-drive>__*",
+                    # otterai (meeting transcription) — not used by any agent role.
+                    "mcp__otterai__*",
+                    # NOTE: the claude.ai Google Workspace connectors (Drive,
+                    # Calendar, Gmail) are NOT denied universally — researchers
+                    # need them. They are denied per-role for coder + planner in
+                    # settings_overlay_by_role below.
                     # personal-mcp financial tools (not for agents)
                     "mcp__personal-mcp__plaid_get_accounts",
                     "mcp__personal-mcp__plaid_get_statements",
@@ -153,6 +152,14 @@ DEFAULTS: dict = {
                     "deny": [
                         "NotebookEdit",  # no Jupyter in Juggle
                         "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for coding
+                        # claude.ai Google Workspace connectors — researchers only.
+                        # VERIFY these slugs on the host via `/permissions` (add a
+                        # deny rule, type `mcp__` to autocomplete): the server names
+                        # contain spaces/dots and Claude Code's slug sanitization
+                        # for those is undocumented. A wrong slug fails silently.
+                        "mcp__claude.ai Google Drive__*",
+                        "mcp__claude.ai Google Calendar__*",
+                        "mcp__claude.ai Gmail__*",
                     ]
                 }
             },
@@ -165,6 +172,11 @@ DEFAULTS: dict = {
                         "TaskOutput",  # no bg tasks to monitor
                         "TaskStop",  # no bg tasks to stop
                         "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for planning
+                        # claude.ai Google Workspace connectors — researchers only.
+                        # (Verify slugs via `/permissions`; see coder note above.)
+                        "mcp__claude.ai Google Drive__*",
+                        "mcp__claude.ai Google Calendar__*",
+                        "mcp__claude.ai Gmail__*",
                     ]
                 }
             },
