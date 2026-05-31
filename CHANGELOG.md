@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-31 (v1.39.0)
+- **harness adapters**: sub-agent invocation is now pluggable (`src/juggle_harness.py`). The Claude-only launch logic in `JuggleTmuxManager.start_agent_in_pane` (was `start_claude_in_pane`, kept as alias) is refactored behind a `HarnessAdapter` so juggle can drive Codex, reasonix, or any CLI. Hybrid design: built-in `ClaudeCodeAdapter` (per-role `--settings` overlay via `juggle_agent_settings`) + config-only `TemplateHarnessAdapter` (command/markers/env defined entirely in `config.json`, no Python). Selection via `agent.harness` / `agent.harness_by_role` / `agent.harnesses`. Readiness/submission tmux markers and env scrubbing are now per-harness (`_harness_markers`); non-hook harnesses get the role anchor inlined into the task prompt (`HarnessAdapter.decorate_task` + `juggle_context.render_agent_role_anchor_for`). Back-compat: a missing `harnesses` block synthesises the built-in claude harness from `agent.claude_launch_command` → zero behaviour change. Docs: `docs/harness-adapters.md`.
+- tests: `tests/test_juggle_harness.py` (adapter selection, legacy-equivalent claude command, template build, markers, anchor inlining).
+
 ## 2026-05-25 (v1.34.1)
 - **title gen**: fix fallback regression from PR #26 merge — restore 5-word cap (was accidentally widened to 6) alongside Title Case coercion; align `test_title_gen` expectations to Title-Cased, 5-word-capped contract
 

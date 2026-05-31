@@ -729,6 +729,17 @@ def cmd_send_task(args):
     prompt = prompt_path.read_text()
     full_prompt = UNIVERSAL_PREAMBLE + prompt.rstrip()
 
+    # Inline the role anchor for harnesses that don't run juggle's hooks. Claude
+    # Code injects it via its UserPromptSubmit hook, so decorate_task is a no-op
+    # there; config-only harnesses get the anchor prepended here instead.
+    try:
+        from juggle_harness import get_adapter
+
+        _role = agent.get("role")
+        full_prompt = get_adapter(_role).decorate_task(_role, full_prompt)
+    except Exception:
+        pass
+
     now = datetime.now(timezone.utc).isoformat()
     db.update_agent(args.agent_id, last_active=now)
     pane_hash = mgr.send_task(pane_id, full_prompt, is_new=is_new)
