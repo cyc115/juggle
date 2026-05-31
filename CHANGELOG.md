@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-05-31 (v1.37.0)
+- **projects**: first-class Projects — `projects` table with INBOX seed, `project_id` on threads; every new thread auto-assigned to best-matching project via background LLM inference (`assign_project_background`, `infer_project_id`)
+- **projects CLI**: `juggle project list/show/create/assign/edit/critique` — LLM coach wizard for project creation, rich table output
+- **cockpit**: thread list grouped by project with section headers (`▸ PROJECT NAME`) when multiple projects exist
+- **refactor**: extracted `_cheap_llm_call` from title_gen infrastructure (OpenRouter tier 1 → Haiku tier 2 → None); `_generate_title_for_thread` now delegates to it
+- **docs**: `juggle:start` skill updated with project subcommands reference
+- tests: 16 new tests across `test_cheap_llm_call.py`, `test_projects_db.py`, `test_projects.py`
+
 ## 2026-05-25 (v1.34.1)
 - **title gen**: fix fallback regression from PR #26 merge — restore 5-word cap (was accidentally widened to 6) alongside Title Case coercion; align `test_title_gen` expectations to Title-Cased, 5-word-capped contract
 
