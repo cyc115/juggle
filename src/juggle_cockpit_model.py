@@ -19,6 +19,8 @@ class Topic:
     age_secs: int
     is_current: bool
     title: str = ""  # display title
+    project_id: str = "INBOX"
+    project_name: str = "Inbox"
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,7 @@ class CockpitState:
     notifications: list[Notification]
     scheduled: list[ScheduledTask]
     fetched_at: float
+    projects_by_id: dict = None  # type: ignore  # {id: name}, None → no grouping
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +279,15 @@ def snapshot(db) -> CockpitState:
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
     cutoff_s = cutoff.strftime("%Y-%m-%d %H:%M")
 
+    # Load projects for grouping (graceful fallback for old DBs without the table)
+    try:
+        proj_rows = conn.execute(
+            "SELECT id, name FROM projects WHERE status != 'archived' ORDER BY (id='INBOX'), id"
+        ).fetchall()
+        projects_by_id: dict[str, str] = {r[0]: r[1] for r in proj_rows}
+    except Exception:
+        projects_by_id = {}
+
     topics: list[Topic] = []
 
     def _make_topic(r) -> Topic:
@@ -291,6 +303,8 @@ def snapshot(db) -> CockpitState:
         title = _get("title") or _get("topic") or "?"
         status = _get("status") or "active"
         age = _age_secs(_get("last_active_at") or _get("last_active"))
+        pid = _get("project_id") or "INBOX"
+        pname = projects_by_id.get(pid, "Inbox")
         return Topic(
             id=tid,
             label=label,
@@ -298,6 +312,8 @@ def snapshot(db) -> CockpitState:
             age_secs=age,
             is_current=(tid == current_thread_id),
             title=title,
+            project_id=pid,
+            project_name=pname,
         )
 
     # 1. Active
@@ -436,6 +452,27 @@ def snapshot(db) -> CockpitState:
         notifications=notifications,
         scheduled=fetch_scheduled_tasks(),
         fetched_at=time.time(),
+        projects_by_id=projects_by_id if projects_by_id else None,
     )
     conn.close()
+    return result
+
+
+def group_threads_by_project(
+    topics: list[Topic], projects_by_id: dict[str, str]
+) -> list[tuple[str, str, list[Topic]]]:
+    """Return [(project_id, project_name, topics)] sorted: named projects first, INBOX last."""
+    from collections import defaultdict
+    groups: dict[str, list[Topic]] = defaultdict(list)
+    for t in topics:
+        groups[t.project_id].append(t)
+    result = []
+    for pid, name in sorted(projects_by_id.items(), key=lambda x: (x[0] == "INBOX", x[0])):
+        if pid in groups:
+            result.append((pid, name, groups[pid]))
+    # topics whose project_id isn't in projects_by_id → INBOX fallback
+    known = {pid for pid, _, _ in result}
+    leftover = [t for t in topics if t.project_id not in known]
+    if leftover and "INBOX" not in known:
+        result.append(("INBOX", "Inbox", leftover))
     return result
