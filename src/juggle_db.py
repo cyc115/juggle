@@ -1413,24 +1413,39 @@ class JuggleDB:
     ) -> None:
         """Increment the usage counter for (role, tool_name, mode).
 
-        Upsert keeps the table aggregated — one row per tuple, count bumped per
-        call — so logging every agent tool call stays cheap. `CREATE TABLE IF
-        NOT EXISTS` runs inline so this is safe even on a DB that predates the
-        migration (the agent process may not have run init_db itself).
+        This runs on the agent's PreToolUse critical path (the tool call waits
+        for the hook), so it is engineered to NEVER stall an agent:
+          * a 250 ms busy-timeout caps any wait when the shared DB's single WAL
+            writer is held by another agent/the orchestrator — past that the
+            write raises `database is locked`, the caller drops the sample, and
+            the tool proceeds. Telemetry is lossy-tolerant; responsiveness wins.
+          * `CREATE TABLE` is attempted only if the insert hits a missing table
+            (once, on a pre-migration DB) — it stays off the hot path otherwise.
+        Upsert keeps the table aggregated (one row per tuple) so volume is O(1).
         """
         now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as conn:
-            conn.execute(CREATE_AGENT_TOOL_EVENTS)
-            conn.execute(
-                "INSERT INTO agent_tool_events "
-                "(role, tool_name, mode, count, first_seen, last_seen, last_input) "
-                "VALUES (?, ?, ?, 1, ?, ?, ?) "
-                "ON CONFLICT(role, tool_name, mode) DO UPDATE SET "
-                "count = count + 1, last_seen = excluded.last_seen, "
-                "last_input = excluded.last_input",
-                (role, tool_name, mode, now, now, last_input),
-            )
+        params = (role, tool_name, mode, now, now, last_input)
+        insert = (
+            "INSERT INTO agent_tool_events "
+            "(role, tool_name, mode, count, first_seen, last_seen, last_input) "
+            "VALUES (?, ?, ?, 1, ?, ?, ?) "
+            "ON CONFLICT(role, tool_name, mode) DO UPDATE SET "
+            "count = count + 1, last_seen = excluded.last_seen, "
+            "last_input = excluded.last_input"
+        )
+        conn = sqlite3.connect(str(self.db_path), timeout=0.25)
+        try:
+            try:
+                conn.execute(insert, params)
+            except sqlite3.OperationalError as exc:
+                if "no such table" in str(exc):
+                    conn.execute(CREATE_AGENT_TOOL_EVENTS)
+                    conn.execute(insert, params)
+                else:
+                    raise  # e.g. "database is locked" → caller drops the sample
             conn.commit()
+        finally:
+            conn.close()
 
     def get_agent_tool_usage(self, role: str | None = None) -> list[dict]:
         """Return aggregated tool-usage rows, optionally filtered to one role."""

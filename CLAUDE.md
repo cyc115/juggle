@@ -6,6 +6,13 @@ Required environment variables (no defaults):
 - _JUGGLE_TEST_DB, CLAUDE_PLUGIN_DATA (juggle_cli.py)
 - JUGGLE_MAX_BACKGROUND_AGENTS, JUGGLE_MAX_THREADS (juggle_db.py)
 
+# Testing
+
+Before running the test suite, set up the DB first with `juggle:doctor` (it
+initializes/migrates the shared DB). Tests that exercise the hooks (e.g.
+`test_juggle_hooks.py`) depend on an initialized DB — without it they fail with
+`no such table: session`. Tests using their own `tmp_path` DB don't need this.
+
 # Design Philosophy
 
 - **Code over prompts.** Logic and behavioral rules go in code or hooks — never prompt-only. Prompts can be forgotten; CLI commands and hooks cannot.
