@@ -408,3 +408,88 @@ def test_user_prompt_submit_no_autopilot_when_inactive_and_flag_absent(
         juggle_hooks.handle_user_prompt_submit({"prompt": ""})
 
     assert capsys.readouterr().out == ""
+
+
+# ---------------------------------------------------------------------------
+# /tmp whitelist tests for PreToolUse
+# ---------------------------------------------------------------------------
+
+
+def test_pre_tool_use_write_to_tmp_is_allowed(active_db, monkeypatch):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use(
+            {
+                "tool_name": "Write",
+                "session_id": "abc",
+                "tool_input": {"file_path": "/tmp/task.md"},
+            }
+        )
+
+    assert exc_info.value.code == 0
+
+
+def test_pre_tool_use_write_to_private_tmp_is_allowed(active_db, monkeypatch):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use(
+            {
+                "tool_name": "Write",
+                "session_id": "abc",
+                "tool_input": {"file_path": "/private/tmp/task.md"},
+            }
+        )
+
+    assert exc_info.value.code == 0
+
+
+def test_pre_tool_use_write_to_repo_is_blocked(active_db, monkeypatch):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use(
+            {
+                "tool_name": "Write",
+                "session_id": "abc",
+                "tool_input": {"file_path": "/Users/mikechen/github/juggle/src/foo.py"},
+            }
+        )
+
+    assert exc_info.value.code == 2
+
+
+def test_pre_tool_use_edit_to_tmp_is_allowed(active_db, monkeypatch):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use(
+            {
+                "tool_name": "Edit",
+                "session_id": "abc",
+                "tool_input": {"file_path": "/tmp/task.md"},
+            }
+        )
+
+    assert exc_info.value.code == 0
+
+
+def test_pre_tool_use_edit_to_repo_is_blocked(active_db, monkeypatch):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        juggle_hooks.handle_pre_tool_use(
+            {
+                "tool_name": "Edit",
+                "session_id": "abc",
+                "tool_input": {"file_path": "/Users/mikechen/github/juggle/src/foo.py"},
+            }
+        )
+
+    assert exc_info.value.code == 2

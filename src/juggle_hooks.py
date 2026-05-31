@@ -484,7 +484,13 @@ def handle_pre_tool_use(data: dict) -> None:
     try:
         tool_name = data.get("tool_name", "")
         BLOCKED_TOOLS = {"Edit", "Write", "NotebookEdit"}
+        _TMP_PREFIXES = ("/tmp/", "/private/tmp/")
         if tool_name in BLOCKED_TOOLS:
+            file_path = data.get("tool_input", {}).get("file_path", "")
+            if tool_name in ("Write", "Edit") and any(
+                file_path.startswith(p) for p in _TMP_PREFIXES
+            ):
+                sys.exit(0)
             session_id = data.get("session_id", "")[:8]
             msg = (
                 f"🚫 {tool_name} blocked in juggle orchestrator session [{session_id}]. "
