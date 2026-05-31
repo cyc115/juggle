@@ -101,6 +101,17 @@ DEFAULTS: dict = {
                 "deny": [
                     # opentabs browser tools (78 tools) — wildcard collapses to one entry
                     "mcp__opentabs__*",
+                    # GitHub MCP (60+ tools) — the orchestrator owns all GitHub/PR
+                    # work; agents do code via the git CLI (Bash). Largest single
+                    # context saving. (Standard `github` MCP namespace.)
+                    "mcp__github__*",
+                    # Personal-productivity MCP servers agents never need (mail,
+                    # calendar, drive). Add the host's actual server slugs as
+                    # `mcp__<server>__*` — pending confirmation of the real names
+                    # (this env exposes them only as UUID namespaces).
+                    #   "mcp__<gmail>__*",
+                    #   "mcp__<google-calendar>__*",
+                    #   "mcp__<google-drive>__*",
                     # personal-mcp financial tools (not for agents)
                     "mcp__personal-mcp__plaid_get_accounts",
                     "mcp__personal-mcp__plaid_get_statements",
