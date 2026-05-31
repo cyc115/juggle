@@ -71,10 +71,10 @@ working unchanged.**
   prompt is passed **by file**: juggle writes it to `/tmp` and the process reads
   it via the `prompt_arg` (default `< {prompt_file}` → stdin; Codex uses `- <
   {prompt_file}`). Passing by file (not inlined on the command line) avoids the
-  OS `ARG_MAX` limit on large prompts and needs no escaping; the prompt file is
-  removed (`; rm -f`) right after the process exits. Markers are only used in
-  interactive mode (the conformance suite still requires non-empty values, so
-  keep a sentinel).
+  OS `ARG_MAX` limit on large prompts and needs no escaping. The prompt file is
+  left in `/tmp` (the OS reaper collects it; keeping it makes the run auditable).
+  Markers are only used in interactive mode (the conformance suite still requires
+  non-empty values, so keep a sentinel).
 
 Notes:
 

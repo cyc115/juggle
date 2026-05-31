@@ -143,6 +143,5 @@ def test_run_task_oneshot_pastes_command_and_no_marker_wait():
     assert pasted, "one-shot command was never pasted"
     assert "codex exec" in pasted[0]
     assert "- < /tmp/juggle_oneshot_" in pasted[0]  # prompt fed by file via stdin
-    assert "; rm -f " in pasted[0]  # deterministic cleanup appended
     ready.assert_not_called()
     submit.assert_not_called()

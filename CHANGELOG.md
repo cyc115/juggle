@@ -1,7 +1,10 @@
 # Changelog
 
+## 2026-05-31 (v1.41.2)
+- one-shot prompt file is left in `/tmp` rather than deleted after the run (OS tmp reaper collects it; keeping it makes the run auditable). Removes the `; rm -f` cleanup added in v1.41.1.
+
 ## 2026-05-31 (v1.41.1)
-- **one-shot prompt passed by file, not inlined**: `build_task_command` now references the prompt file via `prompt_arg` (default `< {prompt_file}` → stdin) instead of inlining `"$(cat …)"` on the command line. Codex uses its documented stdin form `codex exec - < prompt.txt` (`-` sentinel) — sidesteps the OS `ARG_MAX` ceiling on large prompts, drops the `$(cat)` subshell, and avoids a known non-TTY-pipe hang (openai/codex#20919). `run_task_oneshot` appends `; rm -f <file>` for deterministic cleanup (the process reads the file at startup, so removal never races).
+- **one-shot prompt passed by file, not inlined**: `build_task_command` now references the prompt file via `prompt_arg` (default `< {prompt_file}` → stdin) instead of inlining `"$(cat …)"` on the command line. Codex uses its documented stdin form `codex exec - < prompt.txt` (`-` sentinel) — sidesteps the OS `ARG_MAX` ceiling on large prompts, drops the `$(cat)` subshell, and avoids a known non-TTY-pipe hang (openai/codex#20919).
 
 ## 2026-05-31 (v1.41.0)
 - **non-interactive (one-shot) harness dispatch**: harness adapters can now declare `interactive: false`, in which case each task spawns a fresh `<command> … "$(cat <prompt_file>)"` process that runs to completion and exits — no warm REPL, no readiness/submission marker polling. New `HarnessAdapter.is_interactive` + `build_task_command`; `JuggleTmuxManager.run_task_oneshot` drives the one-shot path; `cmd_send_task` routes on `adapter.is_interactive`. Claude stays interactive (warm-pane reuse) unchanged.

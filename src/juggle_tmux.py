@@ -3,7 +3,6 @@
 
 import logging
 import os
-import shlex
 import subprocess
 import time
 import uuid
@@ -351,16 +350,15 @@ class JuggleTmuxManager:
         agent_cfg = _get_settings().get("agent", {})
         adapter = get_adapter(role, agent_cfg=agent_cfg)
 
+        # The prompt is written to /tmp and read by the one-shot process via the
+        # adapter's prompt_arg (stdin redirect). We deliberately leave the file in
+        # place — the OS tmp reaper handles it, and keeping it makes the run
+        # auditable (you can re-read exactly what the agent was given).
         prompt_tmp = f"/tmp/juggle_oneshot_{uuid.uuid4().hex[:8]}.txt"
         Path(prompt_tmp).write_text(prompt)
         cmd = adapter.build_task_command(
             prompt_tmp, role=role, model=model, audit=audit
         )
-        # Deterministic cleanup: delete the prompt file once the one-shot process
-        # exits. The process reads the file at startup (stdin redirect), and `;`
-        # sequences the `rm` after it returns, so this never races the read and
-        # leaves nothing behind in /tmp.
-        cmd = f"{cmd}; rm -f {shlex.quote(prompt_tmp)}"
 
         cmd_tmp = f"/tmp/juggle_oneshotcmd_{uuid.uuid4().hex[:8]}.txt"
         buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
