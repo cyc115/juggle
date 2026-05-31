@@ -11,14 +11,19 @@ registry, and `get_adapter`), consumed by `JuggleTmuxManager.start_agent_in_pane
 module** under `src/harnesses/` and owns, in one place: launch (binary/flags/env),
 restriction materialization, context delivery, and capabilities. Shipped:
 
-| Module | Type | Restriction strategy | Context delivery |
+| Harness | Type | Restriction strategy | Context delivery |
 |--------|------|----------------------|------------------|
 | `harnesses/claude.py` | `claude` | per-role `permissions.deny` written to a JSON `--settings` overlay | juggle hooks (`UserPromptSubmit`) |
 | `harnesses/codex.py` | `codex` | per-role sandbox/approval **modes** (`-a/-s` flags) — Codex has no tool-deny list | anchor **inlined** into the prompt (Codex hooks are version-skewed) |
+| `reasonix` (config-only) | `template` | delegated to the harness's own `reasonix.toml` (`external_restriction:true`) — no per-call flags | anchor **inlined**; Reasonix reads `AGENTS.md` |
 | (built-in) | `template` | static `restrictions_flag` from config | inlined if `supports_hooks:false` |
 
-A new harness = drop `src/harnesses/<name>.py` that subclasses `HarnessAdapter`
-and calls `register_adapter(...)` at import; add it to `harnesses/__init__.py`.
+A harness needing custom logic = drop `src/harnesses/<name>.py` that subclasses
+`HarnessAdapter` and calls `register_adapter(...)` at import; add it to
+`harnesses/__init__.py`. A harness expressible in config (like **Reasonix**, a
+one-shot `reasonix run` reading the prompt from stdin) needs **no Python** — just
+a `"type": "template"` entry under `agent.harnesses` (ships inactive in DEFAULTS;
+select it with `agent.harness` / `agent.harness_by_role`).
 It is then auto-discovered and **gated by the conformance suite** (below).
 
 ## How selection works
@@ -50,7 +55,12 @@ working unchanged.**
                                        //   empty = use the agent's model
     "extra_flags": "",                // arbitrary extra CLI flags appended verbatim
     "restrictions_flag": "",          // (template only) static tool-restriction flag
-    "env": {"JUGGLE_IS_AGENT": "1"},  // env vars exported before the command
+    "external_restriction": false,    // true = restriction lives in the harness's
+                                       //   own config file (e.g. reasonix.toml), not
+                                       //   juggle-managed flags/overlay
+    "env": {},                        // per-harness env: set/override ANY var for the
+                                       //   process (overrides inherited env). JUGGLE_IS_AGENT/
+                                       //   ROLE/AUDIT are injected automatically.
     "env_unset": ["CLAUDE_PLUGIN_DATA"], // env vars scrubbed via `env -u`
     "interactive": true,              // true = warm REPL pane (default);
                                        //   false = one-shot process per task

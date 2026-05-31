@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-31 (v1.43.0)
+- **Reasonix (deepseek-reasonix) harness support** — config-only, no Python: a `"type": "template"` entry in DEFAULTS (inactive; select via `agent.harness`/`harness_by_role`). One-shot `reasonix run` reading the prompt from stdin (`< {prompt_file}`), model pinned to a Reasonix preset (`deepseek-pro`, overridable), `AGENTS.md` context with the role anchor inlined. Tool restriction is delegated to the harness's own `reasonix.toml` (it exposes no per-call flags) via the new `external_restriction` capability.
+- **per-harness env fully overridable**: a harness's `env` dict now sets/overrides ANY variable for the launched process (it's applied last, over juggle's identity defaults and the inherited environment). Removed the redundant `JUGGLE_IS_AGENT` from the shipped harness `env` dicts (the framework injects identity vars automatically). New conformance check **C11** guarantees every harness honors an env override; **C7** accepts `external_restriction` as a declared (non-silent) opt-out; **C4** asserts the *effective* model (pin-aware).
+
 ## 2026-05-31 (v1.42.1)
 - **lean harness layer** (no behaviour change, −125 lines): single source of truth for shipped harness configs — removed the duplicated `_CLAUDE_DEFAULTS` (juggle_harness) and `CODEX_DEFAULTS` (harnesses/codex) dicts; the framework + tests now read `juggle_settings.DEFAULTS["agent"]["harnesses"]`. Adapter modules keep only the *logic* a flat config can't express. Replaced the lazy-load/`__getattr__`/`_DEFAULTS_BY_TYPE` machinery with a plain bottom `import harnesses` (fail-loud) and a simpler `register_adapter(type, cls)`. Conformance discovery covers shipped harnesses + one synthetic template; C6 (markers) skips one-shot harnesses, so Codex no longer needs sentinel markers. `start_agent_in_pane` is now a no-op for one-shot harnesses (they launch per-task), fixing spawn for non-interactive harnesses.
 

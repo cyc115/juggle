@@ -43,6 +43,7 @@ To add a NEW required behaviour: add one test here; it instantly applies to
 every present and future harness.
 """
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -155,10 +156,15 @@ def test_c3_audit_env_toggles(harness, tmp_path):
 
 # --- C4 Model flag ---------------------------------------------------------
 def test_c4_model_present_and_optional(harness, tmp_path):
+    hid, agent_cfg = harness
+    # A harness may pin its own model (config `model`), which overrides the
+    # passed model — so assert the EFFECTIVE model appears, not the passed one.
+    pinned = (get_adapter("coder", agent_cfg=agent_cfg)._cfg.get("model") or "").strip()
     _, with_model = _build(harness, model="some-model-x", tmp_path=tmp_path)
-    assert "some-model-x" in with_model, f"{harness[0]}: model must appear in the command"
+    expected = pinned or "some-model-x"
+    assert expected in with_model, f"{hid}: effective model must appear in the command"
     _, no_model = _build(harness, model=None, tmp_path=tmp_path)
-    # No model ⇒ no dangling flag fragment with an empty value.
+    # No model ⇒ no `{model}` placeholder leak and no dangling empty flag.
     assert "{model}" not in no_model
     assert "--model \n" not in no_model and not no_model.rstrip().endswith("--model")
 
@@ -203,7 +209,10 @@ def test_c7_per_role_restriction_materialized(harness, tmp_path):
     # (a) inline in the command (template restrictions_flag, codex -c, etc.)
     if adapter._restrictions_part("coder", False).strip():
         materialized = True
-    # (b) a written --settings artifact (claude overlay)
+    # (b) declared delegation to the harness's own config file (e.g. reasonix.toml)
+    if adapter.external_restriction:
+        materialized = True
+    # (c) a written --settings artifact (claude overlay)
     if "--settings " in cmd:
         path = Path(cmd.split("--settings ", 1)[1].split()[0].strip("'\""))
         if path.exists():
@@ -314,6 +323,22 @@ def test_c10_interactivity_is_bool_and_consistent(harness, tmp_path):
         assert "JUGGLE_IS_AGENT=1" in cmd, (
             f"{hid}: one-shot task command must still carry the agent identity env"
         )
+
+
+# --- C11 Per-harness env is overridable ------------------------------------
+def test_c11_harness_env_overridable(harness, tmp_path):
+    """A harness's ``env`` dict must reach the launched process — each harness
+    can set/override env vars independently (deepcopy so DEFAULTS isn't mutated)."""
+    hid, agent_cfg = harness
+    cfg = copy.deepcopy(agent_cfg)
+    sel = cfg["harness"]
+    hcfg = cfg["harnesses"][sel]
+    hcfg["env"] = {**(hcfg.get("env") or {}), "X_CONF_ENV": "marker-77"}
+    _, cmd = _build((hid, cfg), tmp_path=tmp_path)
+    assert "X_CONF_ENV=marker-77" in cmd, (
+        f"{hid}: a harness env override must reach the launch command"
+    )
+    assert "JUGGLE_IS_AGENT=1" in cmd, f"{hid}: juggle identity must still be present"
 
 
 # --- meta: the suite actually discovered the real shipped harnesses --------

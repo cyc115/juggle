@@ -109,7 +109,10 @@ DEFAULTS: dict = {
                 # of truth for the Claude launch string.
                 "type": "claude",
                 "model_flag": "--model {model}",
-                "env": {"JUGGLE_IS_AGENT": "1"},
+                # Harness-specific env overrides (override inherited values). The
+                # JUGGLE_IS_AGENT/ROLE/AUDIT identity vars are injected
+                # automatically — add your own here.
+                "env": {},
                 "env_unset": ["CLAUDE_PLUGIN_DATA"],
                 "readiness_markers": ["bypass permissions on", "/effort"],
                 "submission_markers": ["esc to interrupt", "✻", "✶"],
@@ -144,10 +147,35 @@ DEFAULTS: dict = {
                 "sandbox_default": "read-only",
                 "sandbox_audit": "workspace-write",
                 "restrictions_flag": "",
-                "env": {"JUGGLE_IS_AGENT": "1"},
+                "env": {},
                 "env_unset": [],
                 # No readiness/submission markers: one-shot harnesses don't poll
                 # a REPL (see is_interactive=False above).
+                "supports_hooks": False,
+            },
+            # Reasonix (deepseek-reasonix) CLI. Inactive until selected via
+            # `harness` / `harness_by_role`. A config-only `template` harness —
+            # no Python needed: one-shot `reasonix run` reading the prompt from
+            # stdin, model via `--model`, AGENTS.md context, anchor inlined.
+            # Tool restriction is delegated to the harness's own reasonix.toml
+            # ([permissions]/[sandbox], workspace confinement) — Reasonix exposes
+            # no per-call restriction flags — so `external_restriction` is set.
+            # Needs DEEPSEEK_API_KEY in the environment (inherited, or add to env).
+            "reasonix": {
+                "type": "template",
+                "command": "reasonix run",
+                "interactive": False,
+                "model_flag": "--model {model}",
+                # Pin a Reasonix model (presets: deepseek-flash/pro, mimo-flash/pro)
+                # so juggle never passes a non-Reasonix model name. Overridable.
+                "model": "deepseek-pro",
+                "extra_flags": "",
+                # `reasonix run` reads the prompt from stdin.
+                "prompt_arg": "< {prompt_file}",
+                "restrictions_flag": "",
+                "external_restriction": True,
+                "env": {},
+                "env_unset": [],
                 "supports_hooks": False,
             },
         },

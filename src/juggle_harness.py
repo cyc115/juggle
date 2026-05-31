@@ -32,13 +32,18 @@ def register_adapter(type_name: str, cls) -> None:
 def _env_prefix(env: dict | None, env_unset, role: str | None, audit: bool) -> str:
     """Build the shared ``env ...`` command prefix.
 
-    Always exports ``JUGGLE_IS_AGENT=1`` (plus ``JUGGLE_AGENT_ROLE`` /
-    ``JUGGLE_AGENT_AUDIT`` when applicable) so juggle's hooks and telemetry can
-    identify the agent regardless of harness. Harness-specific additions come
-    from ``env`` (exported) and ``env_unset`` (scrubbed via ``-u``).
+    Two layers: juggle exports its identity vars (``JUGGLE_IS_AGENT=1`` plus
+    ``JUGGLE_AGENT_ROLE`` / ``JUGGLE_AGENT_AUDIT`` when applicable) so hooks and
+    telemetry can attribute the agent regardless of harness; then the harness's
+    own ``env`` dict is applied on top — it can set OR override **any** variable
+    for the launched process (overriding the inherited environment, and the
+    juggle defaults too if a harness deliberately lists them). ``env_unset``
+    scrubs inherited vars via ``-u``. So the environment is fully overridable
+    per harness while the defaults stay correct for harnesses that don't touch
+    them.
 
-    Insertion order matches the legacy hand-built command exactly:
-    ``env -u <unset...> JUGGLE_IS_AGENT=1 [JUGGLE_AGENT_ROLE=..] [JUGGLE_AGENT_AUDIT=1] <set...>``.
+    Order: ``env -u <unset...> JUGGLE_IS_AGENT=1 [JUGGLE_AGENT_ROLE=..]
+    [JUGGLE_AGENT_AUDIT=1] <harness env...>``.
     """
     parts = ["env"]
     for name in env_unset or ():
@@ -48,11 +53,7 @@ def _env_prefix(env: dict | None, env_unset, role: str | None, audit: bool) -> s
         merged["JUGGLE_AGENT_ROLE"] = role
     if audit:
         merged["JUGGLE_AGENT_AUDIT"] = "1"
-    # Any extra harness env (after the juggle markers); JUGGLE_IS_AGENT already set.
-    for k, v in (env or {}).items():
-        if k == "JUGGLE_IS_AGENT":
-            continue
-        merged[k] = v
+    merged.update(env or {})  # harness env is authoritative — fully overridable
     for k, v in merged.items():
         parts.append(f"{k}={v}")
     return " ".join(parts)
@@ -78,6 +79,14 @@ class HarnessAdapter:
     @property
     def supports_hooks(self) -> bool:
         return bool(self._cfg.get("supports_hooks", False))
+
+    @property
+    def external_restriction(self) -> bool:
+        """True when per-role tool restriction is delegated to the harness's own
+        config file (e.g. reasonix's ``reasonix.toml``) rather than materialized
+        by juggle as command flags or a ``--settings`` overlay. A deliberate,
+        declared opt-out of juggle-managed restriction — never a silent drop."""
+        return bool(self._cfg.get("external_restriction", False))
 
     @property
     def is_interactive(self) -> bool:
