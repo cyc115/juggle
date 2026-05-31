@@ -121,10 +121,10 @@ def test_start_claude_denials_go_to_settings_file_not_command_line(mgr, tmp_path
     overlay_settings = {
         "paths": {"config_dir": str(tmp_path)},
         "agent": {
-            "disallowed_tools_universal": big_denied,
-            "disallowed_tools_by_role": {"coder": ["NotebookEdit"]},
-            "settings_overlay_base": {},
-            "settings_overlay_by_role": {"coder": {}},
+            "settings_overlay_base": {"permissions": {"deny": big_denied}},
+            "settings_overlay_by_role": {
+                "coder": {"permissions": {"deny": ["NotebookEdit"]}}
+            },
         },
     }
     with (

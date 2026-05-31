@@ -25,22 +25,12 @@ surfaces (``permissions.*`` arrays, ``env``) plus any scalar a role
 *deliberately* wants to override; omitted keys are left to the host.
 """
 
+import copy
 import json
 import uuid
 from pathlib import Path
 
 from juggle_settings import get_settings
-
-
-def _deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge ``override`` into ``base``; return a new dict."""
-    result = dict(base)
-    for key, val in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
-            result[key] = _deep_merge(result[key], val)
-        else:
-            result[key] = val
-    return result
 
 
 def _union(*lists) -> list:
@@ -55,38 +45,48 @@ def _union(*lists) -> list:
     return out
 
 
+def _merge(base: dict, override: dict) -> dict:
+    """Merge ``override`` onto ``base`` (new dict).
+
+    The merge rule mirrors how Claude Code combines settings sources:
+      - nested dicts deep-merge,
+      - list values UNION (so e.g. ``permissions.deny`` accumulates rather than
+        being replaced — additive overlay),
+      - scalars override.
+    """
+    result = dict(base)
+    for key, val in override.items():
+        cur = result.get(key)
+        if isinstance(cur, dict) and isinstance(val, dict):
+            result[key] = _merge(cur, val)
+        elif isinstance(cur, list) and isinstance(val, list):
+            result[key] = _union(cur, val)
+        else:
+            result[key] = copy.deepcopy(val)
+    return result
+
+
 def build_agent_overlay(role: str | None, overrides: dict | None = None) -> dict:
     """Return the additive settings overlay dict for ``role``.
 
     Composition (lowest → highest precedence):
-      ``agent.settings_overlay_base``
-        → ``agent.settings_overlay_by_role[role]``
-        → ``permissions.deny`` derived from ``disallowed_tools_*`` (unioned with
-          any deny already present in the templates)
-        → per-dispatch ``overrides`` (deep-merged last).
+      ``agent.settings_overlay_base`` (universal, every agent)
+        → ``agent.settings_overlay_by_role[role]`` (merged on top)
+        → per-dispatch ``overrides`` (merged last).
 
-    Empty by default beyond ``permissions.deny`` — identical across roles today,
-    but ``settings_overlay_by_role`` lets any role diverge later (its own
-    ``model``, ``env``, ``hooks``, ``sandbox``, etc.) with no code change.
+    Per the merge rule, list values such as ``permissions.deny`` UNION across
+    the layers; nested dicts deep-merge; scalars override. So the universal
+    denials always apply and a role's overlay simply adds to them. Beyond the
+    denials the overlay is empty today (roles identical), but
+    ``settings_overlay_by_role`` lets any role diverge later (its own ``model``,
+    ``env``, ``hooks``, ``sandbox``, etc.) with no code change.
     """
     agent = get_settings().get("agent", {})
 
-    overlay = _deep_merge(
-        agent.get("settings_overlay_base") or {},
-        (agent.get("settings_overlay_by_role") or {}).get(role) or {},
-    )
-
-    denied = _union(
-        agent.get("disallowed_tools_universal") or [],
-        (agent.get("disallowed_tools_by_role") or {}).get(role) or [] if role else [],
-    )
-    if denied:
-        perms = dict(overlay.get("permissions") or {})
-        perms["deny"] = _union(perms.get("deny") or [], denied)
-        overlay["permissions"] = perms
-
+    overlay = copy.deepcopy(agent.get("settings_overlay_base") or {})
+    overlay = _merge(overlay, (agent.get("settings_overlay_by_role") or {}).get(role) or {})
     if overrides:
-        overlay = _deep_merge(overlay, overrides)
+        overlay = _merge(overlay, overrides)
 
     return overlay
 

@@ -73,33 +73,6 @@ DEFAULTS: dict = {
     # Agent Launch
     "agent": {
         "claude_launch_command": "claude --dangerously-skip-permissions",
-        # Tools denied for ALL agent roles (reduces tool-definition token cost).
-        # opentabs (78 browser tools) + meta tools agents never invoke.
-        "disallowed_tools_universal": [
-            # opentabs browser tools (78 tools) — wildcard collapses to single entry
-            "mcp__opentabs__*",
-            # personal-mcp financial tools (not for agents)
-            "mcp__personal-mcp__plaid_get_accounts",
-            "mcp__personal-mcp__plaid_get_statements",
-            "mcp__personal-mcp__plaid_sync_transactions",
-            # meta / orchestrator tools agents don't invoke
-            "ScheduleWakeup",
-            "CronCreate",
-            "CronList",
-            "CronDelete",
-            "ShareOnboardingGuide",
-            "ExitPlanMode",
-            "EnterPlanMode",
-            "EnterWorktree",
-            "ExitWorktree",
-            "PushNotification",
-            # sub-agent spawning and remote triggers — orchestrator-only
-            "Agent",
-            "RemoteTrigger",
-            # MCP resource browsing — not used by any agent role
-            "ListMcpResourcesTool",
-            "ReadMcpResourceTool",
-        ],
         # Per-role role identity sentences injected into agent context anchor.
         "role_context": {
             "researcher": "Produce comprehensive, well-structured, cited reports. Never fabricate URLs.",
@@ -108,38 +81,82 @@ DEFAULTS: dict = {
         },
         # Skill invoked by coder agents before complete-agent (configurable per deployment).
         "quality_gate_skill": "mike:pre-pr",
-        # Per-role additional denylists (merged with universal at spawn time).
-        "disallowed_tools_by_role": {
-            "researcher": [
-                "Edit",  # researchers don't patch code
-                "NotebookEdit",  # no Jupyter in Juggle
-            ],
-            "coder": [
-                "NotebookEdit",  # no Jupyter in Juggle
-                "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for coding
-            ],
-            "planner": [
-                "Edit",  # planners write plans, not code
-                "NotebookEdit",  # no Jupyter in Juggle
-                "Monitor",  # planners don't run bg processes
-                "TaskOutput",  # no bg tasks to monitor
-                "TaskStop",  # no bg tasks to stop
-                "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for planning
-            ],
+        # --- Agent settings.json overlay -------------------------------------
+        # Each agent's settings.json is generated from these two keys
+        # (juggle_agent_settings.build_agent_overlay) and passed via
+        # `--settings <file>`. `--settings` LAYERS over the host settings
+        # hierarchy — omitted keys keep their host values, and permission
+        # allow/deny/ask arrays UNION across sources — so this overlay is
+        # purely ADDITIVE and portable: it never replaces the host's settings.
+        #
+        # Composition: settings_overlay_base (universal, applied to EVERY
+        # agent) is merged first, then settings_overlay_by_role[role] is merged
+        # on top. List values (e.g. permissions.deny) union; nested dicts
+        # deep-merge; scalars (model, defaultMode, …) override.
+        #
+        # permissions.deny here doubles as the token-saving lever: a bare tool
+        # name removes that tool from the agent's context entirely.
+        "settings_overlay_base": {
+            "permissions": {
+                "deny": [
+                    # opentabs browser tools (78 tools) — wildcard collapses to one entry
+                    "mcp__opentabs__*",
+                    # personal-mcp financial tools (not for agents)
+                    "mcp__personal-mcp__plaid_get_accounts",
+                    "mcp__personal-mcp__plaid_get_statements",
+                    "mcp__personal-mcp__plaid_sync_transactions",
+                    # meta / orchestrator tools agents don't invoke
+                    "ScheduleWakeup",
+                    "CronCreate",
+                    "CronList",
+                    "CronDelete",
+                    "ShareOnboardingGuide",
+                    "ExitPlanMode",
+                    "EnterPlanMode",
+                    "EnterWorktree",
+                    "ExitWorktree",
+                    "PushNotification",
+                    # sub-agent spawning and remote triggers — orchestrator-only
+                    "Agent",
+                    "RemoteTrigger",
+                    # MCP resource browsing — not used by any agent role
+                    "ListMcpResourcesTool",
+                    "ReadMcpResourceTool",
+                ]
+            }
         },
-        # Additive settings.json overlay written per role and passed to the
-        # agent via `--settings <file>` (see juggle_agent_settings.py). Because
-        # `--settings` layers over the host settings hierarchy (omitted keys keep
-        # their host values; permission arrays union across sources), anything
-        # placed here is ADDITIVE and portable — it never replaces the host's
-        # own settings. Empty today (all roles identical); populate
-        # settings_overlay_by_role to let a role diverge (its own env, model,
-        # hooks, sandbox, …) with no code change.
-        "settings_overlay_base": {},
+        # Per-role overlay merged ON TOP of settings_overlay_base. Today only
+        # adds role-specific denials; a role may also diverge on env / model /
+        # hooks / sandbox here with no code change.
         "settings_overlay_by_role": {
-            "researcher": {},
-            "coder": {},
-            "planner": {},
+            "researcher": {
+                "permissions": {
+                    "deny": [
+                        "Edit",  # researchers don't patch code
+                        "NotebookEdit",  # no Jupyter in Juggle
+                    ]
+                }
+            },
+            "coder": {
+                "permissions": {
+                    "deny": [
+                        "NotebookEdit",  # no Jupyter in Juggle
+                        "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for coding
+                    ]
+                }
+            },
+            "planner": {
+                "permissions": {
+                    "deny": [
+                        "Edit",  # planners write plans, not code
+                        "NotebookEdit",  # no Jupyter in Juggle
+                        "Monitor",  # planners don't run bg processes
+                        "TaskOutput",  # no bg tasks to monitor
+                        "TaskStop",  # no bg tasks to stop
+                        "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for planning
+                    ]
+                }
+            },
         },
     },
     # Talkback TTS
