@@ -127,6 +127,11 @@ DEFAULTS: dict = {
                 "command": "codex exec",
                 "interactive": False,
                 "model_flag": "-m {model}",
+                # Pin the Codex model (gpt-*, not sonnet/opus) regardless of the
+                # agent's configured model; empty = use the per-agent model.
+                "model": "",
+                # Arbitrary extra CLI flags appended verbatim (e.g. "-c key=val").
+                "extra_flags": "",
                 # `codex exec - < prompt.txt` — `-` reads the prompt from stdin
                 # (avoids ARG_MAX + a non-TTY-pipe hang); see harnesses/codex.py.
                 "prompt_arg": "- < {prompt_file}",

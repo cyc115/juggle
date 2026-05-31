@@ -44,7 +44,11 @@ working unchanged.**
     "type": "claude" | "template",   // "claude" = built-in overlay logic
     "command": "claude ...",          // launch command (claude falls back to
                                        //   agent.claude_launch_command)
-    "model_flag": "--model {model}",  // applied only when a model is given
+    "model_flag": "--model {model}",  // the model flag template
+    "model": "",                      // pin a model for this harness, overriding
+                                       //   the per-agent model (e.g. Codex "gpt-5");
+                                       //   empty = use the agent's model
+    "extra_flags": "",                // arbitrary extra CLI flags appended verbatim
     "restrictions_flag": "",          // (template only) static tool-restriction flag
     "env": {"JUGGLE_IS_AGENT": "1"},  // env vars exported before the command
     "env_unset": ["CLAUDE_PLUGIN_DATA"], // env vars scrubbed via `env -u`

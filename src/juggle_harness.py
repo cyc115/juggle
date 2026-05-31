@@ -171,6 +171,12 @@ class HarnessAdapter:
         )
 
     def _model_part(self, model: str | None) -> str:
+        # A harness may pin its own model via the config ``model`` key, which
+        # overrides the per-agent model passed in. Useful when the harness's
+        # model namespace differs from the orchestrator's (e.g. Codex uses
+        # ``gpt-*`` names, not ``sonnet``/``opus``). The flag itself is also
+        # configurable via ``model_flag`` (Codex uses ``-m {model}``).
+        model = self._cfg.get("model") or model
         if not model:
             return ""
         return self._cfg.get("model_flag", "--model {model}").format(model=model)
@@ -198,6 +204,11 @@ class HarnessAdapter:
         restrictions = self._restrictions_part(role, audit)
         if restrictions:
             parts.append(restrictions)
+        # Arbitrary extra CLI flags, appended verbatim — the config escape hatch
+        # for harness flags juggle doesn't model explicitly (e.g. `-c key=value`).
+        extra = (self._cfg.get("extra_flags") or "").strip()
+        if extra:
+            parts.append(extra)
         return " ".join(parts)
 
     def build_task_command(

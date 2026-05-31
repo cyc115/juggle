@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-05-31 (v1.42.0)
+- **configurable model + CLI flags per harness**: two new base-adapter config keys (available to every harness). `model` pins a harness's model, overriding the per-agent model — needed because a harness's model namespace can differ from the orchestrator's (Codex uses `gpt-*`, not `sonnet`/`opus`); empty = use the agent's model. `extra_flags` is appended verbatim to the launch/task command as an escape hatch for flags juggle doesn't model explicitly (e.g. `-c model_reasoning_effort=high`). The model *flag* itself (`model_flag`) and `command` were already configurable. Codex DEFAULTS expose both keys (empty).
+
 ## 2026-05-31 (v1.41.2)
 - one-shot prompt file is left in `/tmp` rather than deleted after the run (OS tmp reaper collects it; keeping it makes the run auditable). Removes the `; rm -f` cleanup added in v1.41.1.
 

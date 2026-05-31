@@ -46,7 +46,14 @@ CODEX_DEFAULTS: dict = {
     "command": "codex exec",
     # Non-interactive: spawn a fresh process per task (no warm REPL).
     "interactive": False,
+    # Model flag + optional pinned model. Codex's model namespace is gpt-*, not
+    # the orchestrator's sonnet/opus — set `model` (e.g. "gpt-5") to force the
+    # Codex model regardless of the agent's configured model. Empty = use the
+    # per-agent model as-is.
     "model_flag": "-m {model}",
+    "model": "",
+    # Arbitrary extra CLI flags appended verbatim, e.g. "-c model_reasoning_effort=high".
+    "extra_flags": "",
     # The task prompt is read from the file via stdin. `-` is Codex's documented
     # "read prompt from stdin" sentinel; combined with the shell redirect this is
     # `codex exec - < prompt.txt`. Passing by file (not a positional arg) avoids

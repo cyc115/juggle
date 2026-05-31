@@ -111,6 +111,34 @@ def test_codex_task_command_per_role_sandbox():
     assert "-s read-only" in cmd
 
 
+def test_codex_pinned_model_overrides_agent_model():
+    """`model` in config forces the Codex model regardless of the agent's."""
+    adapter = get_adapter("coder", agent_cfg=_cfg(model="gpt-5-codex"))
+    cmd = adapter.build_task_command("/tmp/t.txt", role="coder", model="sonnet")
+    assert "-m gpt-5-codex" in cmd
+    assert "sonnet" not in cmd
+
+
+def test_codex_model_flag_configurable():
+    adapter = get_adapter("coder", agent_cfg=_cfg(model_flag="--model={model}"))
+    cmd = adapter.build_task_command("/tmp/t.txt", role="coder", model="gpt-5")
+    assert "--model=gpt-5" in cmd
+
+
+def test_codex_extra_flags_appended():
+    adapter = get_adapter("coder", agent_cfg=_cfg(extra_flags="-c reasoning=high"))
+    cmd = adapter.build_task_command("/tmp/t.txt", role="coder", model="gpt-5")
+    assert "-c reasoning=high" in cmd
+    # extra flags come before the stdin prompt redirect
+    assert cmd.index("-c reasoning=high") < cmd.index("- < /tmp/t.txt")
+
+
+def test_codex_empty_model_falls_back_to_agent_model():
+    adapter = get_adapter("coder", agent_cfg=_cfg())  # model="" by default
+    cmd = adapter.build_task_command("/tmp/t.txt", role="coder", model="gpt-4o")
+    assert "-m gpt-4o" in cmd
+
+
 def test_run_task_oneshot_pastes_command_and_no_marker_wait():
     """JuggleTmuxManager.run_task_oneshot pastes the one-shot command and never
     polls for REPL readiness/submission markers."""

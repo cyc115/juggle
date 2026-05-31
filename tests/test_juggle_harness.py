@@ -113,6 +113,18 @@ def test_template_markers_from_config():
     assert adapter.supports_hooks is False
 
 
+def test_template_pinned_model_and_extra_flags():
+    """Base config knobs: `model` overrides the passed model; `extra_flags`
+    are appended verbatim. Available to every harness, not just Codex."""
+    cfg = _codex_cfg()
+    cfg["harnesses"]["codex"]["model"] = "pinned-1"
+    cfg["harnesses"]["codex"]["extra_flags"] = "--foo bar"
+    adapter = get_adapter("coder", agent_cfg=cfg)
+    cmd = adapter.build_launch_command(role="coder", model="ignored", audit=False)
+    assert "-m pinned-1" in cmd and "ignored" not in cmd
+    assert cmd.endswith("--foo bar")
+
+
 # --- task decoration (anchor inlining for non-hook harnesses) -------------
 def test_decorate_task_claude_is_noop():
     adapter = get_adapter("coder", agent_cfg={})
