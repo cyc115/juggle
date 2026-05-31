@@ -47,3 +47,29 @@ def test_infer_invalid_json_returns_inbox():
     from juggle_cmd_projects import infer_project_id
     with patch("juggle_cmd_projects._cheap_llm_call", return_value="not json at all"):
         assert infer_project_id("some topic", PROJECTS) == "INBOX"
+
+
+def test_assign_project_background_updates_db(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import assign_project_background
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project(name="Investing", objective="Automate stock ideas")
+    tid = db.create_thread("automate investing ideas", session_id="s1")
+    assert db.get_thread(tid)["project_id"] == "INBOX"
+    with patch("juggle_cmd_projects._cheap_llm_call", return_value=f'{{"project_id": "{pid}"}}'):
+        t = assign_project_background(db, tid, "automate investing ideas", _return_thread=True)
+        t.join(timeout=5)
+    assert db.get_thread(tid)["project_id"] == pid
+
+
+def test_assign_project_background_silent_on_llm_failure(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import assign_project_background
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    tid = db.create_thread("some topic", session_id="s1")
+    with patch("juggle_cmd_projects._cheap_llm_call", side_effect=Exception("network error")):
+        t = assign_project_background(db, tid, "some topic", _return_thread=True)
+        t.join(timeout=5)
+    assert db.get_thread(tid)["project_id"] == "INBOX"
