@@ -134,7 +134,9 @@ def test_tier1_exception_falls_to_tier2(monkeypatch):
     assert "claude-haiku-4-5-20251001" in call_args
 
 
-def test_tier1_overlong_response_falls_to_tier2(monkeypatch):
+def test_tier1_overlong_response_falls_to_fallback(monkeypatch):
+    """_cheap_llm_call returns overlong OpenRouter text; _generate_title_for_thread
+    validates and falls to 5-word fallback (Haiku is not retried at this level)."""
     from juggle_cli_common import _generate_title_for_thread
 
     db = _db()
@@ -143,16 +145,12 @@ def test_tier1_overlong_response_falls_to_tier2(monkeypatch):
         f"word{i}" for i in range(16)
     )  # 16 words — exceeds 15-word limit
     mock_urlopen = _urlopen_ok(long_title)
-    mock_run = MagicMock(
-        return_value=MagicMock(returncode=0, stdout="Good Short Title\n")
-    )
 
     with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("urllib.request.urlopen", mock_urlopen):
-            with patch("subprocess.run", mock_run):
-                title = _generate_title_for_thread(db, "uuid-1", "Some task")
+            title = _generate_title_for_thread(db, "uuid-1", "Some task")
 
-    assert title == "Good Short Title"
+    assert title == "Some Task"  # 5-word fallback from topic
 
 
 # ---------------------------------------------------------------------------
