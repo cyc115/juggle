@@ -127,6 +127,20 @@ DEFAULTS: dict = {
                 "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for planning
             ],
         },
+        # Additive settings.json overlay written per role and passed to the
+        # agent via `--settings <file>` (see juggle_agent_settings.py). Because
+        # `--settings` layers over the host settings hierarchy (omitted keys keep
+        # their host values; permission arrays union across sources), anything
+        # placed here is ADDITIVE and portable — it never replaces the host's
+        # own settings. Empty today (all roles identical); populate
+        # settings_overlay_by_role to let a role diverge (its own env, model,
+        # hooks, sandbox, …) with no code change.
+        "settings_overlay_base": {},
+        "settings_overlay_by_role": {
+            "researcher": {},
+            "coder": {},
+            "planner": {},
+        },
     },
     # Talkback TTS
     "talkback": {

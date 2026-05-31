@@ -95,18 +95,22 @@ class JuggleTmuxManager:
         """Send the 'claude' command to a pane.
 
         Prefixes with env -u CLAUDE_PLUGIN_DATA to prevent DB fragmentation.
-        Appends --disallowedTools from settings to reduce tool-definition token cost.
+        Per-role denied tools (and any future per-role settings) are written to a
+        settings overlay file and passed via `--settings <path>` rather than a
+        long `--disallowedTools a,b,c,...` flag: a short, fixed token pastes
+        reliably into the pane, where a long comma-list does not (tmux collapses
+        big pastes). `--settings` layers over the host settings hierarchy, so the
+        overlay is additive and portable — it never replaces the host's settings.
         """
+        from juggle_agent_settings import write_agent_overlay
+
         agent_cfg = _get_settings().get("agent", {})
         cmd = agent_cfg["claude_launch_command"]
         if model:
             cmd += f" --model {model}"
 
-        denied = list(agent_cfg.get("disallowed_tools_universal", []))
-        if role:
-            denied += agent_cfg.get("disallowed_tools_by_role", {}).get(role, [])
-        if denied:
-            cmd += " --disallowedTools " + shlex.quote(",".join(denied))
+        overlay_path = write_agent_overlay(role)
+        cmd += " --settings " + shlex.quote(str(overlay_path))
 
         role_env = f" JUGGLE_AGENT_ROLE={role}" if role else ""
         cmd = f"env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1{role_env} {cmd}"
