@@ -1,8 +1,5 @@
 # Changelog
 
-## 2026-05-31 (v1.43.0)
-- **`juggle configure-harness` + `/juggle:init` harness setup**: a new CLI command selects/tunes the sub-agent harness in `config.json` deterministically (no hand-editing JSON) — `configure-harness <id> [--role R] [--model M] [--extra-flags …] [--command …]`. It seeds an unknown-but-shipped harness (codex) from DEFAULTS, applies per-harness overrides, sets the global or per-role selection, and preserves the rest of the config. `/juggle:init` gains a "Configure Sub-Agent Harness" step that asks which CLI to use and calls the command. New `juggle_settings.config_path()` helper centralizes the config location for readers and writers. Docs in `docs/harness-adapters.md`.
-
 ## 2026-05-31 (v1.42.0)
 - **configurable model + CLI flags per harness**: two new base-adapter config keys (available to every harness). `model` pins a harness's model, overriding the per-agent model — needed because a harness's model namespace can differ from the orchestrator's (Codex uses `gpt-*`, not `sonnet`/`opus`); empty = use the agent's model. `extra_flags` is appended verbatim to the launch/task command as an escape hatch for flags juggle doesn't model explicitly (e.g. `-c model_reasoning_effort=high`). The model *flag* itself (`model_flag`) and `command` were already configurable. Codex DEFAULTS expose both keys (empty).
 

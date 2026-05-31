@@ -148,43 +148,7 @@ for i in 1 2 3; do
 done
 ```
 
-### 4. Configure Sub-Agent Harness
-
-Juggle launches each background sub-agent as a CLI process. Which CLI, model, and
-flags it uses is configurable under `agent.harnesses` in `~/.juggle/config.json`
-— the config step above already wrote sane defaults (Claude Code is the default;
-an inactive Codex profile ships alongside). See `docs/harness-adapters.md` for the
-full schema (per-role overrides, sandbox/approval modes, etc.).
-
-Ask the user (AskUserQuestion):
-
-**Q: Which CLI should run Juggle's background sub-agents?**
-Options:
-- "(Recommended) Claude Code — default; full hooks + per-role tool denies"
-- "Codex — OpenAI Codex CLI (one-shot `codex exec`, sandbox-based restriction)"
-- "Keep default — decide later"
-
-If **Keep default** or **Claude Code** → nothing to do (defaults already in config);
-continue to step 5.
-
-If **Codex** → ask the model, then apply the choice with the CLI command (don't
-hand-edit JSON — `configure-harness` writes config.json deterministically):
-
-**Q: Codex model?**
-- "(Recommended) gpt-5-codex"
-- "Custom — I'll provide a model ID"
-
-```bash
-# Set Codex as the harness for all roles, pinning the chosen model.
-python3 "${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py" configure-harness codex --model "<model>"
-```
-
-To use a different harness for just one role instead of globally, add `--role`
-(e.g. `configure-harness codex --role researcher`). Advanced flags can be added
-with `--extra-flags "<flags>"` (e.g. `-c model_reasoning_effort=high`) or by
-editing `agent.harnesses.codex` directly — see `docs/harness-adapters.md`.
-
-### 5. Set Up Shell Alias
+### 4. Set Up Shell Alias
 
 Detect the user's shell and add `nvim-juggle` alias to the appropriate rc file:
 
@@ -223,7 +187,7 @@ fi
 
 Tell the user: `nvim-juggle` starts nvim as a server on `/tmp/juggle-nvim.sock`. Use it instead of `nvim` when you want `juggle:open` to target that session. Run `source <rc-file>` or open a new terminal to activate.
 
-### 6. Initialize Research Knowledge Base
+### 5. Initialize Research Knowledge Base
 
 ```bash
 python3 -c "
@@ -265,13 +229,12 @@ PYEOF
 
 Tell the user: "Research KB ready. Run `/juggle:research-ingest` to populate the HN corpus (~5 min, ~$0.50 in embeddings)."
 
-### 7. Report
+### 6. Report
 
 ```
 Juggle initialized.
 - Hindsight memory: enabled (localhost:18888)
 - LLM: <model>
-- Sub-agent harness: <claude | codex (model …)>
 - Data: ~/.juggle/memory/pg0
 - UI: http://localhost:19999
 ```

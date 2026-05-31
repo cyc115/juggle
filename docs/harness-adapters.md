@@ -31,18 +31,6 @@ Three keys under `agent` in `~/.juggle/config.json`:
 | `harness_by_role`   | Optional per-role override, e.g. `{"researcher": "codex"}`.  |
 | `harnesses`         | The harness definitions, keyed by id.                        |
 
-`/juggle:init` writes these (with sane defaults) into `config.json`, and asks
-which harness to use for sub-agents. To select or tune one later without
-hand-editing JSON, use the CLI (it writes `config.json` in place, preserving
-everything else):
-
-```bash
-juggle configure-harness codex --model gpt-5-codex          # global, pin model
-juggle configure-harness codex --role researcher            # one role only
-juggle configure-harness codex --extra-flags "-c reasoning_effort=high"
-juggle configure-harness claude                             # back to default
-```
-
 Resolution precedence for a role: `harness_by_role[role]` → `harness` →
 `"claude"`. If the selected id has no definition, juggle falls back to the
 built-in Claude harness, so **older configs with no `harnesses` block keep

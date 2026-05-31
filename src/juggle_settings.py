@@ -287,30 +287,22 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def config_path() -> Path:
-    """Path to the user's config.json (``_JUGGLE_CONFIG_PATH`` env override, else
-    ``~/.juggle/config.json``). The single source of truth for where config is
-    read from and written to — used by ``get_settings`` and config-mutating CLI
-    commands so they always agree on the location."""
-    return Path(
-        os.environ.get(
-            "_JUGGLE_CONFIG_PATH",
-            str(Path.home() / ".juggle" / "config.json"),
-        )
-    )
-
-
 def get_settings() -> dict:
     """Return merged settings dict. Re-reads config on every call (no cache).
 
     Load order: DEFAULTS → config.json → env var overrides.
     Safe to call at import time — falls back to DEFAULTS if config is missing or corrupt.
     """
-    cfg_path = config_path()
+    config_path = Path(
+        os.environ.get(
+            "_JUGGLE_CONFIG_PATH",
+            str(Path.home() / ".juggle" / "config.json"),
+        )
+    )
     user_config: dict = {}
-    if cfg_path.exists():
+    if config_path.exists():
         try:
-            user_config = json.loads(cfg_path.read_text())
+            user_config = json.loads(config_path.read_text())
         except (json.JSONDecodeError, OSError):
             pass  # corrupt or unreadable — fall back to DEFAULTS
 
