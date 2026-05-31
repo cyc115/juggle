@@ -127,7 +127,9 @@ DEFAULTS: dict = {
                 "command": "codex exec",
                 "interactive": False,
                 "model_flag": "-m {model}",
-                "prompt_arg": '"$(cat {prompt_file})"',
+                # `codex exec - < prompt.txt` — `-` reads the prompt from stdin
+                # (avoids ARG_MAX + a non-TTY-pipe hang); see harnesses/codex.py.
+                "prompt_arg": "- < {prompt_file}",
                 "approval_policy": "never",
                 "sandbox_by_role": {
                     "researcher": "read-only",

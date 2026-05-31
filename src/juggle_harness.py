@@ -210,12 +210,16 @@ class HarnessAdapter:
         """Return a one-shot shell command that runs ``prompt_file`` to completion.
 
         Only meaningful for non-interactive harnesses. It is the launch command
-        plus the prompt, supplied via ``prompt_arg`` (a format string taking
-        ``{prompt_file}``, default ``"$(cat {prompt_file})"`` so the file's text
-        becomes the positional prompt without shell-escaping multi-line content).
+        plus a reference to the prompt file via ``prompt_arg`` (a format string
+        taking ``{prompt_file}``). The prompt is passed by **file**, not inlined
+        on the command line — the default ``"< {prompt_file}"`` redirects the
+        file to the process's stdin. This avoids the OS ``ARG_MAX`` ceiling on a
+        large prompt and needs no shell-escaping of multi-line content. Harnesses
+        that want an explicit stdin sentinel or a file flag override ``prompt_arg``
+        (Codex uses ``"- < {prompt_file}"``).
         """
         launch = self.build_launch_command(role=role, model=model, audit=audit)
-        prompt_arg = self._cfg.get("prompt_arg", '"$(cat {prompt_file})"')
+        prompt_arg = self._cfg.get("prompt_arg", "< {prompt_file}")
         return f"{launch} {prompt_arg.format(prompt_file=prompt_file)}"
 
     # -- task decoration (context delivery) ---------------------------------

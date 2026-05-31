@@ -50,8 +50,9 @@ working unchanged.**
     "env_unset": ["CLAUDE_PLUGIN_DATA"], // env vars scrubbed via `env -u`
     "interactive": true,              // true = warm REPL pane (default);
                                        //   false = one-shot process per task
-    "prompt_arg": "\"$(cat {prompt_file})\"", // (one-shot) how the prompt file
-                                       //   becomes the positional prompt arg
+    "prompt_arg": "< {prompt_file}",  // (one-shot) how the prompt FILE is fed to
+                                       //   the process; default redirects to stdin
+                                       //   (Codex uses "- < {prompt_file}")
     "readiness_markers": ["..."],     // (interactive) pane substrings: REPL ready
     "submission_markers": ["..."],    // (interactive) pane substrings: submitted
     "supports_hooks": true            // does it run juggle's Claude Code hooks?
@@ -65,10 +66,15 @@ working unchanged.**
   each task is pasted into the warm pane; juggle polls the `readiness_markers` /
   `submission_markers` to drive paste-and-submit.
 - **`interactive: false`** (one-shot, e.g. `codex exec`): each task spawns a
-  fresh `<command> … "$(cat <prompt_file>)"` process that runs to completion and
-  exits. No warm-pane reuse and **no marker polling** — simpler and more robust
-  for non-interactive CLIs. The markers are only used in interactive mode (the
-  conformance suite still requires non-empty values, so keep a sentinel).
+  fresh process that runs to completion and exits. No warm-pane reuse and **no
+  marker polling** — simpler and more robust for non-interactive CLIs. The
+  prompt is passed **by file**: juggle writes it to `/tmp` and the process reads
+  it via the `prompt_arg` (default `< {prompt_file}` → stdin; Codex uses `- <
+  {prompt_file}`). Passing by file (not inlined on the command line) avoids the
+  OS `ARG_MAX` limit on large prompts and needs no escaping; the prompt file is
+  removed (`; rm -f`) right after the process exits. Markers are only used in
+  interactive mode (the conformance suite still requires non-empty values, so
+  keep a sentinel).
 
 Notes:
 

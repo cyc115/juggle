@@ -96,10 +96,11 @@ def test_codex_is_non_interactive():
 def test_codex_task_command_uses_exec_and_prompt_file():
     adapter = get_adapter("coder", agent_cfg=_cfg())
     cmd = adapter.build_task_command("/tmp/task42.txt", role="coder", model="gpt-5")
-    # one-shot: `codex exec ... "$(cat <file>)"`, single line
+    # one-shot: `codex exec ... - < <file>` (stdin sentinel), single line
     assert "codex exec" in cmd
     assert "-s workspace-write" in cmd
-    assert '"$(cat /tmp/task42.txt)"' in cmd
+    assert "- < /tmp/task42.txt" in cmd  # prompt read from file via stdin
+    assert "$(cat" not in cmd  # not inlined on the command line (ARG_MAX-safe)
     assert "\n" not in cmd
     assert "JUGGLE_IS_AGENT=1" in cmd and "JUGGLE_AGENT_ROLE=coder" in cmd
 
@@ -141,6 +142,7 @@ def test_run_task_oneshot_pastes_command_and_no_marker_wait():
 
     assert pasted, "one-shot command was never pasted"
     assert "codex exec" in pasted[0]
-    assert '"$(cat ' in pasted[0]  # prompt supplied via file
+    assert "- < /tmp/juggle_oneshot_" in pasted[0]  # prompt fed by file via stdin
+    assert "; rm -f " in pasted[0]  # deterministic cleanup appended
     ready.assert_not_called()
     submit.assert_not_called()

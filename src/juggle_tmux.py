@@ -3,6 +3,7 @@
 
 import logging
 import os
+import shlex
 import subprocess
 import time
 import uuid
@@ -355,6 +356,11 @@ class JuggleTmuxManager:
         cmd = adapter.build_task_command(
             prompt_tmp, role=role, model=model, audit=audit
         )
+        # Deterministic cleanup: delete the prompt file once the one-shot process
+        # exits. The process reads the file at startup (stdin redirect), and `;`
+        # sequences the `rm` after it returns, so this never races the read and
+        # leaves nothing behind in /tmp.
+        cmd = f"{cmd}; rm -f {shlex.quote(prompt_tmp)}"
 
         cmd_tmp = f"/tmp/juggle_oneshotcmd_{uuid.uuid4().hex[:8]}.txt"
         buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
@@ -368,11 +374,8 @@ class JuggleTmuxManager:
             tail = (getattr(cap, "stdout", "") or "")
             return _hashlib.sha256(tail.encode()).hexdigest()[:16]
         finally:
-            # Keep the prompt file until the process has had a chance to read it
-            # is not guaranteed here; the one-shot command captures it via $(cat)
-            # at paste time, so the file is only needed transiently. Remove the
-            # command temp file; leave the prompt file for the OS tmp reaper to
-            # avoid racing a slow-starting process that re-reads it.
+            # The pasted command (a small temp file) is consumed immediately; the
+            # prompt file is cleaned by the `; rm -f` appended above.
             if Path(cmd_tmp).exists():
                 os.unlink(cmd_tmp)
 

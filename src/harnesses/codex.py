@@ -8,9 +8,10 @@ adapter encapsulates a different *strategy* for each surface:
                    false``): each task spawns a fresh process that runs to
                    completion and exits. Simpler than a warm REPL — no readiness/
                    submission marker polling, no collapsed-paste retry dance. The
-                   task prompt is passed as the positional argument via
-                   ``prompt_arg`` (``"$(cat {prompt_file})"``). Model via
-                   ``-m {model}``.
+                   task prompt is fed by file via stdin — ``codex exec - <
+                   prompt.txt`` (``prompt_arg = "- < {prompt_file}"``), the
+                   documented stdin form that avoids ARG_MAX and the non-TTY-pipe
+                   hang (openai/codex#20919). Model via ``-m {model}``.
   * restriction  — Codex has no flat tool-deny list. Its safety primitive is a
                    sandbox + approval *mode*, so per-role limits are materialized
                    as ``-a <approval> -s <sandbox>`` flags. Defaults per role
@@ -46,9 +47,12 @@ CODEX_DEFAULTS: dict = {
     # Non-interactive: spawn a fresh process per task (no warm REPL).
     "interactive": False,
     "model_flag": "-m {model}",
-    # The task prompt is passed as the positional argument, read from the file
-    # so multi-line prompts need no shell escaping.
-    "prompt_arg": '"$(cat {prompt_file})"',
+    # The task prompt is read from the file via stdin. `-` is Codex's documented
+    # "read prompt from stdin" sentinel; combined with the shell redirect this is
+    # `codex exec - < prompt.txt`. Passing by file (not a positional arg) avoids
+    # the OS ARG_MAX limit on large prompts and a known hang on non-TTY pipes
+    # (openai/codex#20919). Ref: developers.openai.com/codex/cli/reference
+    "prompt_arg": "- < {prompt_file}",
     # Approval policy for non-interactive autonomy. "never" = no approval
     # prompts (juggle agents run unattended). Overridable.
     "approval_policy": "never",
