@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-05-31 (v1.41.0)
+- **non-interactive (one-shot) harness dispatch**: harness adapters can now declare `interactive: false`, in which case each task spawns a fresh `<command> … "$(cat <prompt_file>)"` process that runs to completion and exits — no warm REPL, no readiness/submission marker polling. New `HarnessAdapter.is_interactive` + `build_task_command`; `JuggleTmuxManager.run_task_oneshot` drives the one-shot path; `cmd_send_task` routes on `adapter.is_interactive`. Claude stays interactive (warm-pane reuse) unchanged.
+- **Codex now ships one-shot**: `harnesses/codex.py` defaults to `codex exec` (`interactive:false`), passing the prompt via `prompt_arg` (`"$(cat {prompt_file})"`). Simpler and more robust than driving the Codex TUI.
+- conformance suite gains C10 (interactivity contract: one-shot harnesses must yield a single-line task command embedding the prompt file + agent identity env). Tests in `tests/test_harness_codex.py` (one-shot command, per-role sandbox, `run_task_oneshot` skips marker waits).
+
 ## 2026-05-31 (v1.40.0)
 - **self-contained harness adapters**: each harness now owns its full strategy in one module under `src/harnesses/` (launch + restriction materialization + context delivery + capabilities), self-registering with the framework via `juggle_harness.register_adapter`. `juggle_harness.py` is now just the framework (contract + registry + `get_adapter`).
   - `harnesses/claude.py` — `ClaudeCodeAdapter`: per-role `permissions.deny` via the `--settings` JSON overlay; anchor via juggle hooks.

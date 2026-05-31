@@ -139,6 +139,22 @@ class HarnessAdapter:
     def supports_hooks(self) -> bool:
         return bool(self._cfg.get("supports_hooks", False))
 
+    @property
+    def is_interactive(self) -> bool:
+        """Whether the harness runs as a long-lived interactive REPL pane.
+
+        Interactive (Claude Code, default): launch the REPL once, then paste each
+        task into the warm pane and watch for tmux readiness/submission markers.
+
+        Non-interactive / one-shot (``"interactive": false``): each task spawns a
+        fresh ``<command> ... <prompt>`` process that runs to completion and
+        exits. Simpler — no warm-pane reuse, no readiness/submission marker
+        polling — and the natural fit for ``codex exec`` / ``reasonix run``-style
+        CLIs. The prompt is passed via a file argument (``prompt_arg``) to avoid
+        shell-escaping a multi-line task.
+        """
+        return bool(self._cfg.get("interactive", True))
+
     def readiness_markers(self) -> tuple:
         return tuple(self._cfg.get("readiness_markers") or ())
 
@@ -183,6 +199,24 @@ class HarnessAdapter:
         if restrictions:
             parts.append(restrictions)
         return " ".join(parts)
+
+    def build_task_command(
+        self,
+        prompt_file: str,
+        role: str | None = None,
+        model: str | None = None,
+        audit: bool = False,
+    ) -> str:
+        """Return a one-shot shell command that runs ``prompt_file`` to completion.
+
+        Only meaningful for non-interactive harnesses. It is the launch command
+        plus the prompt, supplied via ``prompt_arg`` (a format string taking
+        ``{prompt_file}``, default ``"$(cat {prompt_file})"`` so the file's text
+        becomes the positional prompt without shell-escaping multi-line content).
+        """
+        launch = self.build_launch_command(role=role, model=model, audit=audit)
+        prompt_arg = self._cfg.get("prompt_arg", '"$(cat {prompt_file})"')
+        return f"{launch} {prompt_arg.format(prompt_file=prompt_file)}"
 
     # -- task decoration (context delivery) ---------------------------------
     def decorate_task(self, role: str | None, prompt: str) -> str:

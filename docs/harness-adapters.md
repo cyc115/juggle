@@ -48,25 +48,41 @@ working unchanged.**
     "restrictions_flag": "",          // (template only) static tool-restriction flag
     "env": {"JUGGLE_IS_AGENT": "1"},  // env vars exported before the command
     "env_unset": ["CLAUDE_PLUGIN_DATA"], // env vars scrubbed via `env -u`
-    "readiness_markers": ["..."],     // pane substrings: REPL ready for paste
-    "submission_markers": ["..."],    // pane substrings: prompt was submitted
+    "interactive": true,              // true = warm REPL pane (default);
+                                       //   false = one-shot process per task
+    "prompt_arg": "\"$(cat {prompt_file})\"", // (one-shot) how the prompt file
+                                       //   becomes the positional prompt arg
+    "readiness_markers": ["..."],     // (interactive) pane substrings: REPL ready
+    "submission_markers": ["..."],    // (interactive) pane substrings: submitted
     "supports_hooks": true            // does it run juggle's Claude Code hooks?
   }
 }
 ```
 
+### Interactive vs one-shot
+
+- **`interactive: true`** (default, Claude Code): the REPL is launched once and
+  each task is pasted into the warm pane; juggle polls the `readiness_markers` /
+  `submission_markers` to drive paste-and-submit.
+- **`interactive: false`** (one-shot, e.g. `codex exec`): each task spawns a
+  fresh `<command> … "$(cat <prompt_file>)"` process that runs to completion and
+  exits. No warm-pane reuse and **no marker polling** — simpler and more robust
+  for non-interactive CLIs. The markers are only used in interactive mode (the
+  conformance suite still requires non-empty values, so keep a sentinel).
+
 Notes:
 
 - **`type: "claude"`** uses `ClaudeCodeAdapter` (`harnesses/claude.py`), which
   generates the additive per-role `--settings` overlay via `juggle_agent_settings`.
-- **`type: "codex"`** uses `CodexAdapter` (`harnesses/codex.py`). Codex restricts
-  via sandbox + approval **modes**, not a tool list, so its config keys differ:
-  `approval_policy`, `sandbox_by_role` (e.g. `{"coder":"workspace-write","researcher":"read-only"}`),
-  `sandbox_default`, `sandbox_audit`. It materializes these as `-a <approval>
-  -s <sandbox>` launch flags. Codex auto-reads `AGENTS.md` for context and its
-  hooks engine is version-skewed, so `supports_hooks` defaults to `false` (anchor
-  inlined); set it `true` on a hook-capable Codex. Confirm `command`/markers
-  against your installed `codex` and override in config — no code change.
+- **`type: "codex"`** uses `CodexAdapter` (`harnesses/codex.py`), and runs
+  **one-shot** (`command: "codex exec"`, `interactive: false`) — each task is a
+  fresh process, no warm REPL. Codex restricts via sandbox + approval **modes**,
+  not a tool list, so its config keys differ: `approval_policy`, `sandbox_by_role`
+  (e.g. `{"coder":"workspace-write","researcher":"read-only"}`), `sandbox_default`,
+  `sandbox_audit`. It materializes these as `-a <approval> -s <sandbox>` flags.
+  Codex auto-reads `AGENTS.md` for context and the role anchor is inlined into the
+  prompt (`supports_hooks:false`). Confirm `command`/flags against your installed
+  `codex` and override in config — no code change.
 - **`type: "template"`** uses the fully config-driven `TemplateHarnessAdapter`.
   This is the "bring your own harness" path — no Python required.
 - **`supports_hooks: false`** means the harness does **not** run juggle's

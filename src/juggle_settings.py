@@ -124,8 +124,10 @@ DEFAULTS: dict = {
             # installed `codex` and override here if needed; no code change.
             "codex": {
                 "type": "codex",
-                "command": "codex",
+                "command": "codex exec",
+                "interactive": False,
                 "model_flag": "-m {model}",
+                "prompt_arg": '"$(cat {prompt_file})"',
                 "approval_policy": "never",
                 "sandbox_by_role": {
                     "researcher": "read-only",
@@ -137,8 +139,8 @@ DEFAULTS: dict = {
                 "restrictions_flag": "",
                 "env": {"JUGGLE_IS_AGENT": "1"},
                 "env_unset": [],
-                "readiness_markers": ["Ctrl+C to exit", "› "],
-                "submission_markers": ["Esc to interrupt", "working", "thinking"],
+                "readiness_markers": ["codex"],
+                "submission_markers": ["tokens used", "codex"],
                 "supports_hooks": False,
             },
         },

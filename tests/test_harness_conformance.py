@@ -314,6 +314,26 @@ def test_c9_build_is_stable_modulo_tempfiles(harness, tmp_path):
     )
 
 
+# --- C10 Interactivity contract --------------------------------------------
+def test_c10_interactivity_is_bool_and_consistent(harness, tmp_path):
+    """Every harness declares interactive vs one-shot, and a one-shot harness
+    must produce a runnable task command that embeds the prompt file."""
+    hid, agent_cfg = harness
+    adapter = get_adapter("coder", agent_cfg=agent_cfg)
+    assert isinstance(adapter.is_interactive, bool)
+    if not adapter.is_interactive:
+        cmd = adapter.build_task_command(
+            "/tmp/PROMPTFILE.txt", role="coder", model="m"
+        )
+        assert "\n" not in cmd, f"{hid}: one-shot task command must be a single line"
+        assert "PROMPTFILE.txt" in cmd, (
+            f"{hid}: one-shot task command must reference the prompt file"
+        )
+        assert "JUGGLE_IS_AGENT=1" in cmd, (
+            f"{hid}: one-shot task command must still carry the agent identity env"
+        )
+
+
 # --- meta: the suite actually discovered the real shipped harnesses --------
 def test_meta_suite_covers_shipped_claude():
     assert "claude" in _HARNESS_IDS, "conformance suite must cover the shipped claude harness"

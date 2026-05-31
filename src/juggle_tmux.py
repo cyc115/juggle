@@ -319,6 +319,63 @@ class JuggleTmuxManager:
                 os.unlink(tmp)
         return pane_hash
 
+    def run_task_oneshot(
+        self,
+        pane_id: str,
+        prompt: str,
+        role: str | None = None,
+        model: str | None = None,
+        audit: bool = False,
+    ) -> str:
+        """Dispatch a task to a NON-interactive harness as a one-shot process.
+
+        Simpler than ``send_task``: there is no warm REPL to wait on and no
+        submission to verify. The prompt is written to a temp file, the harness'
+        one-shot command (``adapter.build_task_command``) is pasted into the
+        pane, and the process runs to completion and exits. We still paste via
+        load-buffer/paste-buffer so the (short, fixed) command line is reliable,
+        and return a pane-tail hash for parity with ``send_task``.
+
+        Honours JUGGLE_TMUX_MOCK_SEND like ``send_task`` for tests.
+        """
+        import hashlib as _hashlib
+
+        from juggle_harness import get_adapter
+
+        if not pane_id or not pane_id.strip():
+            raise ValueError("run_task_oneshot called with empty pane_id")
+        if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
+            return _hashlib.sha256(prompt.encode()).hexdigest()[:16]
+
+        agent_cfg = _get_settings().get("agent", {})
+        adapter = get_adapter(role, agent_cfg=agent_cfg)
+
+        prompt_tmp = f"/tmp/juggle_oneshot_{uuid.uuid4().hex[:8]}.txt"
+        Path(prompt_tmp).write_text(prompt)
+        cmd = adapter.build_task_command(
+            prompt_tmp, role=role, model=model, audit=audit
+        )
+
+        cmd_tmp = f"/tmp/juggle_oneshotcmd_{uuid.uuid4().hex[:8]}.txt"
+        buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
+        try:
+            Path(cmd_tmp).write_text(cmd)
+            self._run_tmux("load-buffer", "-b", buf_name, cmd_tmp)
+            self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
+            self._run_tmux("delete-buffer", "-b", buf_name)
+            self._run_tmux("send-keys", "-t", pane_id, "Enter")
+            cap = self._run_tmux("capture-pane", "-pt", pane_id, "-S", "-10")
+            tail = (getattr(cap, "stdout", "") or "")
+            return _hashlib.sha256(tail.encode()).hexdigest()[:16]
+        finally:
+            # Keep the prompt file until the process has had a chance to read it
+            # is not guaranteed here; the one-shot command captures it via $(cat)
+            # at paste time, so the file is only needed transiently. Remove the
+            # command temp file; leave the prompt file for the OS tmp reaper to
+            # avoid racing a slow-starting process that re-reads it.
+            if Path(cmd_tmp).exists():
+                os.unlink(cmd_tmp)
+
     def spawn_agent(self, db, role: str, model: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.
 

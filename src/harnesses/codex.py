@@ -4,9 +4,13 @@
 Codex differs from Claude Code in ways a launch string can't capture, so this
 adapter encapsulates a different *strategy* for each surface:
 
-  * launch       — interactive ``codex`` REPL (NOT ``codex exec``, which is
-                   one-shot: juggle reuses warm panes across tasks, so it needs
-                   the persistent REPL). Model via ``-m {model}``.
+  * launch       — NON-interactive one-shot ``codex exec`` (``interactive:
+                   false``): each task spawns a fresh process that runs to
+                   completion and exits. Simpler than a warm REPL — no readiness/
+                   submission marker polling, no collapsed-paste retry dance. The
+                   task prompt is passed as the positional argument via
+                   ``prompt_arg`` (``"$(cat {prompt_file})"``). Model via
+                   ``-m {model}``.
   * restriction  — Codex has no flat tool-deny list. Its safety primitive is a
                    sandbox + approval *mode*, so per-role limits are materialized
                    as ``-a <approval> -s <sandbox>`` flags. Defaults per role
@@ -18,21 +22,15 @@ adapter encapsulates a different *strategy* for each surface:
                    harness ``restrictions_flag`` config key. Audit mode relaxes
                    the per-role sandbox to ``workspace-write`` so tool demand is
                    observable (mirrors Claude's deny-relaxation).
-  * context      — Codex auto-reads ``AGENTS.md`` and (in recent builds) has a
-                   hooks engine, but hook support is version-skewed across Codex
-                   releases (the PreToolUse/UserPromptSubmit engine landed after
-                   the legacy ``notify`` mechanism). So this adapter is
-                   conservative: ``supports_hooks`` defaults to False and the
-                   role anchor is INLINED into the task prompt (inherited
-                   ``decorate_task``). A deployment on a hook-capable Codex can
-                   set ``"supports_hooks": true`` in config to switch to hook
-                   delivery.
-  * capabilities — tmux markers for the Codex TUI (overridable in config).
+  * context      — Codex auto-reads ``AGENTS.md``; the role anchor is INLINED
+                   into the task prompt (``supports_hooks`` False → inherited
+                   ``decorate_task`` prepends it). One-shot runs don't use
+                   juggle's hooks anyway.
 
-NOTE: Several Codex flag/marker details vary by version. The conformance suite
+NOTE: Several Codex flag details vary by version. The conformance suite
 (tests/test_harness_conformance.py) verifies the juggle-side contract; the
 exact ``codex`` flags below should be confirmed against your installed CLI and
-adjusted via the harness config (no code change needed for command/markers).
+adjusted via the harness config (no code change needed).
 Refs: https://developers.openai.com/codex/cli/reference ,
 https://developers.openai.com/codex/config-reference
 """
@@ -43,8 +41,14 @@ from juggle_harness import HarnessAdapter, register_adapter
 # of these in agent.harnesses[<id>] without touching code.
 CODEX_DEFAULTS: dict = {
     "type": "codex",
-    "command": "codex",
+    # One-shot subcommand. `codex exec` runs non-interactively and exits.
+    "command": "codex exec",
+    # Non-interactive: spawn a fresh process per task (no warm REPL).
+    "interactive": False,
     "model_flag": "-m {model}",
+    # The task prompt is passed as the positional argument, read from the file
+    # so multi-line prompts need no shell escaping.
+    "prompt_arg": '"$(cat {prompt_file})"',
     # Approval policy for non-interactive autonomy. "never" = no approval
     # prompts (juggle agents run unattended). Overridable.
     "approval_policy": "never",
@@ -64,11 +68,11 @@ CODEX_DEFAULTS: dict = {
     "restrictions_flag": "",
     "env": {"JUGGLE_IS_AGENT": "1"},
     "env_unset": [],
-    # Codex TUI markers — confirm against your installed version.
-    "readiness_markers": ["Ctrl+C to exit", "› "],
-    "submission_markers": ["Esc to interrupt", "working", "thinking"],
-    # Conservative default: inline the anchor rather than rely on version-skewed
-    # Codex hooks. Flip to true on a hook-capable Codex.
+    # One-shot harnesses don't poll for REPL markers, but the conformance
+    # contract still requires non-empty markers; keep minimal sentinels.
+    "readiness_markers": ["codex"],
+    "submission_markers": ["tokens used", "codex"],
+    # Anchor inlined into the prompt (no juggle hooks in one-shot runs).
     "supports_hooks": False,
 }
 
