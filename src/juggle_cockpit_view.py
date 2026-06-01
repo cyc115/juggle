@@ -153,8 +153,8 @@ def render_topics(
         if idx > 0:
             content_parts.append(Rule(style="dim"))
         hdr = Text()
-        hdr.append(f"▸ {project_name.upper()}", style="bold white")
-        hdr.append(f"  {len(group_topics)}", style="dim")
+        hdr.append(f" ▸ {project_name.upper()} ", style=Style(color="bright_white", bgcolor="grey23", bold=True))
+        hdr.append(f" {len(group_topics)} ", style=Style(color="bright_white", bgcolor="grey23", dim=True))
         content_parts.append(hdr)
         section_table = _make_table()
         for t in group_topics:
