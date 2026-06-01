@@ -41,7 +41,7 @@ def test_reasonix_pins_model_overriding_agent_model():
     cmd = get_adapter("coder", agent_cfg=_cfg()).build_task_command(
         "/tmp/t.txt", role="coder", model="sonnet"
     )
-    assert "--model deepseek-pro" in cmd  # pinned reasonix model wins
+    assert "--model deepseek-v4-pro" in cmd  # pinned OpenRouter provider name wins
     assert "sonnet" not in cmd
     # ...and is overridable
     cmd2 = get_adapter("coder", agent_cfg=_cfg(model="mimo-pro")).build_task_command(

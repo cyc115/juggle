@@ -1,0 +1,44 @@
+# Reasonix config for juggle — OpenRouter / DeepSeek-V4 Pro.
+#
+# Reasonix resolves config as: CLI flag > ./reasonix.toml (project) >
+# ~/.config/reasonix/config.toml (user) > built-in defaults. juggle's
+# background agents run in the USER's project directory, so install this where
+# it will be picked up reliably:
+#
+#     mkdir -p ~/.config/reasonix
+#     cp docs/reasonix.toml.example ~/.config/reasonix/config.toml
+#
+# Then export your OpenRouter key where juggle runs (launched agents inherit it):
+#
+#     echo 'OPENROUTER_API_KEY=sk-or-v1-...' >> ~/.juggle/.env   # juggle loads this
+#     # or: export OPENROUTER_API_KEY=sk-or-v1-...
+#
+# juggle's reasonix harness is set to `"model": "deepseek-v4-pro"`, which is the
+# provider NAME below (passed as `reasonix run --model deepseek-v4-pro`).
+
+default_model = "deepseek-v4-pro"
+
+# --- OpenRouter → DeepSeek-V4 Pro (OpenAI-compatible endpoint) --------------
+[[providers]]
+name        = "deepseek-v4-pro"
+kind        = "openai"
+base_url    = "https://openrouter.ai/api/v1"
+model       = "deepseek/deepseek-v4-pro"   # OpenRouter model slug
+api_key_env = "OPENROUTER_API_KEY"
+
+# Prompt caching: DeepSeek caches identical leading prefixes automatically (no
+# config; cache-hit input ≈ 1/10 the miss price). To actually realise it through
+# OpenRouter, keep the prompt prefix stable (juggle inlines a fixed role anchor)
+# and pin routing to a caching-capable provider:
+#   provider = { order = ["DeepSeek"], allow_fallbacks = false }
+# (the exact Reasonix key for OpenRouter provider routing is version-specific —
+# confirm against your installed `reasonix`). For the most reliable caching you
+# can instead point base_url straight at https://api.deepseek.com with
+# model = "deepseek-v4-pro" and api_key_env = "DEEPSEEK_API_KEY".
+
+# Tool restriction (juggle delegates this to Reasonix via external_restriction).
+[permissions]
+mode = "allow"          # juggle agents run unattended; tighten to "ask" if preferred
+
+[sandbox]
+workspace_root = ""     # "" = confine file writes to the current working directory

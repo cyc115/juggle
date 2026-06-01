@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-05-31 (v1.43.1)
+- **Reasonix configured for OpenRouter DeepSeek-V4 Pro**: the shipped reasonix harness `model` is now `"deepseek-v4-pro"` (the Reasonix provider name passed as `reasonix run --model deepseek-v4-pro`). Added `docs/reasonix.toml.example` — a ready-to-use provider config (`base_url=https://openrouter.ai/api/v1`, `model=deepseek/deepseek-v4-pro`, `api_key_env=OPENROUTER_API_KEY`, no secret in repo) with prompt-caching guidance — plus an OpenRouter setup section in `docs/harness-adapters.md`.
+
 ## 2026-05-31 (v1.43.0)
 - **Reasonix (deepseek-reasonix) harness support** — config-only, no Python: a `"type": "template"` entry in DEFAULTS (inactive; select via `agent.harness`/`harness_by_role`). One-shot `reasonix run` reading the prompt from stdin (`< {prompt_file}`), model pinned to a Reasonix preset (`deepseek-pro`, overridable), `AGENTS.md` context with the role anchor inlined. Tool restriction is delegated to the harness's own `reasonix.toml` (it exposes no per-call flags) via the new `external_restriction` capability.
 - **per-harness env fully overridable**: a harness's `env` dict now sets/overrides ANY variable for the launched process (it's applied last, over juggle's identity defaults and the inherited environment). Removed the redundant `JUGGLE_IS_AGENT` from the shipped harness `env` dicts (the framework injects identity vars automatically). New conformance check **C11** guarantees every harness honors an env override; **C7** accepts `external_restriction` as a declared (non-silent) opt-out; **C4** asserts the *effective* model (pin-aware).

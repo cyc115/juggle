@@ -205,3 +205,32 @@ config file, like Claude's overlay), subclass `HarnessAdapter` in
 `src/juggle_harness.py` and override `_restrictions_part` (and, if needed,
 `build_launch_command`/`decorate_task`). Register it in the `_ADAPTERS` map
 under a new `type`. `ClaudeCodeAdapter` is the reference implementation.
+
+## Reasonix with OpenRouter (DeepSeek-V4 Pro)
+
+The shipped `reasonix` harness is configured for OpenRouter's DeepSeek-V4 Pro
+(`agent.harnesses.reasonix.model = "deepseek-v4-pro"`, the Reasonix provider
+name). To use it:
+
+1. Install the provider config (juggle agents run in your project dir, so the
+   user-global path is most reliable):
+   ```bash
+   mkdir -p ~/.config/reasonix
+   cp docs/reasonix.toml.example ~/.config/reasonix/config.toml
+   ```
+   It defines a `deepseek-v4-pro` provider → `base_url = https://openrouter.ai/api/v1`,
+   `model = deepseek/deepseek-v4-pro`, `api_key_env = OPENROUTER_API_KEY`.
+2. Export your OpenRouter key where juggle runs (launched agents inherit it):
+   ```bash
+   echo 'OPENROUTER_API_KEY=sk-or-v1-...' >> ~/.juggle/.env
+   ```
+3. Select the harness: set `agent.harness = "reasonix"` (or per-role via
+   `agent.harness_by_role`) in `~/.juggle/config.json`.
+
+Launch becomes: `env JUGGLE_IS_AGENT=1 JUGGLE_AGENT_ROLE=coder reasonix run --model deepseek-v4-pro < <prompt-file>`.
+
+**Caching:** DeepSeek auto-caches identical prompt prefixes (~1/10 the input
+price on hits). juggle's stable inlined role anchor helps; for reliable savings
+pin OpenRouter routing to DeepSeek, or point `base_url` straight at
+`https://api.deepseek.com` (`api_key_env = DEEPSEEK_API_KEY`). See the comments
+in `docs/reasonix.toml.example`.

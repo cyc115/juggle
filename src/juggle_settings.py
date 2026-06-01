@@ -160,15 +160,21 @@ DEFAULTS: dict = {
             # Tool restriction is delegated to the harness's own reasonix.toml
             # ([permissions]/[sandbox], workspace confinement) — Reasonix exposes
             # no per-call restriction flags — so `external_restriction` is set.
-            # Needs DEEPSEEK_API_KEY in the environment (inherited, or add to env).
+            #
+            # Configured for OpenRouter's DeepSeek-V4 Pro: `model` is the Reasonix
+            # provider NAME (passed as `--model`); define that provider in
+            # reasonix.toml pointing base_url at OpenRouter and model at
+            # `deepseek/deepseek-v4-pro` (see docs/reasonix.toml.example). Export
+            # OPENROUTER_API_KEY in juggle's environment so launched agents
+            # inherit it.
             "reasonix": {
                 "type": "template",
                 "command": "reasonix run",
                 "interactive": False,
                 "model_flag": "--model {model}",
-                # Pin a Reasonix model (presets: deepseek-flash/pro, mimo-flash/pro)
-                # so juggle never passes a non-Reasonix model name. Overridable.
-                "model": "deepseek-pro",
+                # Reasonix provider name (defined in reasonix.toml) → OpenRouter
+                # DeepSeek-V4 Pro. Overridable.
+                "model": "deepseek-v4-pro",
                 "extra_flags": "",
                 # `reasonix run` reads the prompt from stdin.
                 "prompt_arg": "< {prompt_file}",
