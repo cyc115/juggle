@@ -49,6 +49,19 @@ def test_infer_invalid_json_returns_inbox():
         assert infer_project_id("some topic", PROJECTS) == "INBOX"
 
 
+def test_assign_project_background_thread_is_not_daemon(tmp_path):
+    """Thread must be non-daemon so process waits for LLM assignment before exiting."""
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import assign_project_background
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    tid = db.create_thread("some topic", session_id="s1")
+    with patch("juggle_cmd_projects._cheap_llm_call", return_value='{"project_id": "INBOX"}'):
+        t = assign_project_background(db, tid, "some topic", _return_thread=True)
+        assert t.daemon is False
+        t.join(timeout=5)
+
+
 def test_assign_project_background_updates_db(tmp_path):
     from juggle_db import JuggleDB
     from juggle_cmd_projects import assign_project_background

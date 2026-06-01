@@ -46,7 +46,7 @@ def assign_project_background(
         except Exception as e:
             log.warning("assign_project_background: silent failure: %s", e)
 
-    t = threading.Thread(target=_run, daemon=True)
+    t = threading.Thread(target=_run, daemon=False)
     t.start()
     return t if _return_thread else None
 
