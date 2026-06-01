@@ -1,5 +1,16 @@
 # Changelog
 
+# Changelog
+
+## 2026-05-31 (v1.39.0)
+- **Pluggable sub-agent harnesses**: sub-agent invocation is now harness-agnostic. `src/juggle_harness.py` is the framework (`HarnessAdapter` contract + registry + `get_adapter`); each harness is self-contained under `src/harnesses/` (or a config-only `template`), owning launch, per-role restriction, context delivery, and capabilities. Selection via `agent.harness` / `agent.harness_by_role` / `agent.harnesses` (default `claude`; a missing `harnesses` block falls back to the built-in claude harness → zero behaviour change). Docs: `docs/harness-adapters.md`.
+  - **Claude** (`harnesses/claude.py`): per-role `permissions.deny` via the `--settings` JSON overlay; anchor via juggle hooks; interactive warm-pane REPL.
+  - **Codex** (`harnesses/codex.py`): one-shot `codex exec` (`interactive:false`); restriction via sandbox/approval **modes** (`-a/-s`, per-role `sandbox_by_role`) since Codex has no tool-deny list; anchor inlined.
+  - **Reasonix** (config-only `template`): one-shot `reasonix run` reading the prompt from stdin; restriction delegated to its own `reasonix.toml` (`external_restriction`). Configured for OpenRouter DeepSeek-V4 Pro (`model="deepseek-v4-pro"`); see `docs/reasonix.toml.example` (OpenRouter and direct-DeepSeek setups + prompt-caching guidance).
+- **One-shot dispatch**: adapters declare `interactive: false` to spawn a fresh process per task instead of driving a warm REPL — no readiness/submission marker polling. `HarnessAdapter.is_interactive` + `build_task_command`; `JuggleTmuxManager.run_task_oneshot`; `cmd_send_task` routes on interactivity. The prompt is passed by file via stdin (`prompt_arg`, default `< {prompt_file}`) — avoids `ARG_MAX`/escaping.
+- **Configurable per harness**: `command`, `model_flag`, `model` (pin, overriding the per-agent model), `extra_flags`, and `env` (sets/overrides ANY env var for the launched process; juggle injects `JUGGLE_IS_AGENT`/`ROLE`/`AUDIT` automatically).
+- **Conformance suite** (`tests/test_harness_conformance.py`): an executable contract auto-discovered against every shipped harness + a synthetic template. C1–C11 — agent-identity env, audit toggle, effective-model (pin-aware), single-line command, REPL markers (interactive only), per-role restriction materialized (flags / `--settings` overlay / declared `external_restriction`) + audit relaxation, anchor-delivery-matches-capability, determinism, interactivity, and per-harness env override. A new harness cannot merge without passing it. Per-harness tests: `tests/test_harness_codex.py`, `tests/test_harness_reasonix.py`, `tests/test_juggle_harness.py`.
+
 ## 2026-05-25 (v1.34.1)
 - **title gen**: fix fallback regression from PR #26 merge — restore 5-word cap (was accidentally widened to 6) alongside Title Case coercion; align `test_title_gen` expectations to Title-Cased, 5-word-capped contract
 

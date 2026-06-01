@@ -35,6 +35,8 @@ Notes:
 
 # Design Philosophy
 
+**Core principle:** juggle is a thin, reliable orchestrator — behaviour lives in deterministic code (one source of truth), not prompts, and is built by reusing existing primitives rather than adding abstractions.
+
 - **Code over prompts.** Logic and behavioral rules go in code or hooks — never prompt-only. Prompts can be forgotten; CLI commands and hooks cannot.
 - **Lightweight orchestrator.** Reuse DB tables, CLI patterns, tmux primitives before new abstractions. Cut to simplest viable approach.
 - **Simple ≠ MVP.** Production quality, minimal new concepts.

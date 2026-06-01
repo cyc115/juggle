@@ -3,7 +3,6 @@
 
 import logging
 import os
-import shlex
 import subprocess
 import time
 import uuid
@@ -11,10 +10,32 @@ from pathlib import Path
 
 from juggle_settings import get_settings as _get_settings
 
+# Built-in Claude Code markers — used as the fallback when the configured
+# harness adapter can't be resolved (see _harness_markers).
 _READY_MARKERS = ("bypass permissions on", "/effort")
 _SUBMISSION_MARKERS = ("esc to interrupt", "✻", "✶")
 _DETECT_TAIL_LINES = 10  # lines of scrollback tail used for submission/stuck detection
 _PROMPT_HEAD_CHARS = 40
+
+
+def _harness_markers():
+    """Return ``(readiness, submission)`` marker tuples for the default harness.
+
+    Resolved from the GLOBAL default harness (``agent.harness``) via
+    ``juggle_harness.get_adapter`` — panes don't carry their harness id, so a
+    mixed per-role harness setup shares these markers. Falls back to the
+    built-in Claude markers if the adapter can't be resolved.
+    """
+    try:
+        from juggle_harness import get_adapter
+
+        adapter = get_adapter()
+        return (
+            adapter.readiness_markers() or _READY_MARKERS,
+            adapter.submission_markers() or _SUBMISSION_MARKERS,
+        )
+    except Exception:
+        return _READY_MARKERS, _SUBMISSION_MARKERS
 
 
 class JuggleTmuxManager:
@@ -89,34 +110,37 @@ class JuggleTmuxManager:
                 )
         return pane_id
 
-    def start_claude_in_pane(
+    def start_agent_in_pane(
         self, pane_id: str, model: str | None = None, role: str | None = None
     ) -> None:
-        """Send the 'claude' command to a pane.
+        """Launch the configured agent harness in a pane.
 
-        Prefixes with env -u CLAUDE_PLUGIN_DATA to prevent DB fragmentation.
-        Per-role denied tools (and any future per-role settings) are written to a
-        settings overlay file and passed via `--settings <path>` rather than a
-        long `--disallowedTools a,b,c,...` flag: a short, fixed token pastes
-        reliably into the pane, where a long comma-list does not (tmux collapses
-        big pastes). `--settings` layers over the host settings hierarchy, so the
-        overlay is additive and portable — it never replaces the host's settings.
+        Command construction is delegated to the role's ``HarnessAdapter``
+        (``juggle_harness``), so the binary, flags, per-role tool restrictions
+        and env scrubbing are all harness-specific and config-driven. The
+        default harness is Claude Code: ``env -u CLAUDE_PLUGIN_DATA`` to prevent
+        DB fragmentation, and per-role denied tools written to a settings
+        overlay file passed via ``--settings <path>`` (a short, fixed token that
+        pastes reliably; ``--settings`` layers additively over the host
+        hierarchy so it never replaces the host's settings).
+
+        The command is written to a temp file and pasted via tmux
+        load-buffer/paste-buffer rather than typed — tmux collapses big pastes,
+        so a fixed-length buffer token is reliable where a long command line is
+        not.
         """
-        from juggle_agent_settings import write_agent_overlay
+        from juggle_harness import get_adapter
 
         agent_cfg = _get_settings().get("agent", {})
-        cmd = agent_cfg["claude_launch_command"]
-        if model:
-            cmd += f" --model {model}"
-
-        overlay_path = write_agent_overlay(role)
-        cmd += " --settings " + shlex.quote(str(overlay_path))
-
-        role_env = f" JUGGLE_AGENT_ROLE={role}" if role else ""
-        # In audit mode the overlay leaves per-role-denied tools in context;
-        # tag the agent so PreToolUse telemetry records its usage as 'audit'.
-        audit_env = " JUGGLE_AGENT_AUDIT=1" if agent_cfg.get("audit_mode") else ""
-        cmd = f"env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1{role_env}{audit_env} {cmd}"
+        adapter = get_adapter(role, agent_cfg=agent_cfg)
+        if not adapter.is_interactive:
+            # One-shot harness (e.g. codex exec): nothing to launch up front — the
+            # per-task process is spawned at send time (run_task_oneshot). The
+            # pane stays a ready shell.
+            return
+        cmd = adapter.build_launch_command(
+            role=role, model=model, audit=bool(agent_cfg.get("audit_mode"))
+        )
 
         tmp = f"/tmp/juggle_launch_{uuid.uuid4().hex[:8]}.txt"
         buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
@@ -129,6 +153,10 @@ class JuggleTmuxManager:
         finally:
             if Path(tmp).exists():
                 os.unlink(tmp)
+
+    # Back-compat alias: the historical name is still used by callers and tests.
+    # Harness-neutral name is start_agent_in_pane; both refer to the same method.
+    start_claude_in_pane = start_agent_in_pane
 
     def verify_pane(self, pane_id: str) -> bool:
         """Return True if pane_id exists in the juggle session."""
@@ -168,10 +196,11 @@ class JuggleTmuxManager:
         if interval is None:
             interval = tmux_cfg["ready_poll_interval_secs"]
         attempts = max(1, int(attempts))
+        ready_markers, _ = _harness_markers()
         for i in range(attempts):
             result = self._run_tmux("capture-pane", "-pt", pane_id)
             out = getattr(result, "stdout", "") or ""
-            if any(m in out for m in _READY_MARKERS):
+            if any(m in out for m in ready_markers):
                 return True
             if i < attempts - 1:  # don't sleep after the final attempt
                 time.sleep(interval)
@@ -205,6 +234,7 @@ class JuggleTmuxManager:
             pasted_prompt.strip().split("\n", 1)[0] if pasted_prompt.strip() else ""
         )
         head = first_line[:_PROMPT_HEAD_CHARS]
+        _, submission_markers = _harness_markers()
 
         retries = 0
         for _ in range(max(1, timeout)):
@@ -213,7 +243,7 @@ class JuggleTmuxManager:
             )
             out = getattr(result, "stdout", "") or ""
             tail = out.splitlines()[-_DETECT_TAIL_LINES:]
-            if any(m in line for m in _SUBMISSION_MARKERS for line in tail):
+            if any(m in line for m in submission_markers for line in tail):
                 return True
             bottom = "\n".join(tail)
             stuck = (
@@ -293,6 +323,64 @@ class JuggleTmuxManager:
             if Path(tmp).exists():
                 os.unlink(tmp)
         return pane_hash
+
+    def run_task_oneshot(
+        self,
+        pane_id: str,
+        prompt: str,
+        role: str | None = None,
+        model: str | None = None,
+        audit: bool = False,
+    ) -> str:
+        """Dispatch a task to a NON-interactive harness as a one-shot process.
+
+        Simpler than ``send_task``: there is no warm REPL to wait on and no
+        submission to verify. The prompt is written to a temp file, the harness'
+        one-shot command (``adapter.build_task_command``) is pasted into the
+        pane, and the process runs to completion and exits. We still paste via
+        load-buffer/paste-buffer so the (short, fixed) command line is reliable,
+        and return a pane-tail hash for parity with ``send_task``.
+
+        Honours JUGGLE_TMUX_MOCK_SEND like ``send_task`` for tests.
+        """
+        import hashlib as _hashlib
+
+        from juggle_harness import get_adapter
+
+        if not pane_id or not pane_id.strip():
+            raise ValueError("run_task_oneshot called with empty pane_id")
+        if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
+            return _hashlib.sha256(prompt.encode()).hexdigest()[:16]
+
+        agent_cfg = _get_settings().get("agent", {})
+        adapter = get_adapter(role, agent_cfg=agent_cfg)
+
+        # The prompt is written to /tmp and read by the one-shot process via the
+        # adapter's prompt_arg (stdin redirect). We deliberately leave the file in
+        # place — the OS tmp reaper handles it, and keeping it makes the run
+        # auditable (you can re-read exactly what the agent was given).
+        prompt_tmp = f"/tmp/juggle_oneshot_{uuid.uuid4().hex[:8]}.txt"
+        Path(prompt_tmp).write_text(prompt)
+        cmd = adapter.build_task_command(
+            prompt_tmp, role=role, model=model, audit=audit
+        )
+
+        cmd_tmp = f"/tmp/juggle_oneshotcmd_{uuid.uuid4().hex[:8]}.txt"
+        buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
+        try:
+            Path(cmd_tmp).write_text(cmd)
+            self._run_tmux("load-buffer", "-b", buf_name, cmd_tmp)
+            self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
+            self._run_tmux("delete-buffer", "-b", buf_name)
+            self._run_tmux("send-keys", "-t", pane_id, "Enter")
+            cap = self._run_tmux("capture-pane", "-pt", pane_id, "-S", "-10")
+            tail = (getattr(cap, "stdout", "") or "")
+            return _hashlib.sha256(tail.encode()).hexdigest()[:16]
+        finally:
+            # The pasted command (a small temp file) is consumed immediately; the
+            # prompt file is cleaned by the `; rm -f` appended above.
+            if Path(cmd_tmp).exists():
+                os.unlink(cmd_tmp)
 
     def spawn_agent(self, db, role: str, model: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.
