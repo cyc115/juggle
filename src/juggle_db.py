@@ -182,6 +182,26 @@ CREATE TABLE IF NOT EXISTS error_events (
 );
 """
 
+INBOX_PROJECT_ID = "INBOX"
+
+CREATE_PROJECTS = """
+CREATE TABLE IF NOT EXISTS projects (
+  id               TEXT PRIMARY KEY,
+  name             TEXT NOT NULL,
+  objective        TEXT NOT NULL DEFAULT '',
+  success_criteria TEXT NOT NULL DEFAULT '[]',
+  out_of_scope     TEXT DEFAULT '',
+  status           TEXT NOT NULL DEFAULT 'active',
+  created_at       TEXT NOT NULL,
+  last_active      TEXT NOT NULL
+);
+"""
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _next_excel_label(used: set) -> str:
     """Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ."""
     import string
@@ -253,6 +273,7 @@ class JuggleDB:
             conn.execute(CREATE_WATCHDOG_EVENTS)
             conn.execute(CREATE_AGENT_TOOL_EVENTS)
             conn.execute(CREATE_ERROR_EVENTS)
+            conn.execute(CREATE_PROJECTS)
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_error_events_sig "
                 "ON error_events(signature_hash) WHERE status != 'resolved'"
@@ -643,6 +664,24 @@ class JuggleDB:
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 25 (agent_tool_events) skipped: %s", e)
 
+        # Migration 26: projects table + INBOX seed + project_id on threads
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        cols_threads = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
+
+        if "projects" not in tables:
+            conn.execute(CREATE_PROJECTS)
+
+        # Always seed INBOX — INSERT OR IGNORE is safe for idempotency
+        now = _now()
+        conn.execute(
+            "INSERT OR IGNORE INTO projects (id, name, objective, status, created_at, last_active) VALUES (?,?,?,?,?,?)",
+            (INBOX_PROJECT_ID, "Inbox", "Catch-all for unassigned threads", "active", now, now),
+        )
+
+        if "project_id" not in cols_threads:
+            conn.execute("ALTER TABLE threads ADD COLUMN project_id TEXT DEFAULT 'INBOX' REFERENCES projects(id)")
+            conn.execute("UPDATE threads SET project_id = 'INBOX' WHERE project_id IS NULL")
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -835,6 +874,75 @@ class JuggleDB:
                 (status,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Project operations
+    # ------------------------------------------------------------------
+
+    def _next_project_label(self, used: set) -> str:
+        i = 1
+        while True:
+            label = f"P{i}"
+            if label not in used:
+                return label
+            i += 1
+
+    def create_project(self, name: str, objective: str, success_criteria: str = "[]", out_of_scope: str = "") -> str:
+        with self._connect() as conn:
+            used = {r[0] for r in conn.execute("SELECT id FROM projects").fetchall()}
+            pid = self._next_project_label(used)
+            now = _now()
+            conn.execute(
+                "INSERT INTO projects (id,name,objective,success_criteria,out_of_scope,status,created_at,last_active) "
+                "VALUES (?,?,?,?,?,'active',?,?)",
+                (pid, name, objective, success_criteria, out_of_scope, now, now),
+            )
+            conn.commit()
+        return pid
+
+    def get_project(self, project_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_projects(self, include_archived: bool = False) -> list[dict]:
+        with self._connect() as conn:
+            q = ("SELECT * FROM projects" if include_archived
+                 else "SELECT * FROM projects WHERE status != 'archived'")
+            return [dict(r) for r in conn.execute(q).fetchall()]
+
+    def get_active_projects(self) -> list[dict]:
+        """Active projects excluding INBOX — used for LLM assignment prompts."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM projects WHERE status = 'active' AND id != 'INBOX' ORDER BY created_at"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def update_project(self, project_id: str, **kwargs) -> None:
+        allowed = {"name", "objective", "success_criteria", "out_of_scope", "status", "last_active"}
+        fields = {k: v for k, v in kwargs.items() if k in allowed}
+        if not fields:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        with self._connect() as conn:
+            conn.execute(f"UPDATE projects SET {set_clause} WHERE id = ?", (*fields.values(), project_id))
+            conn.commit()
+
+    def count_threads_by_project(self, project_id: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM threads WHERE project_id = ? AND show_in_list = 1", (project_id,)
+            ).fetchone()
+            return row[0] if row else 0
+
+    def get_threads_by_project(self, project_id: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM threads WHERE project_id = ? AND show_in_list = 1 ORDER BY last_active DESC",
+                (project_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
     # Message operations

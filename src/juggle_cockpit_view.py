@@ -20,6 +20,7 @@ from juggle_cockpit_model import (
     ScheduledTask,
     CockpitState,
     format_age,
+    group_threads_by_project,
 )
 # ---------------------------------------------------------------------------
 # Glyph tables
@@ -84,56 +85,70 @@ def pick_breakpoint(size) -> str:
 # ---------------------------------------------------------------------------
 
 
-def render_topics(topics: list[Topic], bp: str) -> Panel:
+def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
+    glyph = TOPIC_STATUS_GLYPHS.get(t.status, "•")
+    label_str = f"[{t.label}]"
+    if t.is_current:
+        style = Style(bold=True, color="white")
+    elif t.status in ("done", "closed", "archived"):
+        style = Style(dim=True)
+    else:
+        style = Style()
+    if bp == "wide":
+        table.add_row(
+            Text(format_age(t.age_secs), style=Style(dim=True)),
+            Text(glyph),
+            Text(label_str, style=style),
+            Text(t.title or t.label, style=style),
+        )
+    else:
+        table.add_row(
+            Text(glyph),
+            Text(label_str, style=style),
+            Text(t.title or t.label, style=style),
+        )
+
+
+def render_topics(topics: list[Topic], bp: str, projects_by_id: dict | None = None) -> Panel:
     """Render topics panel.
 
     Wide: one row per topic with glyph + [label] + title.
     Medium/narrow: compressed strip.
+    When projects_by_id has >1 project, renders section headers per project.
     """
-    if bp == "wide":
-        table = Table.grid(padding=(0, 1))
-        table.add_column("age", no_wrap=True)
-        table.add_column("glyph", no_wrap=True)
-        table.add_column("label", no_wrap=True)
-        table.add_column("title", no_wrap=False, overflow="fold")
+    use_grouping = projects_by_id and len(projects_by_id) > 1
+
+    def _make_table() -> Table:
+        t = Table.grid(padding=(0, 1))
+        if bp == "wide":
+            t.add_column("age", no_wrap=True)
+            t.add_column("glyph", no_wrap=True)
+            t.add_column("label", no_wrap=True)
+            t.add_column("title", no_wrap=False, overflow="fold")
+        else:
+            t.add_column("glyph", no_wrap=True)
+            t.add_column("label", no_wrap=True)
+            t.add_column("title", no_wrap=False, overflow="fold")
+        return t
+
+    if not use_grouping:
+        table = _make_table()
         for t in topics:
-            glyph = TOPIC_STATUS_GLYPHS.get(t.status, "•")
-            label_str = f"[{t.label}]"
-            if t.is_current:
-                style = Style(bold=True, color="white")
-            elif t.status in ("done", "closed", "archived"):
-                style = Style(dim=True)
-            else:
-                style = Style()
-            table.add_row(
-                Text(format_age(t.age_secs), style=Style(dim=True)),
-                Text(glyph),
-                Text(label_str, style=style),
-                Text(t.title or t.label, style=style),
-            )
+            _add_topic_row(table, t, bp)
         return Panel(table, title="Topics", border_style="dim")
 
-    else:
-        # Vertical list for medium and narrow — one row per topic
-        table = Table.grid(padding=(0, 1))
-        table.add_column("glyph", no_wrap=True)
-        table.add_column("label", no_wrap=True)
-        table.add_column("title", no_wrap=False, overflow="fold")
-        for t in topics:
-            glyph = TOPIC_STATUS_GLYPHS.get(t.status, "•")
-            label_str = f"[{t.label}]"
-            if t.is_current:
-                style = Style(bold=True, color="white")
-            elif t.status in ("done", "closed", "archived"):
-                style = Style(dim=True)
-            else:
-                style = Style()
-            table.add_row(
-                Text(glyph),
-                Text(label_str, style=style),
-                Text(t.title or t.label, style=style),
-            )
-        return Panel(table, title="Topics", border_style="dim")
+    # Grouped render
+    groups = group_threads_by_project(topics, projects_by_id)
+    col_count = 4 if bp == "wide" else 3
+    table = _make_table()
+    for project_id, project_name, group_topics in groups:
+        header = Text()
+        header.append(f"▸ {project_name.upper()}", style="bold white")
+        header.append(f"  {len(group_topics)}", style="dim")
+        table.add_row(*([header] + [""] * (col_count - 1)))
+        for t in group_topics:
+            _add_topic_row(table, t, bp)
+    return Panel(table, title="Topics", border_style="dim")
 
 
 def _scroll_title(base: str, offset: int) -> str:
@@ -393,7 +408,7 @@ def render_static_from_state(state: CockpitState, width: int = 120) -> str:
     right_w = width - left_w
     half_right = right_w // 2
 
-    left_lines = _render(render_topics(state.topics, "wide"), left_w)
+    left_lines = _render(render_topics(state.topics, "wide", state.projects_by_id), left_w)
     actions_lines = _render(render_actions(state.actions), half_right)
     agents_lines = _render(render_agents(state.agents, state.scheduled), right_w - half_right)
     notif_lines = _render(render_notifications(state.notifications), right_w)

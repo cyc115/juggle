@@ -12,6 +12,7 @@ import threading
 _log = logging.getLogger(__name__)
 _Path = Path
 
+from juggle_cmd_projects import assign_project_background
 from juggle_cli_common import (
     SRC_DIR,
     _generate_title_for_thread,
@@ -220,6 +221,8 @@ def cmd_create_thread(args):
         args=(get_db(), thread_uuid, args.topic),
         daemon=True,
     ).start()
+    # Project assignment — async, fail-silent, never blocks
+    assign_project_background(get_db(), thread_uuid, args.topic)
 
     # Auto-recall: load memory context in background; joined so process doesn't exit first.
     def _auto_recall():

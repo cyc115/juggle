@@ -346,7 +346,7 @@ class CockpitApp(App):
             off = self._offsets
             active = self._active_pane
 
-            self.query_one("#topics").update(render_topics(state.topics, bp))
+            self.query_one("#topics").update(render_topics(state.topics, bp, state.projects_by_id))
             self.query_one("#actions").update(
                 render_actions(
                     filtered_actions, off["actions"], active == "actions",

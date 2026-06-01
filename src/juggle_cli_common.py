@@ -152,6 +152,47 @@ def _extract_decision_prompt(last_assistant: str | None, last_user: str | None) 
     return "🤔 Waiting for input"
 
 
+def _cheap_llm_call(prompt: str, timeout: int = 10) -> str | None:
+    """OpenRouter (Tier 1) -> Haiku subprocess (Tier 2) -> None on total failure.
+    No DB side-effects. Caller decides what to do with None."""
+    from juggle_settings import get_settings
+    cfg = get_settings().get("title_gen", {})
+    api_key = os.environ.get("OPENROUTER_KEY", "")
+    if cfg.get("openrouter_enabled", True) and api_key:
+        try:
+            import urllib.request, json as _json
+            body = _json.dumps({
+                "model": cfg.get("openrouter_model", "meta-llama/llama-3.1-8b-instruct:free"),
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 50,
+            }).encode()
+            req = urllib.request.Request(
+                "https://openrouter.ai/api/v1/chat/completions",
+                data=body,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = _json.loads(resp.read())
+            text = (data["choices"][0]["message"].get("content") or "").strip()
+            if text:
+                logging.info("_cheap_llm_call: openrouter -> %r", text[:60])
+                return text
+        except Exception as e:
+            logging.warning("_cheap_llm_call: openrouter failed: %s", e)
+    try:
+        haiku = cfg.get("haiku_model", "claude-haiku-4-5-20251001")
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--model", haiku],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            logging.info("_cheap_llm_call: haiku -> %r", result.stdout.strip()[:60])
+            return result.stdout.strip()
+    except Exception as e:
+        logging.warning("_cheap_llm_call: haiku failed: %s", e)
+    return None
+
+
 def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
     """Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words."""
     from juggle_settings import get_settings
@@ -168,85 +209,15 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
         if not text:
             return False
         words = text.split()
-        if len(words) > 15:
-            return False
-        if len(words) < 3:
-            return False
-        if "-" in text:
-            return False
-        if all(w.islower() for w in words):
-            return False
-        return True
+        return 3 <= len(words) <= 15 and "-" not in text and not all(w.islower() for w in words)
 
-    # Tier 1: OpenRouter (free tier, zero cost). Key lives in ~/.juggle/.env as OPENROUTER_KEY.
-    api_key = os.environ.get("OPENROUTER_KEY", "")
-    if cfg.get("openrouter_enabled", True) and api_key:
-        try:
-            import urllib.request
-            import json as _json
-
-            body = _json.dumps(
-                {
-                    "model": cfg.get(
-                        "openrouter_model", "meta-llama/llama-3.1-8b-instruct:free"
-                    ),
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 30,
-                }
-            ).encode()
-            req = urllib.request.Request(
-                "https://openrouter.ai/api/v1/chat/completions",
-                data=body,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = _json.loads(resp.read())
-            title = (data["choices"][0]["message"].get("content") or "").strip()
-            if not any(c.isupper() for c in title):
-                title = title.title()
-            if _valid(title):
-                logging.info("title_gen: tier1 openrouter -> %r", title)
-                db.update_thread(thread_uuid, title=title)
-                return title
-        except Exception as e:
-            logging.warning(
-                "title_gen: tier1 openrouter failed, falling to haiku: %s", e
-            )
-
-    # Tier 2: claude -p --model haiku (~20x cheaper than Sonnet for this task)
-    try:
-        haiku = cfg.get("haiku_model", "claude-haiku-4-5-20251001")
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--model", haiku],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        if result.returncode == 0:
-            title = result.stdout.strip()
-            if not any(c.isupper() for c in title):
-                title = title.title()
-            if _valid(title):
-                logging.info("title_gen: tier2 haiku -> %r", title)
-                db.update_thread(thread_uuid, title=title)
-                return title
-            else:
-                logging.warning(
-                    "title_gen: tier2 haiku output invalid (%d words), falling to 5-words",
-                    len(title.split()),
-                )
-        else:
-            logging.warning(
-                "title_gen: tier2 haiku returncode=%d, falling to 5-words",
-                result.returncode,
-            )
-    except Exception as e:
-        logging.warning("title_gen: tier2 haiku failed, falling to 5-words: %s", e)
-
-    # Tier 3: first 5 words — unconditional, always succeeds
-    logging.info("title_gen: tier3 fallback -> %r", fallback)
+    title = _cheap_llm_call(prompt, timeout=timeout)
+    if title and _valid(title):
+        if not any(c.isupper() for c in title):
+            title = title.title()
+        logging.info("_generate_title_for_thread: -> %r", title)
+        db.update_thread(thread_uuid, title=title)
+        return title
+    logging.info("_generate_title_for_thread: fallback -> %r", fallback)
     db.update_thread(thread_uuid, title=fallback)
     return fallback
