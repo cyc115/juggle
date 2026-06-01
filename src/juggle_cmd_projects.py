@@ -31,7 +31,28 @@ def assign_project_background(
     topic: str,
     _return_thread: bool = False,
 ) -> threading.Thread | None:
-    """Fire-and-forget background project assignment via detached subprocess."""
+    """Fire-and-forget background project assignment via detached subprocess.
+
+    Uses Popen(start_new_session=True) so create-thread returns instantly.
+    _return_thread=True is test-only: falls back to daemon=False thread so
+    tests can join() the result.
+    """
+    # _return_thread=True is test-only path
+    if _return_thread:
+        def _run():
+            try:
+                projects = db.get_active_projects()
+                project_id = infer_project_id(topic, projects, db=db)
+                if project_id != INBOX_PROJECT_ID:
+                    db.update_thread(thread_uuid, project_id=project_id)
+                    log.info("assign_project_background: %s -> %s", thread_uuid[:8], project_id)
+            except Exception as e:
+                log.warning("assign_project_background: silent failure: %s", e)
+        t = threading.Thread(target=_run, daemon=False)
+        t.start()
+        return t
+
+    # Normal path: detached subprocess, parent returns immediately
     script = (
         "import sys; sys.path.insert(0, {src!r}); "
         "from juggle_db import JuggleDB, DB_PATH; "
@@ -52,20 +73,6 @@ def assign_project_background(
         )
     except Exception as e:
         log.warning("assign_project_background: failed to spawn subprocess: %s", e)
-
-    # _return_thread=True is test-only; fall back to sync thread so tests can join
-    if _return_thread:
-        def _run():
-            try:
-                projects = db.get_active_projects()
-                project_id = infer_project_id(topic, projects, db=db)
-                if project_id != INBOX_PROJECT_ID:
-                    db.update_thread(thread_uuid, project_id=project_id)
-            except Exception as e:
-                log.warning("assign_project_background: silent failure: %s", e)
-        t = threading.Thread(target=_run, daemon=False)
-        t.start()
-        return t
     return None
 
 
