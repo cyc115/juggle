@@ -182,7 +182,7 @@ def render_actions(
         return Panel(table, title=title, border_style=border)
 
     visible = actions[scroll_offset:]
-    table = Table.grid(padding=(0, 1))
+    table = Table.grid(padding=(0, 0))
     table.add_column("age", no_wrap=True)
     table.add_column("glyph", no_wrap=True)
     table.add_column("topic", no_wrap=True)
@@ -254,7 +254,7 @@ def render_agents(
     # --- Active section: topic-assigned agents ---
     if active_agents:
         parts.append(Text("Active", style=Style(dim=True)))
-        t_active = Table.grid(padding=(0, 1))
+        t_active = Table.grid(padding=(0, 0))
         t_active.add_column(no_wrap=True)  # #N
         t_active.add_column(no_wrap=True)  # glyph
         t_active.add_column(no_wrap=True)  # [topic]
@@ -278,7 +278,7 @@ def render_agents(
         if active_agents:
             parts.append(Text("─" * 22, style=Style(dim=True)))
         parts.append(Text("Pool", style=Style(dim=True)))
-        t_pool = Table.grid(padding=(0, 1))
+        t_pool = Table.grid(padding=(0, 0))
         t_pool.add_column(no_wrap=True)  # #N
         t_pool.add_column(no_wrap=True)  # glyph
         t_pool.add_column(no_wrap=True)  # name
@@ -350,7 +350,7 @@ def render_notifications(
         return Panel(table, title=title, border_style=border)
 
     visible = notifications[scroll_offset:]
-    table = Table.grid(padding=(0, 1))
+    table = Table.grid(padding=(0, 0))
     table.add_column("age", no_wrap=True)
     table.add_column("glyph", no_wrap=True)
     table.add_column("text", no_wrap=False, overflow="fold")

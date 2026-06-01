@@ -442,7 +442,7 @@ def test_render_agents_scroll_hides_first():
         c.print(panel)
     text = c.export_text()
     assert "[K] coder" not in text  # first after sort — hidden
-    assert "[J] (A) planner" in text  # second — visible
+    assert "[J](A) planner" in text  # second — visible
 
 
 def test_render_agents_scroll_title_shows_offset():
