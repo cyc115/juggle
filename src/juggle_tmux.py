@@ -165,7 +165,7 @@ class JuggleTmuxManager:
         ):
             return True
         result = self._run_tmux(
-            "list-panes", "-t", self._first_window(), "-F", "#{pane_id}"
+            "list-panes", "-s", "-t", self.session_name, "-F", "#{pane_id}"
         )
         return pane_id in result.stdout.splitlines()
 
