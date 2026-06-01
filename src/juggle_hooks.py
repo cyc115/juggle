@@ -453,14 +453,21 @@ _BASH_WRITE_PATTERNS: list[tuple[re.Pattern, str]] = [
     # and not targeting /dev/* or a file descriptor (&1, &2).
     # Lookahead includes \s* to prevent backtracking from defeating the /dev/ exclusion.
     (
-        re.compile(r"(?<![0-9&|])\s*>{1,2}(?!\s*(?:/dev/|&|\d))"),
+        re.compile(r"(?<![0-9&|])\s*>{1,2}(?!\s*(?:/dev/|/tmp/|&|\d))"),
         "output redirect (> or >>)",
     ),
+]
+
+_BASH_WRITE_ALLOW_PATTERNS: list[re.Pattern] = [
+    re.compile(r"/tmp/juggle_"),  # juggle orchestrator task-file writes
 ]
 
 
 def _bash_write_pattern(command: str) -> str | None:
     """Return the label of the first file-write pattern found, or None."""
+    for allow_pat in _BASH_WRITE_ALLOW_PATTERNS:
+        if allow_pat.search(command):
+            return None
     for pattern, label in _BASH_WRITE_PATTERNS:
         if pattern.search(command):
             return label
