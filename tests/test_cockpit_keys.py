@@ -579,11 +579,18 @@ async def test_tab_cycles_pane_forward(tmp_path):
             f"After 2 Tabs: expected {expected_2!r}, got {app._active_pane!r}"
         )
 
-        # Third Tab wraps back around
+        await pilot.press("tab")
+        await pilot.pause(0.15)
+        expected_3 = _SCROLL_PANES[(start_idx + 3) % len(_SCROLL_PANES)]
+        assert app._active_pane == expected_3, (
+            f"After 3 Tabs: expected {expected_3!r}, got {app._active_pane!r}"
+        )
+
+        # Fourth Tab wraps back around (full cycle)
         await pilot.press("tab")
         await pilot.pause(0.15)
         assert app._active_pane == "notifications", (
-            f"After 3 Tabs (full cycle): expected 'notifications', got {app._active_pane!r}"
+            f"After 4 Tabs (full cycle): expected 'notifications', got {app._active_pane!r}"
         )
 
 
@@ -623,11 +630,18 @@ async def test_shift_tab_cycles_pane_backward(tmp_path):
             f"After 2 Shift+Tabs: expected {expected_2!r}, got {app._active_pane!r}"
         )
 
-        # Third Shift+Tab wraps back
+        await pilot.press("shift+tab")
+        await pilot.pause(0.15)
+        expected_3 = _SCROLL_PANES[(start_idx - 3) % n]
+        assert app._active_pane == expected_3, (
+            f"After 3 Shift+Tabs: expected {expected_3!r}, got {app._active_pane!r}"
+        )
+
+        # Fourth Shift+Tab wraps back (full reverse cycle)
         await pilot.press("shift+tab")
         await pilot.pause(0.15)
         assert app._active_pane == "notifications", (
-            f"After 3 Shift+Tabs (full reverse cycle): expected 'notifications', "
+            f"After 4 Shift+Tabs (full reverse cycle): expected 'notifications', "
             f"got {app._active_pane!r}"
         )
 
