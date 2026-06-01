@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re as _re
 import subprocess
 import sys
 import threading
@@ -51,6 +52,19 @@ def assign_project_background(
     return t if _return_thread else None
 
 
+def _extract_json(text: str) -> dict | None:
+    """Extract first JSON object from text, stripping markdown fences."""
+    text = _re.sub(r'^```(?:json)?\s*', '', text.strip(), flags=_re.MULTILINE)
+    text = _re.sub(r'```\s*$', '', text, flags=_re.MULTILINE)
+    m = _re.search(r'\{[^}]+\}', text)
+    if m:
+        try:
+            return json.loads(m.group())
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def infer_project_id(topic: str, projects: list[dict]) -> str:
     """Pure function — returns best project_id or INBOX. No DB, no threads, no side-effects."""
     if not projects:
@@ -60,17 +74,18 @@ def infer_project_id(topic: str, projects: list[dict]) -> str:
     prompt = (
         f'Topic: "{topic}". '
         f'Projects: [{project_list}]. '
-        f'Which project fits best? Return JSON only: {{"project_id": "<id_or_INBOX>"}}. No explanation.'
+        f'Which project fits best? '
+        f'Return ONLY valid JSON, no explanation, no markdown: {{"project_id": "<id_or_INBOX>"}}'
     )
-    raw = _cheap_llm_call(prompt, timeout=5)
+    raw = _cheap_llm_call(prompt, timeout=15)
     if not raw:
         return INBOX_PROJECT_ID
-    try:
-        pid = json.loads(raw).get("project_id", INBOX_PROJECT_ID)
-        return pid if pid in valid_ids else INBOX_PROJECT_ID
-    except (json.JSONDecodeError, AttributeError):
-        log.warning("infer_project_id: unparseable response: %r", raw)
+    parsed = _extract_json(raw)
+    pid = (parsed or {}).get("project_id", INBOX_PROJECT_ID)
+    if pid not in valid_ids:
+        log.warning("infer_project_id: invalid project_id %r in response: %r", pid, raw)
         return INBOX_PROJECT_ID
+    return pid
 
 
 # ---------------------------------------------------------------------------

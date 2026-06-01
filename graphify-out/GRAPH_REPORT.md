@@ -1,7 +1,7 @@
 # Graph Report - juggle  (2026-06-01)
 
 ## Corpus Check
-- 119 files · ~212,931 words
+- 119 files · ~212,937 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
