@@ -96,7 +96,7 @@ def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
         style = Style()
     if bp == "wide":
         table.add_row(
-            Text(format_age(t.age_secs) + " ", style=Style(dim=True)),
+            Text(format_age(t.age_secs), style=Style(dim=True)),
             Text(glyph),
             Text(label_str, style=style),
             Text(t.title or t.label, style=style),
@@ -121,7 +121,7 @@ def render_topics(topics: list[Topic], bp: str, projects_by_id: dict | None = No
     def _make_table() -> Table:
         t = Table.grid(padding=(0, 0))
         if bp == "wide":
-            t.add_column("age", no_wrap=True)
+            t.add_column("age", no_wrap=True, width=3)
             t.add_column("glyph", no_wrap=True)
             t.add_column("label", no_wrap=True)
             t.add_column("title", no_wrap=False, overflow="fold")
