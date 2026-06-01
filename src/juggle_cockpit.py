@@ -343,7 +343,11 @@ class CockpitApp(App):
             )
 
             size = self.size
-            bp = pick_breakpoint(size)
+            try:
+                topics_width = self.query_one("#topics").size.width
+            except Exception:
+                topics_width = size.width  # fallback to terminal width
+            bp = pick_breakpoint(topics_width)
             off = self._offsets
             active = self._active_pane
 
@@ -687,7 +691,11 @@ class CockpitApp(App):
 
     def on_resize(self, event: events.Resize) -> None:
         from juggle_cockpit_view import pick_breakpoint
-        bp = pick_breakpoint(event.size)
+        try:
+            topics_width = self.query_one("#topics").size.width or event.size.width
+        except Exception:
+            topics_width = event.size.width
+        bp = pick_breakpoint(topics_width)
         try:
             if bp == "wide":
                 if self._last_bp != "wide":
@@ -711,6 +719,30 @@ class CockpitApp(App):
             self._last_bp = bp
         except Exception:
             pass
+
+    _PANE_IDS = frozenset(("topics", "actions", "agents", "notifications"))
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        pane_id = getattr(event.widget, "id", None)
+        if pane_id in self._PANE_IDS and self._active_pane != pane_id:
+            self._active_pane = pane_id
+            self._refresh()
+
+    def on_scroll_up(self, event) -> None:
+        pane_id = getattr(event.control, "id", None) or getattr(getattr(event, "widget", None), "id", None)
+        if pane_id not in self._PANE_IDS:
+            pane_id = self._active_pane
+        self._active_pane = pane_id
+        self._offsets[pane_id] = max(0, self._offsets.get(pane_id, 0) - 1)
+        self._refresh()
+
+    def on_scroll_down(self, event) -> None:
+        pane_id = getattr(event.control, "id", None) or getattr(getattr(event, "widget", None), "id", None)
+        if pane_id not in self._PANE_IDS:
+            pane_id = self._active_pane
+        self._active_pane = pane_id
+        self._offsets[pane_id] = self._offsets.get(pane_id, 0) + 1
+        self._refresh()
 
 
 # ---------------------------------------------------------------------------

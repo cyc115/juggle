@@ -72,11 +72,12 @@ NOTIF_KIND_GLYPHS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def pick_breakpoint(size) -> str:
+def pick_breakpoint(size_or_width) -> str:
     """Return 'wide', 'medium', or 'narrow' based on terminal width."""
-    if size.width >= 120:
+    width = size_or_width if isinstance(size_or_width, int) else size_or_width.width
+    if width >= 120:
         return "wide"
-    if size.width >= 80:
+    if width >= 80:
         return "medium"
     return "narrow"
 
@@ -102,6 +103,13 @@ def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
             Text(label_str, style=style),
             Text(t.title or t.label, style=style),
         )
+    elif bp == "narrow":
+        combined = Text()
+        combined.append(glyph)
+        combined.append(label_str, style=style)
+        combined.append(" ")
+        combined.append(t.title or t.label, style=style)
+        table.add_row(combined)
     else:
         table.add_row(
             Text(glyph),
@@ -134,6 +142,8 @@ def render_topics(
             t.add_column("glyph", no_wrap=True)
             t.add_column("label", no_wrap=True)
             t.add_column("title", no_wrap=True, overflow="ellipsis")
+        elif bp == "narrow":
+            t.add_column("combined", no_wrap=False, overflow="fold")
         else:
             t.add_column("glyph", no_wrap=True)
             t.add_column("label", no_wrap=True)

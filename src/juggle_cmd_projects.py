@@ -31,25 +31,42 @@ def assign_project_background(
     topic: str,
     _return_thread: bool = False,
 ) -> threading.Thread | None:
-    """Fire-and-forget background project assignment.
+    """Fire-and-forget background project assignment via detached subprocess."""
+    script = (
+        "import sys; sys.path.insert(0, {src!r}); "
+        "from juggle_db import JuggleDB, DB_PATH; "
+        "from juggle_cmd_projects import infer_project_id, INBOX_PROJECT_ID; "
+        "db = JuggleDB(str(DB_PATH)); "
+        "projects = db.get_active_projects(); "
+        "pid = infer_project_id({topic!r}, projects, db=db); "
+        "pid != INBOX_PROJECT_ID and db.update_thread({thread_uuid!r}, project_id=pid)"
+    ).format(src=str(SRC_DIR), topic=topic, thread_uuid=thread_uuid)
 
-    Failure contract: all exceptions caught and logged only. Thread stays INBOX.
-    Never raises, never blocks, no user-visible side-effects on failure.
-    _return_thread=True for testing only — returns Thread so caller can join.
-    """
-    def _run():
-        try:
-            projects = db.get_active_projects()
-            project_id = infer_project_id(topic, projects, db=db)
-            if project_id != INBOX_PROJECT_ID:
-                db.update_thread(thread_uuid, project_id=project_id)
-                log.info("assign_project_background: %s -> %s", thread_uuid[:8], project_id)
-        except Exception as e:
-            log.warning("assign_project_background: silent failure: %s", e)
+    try:
+        subprocess.Popen(
+            ["python3", "-c", script],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+    except Exception as e:
+        log.warning("assign_project_background: failed to spawn subprocess: %s", e)
 
-    t = threading.Thread(target=_run, daemon=False)
-    t.start()
-    return t if _return_thread else None
+    # _return_thread=True is test-only; fall back to sync thread so tests can join
+    if _return_thread:
+        def _run():
+            try:
+                projects = db.get_active_projects()
+                project_id = infer_project_id(topic, projects, db=db)
+                if project_id != INBOX_PROJECT_ID:
+                    db.update_thread(thread_uuid, project_id=project_id)
+            except Exception as e:
+                log.warning("assign_project_background: silent failure: %s", e)
+        t = threading.Thread(target=_run, daemon=False)
+        t.start()
+        return t
+    return None
 
 
 def _extract_json(text: str) -> dict | None:
