@@ -218,16 +218,17 @@ def test_get_threshold_coldstart():
 
 
 def test_get_threshold_coldstart_planner():
+    # planner floor=300s; cold-start default=180 → max(180, 300)=300.
     from juggle_watchdog import get_threshold_seconds
 
     db = MagicMock()
     db.get_median_duration_secs.return_value = None
     agent = {"watchdog_threshold_minutes": None, "role": "planner"}
-    assert get_threshold_seconds(db, agent) == 600.0
+    assert get_threshold_seconds(db, agent) == 300.0
 
 
 def test_get_threshold_adaptive():
-    # 2*90=180 < 600 floor → clamped to 600.
+    # 2*90=180 < coder floor 600 → clamped to 600.
     from juggle_watchdog import get_threshold_seconds
 
     db = MagicMock()
@@ -237,15 +238,14 @@ def test_get_threshold_adaptive():
 
 
 def test_get_threshold_adaptive_floor_small_median():
-    # With a small median (fast fleet), threshold must not collapse below the
-    # 10-min hard floor. Without the floor, 2*30=60 would kill an 80s pytest run.
+    # With a small median (fast fleet), coder threshold must not collapse below 600s.
     from juggle_watchdog import get_threshold_seconds
 
     db = MagicMock()
     db.get_median_duration_secs.return_value = 30.0
     agent = {"watchdog_threshold_minutes": None, "role": "coder"}
     result = get_threshold_seconds(db, agent)
-    assert result == 600.0, f"expected 600.0 hard floor, got {result}"
+    assert result == 600.0, f"expected 600.0 coder floor, got {result}"
 
 
 def test_get_threshold_adaptive_large_median_not_capped():
@@ -256,6 +256,16 @@ def test_get_threshold_adaptive_large_median_not_capped():
     db.get_median_duration_secs.return_value = 400.0
     agent = {"watchdog_threshold_minutes": None, "role": "coder"}
     assert get_threshold_seconds(db, agent) == 800.0
+
+
+def test_get_threshold_adaptive_floor_researcher():
+    # researcher floor=180s; small median (10.0) → max(20, 180)=180.
+    from juggle_watchdog import get_threshold_seconds
+
+    db = MagicMock()
+    db.get_median_duration_secs.return_value = 10.0
+    agent = {"watchdog_threshold_minutes": None, "role": "researcher"}
+    assert get_threshold_seconds(db, agent) == 180.0
 
 
 # --- Snapshot helpers ---
