@@ -52,7 +52,7 @@ Write to `/Users/mikechen/Library/LaunchAgents/me.mikechen.<label>.plist`:
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <string>/Users/mikechen/.local/bin:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
         <key>HOME</key>
         <string>/Users/mikechen</string>
     </dict>
