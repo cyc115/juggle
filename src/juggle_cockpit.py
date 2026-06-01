@@ -728,16 +728,16 @@ class CockpitApp(App):
             self._active_pane = pane_id
             self._refresh()
 
-    def on_scroll_up(self, event) -> None:
-        pane_id = getattr(event.control, "id", None) or getattr(getattr(event, "widget", None), "id", None)
+    def on_mouse_scroll_up(self, event) -> None:
+        pane_id = getattr(getattr(event, "widget", None), "id", None)
         if pane_id not in self._PANE_IDS:
             pane_id = self._active_pane
         self._active_pane = pane_id
         self._offsets[pane_id] = max(0, self._offsets.get(pane_id, 0) - 1)
         self._refresh()
 
-    def on_scroll_down(self, event) -> None:
-        pane_id = getattr(event.control, "id", None) or getattr(getattr(event, "widget", None), "id", None)
+    def on_mouse_scroll_down(self, event) -> None:
+        pane_id = getattr(getattr(event, "widget", None), "id", None)
         if pane_id not in self._PANE_IDS:
             pane_id = self._active_pane
         self._active_pane = pane_id

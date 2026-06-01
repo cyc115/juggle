@@ -869,3 +869,149 @@ def test_tail_modal_hint_string_mentions_q_and_jk():
             assert "j" in hint, f"header hint missing 'j': {hint!r}"
             assert "k" in hint, f"header hint missing 'k': {hint!r}"
             assert "q" in hint, f"header hint missing 'q': {hint!r}"
+
+
+# ---------------------------------------------------------------------------
+# Cycle 11 — Mouse-wheel scroll regression (TDD)
+#
+# Root cause of prior failures: on_scroll_up/on_scroll_down listened for
+# ScrollUp/ScrollDown events that DO NOT EXIST in Textual.  Mouse wheel fires
+# MouseScrollUp/MouseScrollDown.  Correct handlers: on_mouse_scroll_up /
+# on_mouse_scroll_down.  Also used event.control (wrong attr); MouseEvent
+# carries event.widget.
+# ---------------------------------------------------------------------------
+
+
+def _make_scrollable_db(tmp_path, n_threads: int = 10):
+    """Return a db_path with n_threads so panes have enough rows to scroll past clamp."""
+    from juggle_db import JuggleDB
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    for i in range(n_threads):
+        db.create_thread(f"topic {i}", session_id="")
+    return db_path
+
+
+@pytest.mark.asyncio
+async def test_mouse_wheel_scroll_down_increments_offset(tmp_path):
+    """Posting MouseScrollDown must increment the active pane's offset by 1.
+
+    RED before fix: on_scroll_down listens for a non-existent ScrollDown event;
+    MouseScrollDown goes unhandled and offset stays 0.
+    GREEN after fix: on_mouse_scroll_down handles it and offset becomes 1.
+
+    Uses 10 threads so _refresh() clamp (len-3) allows offset >= 1.
+    """
+    from textual.events import MouseScrollDown
+
+    from juggle_cockpit import CockpitApp
+
+    db_path = _make_scrollable_db(tmp_path)
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        app._active_pane = "topics"
+        assert app._offsets["topics"] == 0
+
+        topics_widget = app.query_one("#topics")
+        app.post_message(
+            MouseScrollDown(
+                widget=topics_widget, x=5, y=5,
+                delta_x=0, delta_y=1,
+                button=0, shift=False, meta=False, ctrl=False,
+            )
+        )
+        await pilot.pause(0.2)
+
+        assert app._offsets["topics"] == 1, (
+            f"Expected offset 1, got {app._offsets['topics']}. "
+            "on_mouse_scroll_down not firing — check handler name and event class."
+        )
+
+
+@pytest.mark.asyncio
+async def test_mouse_wheel_scroll_up_decrements_offset(tmp_path):
+    """Posting MouseScrollUp must decrement the active pane's offset (floor 0).
+
+    RED before fix: on_scroll_up listens for non-existent ScrollUp; offset stays 3.
+    GREEN after fix: on_mouse_scroll_up handles it and offset becomes 2.
+    """
+    from textual.events import MouseScrollUp
+
+    from juggle_cockpit import CockpitApp
+
+    db_path = _make_scrollable_db(tmp_path)
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        app._active_pane = "topics"
+        app._offsets["topics"] = 3
+
+        topics_widget = app.query_one("#topics")
+        app.post_message(
+            MouseScrollUp(
+                widget=topics_widget, x=5, y=5,
+                delta_x=0, delta_y=-1,
+                button=0, shift=False, meta=False, ctrl=False,
+            )
+        )
+        await pilot.pause(0.2)
+
+        assert app._offsets["topics"] == 2, (
+            f"Expected offset 2, got {app._offsets['topics']}. "
+            "on_mouse_scroll_up not firing — check handler name and event class."
+        )
+
+
+@pytest.mark.asyncio
+async def test_mouse_scroll_uses_widget_pane_when_present(tmp_path):
+    """When event.widget.id is a valid pane, that pane's offset increments
+    even if _active_pane is a different pane.
+    """
+    from textual.events import MouseScrollDown
+
+    from juggle_cockpit import CockpitApp
+
+    db_path = _make_scrollable_db(tmp_path)
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        app._active_pane = "notifications"  # active pane is NOT topics
+        assert app._offsets["topics"] == 0
+
+        topics_widget = app.query_one("#topics")
+        app.post_message(
+            MouseScrollDown(
+                widget=topics_widget, x=5, y=5,
+                delta_x=0, delta_y=1,
+                button=0, shift=False, meta=False, ctrl=False,
+            )
+        )
+        await pilot.pause(0.2)
+
+        assert app._offsets["topics"] == 1, (
+            f"Scroll on topics widget should increment topics offset, got {app._offsets['topics']}"
+        )
+        assert app._offsets["notifications"] == 0, (
+            "notifications offset must be unchanged"
+        )
+
+
+@pytest.mark.asyncio
+async def test_keyboard_jk_scroll_not_regressed(tmp_path):
+    """j/k keyboard scroll must still work after mouse-scroll handler rename."""
+    from juggle_cockpit import CockpitApp
+
+    db_path = _make_scrollable_db(tmp_path)
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        app._active_pane = "topics"
+        assert app._offsets["topics"] == 0
+
+        await pilot.press("j")
+        await pilot.pause(0.1)
+        assert app._offsets["topics"] == 1, "j key must increment offset"
+
+        await pilot.press("k")
+        await pilot.pause(0.1)
+        assert app._offsets["topics"] == 0, "k key must decrement offset back to 0"
