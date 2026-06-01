@@ -124,7 +124,7 @@ def render_topics(topics: list[Topic], bp: str, projects_by_id: dict | None = No
             t.add_column("age", no_wrap=True, width=3)
             t.add_column("glyph", no_wrap=True)
             t.add_column("label", no_wrap=True)
-            t.add_column("title", no_wrap=False, overflow="fold")
+            t.add_column("title", no_wrap=True, overflow="ellipsis")
         else:
             t.add_column("glyph", no_wrap=True)
             t.add_column("label", no_wrap=True)

@@ -33,6 +33,10 @@ Notes:
   `juggle inactive` will fail once `start` has activated it — a known
   test-isolation limitation, unrelated to product code.
 
+## Cockpit Development
+
+Use `uv run src/juggle_cli.py cockpit --out` to render the cockpit to stdout for visual inspection and debugging without needing a live tmux session. Always run this after cockpit layout changes to verify rendering.
+
 # Design Philosophy
 
 **Core principle:** juggle is a thin, reliable orchestrator — behaviour lives in deterministic code (one source of truth), not prompts, and is built by reusing existing primitives rather than adding abstractions.
