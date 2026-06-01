@@ -77,37 +77,26 @@ class JuggleTmuxManager:
         return f"{self.session_name}:{first}"
 
     def spawn_pane(self) -> str:
-        """Split the first window to create a new pane. Returns pane_id like '%5'.
+        """Create a new window for the agent. Returns pane_id like '%5'.
 
-        Falls back to new-window when the window is too small to split.
+        Uses new-window so each agent gets a full-size terminal independent of
+        any existing panes. Splitting the first window produces tiny unusable
+        panes when multiple agents are running concurrently.
         """
         result = self._run_tmux(
-            "split-window",
+            "new-window",
             "-t",
-            self._first_window(),
-            "-v",
+            self.session_name,
             "-P",
             "-F",
             "#{pane_id}",
         )
         pane_id = result.stdout.strip()
         if not pane_id:
-            if "no space" in result.stderr:
-                # Window too small to split — create a new window instead.
-                result = self._run_tmux(
-                    "new-window",
-                    "-t",
-                    self.session_name,
-                    "-P",
-                    "-F",
-                    "#{pane_id}",
-                )
-                pane_id = result.stdout.strip()
-            if not pane_id:
-                raise RuntimeError(
-                    f"spawn_pane failed: could not create pane via split-window or new-window. "
-                    f"stderr={result.stderr!r}"
-                )
+            raise RuntimeError(
+                f"spawn_pane failed: new-window returned no pane_id. "
+                f"stderr={result.stderr!r}"
+            )
         return pane_id
 
     def start_agent_in_pane(
@@ -482,6 +471,7 @@ def reap_stale_agents(db, mgr):
 
     settings = get_settings()
     ttl_secs = settings["agent_idle_ttl_secs"]
+    cold_start_grace = settings.get("agent_boot_grace_secs", 120)
     current_thread = db.get_current_thread()
 
     now_ts = datetime.now(timezone.utc)
@@ -489,8 +479,20 @@ def reap_stale_agents(db, mgr):
 
     # DB→tmux: reap DB entries whose panes are gone or past TTL.
     for a in db.get_all_agents():
-        # Always reap agents whose pane no longer exists, regardless of status
+        # Reap agents whose pane no longer exists, but honour cold-start grace:
+        # a freshly-spawned agent whose pane died during Claude boot must not be
+        # deleted until agent_boot_grace_secs has elapsed.
         if not mgr.verify_pane(a["pane_id"]):
+            created_at = a.get("created_at", "")
+            if created_at and cold_start_grace > 0:
+                try:
+                    dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if (now_ts - dt).total_seconds() < cold_start_grace:
+                        continue  # still within boot window — skip
+                except (ValueError, TypeError):
+                    pass
             db.delete_agent(a["id"])
             reaped += 1
             continue

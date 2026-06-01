@@ -719,3 +719,125 @@ def test_wait_for_submission_detects_stuck_in_scrollback_tail(mgr):
         "stuck-at-prompt in scrollback tail must trigger C-m retry; "
         f"got {len(enter_calls)} retries — stuck detection not scanning the tail"
     )
+
+
+# ---------------------------------------------------------------------------
+# Parallel-spawn regression tests (root cause: split-window + reap grace)
+#
+# Bug: second concurrent agent fails because:
+#   (A) spawn_pane uses split-window on first window → tiny unusable pane
+#   (B) reap_stale_agents deletes agents within cold-start (no grace period)
+#       even though agent_boot_grace_secs=120 already exists in settings.
+# ---------------------------------------------------------------------------
+
+
+def test_spawn_pane_uses_new_window_not_split(mgr):
+    """spawn_pane must use new-window, never split-window on the first window.
+
+    RED before fix: spawn_pane calls split-window first; a crowded first window
+    produces a tiny pane that Claude cannot render in.
+    GREEN after fix: spawn_pane always calls new-window so each agent gets a
+    full-size independent window.
+    """
+    tmux_calls = []
+
+    def fake_run(*args):
+        tmux_calls.append(list(args))
+        m = MagicMock()
+        m.stdout = "%10\n"
+        m.stderr = ""
+        m.returncode = 0
+        return m
+
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run):
+        pane_id = mgr.spawn_pane()
+
+    assert pane_id == "%10"
+    cmds = [c[0] for c in tmux_calls]
+    assert "new-window" in cmds, (
+        f"spawn_pane must call new-window (got {cmds}); "
+        "split-window on a crowded first window creates tiny unusable panes"
+    )
+    assert "split-window" not in cmds, (
+        f"spawn_pane must not call split-window (got {cmds})"
+    )
+
+
+def test_reap_grace_protects_fresh_agent_with_missing_pane(tmp_path):
+    """Agent just created (within cold-start grace) must NOT be reaped even
+    if its pane is already gone.
+
+    RED before fix: reap_stale_agents unconditionally deletes on verify_pane=False.
+    GREEN after fix: agent_boot_grace_secs (default 120) creates a window during
+    which a dead-pane agent is left alone to finish booting.
+    """
+    from unittest.mock import patch
+
+    from juggle_db import JuggleDB
+    from juggle_tmux import JuggleTmuxManager, reap_stale_agents
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    db.set_active(True)
+
+    # Agent created right now — within any reasonable grace period.
+    agent_id = db.create_agent(role="coder", pane_id="%new-agent")
+
+    mock_mgr = MagicMock(spec=JuggleTmuxManager)
+    mock_mgr.verify_pane.return_value = False  # pane appears dead (cold-start race)
+    mock_mgr.session_name = "juggle-test"
+
+    mock_settings = {"agent_idle_ttl_secs": 43200, "agent_boot_grace_secs": 120}
+
+    with (
+        patch("juggle_settings.get_settings", return_value=mock_settings),
+        patch("subprocess.run", return_value=MagicMock(stdout="", returncode=0)),
+    ):
+        reaped = reap_stale_agents(db, mock_mgr)
+
+    assert db.get_agent(agent_id) is not None, (
+        "Agent within cold-start grace must not be deleted even if pane is gone; "
+        "current code unconditionally deletes on verify_pane=False"
+    )
+    assert reaped == 0, f"Expected 0 reaped (within grace), got {reaped}"
+
+
+def test_reap_grace_expires_and_deletes_old_missing_pane_agent(tmp_path):
+    """Agent past cold-start grace with a dead pane SHOULD be reaped.
+
+    Ensures the grace window does not accidentally protect genuinely stale agents.
+    """
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import patch
+
+    from juggle_db import JuggleDB
+    from juggle_tmux import JuggleTmuxManager, reap_stale_agents
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    db.set_active(True)
+
+    agent_id = db.create_agent(role="coder", pane_id="%old-agent")
+
+    # Backdate created_at to 200s ago (past the 120s grace).
+    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=200)).isoformat()
+    with db._connect() as conn:
+        conn.execute("UPDATE agents SET created_at = ? WHERE id = ?", (old_ts, agent_id))
+        conn.commit()
+
+    mock_mgr = MagicMock(spec=JuggleTmuxManager)
+    mock_mgr.verify_pane.return_value = False
+    mock_mgr.session_name = "juggle-test"
+
+    mock_settings = {"agent_idle_ttl_secs": 43200, "agent_boot_grace_secs": 120}
+
+    with (
+        patch("juggle_settings.get_settings", return_value=mock_settings),
+        patch("subprocess.run", return_value=MagicMock(stdout="", returncode=0)),
+    ):
+        reaped = reap_stale_agents(db, mock_mgr)
+
+    assert db.get_agent(agent_id) is None, (
+        "Agent past cold-start grace with dead pane should be reaped"
+    )
+    assert reaped >= 1
