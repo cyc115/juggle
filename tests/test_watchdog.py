@@ -459,3 +459,62 @@ def test_execute_recovery_full_flow(tmp_path):
     items = db.get_open_action_items()
     assert "high" in {it["priority"] for it in items}
     assert any("auto-re-dispatched" in it["message"] for it in items)
+
+
+# ── hot-restart: should_hot_restart pure-function tests ──────────────────────
+
+
+def test_hot_restart_no_change_returns_false():
+    from juggle_watchdog import should_hot_restart
+
+    baseline = {"a.py": 1000.0, "b.py": 2000.0}
+    current  = {"a.py": 1000.0, "b.py": 2000.0}
+    ready, new_lca = should_hot_restart(baseline, current, last_change_at=None, now=5000.0)
+    assert ready is False
+    assert new_lca is None
+
+
+def test_hot_restart_change_just_detected_not_ready():
+    from juggle_watchdog import should_hot_restart
+
+    baseline = {"a.py": 1000.0}
+    current  = {"a.py": 1001.0}
+    now = 5000.0
+    ready, new_lca = should_hot_restart(baseline, current, last_change_at=None, now=now)
+    assert ready is False
+    assert new_lca == now  # timestamp recorded
+
+
+def test_hot_restart_change_within_grace_not_ready():
+    from juggle_watchdog import should_hot_restart
+
+    baseline = {"a.py": 1000.0}
+    current  = {"a.py": 1001.0}
+    last_change_at = 5000.0
+    now = 5000.0 + 299.0  # just under 300s
+    ready, new_lca = should_hot_restart(baseline, current, last_change_at=last_change_at, now=now)
+    assert ready is False
+    assert new_lca == last_change_at  # unchanged — no new edit
+
+
+def test_hot_restart_stable_past_grace_ready():
+    from juggle_watchdog import should_hot_restart
+
+    baseline = {"a.py": 1000.0}
+    current  = {"a.py": 1001.0}
+    last_change_at = 5000.0
+    now = 5000.0 + 300.0  # exactly at grace boundary
+    ready, new_lca = should_hot_restart(baseline, current, last_change_at=last_change_at, now=now)
+    assert ready is True
+
+
+def test_hot_restart_reverted_to_baseline_cancels():
+    from juggle_watchdog import should_hot_restart
+
+    baseline = {"a.py": 1000.0}
+    current  = {"a.py": 1000.0}  # reverted
+    last_change_at = 5000.0
+    now = 6000.0
+    ready, new_lca = should_hot_restart(baseline, current, last_change_at=last_change_at, now=now)
+    assert ready is False
+    assert new_lca is None  # cancelled
