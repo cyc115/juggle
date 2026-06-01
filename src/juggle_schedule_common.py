@@ -80,7 +80,7 @@ class CostTracker:
     def add(self, usd: float) -> None:
         self._total += usd
         logger.debug("cost_tracker: %s total=%.4f cap=%.2f", self.routine, self._total, self.cap_usd)
-        if self._total > self.cap_usd:
+        if not self.dry_run and self._total > self.cap_usd:
             raise CostCapExceeded(
                 f"{self.routine}: cost cap ${self.cap_usd:.2f} exceeded "
                 f"(accumulated ${self._total:.4f})"
@@ -140,7 +140,10 @@ def gh_create_issue(title: str, body: str, labels: list[str] | None = None,
     cmd = ["issue", "create", "--title", title, "--body", body]
     if labels:
         for lbl in labels:
-            _ensure_gh_label(lbl)
+            try:
+                _ensure_gh_label(lbl)
+            except Exception:
+                logger.warning("label creation failed for %r, skipping", lbl)
         cmd += ["--label", ",".join(labels)]
     try:
         result = gh_run(cmd)

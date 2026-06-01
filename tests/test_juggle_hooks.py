@@ -67,6 +67,7 @@ def test_stop_handler_captures_assistant_message(active_db, monkeypatch):
     import juggle_hooks
 
     importlib.reload(juggle_hooks)
+    monkeypatch.setattr(juggle_hooks, "DB_PATH", active_db.db_path)
 
     data = {"last_assistant_message": "Here is my analysis of the auth flow."}
 
@@ -171,6 +172,7 @@ def test_pre_tool_use_allows_when_juggle_inactive(tmp_path, monkeypatch):
     import juggle_hooks
 
     importlib.reload(juggle_hooks)
+    monkeypatch.setattr(juggle_hooks, "DB_PATH", db.db_path)
 
     with pytest.raises(SystemExit) as exc_info:
         juggle_hooks.handle_pre_tool_use({"tool_name": "Edit", "session_id": "xyz"})
@@ -403,6 +405,8 @@ def test_user_prompt_submit_no_autopilot_when_inactive_and_flag_absent(
     active_db.set_active(False)
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
     monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", tmp_path / "autopilot")
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+    monkeypatch.setattr(juggle_hooks, "DB_PATH", active_db.db_path)
 
     with pytest.raises(SystemExit):
         juggle_hooks.handle_user_prompt_submit({"prompt": ""})
