@@ -151,6 +151,8 @@ def cmd_cockpit(args):
         cmd += ["--db", args.db_path]
     if getattr(args, "out", False):
         cmd += ["--out"]
+    elif getattr(args, "screenshot", None):
+        cmd += ["--screenshot", args.screenshot]
     elif getattr(args, "profile", False):
         cmd += ["--profile", "--duration", str(getattr(args, "duration", 60))]
     sys.exit(_sp.call(cmd))
@@ -757,6 +759,7 @@ def main():
         metavar="N",
         help="Duration in seconds for --profile (default: 60)",
     )
+    p_cockpit.add_argument("--screenshot", metavar="PATH", help="Save PNG/JPG/SVG screenshot to PATH")
     p_cockpit.set_defaults(func=cmd_cockpit)
 
     # schedule-reflect (Mon 03:00 local / 0 8 * * 1 UTC)

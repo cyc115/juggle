@@ -12,7 +12,7 @@ import subprocess
 # Constants
 # ---------------------------------------------------------------------------
 
-_SCROLL_PANES = ("actions", "agents", "notifications")
+_SCROLL_PANES = ("topics", "actions", "agents", "notifications")
 
 _PRIORITY_TIER_MAP: dict[str, int] = {
     "high": 0, "blocker": 0,

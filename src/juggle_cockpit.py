@@ -335,6 +335,7 @@ class CockpitApp(App):
             )
 
             # Clamp offsets to content length (use unfiltered for bound — conservative)
+            self._offsets["topics"] = min(self._offsets["topics"], max(0, len(state.topics) - 3))
             self._offsets["actions"] = min(self._offsets["actions"], max(0, len(state.actions) - 3))
             self._offsets["agents"] = min(self._offsets["agents"], max(0, len(state.agents) - 3))
             self._offsets["notifications"] = min(
@@ -346,7 +347,9 @@ class CockpitApp(App):
             off = self._offsets
             active = self._active_pane
 
-            self.query_one("#topics").update(render_topics(state.topics, bp, state.projects_by_id))
+            self.query_one("#topics").update(
+                render_topics(state.topics, bp, state.projects_by_id, off["topics"], active == "topics")
+            )
             self.query_one("#actions").update(
                 render_actions(
                     filtered_actions, off["actions"], active == "actions",
@@ -974,7 +977,57 @@ if __name__ == "__main__":
         dest="profile_worker",
         help=argparse.SUPPRESS,  # internal: child process spawned by run_profile
     )
+    parser.add_argument("--screenshot", metavar="PATH", default=None, help="Save PNG/JPG/SVG screenshot to PATH")
     args = parser.parse_args()
+    if args.screenshot:
+        import os
+        from rich.console import Console as _Console
+        from juggle_cockpit_view import render_static_from_state as _render
+        from juggle_cockpit_model import snapshot as _snapshot
+        import sqlite3 as _sqlite3
+        from juggle_db import JuggleDB
+        _db = JuggleDB(db_path=args.db_path)
+        _db.init_db()
+        _conn = _sqlite3.connect(str(_db.db_path))
+        _conn.row_factory = _sqlite3.Row
+        _db._connect = lambda: _conn  # noqa: E731
+        try:
+            _state = _snapshot(_db)
+        finally:
+            _conn.close()
+        _con = _Console(record=True, force_terminal=True, width=220, color_system="truecolor")
+        from juggle_cockpit_view import (
+            render_topics as _rt, render_actions as _ra,
+            render_agents as _rag, render_notifications as _rn,
+        )
+        _con.print(_rt(_state.topics, "wide", _state.projects_by_id))
+        _con.print(_ra(_state.actions))
+        _con.print(_rag(_state.agents, _state.scheduled))
+        _con.print(_rn(_state.notifications))
+        path = args.screenshot
+        ext = path.rsplit(".", 1)[-1].lower() if "." in path else "png"
+        if ext == "svg":
+            _con.save_svg(path, title="Juggle Cockpit")
+            print(path)
+        else:
+            svg_path = path.rsplit(".", 1)[0] + ".svg"
+            _con.save_svg(svg_path, title="Juggle Cockpit")
+            try:
+                result = subprocess.run(
+                    ["uv", "run", "--with", "cairosvg", "python3", "-c",
+                     f"import cairosvg; cairosvg.svg2png(url='file://{os.path.abspath(svg_path)}', write_to='{path}', scale=2)"],
+                    capture_output=True, text=True, timeout=30
+                )
+                if result.returncode == 0:
+                    os.unlink(svg_path)
+                else:
+                    print(f"PNG conversion failed, SVG saved to {svg_path}", file=sys.stderr)
+                    path = svg_path
+            except Exception as e:
+                print(f"PNG conversion error: {e}, SVG at {svg_path}", file=sys.stderr)
+                path = svg_path
+            print(path)
+        sys.exit(0)
     if args.out:
         from juggle_cockpit_view import render_static
         sys.stdout.write(render_static(db_path=args.db_path))

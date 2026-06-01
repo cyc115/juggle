@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from rich.console import Group as _RichGroup
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 from rich.style import Style
@@ -109,14 +110,22 @@ def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
         )
 
 
-def render_topics(topics: list[Topic], bp: str, projects_by_id: dict | None = None) -> Panel:
+def render_topics(
+    topics: list[Topic],
+    bp: str,
+    projects_by_id: dict | None = None,
+    scroll_offset: int = 0,
+    active: bool = False,
+) -> Panel:
     """Render topics panel.
 
     Wide: one row per topic with glyph + [label] + title.
     Medium/narrow: compressed strip.
     When projects_by_id has >1 project, renders section headers per project.
     """
+    border = _pane_border(active)
     use_grouping = projects_by_id and len(projects_by_id) > 1
+    visible = topics[scroll_offset:]
 
     def _make_table() -> Table:
         t = Table.grid(padding=(0, 0))
@@ -133,23 +142,25 @@ def render_topics(topics: list[Topic], bp: str, projects_by_id: dict | None = No
 
     if not use_grouping:
         table = _make_table()
-        for t in topics:
+        for t in visible:
             _add_topic_row(table, t, bp)
-        return Panel(table, title="Topics", border_style="dim")
+        return Panel(table, title=_scroll_title("Topics", scroll_offset), border_style=border)
 
     # Grouped render — headers are separate Text renderables to avoid width=3 truncation
-    groups = group_threads_by_project(topics, projects_by_id)
+    groups = group_threads_by_project(visible, projects_by_id)
     content_parts: list = []
-    for project_id, project_name, group_topics in groups:
-        header = Text()
-        header.append(f"▸ {project_name.upper()}", style="bold white")
-        header.append(f"  {len(group_topics)}", style="dim")
-        content_parts.append(header)
-        t = _make_table()
-        for topic in group_topics:
-            _add_topic_row(t, topic, bp)
-        content_parts.append(t)
-    return Panel(_RichGroup(*content_parts), title="Topics", border_style="dim")
+    for idx, (project_id, project_name, group_topics) in enumerate(groups):
+        if idx > 0:
+            content_parts.append(Rule(style="dim"))
+        hdr = Text()
+        hdr.append(f"▸ {project_name.upper()}", style="bold white")
+        hdr.append(f"  {len(group_topics)}", style="dim")
+        content_parts.append(hdr)
+        section_table = _make_table()
+        for t in group_topics:
+            _add_topic_row(section_table, t, bp)
+        content_parts.append(section_table)
+    return Panel(_RichGroup(*content_parts), title=_scroll_title("Topics", scroll_offset), border_style=border)
 
 
 def _scroll_title(base: str, offset: int) -> str:
