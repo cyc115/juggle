@@ -64,8 +64,8 @@
     "hash": "000755f0cd1b14142a6d3d3d1e958c7d"
   },
   "/Users/mikechen/github/juggle/tests/test_cockpit_view.py": {
-    "mtime": 1780288898.7633781,
-    "hash": "1ec1d9833f8d421086aace5e63b200e9"
+    "mtime": 1780290485.6631472,
+    "hash": "4629cf767a8004d39381aeb54457c13f"
   },
   "/Users/mikechen/github/juggle/tests/test_auto_action_items.py": {
     "mtime": 1779261472.571141,
@@ -400,8 +400,8 @@
     "hash": "82c1662df5f7251dad030c702baaf129"
   },
   "/Users/mikechen/github/juggle/src/juggle_cockpit_view.py": {
-    "mtime": 1780290361.3548715,
-    "hash": "e27033ba6c62e0c1a11b909296a781cb"
+    "mtime": 1780290438.7864037,
+    "hash": "e75bd3deb52e957cec6996eeb3f1df52"
   },
   "/Users/mikechen/github/juggle/src/juggle_cockpit_helpers.py": {
     "mtime": 1779743366.4198418,

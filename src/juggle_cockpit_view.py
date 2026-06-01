@@ -6,7 +6,7 @@ that do DB I/O; all other functions are pure (no I/O).
 
 from __future__ import annotations
 
-from rich.console import Group
+from rich.console import Group as _RichGroup
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -137,18 +137,19 @@ def render_topics(topics: list[Topic], bp: str, projects_by_id: dict | None = No
             _add_topic_row(table, t, bp)
         return Panel(table, title="Topics", border_style="dim")
 
-    # Grouped render
+    # Grouped render — headers are separate Text renderables to avoid width=3 truncation
     groups = group_threads_by_project(topics, projects_by_id)
-    col_count = 4 if bp == "wide" else 3
-    table = _make_table()
+    content_parts: list = []
     for project_id, project_name, group_topics in groups:
         header = Text()
         header.append(f"▸ {project_name.upper()}", style="bold white")
         header.append(f"  {len(group_topics)}", style="dim")
-        table.add_row(*([header] + [""] * (col_count - 1)))
-        for t in group_topics:
-            _add_topic_row(table, t, bp)
-    return Panel(table, title="Topics", border_style="dim")
+        content_parts.append(header)
+        t = _make_table()
+        for topic in group_topics:
+            _add_topic_row(t, topic, bp)
+        content_parts.append(t)
+    return Panel(_RichGroup(*content_parts), title="Topics", border_style="dim")
 
 
 def _scroll_title(base: str, offset: int) -> str:
@@ -327,7 +328,7 @@ def render_agents(
     title = _scroll_title("Agents", scroll_offset)
     if filter_label:
         title = f"{title} [filter: {filter_label}]"
-    return Panel(Group(*parts), title=title, border_style=border)
+    return Panel(_RichGroup(*parts), title=title, border_style=border)
 
 
 def render_notifications(
