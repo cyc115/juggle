@@ -55,12 +55,12 @@ def assign_project_background(
 def _extract_json(text: str) -> dict | None:
     """Extract first JSON object from text, stripping markdown fences."""
     text = _re.sub(r'^```(?:json)?\s*', '', text.strip(), flags=_re.MULTILINE)
-    text = _re.sub(r'```\s*$', '', text, flags=_re.MULTILINE)
+    text = _re.sub(r'```\s*$', '', text, flags=_re.MULTILINE).strip()
     m = _re.search(r'\{[^}]+\}', text)
     if m:
         try:
             return json.loads(m.group())
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError):
             pass
     return None
 
@@ -89,7 +89,7 @@ def infer_project_id(topic: str, projects: list[dict], db=None) -> str:
         f'Topic: "{topic}". '
         f'Projects: [{project_list}]. '
         f'Which project fits best? '
-        f'Return ONLY valid JSON, no explanation, no markdown: {{"project_id": "<id_or_INBOX>"}}'
+        f'Return ONLY valid JSON with no explanation, no markdown fences: {{"project_id": "<id_or_INBOX>"}}'
     )
     raw = _cheap_llm_call(prompt, timeout=15)
     if not raw:
