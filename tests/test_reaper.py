@@ -162,3 +162,28 @@ def test_reaper_removes_dead_pane_agent():
     assert reaped == 1
     mock_db.delete_agent.assert_called_once_with("dead-pane-agent")
     mock_mgr.decommission_agent.assert_not_called()
+
+
+def test_reaper_reaps_decommission_pending_agent():
+    """decommission_pending agents with live panes must be reaped immediately."""
+    from juggle_tmux import reap_stale_agents
+
+    mock_db = mock.MagicMock()
+    mock_mgr = mock.MagicMock()
+
+    pending_agent = {
+        "id": "pending-agent",
+        "status": "decommission_pending",
+        "assigned_thread": "other-thread",
+        "pane_id": "pane-pending",
+        "last_active": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+    }
+
+    mock_db.get_all_agents.return_value = [pending_agent]
+    mock_db.get_current_thread.return_value = "current-thread"
+    mock_mgr.verify_pane.return_value = True
+
+    reaped = reap_stale_agents(mock_db, mock_mgr)
+
+    assert reaped == 1
+    mock_mgr.decommission_agent.assert_called_once_with(mock_db, "pending-agent")

@@ -495,6 +495,11 @@ def reap_stale_agents(db, mgr):
             reaped += 1
             continue
 
+        if a["status"] == "decommission_pending":
+            mgr.decommission_agent(db, a["id"])  # kill pane + delete DB record
+            reaped += 1
+            continue
+
         if a["status"] != "idle" or a["assigned_thread"] == current_thread:
             continue
 
