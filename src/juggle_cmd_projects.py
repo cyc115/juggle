@@ -40,7 +40,7 @@ def assign_project_background(
     def _run():
         try:
             projects = db.get_active_projects()
-            project_id = infer_project_id(topic, projects)
+            project_id = infer_project_id(topic, projects, db=db)
             if project_id != INBOX_PROJECT_ID:
                 db.update_thread(thread_uuid, project_id=project_id)
                 log.info("assign_project_background: %s -> %s", thread_uuid[:8], project_id)
@@ -65,12 +65,26 @@ def _extract_json(text: str) -> dict | None:
     return None
 
 
-def infer_project_id(topic: str, projects: list[dict]) -> str:
-    """Pure function — returns best project_id or INBOX. No DB, no threads, no side-effects."""
+def infer_project_id(topic: str, projects: list[dict], db=None) -> str:
+    """Returns best project_id or INBOX. db is optional; when provided, adds few-shot thread examples."""
     if not projects:
         return INBOX_PROJECT_ID
     valid_ids = {p["id"] for p in projects} | {INBOX_PROJECT_ID}
-    project_list = "; ".join(f'{p["id"]}: {p["name"]} — {p["objective"]}' for p in projects)
+
+    project_parts = []
+    for p in projects:
+        part = f'{p["id"]}: {p["name"]} — {p["objective"]}'
+        if db:
+            try:
+                existing = db.get_threads_by_project(p["id"])
+                topics = [t["topic"] for t in existing if t.get("topic")][:5]
+                if topics:
+                    part += f' | examples: {"; ".join(topics)}'
+            except Exception:
+                pass
+        project_parts.append(part)
+
+    project_list = "; ".join(project_parts)
     prompt = (
         f'Topic: "{topic}". '
         f'Projects: [{project_list}]. '
