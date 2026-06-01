@@ -6,6 +6,7 @@
 """juggle-agent-watchdog — polls for stalled/crashed agents every 30s."""
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import signal
@@ -36,6 +37,43 @@ from juggle_watchdog import (
 _WATCHDOG_SRC = Path(__file__).parent.parent / "src" / "juggle_watchdog.py"
 
 _POLL_INTERVAL = int(os.environ.get("JUGGLE_WATCHDOG_INTERVAL", "30"))
+
+SINGLETON_PID_FILE = Path.home() / ".juggle" / "watchdog.pid"
+
+
+def _kill_existing_watchdog():
+    if not SINGLETON_PID_FILE.exists():
+        return
+    try:
+        old_pid = int(SINGLETON_PID_FILE.read_text().strip())
+        if old_pid == os.getpid():
+            return
+        os.kill(old_pid, signal.SIGTERM)
+        for _ in range(20):
+            time.sleep(0.1)
+            try:
+                os.kill(old_pid, 0)
+            except ProcessLookupError:
+                break
+        else:
+            os.kill(old_pid, signal.SIGKILL)
+        logging.info("watchdog: killed previous instance (PID %d)", old_pid)
+    except (ValueError, ProcessLookupError, PermissionError):
+        pass
+
+
+def _write_singleton_pid():
+    SINGLETON_PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SINGLETON_PID_FILE.write_text(str(os.getpid()))
+
+
+def _cleanup_singleton_pid():
+    try:
+        if SINGLETON_PID_FILE.exists():
+            if int(SINGLETON_PID_FILE.read_text().strip()) == os.getpid():
+                SINGLETON_PID_FILE.unlink()
+    except Exception:
+        pass
 
 logging.basicConfig(
     level=logging.INFO,
@@ -166,6 +204,10 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
 
 
 def main() -> None:
+    _kill_existing_watchdog()
+    _write_singleton_pid()
+    atexit.register(_cleanup_singleton_pid)
+
     config_dir = Path(get_settings()["paths"]["config_dir"])
     pid_file = config_dir / "watchdog.pid"
     pid_file.write_text(str(os.getpid()))
