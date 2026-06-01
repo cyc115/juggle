@@ -1,0 +1,174 @@
+"""Tests for juggle_agent_settings.py — per-role Claude Code settings overlays.
+
+The overlay must be PURELY ADDITIVE: it carries only the universal + per-role
+denials (and any configured per-role keys), so that when launched via
+`--settings <file>` it layers over the host's settings hierarchy without
+replacing it. Composition is: settings_overlay_base (universal) → merged with
+settings_overlay_by_role[role] (list values union, scalars override) → merged
+with per-dispatch overrides. Omitted keys must NOT appear in the overlay — that
+is what lets the host's own settings survive (portability across dev envs).
+"""
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+import juggle_agent_settings as jas
+
+
+@pytest.fixture
+def fake_settings(monkeypatch, tmp_path):
+    """Inject a controlled settings dict into juggle_agent_settings.get_settings."""
+
+    def _make(overlay_base=None, overlay_by_role=None):
+        base = (
+            overlay_base
+            if overlay_base is not None
+            else {"permissions": {"deny": ["mcp__opentabs__*", "Agent"]}}
+        )
+        by_role = (
+            overlay_by_role
+            if overlay_by_role is not None
+            else {
+                "coder": {"permissions": {"deny": ["NotebookEdit"]}},
+                "planner": {"permissions": {"deny": ["Edit", "NotebookEdit"]}},
+                "researcher": {"permissions": {"deny": ["Edit"]}},
+            }
+        )
+        settings = {
+            "paths": {"config_dir": str(tmp_path)},
+            "agent": {
+                "settings_overlay_base": base,
+                "settings_overlay_by_role": by_role,
+            },
+        }
+        monkeypatch.setattr(jas, "get_settings", lambda: settings)
+        return settings
+
+    return _make
+
+
+def test_overlay_deny_is_universal_plus_role(fake_settings):
+    fake_settings()
+    overlay = jas.build_agent_overlay("coder")
+    assert overlay["permissions"]["deny"] == ["mcp__opentabs__*", "Agent", "NotebookEdit"]
+
+
+def test_overlay_unions_and_dedups_deny(fake_settings):
+    fake_settings()
+    deny = jas.build_agent_overlay("planner")["permissions"]["deny"]
+    assert deny == ["mcp__opentabs__*", "Agent", "Edit", "NotebookEdit"]
+    assert len(deny) == len(set(deny))
+
+
+def test_overlay_is_additive_only_no_stray_keys(fake_settings):
+    """With only deny configured the overlay must contain ONLY permissions.deny —
+    no model/defaultMode/etc. — so host values for those keys are preserved."""
+    fake_settings()
+    overlay = jas.build_agent_overlay("coder")
+    assert set(overlay.keys()) == {"permissions"}
+    assert set(overlay["permissions"].keys()) == {"deny"}
+
+
+def test_per_role_divergence(fake_settings):
+    fake_settings(
+        overlay_by_role={
+            "coder": {"model": "claude-opus-4-8", "permissions": {"deny": ["NotebookEdit"]}},
+            "planner": {"permissions": {"deny": ["Edit"]}},
+            "researcher": {},
+        }
+    )
+    coder = jas.build_agent_overlay("coder")
+    planner = jas.build_agent_overlay("planner")
+    assert coder["model"] == "claude-opus-4-8"
+    assert "model" not in planner  # divergence: only coder overridden
+
+
+def test_overlay_base_applies_to_all_roles(fake_settings):
+    fake_settings(
+        overlay_base={"env": {"FOO": "bar"}, "permissions": {"deny": ["mcp__opentabs__*"]}},
+        overlay_by_role={"coder": {}, "planner": {}, "researcher": {}},
+    )
+    for role in ("coder", "planner", "researcher"):
+        overlay = jas.build_agent_overlay(role)
+        assert overlay["env"] == {"FOO": "bar"}
+        assert overlay["permissions"]["deny"] == ["mcp__opentabs__*"]
+
+
+def test_base_deny_unions_with_role_deny(fake_settings):
+    fake_settings(
+        overlay_base={"permissions": {"deny": ["WebFetch", "mcp__opentabs__*"]}},
+        overlay_by_role={"coder": {"permissions": {"deny": ["NotebookEdit"]}}},
+    )
+    deny = jas.build_agent_overlay("coder")["permissions"]["deny"]
+    assert deny == ["WebFetch", "mcp__opentabs__*", "NotebookEdit"]
+
+
+def test_per_dispatch_overrides_merge_last(fake_settings):
+    fake_settings()
+    overlay = jas.build_agent_overlay(
+        "coder",
+        overrides={"permissions": {"additionalDirectories": ["/srv/app"]}},
+    )
+    assert overlay["permissions"]["additionalDirectories"] == ["/srv/app"]
+    # deny still present (deep-merge, not replace)
+    assert "NotebookEdit" in overlay["permissions"]["deny"]
+
+
+def test_roleless_overlay_has_universal_only(fake_settings):
+    fake_settings()
+    overlay = jas.build_agent_overlay(None)
+    assert overlay["permissions"]["deny"] == ["mcp__opentabs__*", "Agent"]
+
+
+def test_build_does_not_mutate_settings_defaults(fake_settings):
+    """Building one role's overlay must not pollute another's (no shared refs)."""
+    fake_settings()
+    coder = jas.build_agent_overlay("coder")
+    coder["permissions"]["deny"].append("MUTATED")
+    planner = jas.build_agent_overlay("planner")
+    assert "MUTATED" not in planner["permissions"]["deny"]
+
+
+def test_audit_mode_strips_per_role_deny_keeps_base(fake_settings):
+    settings = fake_settings()
+    settings["agent"]["audit_mode"] = True
+    deny = jas.build_agent_overlay("coder")["permissions"]["deny"]
+    assert "NotebookEdit" not in deny  # per-role denial relaxed for measurement
+    assert "mcp__opentabs__*" in deny  # universal base denial stays in effect
+
+
+def test_audit_mode_off_keeps_per_role_deny(fake_settings):
+    fake_settings()  # audit_mode absent → falsy
+    deny = jas.build_agent_overlay("coder")["permissions"]["deny"]
+    assert "NotebookEdit" in deny
+
+
+def test_audit_mode_preserves_non_deny_role_keys(fake_settings):
+    settings = fake_settings(
+        overlay_by_role={"coder": {"model": "x", "permissions": {"deny": ["NotebookEdit"]}}}
+    )
+    settings["agent"]["audit_mode"] = True
+    overlay = jas.build_agent_overlay("coder")
+    assert overlay["model"] == "x"  # only deny is stripped, scalars survive
+    assert "NotebookEdit" not in overlay["permissions"]["deny"]
+
+
+def test_write_overlay_round_trips(fake_settings, tmp_path):
+    fake_settings()
+    path = jas.write_agent_overlay("coder")
+    assert path == tmp_path / "agent-settings" / "coder.json"
+    data = json.loads(path.read_text())
+    assert data["permissions"]["deny"] == ["mcp__opentabs__*", "Agent", "NotebookEdit"]
+
+
+def test_write_overlay_with_overrides_is_per_agent_file(fake_settings, tmp_path):
+    fake_settings()
+    p1 = jas.write_agent_overlay("coder", overrides={"model": "x"})
+    p2 = jas.write_agent_overlay("coder", overrides={"model": "x"})
+    # unique filenames so concurrent agents don't clobber each other
+    assert p1 != p2
+    assert p1.parent == tmp_path / "agent-settings"

@@ -713,12 +713,20 @@ def cmd_send_task(args):
 
     mgr = JuggleTmuxManager()
 
+    _role = agent.get("role")
+    from juggle_harness import get_adapter
+
+    adapter = get_adapter(_role)
+
     pane_id = agent["pane_id"]
 
+    # Recreate a missing pane. start_agent_in_pane relaunches the REPL for an
+    # interactive harness and is a no-op for a one-shot one (which just needs a
+    # live shell pane to run the per-task process in, dispatched below).
     if not mgr.verify_pane(pane_id):
         mgr.ensure_session()
         new_pane_id = mgr.spawn_pane()
-        mgr.start_claude_in_pane(new_pane_id)
+        mgr.start_agent_in_pane(new_pane_id, role=_role)
         db.update_agent(args.agent_id, pane_id=new_pane_id)
         pane_id = new_pane_id
         agent = db.get_agent(args.agent_id)
@@ -729,9 +737,24 @@ def cmd_send_task(args):
     prompt = prompt_path.read_text()
     full_prompt = UNIVERSAL_PREAMBLE + prompt.rstrip()
 
+    # Inline the role anchor for harnesses that don't run juggle's hooks. Claude
+    # Code injects it via its UserPromptSubmit hook, so decorate_task is a no-op
+    # there; config-only harnesses get the anchor prepended here instead.
+    try:
+        full_prompt = adapter.decorate_task(_role, full_prompt)
+    except Exception:
+        pass
+
     now = datetime.now(timezone.utc).isoformat()
     db.update_agent(args.agent_id, last_active=now)
-    pane_hash = mgr.send_task(pane_id, full_prompt, is_new=is_new)
+    if adapter.is_interactive:
+        pane_hash = mgr.send_task(pane_id, full_prompt, is_new=is_new)
+    else:
+        # One-shot: spawn a fresh `<harness> ... <prompt>` process in the pane;
+        # it runs to completion and exits. No warm REPL, no marker polling.
+        pane_hash = mgr.run_task_oneshot(
+            pane_id, full_prompt, role=_role, model=agent.get("model")
+        )
     now_iso = datetime.now(timezone.utc).isoformat()
     db.update_agent(
         args.agent_id,

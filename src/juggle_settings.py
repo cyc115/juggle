@@ -73,33 +73,6 @@ DEFAULTS: dict = {
     # Agent Launch
     "agent": {
         "claude_launch_command": "claude --dangerously-skip-permissions",
-        # Tools denied for ALL agent roles (reduces tool-definition token cost).
-        # opentabs (78 browser tools) + meta tools agents never invoke.
-        "disallowed_tools_universal": [
-            # opentabs browser tools (78 tools) — wildcard collapses to single entry
-            "mcp__opentabs__*",
-            # personal-mcp financial tools (not for agents)
-            "mcp__personal-mcp__plaid_get_accounts",
-            "mcp__personal-mcp__plaid_get_statements",
-            "mcp__personal-mcp__plaid_sync_transactions",
-            # meta / orchestrator tools agents don't invoke
-            "ScheduleWakeup",
-            "CronCreate",
-            "CronList",
-            "CronDelete",
-            "ShareOnboardingGuide",
-            "ExitPlanMode",
-            "EnterPlanMode",
-            "EnterWorktree",
-            "ExitWorktree",
-            "PushNotification",
-            # sub-agent spawning and remote triggers — orchestrator-only
-            "Agent",
-            "RemoteTrigger",
-            # MCP resource browsing — not used by any agent role
-            "ListMcpResourcesTool",
-            "ReadMcpResourceTool",
-        ],
         # Per-role role identity sentences injected into agent context anchor.
         "role_context": {
             "researcher": "Produce comprehensive, well-structured, cited reports. Never fabricate URLs.",
@@ -108,24 +81,209 @@ DEFAULTS: dict = {
         },
         # Skill invoked by coder agents before complete-agent (configurable per deployment).
         "quality_gate_skill": "mike:pre-pr",
-        # Per-role additional denylists (merged with universal at spawn time).
-        "disallowed_tools_by_role": {
-            "researcher": [
-                "Edit",  # researchers don't patch code
-                "NotebookEdit",  # no Jupyter in Juggle
-            ],
-            "coder": [
-                "NotebookEdit",  # no Jupyter in Juggle
-                "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for coding
-            ],
-            "planner": [
-                "Edit",  # planners write plans, not code
-                "NotebookEdit",  # no Jupyter in Juggle
-                "Monitor",  # planners don't run bg processes
-                "TaskOutput",  # no bg tasks to monitor
-                "TaskStop",  # no bg tasks to stop
-                "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for planning
-            ],
+        # Audit (measurement) mode for right-sizing the deny block. When true,
+        # build_agent_overlay drops the PER-ROLE denials so those tools stay in
+        # the agent's context and `juggle agent-tools` can observe real per-role
+        # demand (stripped tools are invisible — they're never offered to the
+        # model, so they leave no usage signal). Agents launched in this mode set
+        # JUGGLE_AGENT_AUDIT=1 so their telemetry is tagged 'audit'. Universal
+        # (settings_overlay_base) denials stay in effect — flip an entry out of
+        # base temporarily if you need to audit those too. Costs tokens while on
+        # (tools re-enter context); turn off to bank the savings again.
+        "audit_mode": False,
+        # --- Sub-agent harness adapters --------------------------------------
+        # Which CLI juggle launches for each background agent. Default "claude"
+        # (Claude Code). Point a deployment at a different harness (Codex, or any
+        # future CLI) WITHOUT code changes: add an entry under `harnesses` and
+        # set `harness` (global) or `harness_by_role` (per role). See
+        # juggle_harness.py and docs/harness-adapters.md for the full schema and
+        # a worked Codex/reasonix example.
+        "harness": "claude",
+        # Optional per-role override, e.g. {"researcher": "codex"}.
+        "harness_by_role": {},
+        "harnesses": {
+            "claude": {
+                # Built-in adapter: per-role tool denies via a `--settings`
+                # overlay (juggle_agent_settings). `command` is omitted so it
+                # falls back to `agent.claude_launch_command` above — one source
+                # of truth for the Claude launch string.
+                "type": "claude",
+                "model_flag": "--model {model}",
+                # Harness-specific env overrides (override inherited values). The
+                # JUGGLE_IS_AGENT/ROLE/AUDIT identity vars are injected
+                # automatically — add your own here.
+                "env": {},
+                "env_unset": ["CLAUDE_PLUGIN_DATA"],
+                "readiness_markers": ["bypass permissions on", "/effort"],
+                "submission_markers": ["esc to interrupt", "✻", "✶"],
+                "supports_hooks": True,
+            },
+            # Built-in Codex CLI adapter (src/harnesses/codex.py). Inactive
+            # until selected via `harness` / `harness_by_role`. Codex restricts
+            # via sandbox/approval MODES (not a tool-deny list), reads AGENTS.md
+            # for context, and has version-skewed hooks — so per-role limits are
+            # materialized as `-a/-s` flags and the role anchor is inlined
+            # (supports_hooks=False). Confirm the `command`/markers against your
+            # installed `codex` and override here if needed; no code change.
+            "codex": {
+                "type": "codex",
+                "command": "codex exec",
+                "interactive": False,
+                "model_flag": "-m {model}",
+                # Pin the Codex model (gpt-*, not sonnet/opus) regardless of the
+                # agent's configured model; empty = use the per-agent model.
+                "model": "",
+                # Arbitrary extra CLI flags appended verbatim (e.g. "-c key=val").
+                "extra_flags": "",
+                # `codex exec - < prompt.txt` — `-` reads the prompt from stdin
+                # (avoids ARG_MAX + a non-TTY-pipe hang); see harnesses/codex.py.
+                "prompt_arg": "- < {prompt_file}",
+                "approval_policy": "never",
+                "sandbox_by_role": {
+                    "researcher": "read-only",
+                    "planner": "read-only",
+                    "coder": "workspace-write",
+                },
+                "sandbox_default": "read-only",
+                "sandbox_audit": "workspace-write",
+                "restrictions_flag": "",
+                "env": {},
+                "env_unset": [],
+                # No readiness/submission markers: one-shot harnesses don't poll
+                # a REPL (see is_interactive=False above).
+                "supports_hooks": False,
+            },
+            # Reasonix (deepseek-reasonix) CLI. Inactive until selected via
+            # `harness` / `harness_by_role`. A config-only `template` harness —
+            # no Python needed: one-shot `reasonix run` reading the prompt from
+            # stdin, model via `--model`, AGENTS.md context, anchor inlined.
+            # Tool restriction is delegated to the harness's own reasonix.toml
+            # ([permissions]/[sandbox], workspace confinement) — Reasonix exposes
+            # no per-call restriction flags — so `external_restriction` is set.
+            #
+            # Configured for OpenRouter's DeepSeek-V4 Pro: `model` is the Reasonix
+            # provider NAME (passed as `--model`); define that provider in
+            # reasonix.toml pointing base_url at OpenRouter and model at
+            # `deepseek/deepseek-v4-pro` (see docs/reasonix.toml.example). Export
+            # OPENROUTER_API_KEY in juggle's environment so launched agents
+            # inherit it.
+            "reasonix": {
+                "type": "template",
+                "command": "reasonix run",
+                "interactive": False,
+                "model_flag": "--model {model}",
+                # Reasonix provider name (defined in reasonix.toml) → OpenRouter
+                # DeepSeek-V4 Pro. Overridable.
+                "model": "deepseek-v4-pro",
+                "extra_flags": "",
+                # `reasonix run` reads the prompt from stdin.
+                "prompt_arg": "< {prompt_file}",
+                "restrictions_flag": "",
+                "external_restriction": True,
+                "env": {},
+                "env_unset": [],
+                "supports_hooks": False,
+            },
+        },
+        # --- Agent settings.json overlay -------------------------------------
+        # Each agent's settings.json is generated from these two keys
+        # (juggle_agent_settings.build_agent_overlay) and passed via
+        # `--settings <file>`. `--settings` LAYERS over the host settings
+        # hierarchy — omitted keys keep their host values, and permission
+        # allow/deny/ask arrays UNION across sources — so this overlay is
+        # purely ADDITIVE and portable: it never replaces the host's settings.
+        #
+        # Composition: settings_overlay_base (universal, applied to EVERY
+        # agent) is merged first, then settings_overlay_by_role[role] is merged
+        # on top. List values (e.g. permissions.deny) union; nested dicts
+        # deep-merge; scalars (model, defaultMode, …) override.
+        #
+        # permissions.deny here doubles as the token-saving lever: a bare tool
+        # name removes that tool from the agent's context entirely.
+        "settings_overlay_base": {
+            "permissions": {
+                "deny": [
+                    # opentabs browser tools (78 tools) — wildcard collapses to one entry
+                    "mcp__opentabs__*",
+                    # GitHub MCP (60+ tools) — the orchestrator owns all GitHub/PR
+                    # work; agents do code via the git CLI (Bash). Largest single
+                    # context saving. (Standard `github` MCP namespace.)
+                    "mcp__github__*",
+                    # otterai (meeting transcription) — not used by any agent role.
+                    "mcp__otterai__*",
+                    # NOTE: the claude.ai Google Workspace connectors (Drive,
+                    # Calendar, Gmail) are NOT denied universally — researchers
+                    # need them. They are denied per-role for coder + planner in
+                    # settings_overlay_by_role below.
+                    # personal-mcp financial tools (not for agents)
+                    "mcp__personal-mcp__plaid_get_accounts",
+                    "mcp__personal-mcp__plaid_get_statements",
+                    "mcp__personal-mcp__plaid_sync_transactions",
+                    # meta / orchestrator tools agents don't invoke
+                    "ScheduleWakeup",
+                    "CronCreate",
+                    "CronList",
+                    "CronDelete",
+                    "ShareOnboardingGuide",
+                    "ExitPlanMode",
+                    "EnterPlanMode",
+                    "EnterWorktree",
+                    "ExitWorktree",
+                    "PushNotification",
+                    # sub-agent spawning and remote triggers — orchestrator-only
+                    "Agent",
+                    "RemoteTrigger",
+                    # MCP resource browsing — not used by any agent role
+                    "ListMcpResourcesTool",
+                    "ReadMcpResourceTool",
+                ]
+            }
+        },
+        # Per-role overlay merged ON TOP of settings_overlay_base. Today only
+        # adds role-specific denials; a role may also diverge on env / model /
+        # hooks / sandbox here with no code change.
+        "settings_overlay_by_role": {
+            "researcher": {
+                "permissions": {
+                    "deny": [
+                        "Edit",  # researchers don't patch code
+                        "NotebookEdit",  # no Jupyter in Juggle
+                    ]
+                }
+            },
+            "coder": {
+                "permissions": {
+                    "deny": [
+                        "NotebookEdit",  # no Jupyter in Juggle
+                        "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for coding
+                        # claude.ai Google Workspace connectors — researchers only.
+                        # VERIFY these slugs on the host via `/permissions` (add a
+                        # deny rule, type `mcp__` to autocomplete): the server names
+                        # contain spaces/dots and Claude Code's slug sanitization
+                        # for those is undocumented. A wrong slug fails silently.
+                        "mcp__claude.ai Google Drive__*",
+                        "mcp__claude.ai Google Calendar__*",
+                        "mcp__claude.ai Gmail__*",
+                    ]
+                }
+            },
+            "planner": {
+                "permissions": {
+                    "deny": [
+                        "Edit",  # planners write plans, not code
+                        "NotebookEdit",  # no Jupyter in Juggle
+                        "Monitor",  # planners don't run bg processes
+                        "TaskOutput",  # no bg tasks to monitor
+                        "TaskStop",  # no bg tasks to stop
+                        "mcp__personal-mcp__extract_text_from_file",  # OCR not needed for planning
+                        # claude.ai Google Workspace connectors — researchers only.
+                        # (Verify slugs via `/permissions`; see coder note above.)
+                        "mcp__claude.ai Google Drive__*",
+                        "mcp__claude.ai Google Calendar__*",
+                        "mcp__claude.ai Gmail__*",
+                    ]
+                }
+            },
         },
     },
     # Talkback TTS

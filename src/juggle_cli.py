@@ -192,6 +192,79 @@ def cmd_open_in_editor(args):
     _obsidian_fallback(abs_file)
 
 
+def _deny_matches(tool_name: str, deny_list) -> bool:
+    """True if tool_name is covered by a deny entry (exact or `prefix*` wildcard)."""
+    for entry in deny_list or []:
+        if entry.endswith("*"):
+            if tool_name.startswith(entry[:-1]):
+                return True
+        elif tool_name == entry:
+            return True
+    return False
+
+
+def cmd_agent_tools(args):
+    """Report per-agent tool usage to systematically right-size the deny block.
+
+    For each role it lists what tools the role actually used (with counts), and
+    cross-references against that role's CONFIGURED deny to surface the two
+    signals you need to tune the block:
+      * over-aggressive  — a tool the role USED but its deny list strips (only
+        visible from audit-mode runs); candidate to ALLOW.
+      * too-loose        — a tool other roles use that this role never does and
+        isn't denied; candidate to DENY.
+    """
+    import juggle_agent_settings as jas
+
+    db = get_db(getattr(args, "db_path", None), init=True)
+
+    if getattr(args, "reset", False):
+        n = db.reset_agent_tool_usage()
+        print(f"Cleared {n} agent tool-usage row(s).")
+        return
+
+    rows = db.get_agent_tool_usage(getattr(args, "role", None))
+    if not rows:
+        print(
+            "No agent tool usage recorded yet.\n"
+            "Dispatch agents (set agent.audit_mode=true first to relax per-role\n"
+            "denies and measure true demand), then re-run this report."
+        )
+        return
+
+    by_role: dict[str, list[dict]] = {}
+    for r in rows:
+        by_role.setdefault(r["role"], []).append(r)
+    # Universe of tools any role used — proxy for "available" tools, since a
+    # stripped tool never appears here.
+    universe = {r["tool_name"] for r in rows}
+
+    print("Agent tool usage  (mode: normal=steady-state, audit=denies relaxed)")
+    for role in sorted(by_role):
+        used = by_role[role]
+        used_names = {u["tool_name"] for u in used}
+        try:
+            deny = (jas.build_agent_overlay(role).get("permissions") or {}).get("deny") or []
+        except Exception:
+            deny = []
+
+        print(f"\n── {role} ──")
+        for u in used:
+            flag = ""
+            if _deny_matches(u["tool_name"], deny):
+                flag = "  ⚠ denied for this role but used → consider ALLOWING"
+            sample = f"   {u['last_input']}" if u["last_input"] else ""
+            print(f"  {u['tool_name']:<38} x{u['count']:<5} ({u['mode']}){flag}{sample}")
+
+        candidates = sorted(
+            t for t in universe if t not in used_names and not _deny_matches(t, deny)
+        )
+        if candidates:
+            print("  candidates to DENY (used by other roles, never by this one):")
+            for t in candidates:
+                print(f"    {t}")
+
+
 def _cmd_list_selfheal(args):
     from pathlib import Path as _Path
     db = get_db(getattr(args, "db_path", None), init=True)
@@ -536,6 +609,16 @@ def main():
     p_recall_bg.add_argument("thread_id")
     p_recall_bg.add_argument("query")
     p_recall_bg.set_defaults(func=cmd_recall_bg)
+
+    # agent tool-usage report (right-size the deny block)
+    p_agent_tools = subparsers.add_parser(
+        "agent-tools", help="Report per-agent tool usage to right-size the deny block"
+    )
+    p_agent_tools.add_argument("--role", default=None, help="Filter to one role")
+    p_agent_tools.add_argument(
+        "--reset", action="store_true", help="Clear recorded tool-usage data"
+    )
+    p_agent_tools.set_defaults(func=cmd_agent_tools)
 
     # selfheal subcommands
     p_list_selfheal = subparsers.add_parser("list-selfheal", help="List pending self-heal errors")
