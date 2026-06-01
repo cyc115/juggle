@@ -106,6 +106,14 @@ OUTPUT FORMAT:
   - Finding [CONFIDENCE] — URL
 ## Gaps / open questions
 
+## AGENT-FIRST (harness engineering)
+
+When your findings recommend a tool, design, or implementation approach, prefer
+options that an agent can validate without a human — programmatic correctness
+signals (pure functions, --json/--out, deterministic CLI, headless/pilot
+harness) over human-eyeball verification. Flag any recommended approach whose
+correctness can only be confirmed manually.
+
 Intent: <INTENT>
 Focus areas: <FOCUS_AREAS>
 

@@ -156,6 +156,14 @@ Invoke superpowers:writing-plans. Overrides:
 - Output: projects/<project>/plan/YYYY-MM-DD-<name>.md
 - Batch unresolved questions in --open-questions; do not ask interactively
 
+## AGENT-FIRST (harness engineering)
+
+Every component you spec must be designed so an agent can validate its
+correctness without a human. Favor designs that expose correctness
+programmatically (pure functions, --json/--out, deterministic CLI,
+headless/pilot test harness) over anything needing human eyeballing. Make "how
+does an agent verify this?" an explicit acceptance criterion on each subtask.
+
 <task description>
 
 uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
@@ -186,6 +194,15 @@ with a failing test that captures the bug.
 
 Exceptions (rare): trivial config tweaks, doc-only changes, and one-line
 typo fixes may skip TDD. Anything that touches logic must follow the cycle.
+
+## AGENT-FIRST (harness engineering)
+
+What you build must be verifiable by an agent without a human in the loop.
+Prefer testable seams over human-eyeball checks — pure functions, --json/--out
+output, deterministic exit codes, headless or pilot-driven test harnesses.
+Before implementing any behavior, ask "how will an agent prove this works?" and
+build that affordance in. A feature a human must manually click/scroll/inspect
+to verify is not done — expose its state programmatically.
 
 Implement plan at <plan_file_path>.
 
@@ -221,6 +238,14 @@ SEQUENTIAL-FIX MODE:
 uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<question>"
 
 <research question>
+
+## AGENT-FIRST (harness engineering)
+
+When your findings recommend a tool, design, or implementation approach, prefer
+options that an agent can validate without a human — programmatic correctness
+signals (pure functions, --json/--out, deterministic CLI, headless/pilot
+harness) over human-eyeball verification. Flag any recommended approach whose
+correctness can only be confirmed manually.
 
 # --retain: non-obvious findings, personal details, hard-to-re-derive config.
 uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings>" --retain "<non-obvious findings>"

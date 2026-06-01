@@ -203,6 +203,15 @@ QUALITY GATE (run before complete-agent):
 5. Invoke mike:pre-pr skill (configurable via agent.quality_gate_skill setting)
 
 VERSION BUMP: patch=fix, minor=feature, major=breaking. State target version in summary.
+
+## AGENT-FIRST (harness engineering)
+
+What you build must be verifiable by an agent without a human in the loop.
+Prefer testable seams over human-eyeball checks — pure functions, --json/--out
+output, deterministic exit codes, headless or pilot-driven test harnesses.
+Before implementing any behavior, ask "how will an agent prove this works?" and
+build that affordance in. A feature a human must manually click/scroll/inspect
+to verify is not done — expose its state programmatically.
 ```
 
 **Planner** (role = `planner`):
@@ -251,6 +260,14 @@ DEVIL'S ADVOCATE (mandatory before emitting plan):
 State findings in ## Devil's Advocate section of plan.
 
 DONE when: a coder with no prior context could execute every subtask without asking.
+
+## AGENT-FIRST (harness engineering)
+
+Every component you spec must be designed so an agent can validate its
+correctness without a human. Favor designs that expose correctness
+programmatically (pure functions, --json/--out, deterministic CLI,
+headless/pilot test harness) over anything needing human eyeballing. Make "how
+does an agent verify this?" an explicit acceptance criterion on each subtask.
 ```
 
 **Researcher** (role = `researcher`): omit `<BEHAVIORAL_SPEC>` — use `/juggle:research` which embeds the spec automatically.
