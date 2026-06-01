@@ -26,6 +26,7 @@ _COLD_START_DEFAULTS: dict[str, float] = {
     "planner": 180.0,
     "researcher": 120.0,
 }
+_MIN_STALL_THRESHOLD_SECS = 600.0  # 10 min hard floor — guards against adaptive 2*median collapsing below legitimate long-command runtime
 _EXECUTION_MARKERS = ("Thinking", "Running", "→", "↓", "Tool call", "✓", "⚡")
 _CLAUDE_UI_MARKERS = (
     "Welcome",
@@ -235,9 +236,8 @@ def get_threshold_seconds(db: Any, agent: dict) -> float:
     role = agent.get("role", "researcher")
     median = db.get_median_duration_secs(role)
     if median is not None:
-        return 2.0 * median
-
-    return _COLD_START_DEFAULTS.get(role, 180.0)
+        return max(2.0 * median, _MIN_STALL_THRESHOLD_SECS)
+    return max(_COLD_START_DEFAULTS.get(role, 180.0), _MIN_STALL_THRESHOLD_SECS)
 
 
 # ---------------------------------------------------------------------------
