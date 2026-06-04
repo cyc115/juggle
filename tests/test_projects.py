@@ -86,3 +86,80 @@ def test_assign_project_background_silent_on_llm_failure(tmp_path):
         t = assign_project_background(db, tid, "some topic", _return_thread=True)
         t.join(timeout=5)
     assert db.get_thread(tid)["project_id"] == "INBOX"
+
+
+# --- Task 2: correction hook + assigned_by ---
+
+def make_db(tmp_path):
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    return db
+
+
+def test_cmd_project_assign_logs_correction_when_project_changes(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import cmd_project_assign
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project(name="Work", objective="work stuff")
+    tid_uuid = db.create_thread("topic alpha", session_id="s1")
+    thread = db.get_thread(tid_uuid)
+    label = thread["user_label"]
+
+    args = type("Args", (), {"thread_id": label, "project_id": pid})()
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        cmd_project_assign(args)
+
+    corrections = db.get_recent_corrections(limit=5)
+    assert len(corrections) == 1
+    assert corrections[0]["from_project"] == "INBOX"
+    assert corrections[0]["to_project"] == pid
+    assert corrections[0]["topic"] == "topic alpha"
+
+
+def test_cmd_project_assign_sets_assigned_by_human(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import cmd_project_assign
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project(name="Work", objective="work stuff")
+    tid_uuid = db.create_thread("topic beta", session_id="s1")
+    thread = db.get_thread(tid_uuid)
+    label = thread["user_label"]
+
+    args = type("Args", (), {"thread_id": label, "project_id": pid})()
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        cmd_project_assign(args)
+
+    assert db.get_thread(tid_uuid)["assigned_by"] == "human"
+
+
+def test_cmd_project_assign_no_correction_when_same_project(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import cmd_project_assign
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    tid_uuid = db.create_thread("topic gamma", session_id="s1")
+    thread = db.get_thread(tid_uuid)
+    label = thread["user_label"]
+
+    # Assign to INBOX (same as current)
+    args = type("Args", (), {"thread_id": label, "project_id": "INBOX"})()
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        cmd_project_assign(args)
+
+    assert db.get_recent_corrections(limit=5) == []
+
+
+def test_assign_project_background_sets_assigned_by_auto(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import assign_project_background
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project(name="Investing", objective="Automate ideas")
+    tid = db.create_thread("automate investing ideas", session_id="s1")
+    with patch("juggle_cmd_projects._cheap_llm_call", return_value=f'{{"project_id": "{pid}"}}'):
+        t = assign_project_background(db, tid, "automate investing ideas", _return_thread=True)
+        t.join(timeout=5)
+    assert db.get_thread(tid)["assigned_by"] == "auto"

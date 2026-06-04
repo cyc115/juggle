@@ -44,7 +44,7 @@ def assign_project_background(
                 projects = db.get_active_projects()
                 project_id = infer_project_id(topic, projects, db=db)
                 if project_id != INBOX_PROJECT_ID:
-                    db.update_thread(thread_uuid, project_id=project_id)
+                    db.update_thread(thread_uuid, project_id=project_id, assigned_by="auto")
                     log.info("assign_project_background: %s -> %s", thread_uuid[:8], project_id)
             except Exception as e:
                 log.warning("assign_project_background: silent failure: %s", e)
@@ -60,7 +60,7 @@ def assign_project_background(
         "db = JuggleDB(str(DB_PATH)); "
         "projects = db.get_active_projects(); "
         "pid = infer_project_id({topic!r}, projects, db=db); "
-        "pid != INBOX_PROJECT_ID and db.update_thread({thread_uuid!r}, project_id=pid)"
+        "pid != INBOX_PROJECT_ID and db.update_thread({thread_uuid!r}, project_id=pid, assigned_by='auto')"
     ).format(src=str(SRC_DIR), topic=topic, thread_uuid=thread_uuid)
 
     try:
@@ -193,7 +193,10 @@ def cmd_project_assign(args):
     if not p:
         print(f"Project not found: {args.project_id}")
         sys.exit(1)
-    db.update_thread(t["id"], project_id=args.project_id)
+    from_project = t.get("project_id", "INBOX")
+    db.update_thread(t["id"], project_id=args.project_id, assigned_by="human")
+    if from_project != args.project_id:
+        db.log_project_correction(t["topic"], from_project=from_project, to_project=args.project_id)
     print(f"Thread [{args.thread_id}] -> project {args.project_id} ({p['name']})")
 
 
