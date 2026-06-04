@@ -25,6 +25,9 @@ from juggle_settings import get_settings as _get_settings
 _DATA_DIR = Path(_get_settings()["paths"]["data_dir"]).expanduser()
 DB_PATH = _DATA_DIR / "juggle.db"
 
+_CHECKPOINT_PATH = _DATA_DIR / "checkpoint.json"
+_CHECKPOINT_MAX_AGE_SECS = 3600  # ignore checkpoints older than 1 h
+
 # Flag file written by /juggle:toggle-autopilot. Its presence means autopilot
 # mode is ON. Read here so the directive is re-asserted on every prompt — a
 # prompt-only toggle would be forgotten on the next turn.
@@ -382,6 +385,11 @@ def handle_stop(data: dict) -> None:
                     )
         # Class B: scan transcript for Juggle-caused tool errors
         _scan_transcript_for_class_b(data)
+        # Clean up pre-compaction checkpoint on normal session end.
+        try:
+            _CHECKPOINT_PATH.unlink(missing_ok=True)
+        except Exception:
+            pass
     except Exception as exc:
         _record_error_safe(exc, "juggle_hooks.Stop")
         logging.error("Stop handler error: %s", exc, exc_info=True)
@@ -423,6 +431,11 @@ def handle_session_start(data: dict) -> None:
                     )
             except Exception:
                 pass
+            # Restore pre-compaction state if a fresh checkpoint exists.
+            try:
+                additional_context += _restore_checkpoint(db)
+            except Exception:
+                pass
             output = {
                 "hookSpecificOutput": {
                     "hookEventName": "SessionStart",
@@ -430,10 +443,105 @@ def handle_session_start(data: dict) -> None:
                 }
             }
             print(json.dumps(output))
+        # Reap checkpoints older than 24 h regardless of reason.
+        try:
+            import time as _t
+            if _CHECKPOINT_PATH.exists():
+                cp = json.loads(_CHECKPOINT_PATH.read_text())
+                if _t.time() - cp.get("ts", 0) > 86400:
+                    _CHECKPOINT_PATH.unlink(missing_ok=True)
+        except Exception:
+            pass
     except Exception as exc:
         _record_error_safe(exc, "juggle_hooks.SessionStart")
         logging.error("SessionStart handler error: %s", exc, exc_info=True)
 
+    sys.exit(0)
+
+
+def _write_checkpoint(db) -> None:
+    """Atomically write orchestrator state snapshot to checkpoint.json."""
+    import time
+
+    session_id = _get_session_id(db)
+    thread_id = db.get_current_thread()
+    thread_label = None
+    if thread_id:
+        thread = db.get_thread(thread_id)
+        thread_label = thread.get("user_label") if thread else None
+
+    busy = [a for a in db.get_all_agents() if a.get("status") == "busy"]
+    in_flight = [
+        {
+            "agent_id": a["id"],
+            "thread_id": a.get("assigned_thread"),
+            "dispatched_at": a.get("created_at"),
+        }
+        for a in busy
+    ]
+
+    with db._connect() as conn:
+        row = conn.execute("SELECT MAX(id) as m FROM notifications_v2").fetchone()
+        cursor = row["m"] if row and row["m"] is not None else 0
+
+    action_items = db.get_open_action_items()
+    pending_head = action_items[0]["id"] if action_items else None
+
+    payload = {
+        "ts": time.time(),
+        "session_id": session_id,
+        "active_thread_id": thread_id,
+        "active_thread_label": thread_label,
+        "in_flight_dispatches": in_flight,
+        "notification_cursor": cursor,
+        "pending_action_item_head": pending_head,
+    }
+    tmp = _CHECKPOINT_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload))
+    os.replace(tmp, _CHECKPOINT_PATH)
+
+
+def _restore_checkpoint(db) -> str:
+    """Return an additionalContext string from the checkpoint, or '' if absent/stale."""
+    import time
+
+    if not _CHECKPOINT_PATH.exists():
+        return ""
+    try:
+        cp = json.loads(_CHECKPOINT_PATH.read_text())
+    except Exception:
+        return ""
+    age = time.time() - cp.get("ts", 0)
+    if age >= _CHECKPOINT_MAX_AGE_SECS:
+        return ""
+    if cp.get("session_id") != _get_session_id(db):
+        return ""
+
+    label = cp.get("active_thread_label") or "?"
+    tid = (cp.get("active_thread_id") or "")[:8]
+    in_flight = cp.get("in_flight_dispatches", [])
+    cursor = cp.get("notification_cursor", 0)
+    parts = [f"active=[{label}] {tid}"]
+    if in_flight:
+        parts.append(f"{len(in_flight)} agent(s) in flight")
+    parts.append(f"notification cursor {cursor}")
+    return f"\n\n⟳ Resuming after compaction: {', '.join(parts)}."
+
+
+def handle_pre_compact(data: dict) -> None:
+    """Write checkpoint before compaction so SessionStart can restore state."""
+    if os.environ.get("JUGGLE_IS_AGENT"):
+        sys.exit(0)
+    if not is_active():
+        sys.exit(0)
+    try:
+        db = get_db()
+        _write_checkpoint(db)
+        logging.info("PreCompact: checkpoint written to %s", _CHECKPOINT_PATH)
+        print(json.dumps({"systemMessage": "Checkpointed orchestrator state for compaction"}))
+    except Exception as exc:
+        _record_error_safe(exc, "juggle_hooks.PreCompact")
+        logging.error("PreCompact handler error: %s", exc, exc_info=True)
     sys.exit(0)
 
 
@@ -858,6 +966,7 @@ HANDLERS = {
     "UserPromptSubmit": handle_user_prompt_submit,
     "Stop": handle_stop,
     "SessionStart": handle_session_start,
+    "PreCompact": handle_pre_compact,
     "PreToolUse": handle_pre_tool_use,
     "PostToolUse": handle_post_tool_use,
 }
