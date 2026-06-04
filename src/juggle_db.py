@@ -197,6 +197,16 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 """
 
+CREATE_PROJECT_CORRECTIONS = """
+CREATE TABLE IF NOT EXISTS project_corrections (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  topic        TEXT NOT NULL,
+  from_project TEXT NOT NULL,
+  to_project   TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+);
+"""
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -682,6 +692,28 @@ class JuggleDB:
             conn.execute("ALTER TABLE threads ADD COLUMN project_id TEXT DEFAULT 'INBOX' REFERENCES projects(id)")
             conn.execute("UPDATE threads SET project_id = 'INBOX' WHERE project_id IS NULL")
 
+        # Migration 27: assigned_by on threads ('auto'|'human')
+        cols_threads = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        if "assigned_by" not in cols_threads:
+            try:
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN assigned_by TEXT NOT NULL DEFAULT 'auto'"
+                )
+                conn.commit()
+                _log.info("Migration 27: assigned_by column added to threads")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 27 (assigned_by) skipped: %s", e)
+
+        # Migration 28: project_corrections append-only log
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "project_corrections" not in tables:
+            try:
+                conn.execute(CREATE_PROJECT_CORRECTIONS)
+                conn.commit()
+                _log.info("Migration 28: project_corrections table created")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 28 (project_corrections) skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -943,6 +975,31 @@ class JuggleDB:
                 (project_id,),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def log_project_correction(self, topic: str, from_project: str, to_project: str) -> None:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO project_corrections (topic, from_project, to_project, created_at) VALUES (?, ?, ?, ?)",
+                (topic, from_project, to_project, now),
+            )
+            conn.commit()
+
+    def get_recent_corrections(self, limit: int = 5) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT topic, from_project, to_project, created_at FROM project_corrections ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_human_assigned_threads_by_project(self, project_id: str, limit: int = 3) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, topic, last_active FROM threads WHERE project_id = ? AND assigned_by = 'human' AND show_in_list = 1 ORDER BY last_active DESC LIMIT ?",
+                (project_id, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
     # Message operations

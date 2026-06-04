@@ -538,16 +538,13 @@
 - [[_COMMUNITY_Community 534|Community 534]]
 - [[_COMMUNITY_Community 535|Community 535]]
 - [[_COMMUNITY_Community 536|Community 536]]
-- [[_COMMUNITY_Community 537|Community 537]]
 - [[_COMMUNITY_Community 538|Community 538]]
 - [[_COMMUNITY_Community 539|Community 539]]
 - [[_COMMUNITY_Community 540|Community 540]]
-- [[_COMMUNITY_Community 541|Community 541]]
 - [[_COMMUNITY_Community 542|Community 542]]
 - [[_COMMUNITY_Community 543|Community 543]]
 - [[_COMMUNITY_Community 544|Community 544]]
 - [[_COMMUNITY_Community 545|Community 545]]
-- [[_COMMUNITY_Community 546|Community 546]]
 - [[_COMMUNITY_Community 547|Community 547]]
 - [[_COMMUNITY_Community 548|Community 548]]
 - [[_COMMUNITY_Community 549|Community 549]]
@@ -557,7 +554,6 @@
 - [[_COMMUNITY_Community 553|Community 553]]
 - [[_COMMUNITY_Community 554|Community 554]]
 - [[_COMMUNITY_Community 555|Community 555]]
-- [[_COMMUNITY_Community 556|Community 556]]
 - [[_COMMUNITY_Community 557|Community 557]]
 - [[_COMMUNITY_Community 558|Community 558]]
 - [[_COMMUNITY_Community 559|Community 559]]
@@ -565,13 +561,11 @@
 - [[_COMMUNITY_Community 561|Community 561]]
 - [[_COMMUNITY_Community 562|Community 562]]
 - [[_COMMUNITY_Community 563|Community 563]]
-- [[_COMMUNITY_Community 564|Community 564]]
 - [[_COMMUNITY_Community 565|Community 565]]
 - [[_COMMUNITY_Community 566|Community 566]]
 - [[_COMMUNITY_Community 567|Community 567]]
 - [[_COMMUNITY_Community 568|Community 568]]
 - [[_COMMUNITY_Community 569|Community 569]]
-- [[_COMMUNITY_Community 570|Community 570]]
 - [[_COMMUNITY_Community 571|Community 571]]
 - [[_COMMUNITY_Community 572|Community 572]]
 - [[_COMMUNITY_Community 573|Community 573]]
@@ -1388,7 +1382,7 @@ Nodes (1): Scan background threads with no active agent; file action items for o
 Cohesion: 1.0
 Nodes (1): Inspect a single agent's tmux pane and take action based on state.      Args:
 
-### Community 91 - "Community 91"
+### Community 58 - "Community 58"
 Cohesion: 1.0
 Nodes (1): Return True if source_path has been modified since recorded_mtime.
 
@@ -1448,23 +1442,23 @@ Nodes (1): Multi-turn Sonnet coach wizard. Guides user to a well-defined project
 Cohesion: 1.0
 Nodes (1): Fire-and-forget background project assignment.      Failure contract: all except
 
-### Community 106 - "Community 106"
+### Community 61 - "Community 61"
 Cohesion: 1.0
 Nodes (1): Pure function — returns best project_id or INBOX. No DB, no threads, no side-eff
 
-### Community 107 - "Community 107"
+### Community 62 - "Community 62"
 Cohesion: 1.0
 Nodes (1): Multi-turn Sonnet coach wizard. Guides user to a well-defined project definition
 
-### Community 108 - "Community 108"
+### Community 63 - "Community 63"
 Cohesion: 1.0
 Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
 
-### Community 109 - "Community 109"
+### Community 64 - "Community 64"
 Cohesion: 1.0
 Nodes (1): Render agents panel split into Active (topic-assigned) and Pool (idle/scheduled)
 
-### Community 110 - "Community 110"
+### Community 65 - "Community 65"
 Cohesion: 1.0
 Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
 
@@ -1748,7 +1742,7 @@ Nodes (1): Pure function — returns best project_id or INBOX. No DB, no threads
 Cohesion: 1.0
 Nodes (1): Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.
 
-### Community 181 - "Community 181"
+### Community 68 - "Community 68"
 Cohesion: 1.0
 Nodes (1): Parse last_active ISO timestamp, return seconds since now, or None.
 
@@ -1992,35 +1986,43 @@ Nodes (1): Parse last_active ISO timestamp, return seconds since now, or None.
 Cohesion: 1.0
 Nodes (1): Return True if content is a junk/system message to be excluded from display.
 
-### Community 242 - "Community 242"
+### Community 70 - "Community 70"
 Cohesion: 1.0
 Nodes (1): Create tables if not exist, run schema migrations, enable WAL mode.
 
-### Community 243 - "Community 243"
+### Community 71 - "Community 71"
 Cohesion: 1.0
 Nodes (1): Apply incremental schema migrations.
 
-### Community 244 - "Community 244"
+### Community 72 - "Community 72"
 Cohesion: 1.0
 Nodes (1): Return True if session.active == '1'.
 
-### Community 245 - "Community 245"
+### Community 73 - "Community 73"
 Cohesion: 1.0
 Nodes (1): Return a value from the settings table, or default if not found.
 
-### Community 246 - "Community 246"
+### Community 74 - "Community 74"
 Cohesion: 1.0
 Nodes (1): Public helper to write a session key (for tests).
 
-### Community 247 - "Community 247"
+### Community 75 - "Community 75"
+Cohesion: 1.0
+Nodes (1): Active projects excluding INBOX — used for LLM assignment prompts.
+
+### Community 76 - "Community 76"
 Cohesion: 1.0
 Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
 
-### Community 248 - "Community 248"
+### Community 77 - "Community 77"
 Cohesion: 1.0
 Nodes (1): Look up a thread by its UUID `id`. Returns None if not found.
 
-### Community 249 - "Community 249"
+### Community 78 - "Community 78"
+Cohesion: 1.0
+Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
+
+### Community 79 - "Community 79"
 Cohesion: 1.0
 Nodes (1): Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U
 
@@ -2072,43 +2074,151 @@ Nodes (1): Open action items ordered by (priority: high > normal > low), then cr
 Cohesion: 1.0
 Nodes (1): Return True if name is a registered domain.
 
-### Community 262 - "Community 262"
+### Community 81 - "Community 81"
 Cohesion: 1.0
 Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
 
-### Community 263 - "Community 263"
+### Community 82 - "Community 82"
+Cohesion: 1.0
+Nodes (1): Return the n most-recent notifications for session_id (newest-first).
+
+### Community 83 - "Community 83"
+Cohesion: 1.0
+Nodes (1): Return notifications with id > last_id for session_id (oldest-first).
+
+### Community 84 - "Community 84"
+Cohesion: 1.0
+Nodes (1): Return the last-seen notification ID for this Claude session, or None if unseen.
+
+### Community 85 - "Community 85"
+Cohesion: 1.0
+Nodes (1): Record the last-seen notification ID for this Claude session.
+
+### Community 86 - "Community 86"
+Cohesion: 1.0
+Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
+
+### Community 87 - "Community 87"
+Cohesion: 1.0
+Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
+
+### Community 88 - "Community 88"
+Cohesion: 1.0
+Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
+
+### Community 89 - "Community 89"
+Cohesion: 1.0
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+
+### Community 90 - "Community 90"
+Cohesion: 1.0
+Nodes (1): Update status (and optionally action_item_id) for an error_events row.
+
+### Community 91 - "Community 91"
+Cohesion: 1.0
+Nodes (1): Return count of non-resolved error_events rows.
+
+### Community 92 - "Community 92"
+Cohesion: 1.0
+Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
+
+### Community 93 - "Community 93"
 Cohesion: 1.0
 Nodes (1): Unarchive: status=active, show_in_list=1, user_label preserved.
 
-### Community 264 - "Community 264"
+### Community 94 - "Community 94"
 Cohesion: 1.0
 Nodes (1): Create a new agent record. Returns the agent UUID.
 
-### Community 265 - "Community 265"
-Cohesion: 1.0
-Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
-
-### Community 266 - "Community 266"
-Cohesion: 1.0
-Nodes (1): Return all agents ordered by creation time.
-
-### Community 267 - "Community 267"
-Cohesion: 1.0
-Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
-
-### Community 268 - "Community 268"
+### Community 95 - "Community 95"
 Cohesion: 1.0
 Nodes (1): Delete an agent record.
 
-### Community 269 - "Community 269"
+### Community 96 - "Community 96"
+Cohesion: 1.0
+Nodes (1): Return all agents ordered by creation time.
+
+### Community 97 - "Community 97"
+Cohesion: 1.0
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+
+### Community 98 - "Community 98"
+Cohesion: 1.0
+Nodes (1): Delete an agent record.
+
+### Community 99 - "Community 99"
 Cohesion: 1.0
 Nodes (1): Return the best idle agent for a given thread using scoring.          Scoring (h
 
-### Community 270 - "Community 270"
+### Community 100 - "Community 100"
 Cohesion: 1.0
 Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
 
-### Community 271 - "Community 271"
+### Community 101 - "Community 101"
+Cohesion: 1.0
+Nodes (1): Return aggregated tool-usage rows, optionally filtered to one role.
+
+### Community 102 - "Community 102"
+Cohesion: 1.0
+Nodes (1): Delete all agent_tool_events rows; return number removed.
+
+### Community 103 - "Community 103"
+Cohesion: 1.0
+Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
+
+### Community 104 - "Community 104"
+Cohesion: 1.0
+Nodes (1): Compute display-priority tier for a thread. Lower = higher priority.
+
+### Community 105 - "Community 105"
+Cohesion: 1.0
+Nodes (1): Return seconds since last_active ISO timestamp, or 0 if unparseable.
+
+### Community 106 - "Community 106"
+Cohesion: 1.0
+Nodes (1): Read DB state into a frozen CockpitState. Only function that touches DB.      Op
+
+### Community 107 - "Community 107"
+Cohesion: 1.0
+Nodes (1): Return [(project_id, project_name, topics)] sorted: named projects first, INBOX
+
+### Community 108 - "Community 108"
+Cohesion: 1.0
+Nodes (1): Launch the configured agent harness in a pane.          Command construction is
+
+### Community 109 - "Community 109"
+Cohesion: 1.0
+Nodes (1): Poll capture-pane until a Claude UI readiness marker appears.          Backoff:
+
+### Community 110 - "Community 110"
+Cohesion: 1.0
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+
+### Community 111 - "Community 111"
+Cohesion: 1.0
+Nodes (1): Return all agents ordered by creation time.
+
+### Community 112 - "Community 112"
+Cohesion: 1.0
+Nodes (1): Dispatch a task to a NON-interactive harness as a one-shot process.          Sim
+
+### Community 113 - "Community 113"
+Cohesion: 1.0
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+
+### Community 114 - "Community 114"
+Cohesion: 1.0
+Nodes (1): Delete an agent record.
+
+### Community 115 - "Community 115"
+Cohesion: 1.0
+Nodes (1): Return the best idle agent for a given thread using scoring.          Scoring (h
+
+### Community 116 - "Community 116"
+Cohesion: 1.0
+Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
+
+### Community 117 - "Community 117"
 Cohesion: 1.0
 Nodes (1): Poll capture-pane until a Claude UI readiness marker appears.          Returns T
 
@@ -2268,49 +2378,817 @@ Nodes (1): Send a task prompt to an agent pane via tmux load-buffer + paste-buff
 Cohesion: 1.0
 Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
 
-### Community 311 - "Community 311"
+### Community 119 - "Community 119"
 Cohesion: 1.0
 Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
 
-### Community 312 - "Community 312"
+### Community 120 - "Community 120"
 Cohesion: 1.0
 Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
 
-### Community 313 - "Community 313"
+### Community 121 - "Community 121"
 Cohesion: 1.0
 Nodes (1): Return True if any child process of the pane has JUGGLE_IS_AGENT=1.
 
-### Community 314 - "Community 314"
+### Community 122 - "Community 122"
 Cohesion: 1.0
 Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
 
-### Community 315 - "Community 315"
+### Community 123 - "Community 123"
+Cohesion: 1.0
+Nodes (1): Return age of the agent in seconds using created_at, falling back to last_active
+
+### Community 124 - "Community 124"
 Cohesion: 1.0
 Nodes (1): Return True if source_path has been modified since recorded_mtime.
 
-### Community 316 - "Community 316"
+### Community 125 - "Community 125"
 Cohesion: 1.0
 Nodes (1): Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).
 
-### Community 317 - "Community 317"
+### Community 126 - "Community 126"
 Cohesion: 1.0
 Nodes (1): Clear cascade state after successful recovery for thread_id.
 
-### Community 318 - "Community 318"
+### Community 127 - "Community 127"
+Cohesion: 1.0
+Nodes (1): Return True if source_path has been modified since recorded_mtime.
+
+### Community 128 - "Community 128"
+Cohesion: 1.0
+Nodes (1): Record a cold-start failure for thread_id.      Returns one of:       'skip'
+
+### Community 129 - "Community 129"
+Cohesion: 1.0
+Nodes (1): Clear cascade state after successful recovery for thread_id.
+
+### Community 130 - "Community 130"
 Cohesion: 1.0
 Nodes (1): Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).
 
-### Community 319 - "Community 319"
+### Community 131 - "Community 131"
 Cohesion: 1.0
 Nodes (1): Classify agent pane state. Returns (state, key_to_send).      States: working |
 
-### Community 320 - "Community 320"
+### Community 132 - "Community 132"
 Cohesion: 1.0
 Nodes (1): Classify agent state to decide watchdog action.      Returns one of: "alive_slow
 
-### Community 321 - "Community 321"
+### Community 133 - "Community 133"
 Cohesion: 1.0
 Nodes (1): Send a harmless Enter nudge and file a request-action for user visibility.
+
+### Community 134 - "Community 134"
+Cohesion: 1.0
+Nodes (1): Return age of the agent in seconds using created_at, falling back to last_active
+
+### Community 135 - "Community 135"
+Cohesion: 1.0
+Nodes (1): Decommission a stalled/crashed agent and (if eligible) re-dispatch it.
+
+### Community 136 - "Community 136"
+Cohesion: 1.0
+Nodes (1): Scan background threads with no active agent; file action items for orphans.
+
+### Community 137 - "Community 137"
+Cohesion: 1.0
+Nodes (1): Inspect a single agent's tmux pane and take action based on state.      Args:
+
+### Community 138 - "Community 138"
+Cohesion: 1.0
+Nodes (1): Return True if source_path has been modified since recorded_mtime.
+
+### Community 139 - "Community 139"
+Cohesion: 1.0
+Nodes (1): Record a cold-start failure for thread_id.      Returns one of:       'skip'
+
+### Community 140 - "Community 140"
+Cohesion: 1.0
+Nodes (1): Clear cascade state after successful recovery for thread_id.
+
+### Community 141 - "Community 141"
+Cohesion: 1.0
+Nodes (1): Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).
+
+### Community 142 - "Community 142"
+Cohesion: 1.0
+Nodes (1): Classify agent pane state. Returns (state, key_to_send).      States: working |
+
+### Community 143 - "Community 143"
+Cohesion: 1.0
+Nodes (1): Extract first JSON object from text, stripping markdown fences.
+
+### Community 144 - "Community 144"
+Cohesion: 1.0
+Nodes (1): Returns best project_id or INBOX. db is optional; when provided, adds few-shot t
+
+### Community 145 - "Community 145"
+Cohesion: 1.0
+Nodes (1): Multi-turn Sonnet coach wizard. Guides user to a well-defined project definition
+
+### Community 146 - "Community 146"
+Cohesion: 1.0
+Nodes (1): Extract first JSON object from text, stripping markdown fences.
+
+### Community 147 - "Community 147"
+Cohesion: 1.0
+Nodes (1): Pure function — returns best project_id or INBOX. No DB, no threads, no side-eff
+
+### Community 148 - "Community 148"
+Cohesion: 1.0
+Nodes (1): Multi-turn Sonnet coach wizard. Guides user to a well-defined project definition
+
+### Community 149 - "Community 149"
+Cohesion: 1.0
+Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
+
+### Community 150 - "Community 150"
+Cohesion: 1.0
+Nodes (1): Render agents panel split into Active (topic-assigned) and Pool (idle/scheduled)
+
+### Community 151 - "Community 151"
+Cohesion: 1.0
+Nodes (1): Multi-turn Sonnet coach wizard. Guides user to a well-defined project definition
+
+### Community 152 - "Community 152"
+Cohesion: 1.0
+Nodes (1): Fire-and-forget background project assignment.      Failure contract: all except
+
+### Community 153 - "Community 153"
+Cohesion: 1.0
+Nodes (1): Pure function — returns best project_id or INBOX. No DB, no threads, no side-eff
+
+### Community 154 - "Community 154"
+Cohesion: 1.0
+Nodes (1): Multi-turn Sonnet coach wizard. Guides user to a well-defined project definition
+
+### Community 155 - "Community 155"
+Cohesion: 1.0
+Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
+
+### Community 156 - "Community 156"
+Cohesion: 1.0
+Nodes (1): Render agents panel split into Active (topic-assigned) and Pool (idle/scheduled)
+
+### Community 157 - "Community 157"
+Cohesion: 1.0
+Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
+
+### Community 158 - "Community 158"
+Cohesion: 1.0
+Nodes (1): Render agents panel split into Active (topic-assigned) and Pool (idle/scheduled)
+
+### Community 159 - "Community 159"
+Cohesion: 1.0
+Nodes (1): Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.
+
+### Community 160 - "Community 160"
+Cohesion: 1.0
+Nodes (1): Parse last_active ISO timestamp, return seconds since now, or None.
+
+### Community 161 - "Community 161"
+Cohesion: 1.0
+Nodes (1): Return True if content is a junk/system message to be excluded from display.
+
+### Community 162 - "Community 162"
+Cohesion: 1.0
+Nodes (1): Create tables if not exist, run schema migrations, enable WAL mode.
+
+### Community 163 - "Community 163"
+Cohesion: 1.0
+Nodes (1): Apply incremental schema migrations.
+
+### Community 164 - "Community 164"
+Cohesion: 1.0
+Nodes (1): Return True if session.active == '1'.
+
+### Community 165 - "Community 165"
+Cohesion: 1.0
+Nodes (1): Return a value from the settings table, or default if not found.
+
+### Community 166 - "Community 166"
+Cohesion: 1.0
+Nodes (1): Public helper to write a session key (for tests).
+
+### Community 167 - "Community 167"
+Cohesion: 1.0
+Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
+
+### Community 168 - "Community 168"
+Cohesion: 1.0
+Nodes (1): Look up a thread by its UUID `id`. Returns None if not found.
+
+### Community 169 - "Community 169"
+Cohesion: 1.0
+Nodes (1): Return threads where substantive user message delta >= threshold.          Uses
+
+### Community 170 - "Community 170"
+Cohesion: 1.0
+Nodes (1): Update any column(s) on a thread row.
+
+### Community 171 - "Community 171"
+Cohesion: 1.0
+Nodes (1): Insert a notifications_v2 row. Returns new id.
+
+### Community 172 - "Community 172"
+Cohesion: 1.0
+Nodes (1): Update last_active_at to now without changing status.
+
+### Community 173 - "Community 173"
+Cohesion: 1.0
+Nodes (1): Return all threads matching the given status. Order: last_active_at DESC.
+
+### Community 174 - "Community 174"
+Cohesion: 1.0
+Nodes (1): Active projects excluding INBOX — used for LLM assignment prompts.
+
+### Community 175 - "Community 175"
+Cohesion: 1.0
+Nodes (1): Load messages newest-first until token budget is exhausted         (token estima
+
+### Community 176 - "Community 176"
+Cohesion: 1.0
+Nodes (1): Count user messages for a thread, optionally excluding junk.
+
+### Community 177 - "Community 177"
+Cohesion: 1.0
+Nodes (1): Return the last user message and last assistant message for a thread.          R
+
+### Community 178 - "Community 178"
+Cohesion: 1.0
+Nodes (1): Return the last n Q/A pairs for a thread, most recent first.          Each item:
+
+### Community 179 - "Community 179"
+Cohesion: 1.0
+Nodes (1): Look up an agent by UUID. Returns None if not found.
+
+### Community 180 - "Community 180"
+Cohesion: 1.0
+Nodes (1): Insert a notifications_v2 row. Returns new id.
+
+### Community 181 - "Community 181"
+Cohesion: 1.0
+Nodes (1): Return the n most-recent notifications for session_id (newest-first).
+
+### Community 182 - "Community 182"
+Cohesion: 1.0
+Nodes (1): Return notifications with id > last_id for session_id (oldest-first).
+
+### Community 183 - "Community 183"
+Cohesion: 1.0
+Nodes (1): Return the last-seen notification ID for this Claude session, or None if unseen.
+
+### Community 184 - "Community 184"
+Cohesion: 1.0
+Nodes (1): Record the last-seen notification ID for this Claude session.
+
+### Community 185 - "Community 185"
+Cohesion: 1.0
+Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
+
+### Community 186 - "Community 186"
+Cohesion: 1.0
+Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
+
+### Community 187 - "Community 187"
+Cohesion: 1.0
+Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
+
+### Community 188 - "Community 188"
+Cohesion: 1.0
+Nodes (1): Create a new agent record. Returns the agent UUID.
+
+### Community 189 - "Community 189"
+Cohesion: 1.0
+Nodes (1): Return all non-resolved error_events rows, newest last.
+
+### Community 190 - "Community 190"
+Cohesion: 1.0
+Nodes (1): Return count of non-resolved error_events rows.
+
+### Community 191 - "Community 191"
+Cohesion: 1.0
+Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
+
+### Community 192 - "Community 192"
+Cohesion: 1.0
+Nodes (1): Unarchive: status=active, show_in_list=1, user_label preserved.
+
+### Community 193 - "Community 193"
+Cohesion: 1.0
+Nodes (1): Create a new agent record. Returns the agent UUID.
+
+### Community 194 - "Community 194"
+Cohesion: 1.0
+Nodes (1): Return all agents ordered by creation time.
+
+### Community 195 - "Community 195"
+Cohesion: 1.0
+Nodes (1): Return the best idle agent for a given thread using scoring.          Scoring (h
+
+### Community 196 - "Community 196"
+Cohesion: 1.0
+Nodes (1): Create the juggle tmux session + window 0 if not already running.
+
+### Community 197 - "Community 197"
+Cohesion: 1.0
+Nodes (1): Return the target string for the first window (respects base-index).
+
+### Community 198 - "Community 198"
+Cohesion: 1.0
+Nodes (1): Split the first window to create a new pane. Returns pane_id like '%5'.
+
+### Community 199 - "Community 199"
+Cohesion: 1.0
+Nodes (1): Send the 'claude' command to a pane.          Prefixes with env -u CLAUDE_PLUGIN
+
+### Community 200 - "Community 200"
+Cohesion: 1.0
+Nodes (1): Poll capture-pane until a Claude UI readiness marker appears.          Returns T
+
+### Community 201 - "Community 201"
+Cohesion: 1.0
+Nodes (1): Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1.
+
+### Community 202 - "Community 202"
+Cohesion: 1.0
+Nodes (1): Poll capture-pane until a Claude UI readiness marker appears.          Backoff:
+
+### Community 203 - "Community 203"
+Cohesion: 1.0
+Nodes (1): Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
+
+### Community 204 - "Community 204"
+Cohesion: 1.0
+Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
+
+### Community 205 - "Community 205"
+Cohesion: 1.0
+Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
+
+### Community 206 - "Community 206"
+Cohesion: 1.0
+Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
+
+### Community 207 - "Community 207"
+Cohesion: 1.0
+Nodes (1): Kill the agent's pane and remove it from the DB.
+
+### Community 208 - "Community 208"
+Cohesion: 1.0
+Nodes (1): Return True if any child process of the pane has JUGGLE_IS_AGENT=1.
+
+### Community 209 - "Community 209"
+Cohesion: 1.0
+Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
+
+### Community 210 - "Community 210"
+Cohesion: 1.0
+Nodes (1): Write a recovery snapshot; prune to last 100 per agent (DA-4 fix).
+
+### Community 211 - "Community 211"
+Cohesion: 1.0
+Nodes (1): Classify agent pane state. Returns (state, key_to_send).      States: working |
+
+### Community 212 - "Community 212"
+Cohesion: 1.0
+Nodes (1): Classify agent state to decide watchdog action.      Returns one of: "alive_slow
+
+### Community 213 - "Community 213"
+Cohesion: 1.0
+Nodes (1): Send a harmless Enter nudge and file a request-action for user visibility.
+
+### Community 214 - "Community 214"
+Cohesion: 1.0
+Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
+
+### Community 215 - "Community 215"
+Cohesion: 1.0
+Nodes (1): Render agents panel split into Active (topic-assigned) and Pool (idle/scheduled)
+
+### Community 216 - "Community 216"
+Cohesion: 1.0
+Nodes (1): Return (pid, last_exit_status) for a launchd label.
+
+### Community 217 - "Community 217"
+Cohesion: 1.0
+Nodes (1): Return seconds since last_active ISO timestamp, or 0 if unparseable.
+
+### Community 218 - "Community 218"
+Cohesion: 1.0
+Nodes (1): Convert seconds to compact age string: '12s', '5m', '2h', '3d'.
+
+### Community 219 - "Community 219"
+Cohesion: 1.0
+Nodes (1): Compute display-priority tier for a thread. Lower = higher priority.
+
+### Community 220 - "Community 220"
+Cohesion: 1.0
+Nodes (1): Return seconds since last_active ISO timestamp, or 0 if unparseable.
+
+### Community 221 - "Community 221"
+Cohesion: 1.0
+Nodes (1): Read DB state into a frozen CockpitState. Only function that touches DB.
+
+### Community 222 - "Community 222"
+Cohesion: 1.0
+Nodes (1): Fire-and-forget background project assignment.      Failure contract: all except
+
+### Community 223 - "Community 223"
+Cohesion: 1.0
+Nodes (1): Pure function — returns best project_id or INBOX. No DB, no threads, no side-eff
+
+### Community 224 - "Community 224"
+Cohesion: 1.0
+Nodes (1): Pure function — returns best project_id or INBOX. No DB, no threads, no side-eff
+
+### Community 225 - "Community 225"
+Cohesion: 1.0
+Nodes (1): Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.
+
+### Community 226 - "Community 226"
+Cohesion: 1.0
+Nodes (1): Parse last_active ISO timestamp, return seconds since now, or None.
+
+### Community 227 - "Community 227"
+Cohesion: 1.0
+Nodes (1): Return True if content is a junk/system message to be excluded from display.
+
+### Community 228 - "Community 228"
+Cohesion: 1.0
+Nodes (1): Create tables if not exist, run schema migrations, enable WAL mode.
+
+### Community 229 - "Community 229"
+Cohesion: 1.0
+Nodes (1): Apply incremental schema migrations.
+
+### Community 230 - "Community 230"
+Cohesion: 1.0
+Nodes (1): Return True if session.active == '1'.
+
+### Community 231 - "Community 231"
+Cohesion: 1.0
+Nodes (1): Return a value from the settings table, or default if not found.
+
+### Community 232 - "Community 232"
+Cohesion: 1.0
+Nodes (1): Public helper to write a session key (for tests).
+
+### Community 233 - "Community 233"
+Cohesion: 1.0
+Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
+
+### Community 234 - "Community 234"
+Cohesion: 1.0
+Nodes (1): Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U
+
+### Community 235 - "Community 235"
+Cohesion: 1.0
+Nodes (1): Load messages newest-first until token budget is exhausted         (token estima
+
+### Community 236 - "Community 236"
+Cohesion: 1.0
+Nodes (1): Update last_active_at to now without changing status.
+
+### Community 237 - "Community 237"
+Cohesion: 1.0
+Nodes (1): Return all threads matching the given status. Order: last_active_at DESC.
+
+### Community 238 - "Community 238"
+Cohesion: 1.0
+Nodes (1): Count user messages for a thread, optionally excluding junk.
+
+### Community 239 - "Community 239"
+Cohesion: 1.0
+Nodes (1): Count user messages for a thread, optionally excluding junk.
+
+### Community 240 - "Community 240"
+Cohesion: 1.0
+Nodes (1): Return the last user message and last assistant message for a thread.          R
+
+### Community 241 - "Community 241"
+Cohesion: 1.0
+Nodes (1): Return the last n Q/A pairs for a thread, most recent first.          Each item:
+
+### Community 242 - "Community 242"
+Cohesion: 1.0
+Nodes (1): Return threads where substantive user message delta >= threshold.          Uses
+
+### Community 243 - "Community 243"
+Cohesion: 1.0
+Nodes (1): Insert a notifications_v2 row. Returns new id.
+
+### Community 244 - "Community 244"
+Cohesion: 1.0
+Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
+
+### Community 245 - "Community 245"
+Cohesion: 1.0
+Nodes (1): Return notifications with id > last_id for session_id (oldest-first).
+
+### Community 246 - "Community 246"
+Cohesion: 1.0
+Nodes (1): Return the last-seen notification ID for this Claude session, or None if unseen.
+
+### Community 247 - "Community 247"
+Cohesion: 1.0
+Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
+
+### Community 248 - "Community 248"
+Cohesion: 1.0
+Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
+
+### Community 249 - "Community 249"
+Cohesion: 1.0
+Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
+
+### Community 250 - "Community 250"
+Cohesion: 1.0
+Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
+
+### Community 251 - "Community 251"
+Cohesion: 1.0
+Nodes (1): Insert new error_events row or increment count on duplicate.          Returns ne
+
+### Community 252 - "Community 252"
+Cohesion: 1.0
+Nodes (1): Update status (and optionally action_item_id) for an error_events row.
+
+### Community 253 - "Community 253"
+Cohesion: 1.0
+Nodes (1): Return all non-resolved error_events rows, newest last.
+
+### Community 254 - "Community 254"
+Cohesion: 1.0
+Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
+
+### Community 255 - "Community 255"
+Cohesion: 1.0
+Nodes (1): Unarchive: status=active, show_in_list=1, user_label preserved.
+
+### Community 256 - "Community 256"
+Cohesion: 1.0
+Nodes (1): Look up an agent by UUID. Returns None if not found.
+
+### Community 257 - "Community 257"
+Cohesion: 1.0
+Nodes (1): Return all agents ordered by creation time.
+
+### Community 258 - "Community 258"
+Cohesion: 1.0
+Nodes (1): Delete an agent record.
+
+### Community 259 - "Community 259"
+Cohesion: 1.0
+Nodes (1): Return the best idle agent for a given thread using scoring.          Scoring (h
+
+### Community 260 - "Community 260"
+Cohesion: 1.0
+Nodes (1): Return threads that are candidates for archiving.          A thread qualifies if
+
+### Community 261 - "Community 261"
+Cohesion: 1.0
+Nodes (1): Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
+
+### Community 262 - "Community 262"
+Cohesion: 1.0
+Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
+
+### Community 263 - "Community 263"
+Cohesion: 1.0
+Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
+
+### Community 264 - "Community 264"
+Cohesion: 1.0
+Nodes (1): Kill the agent's pane and remove it from the DB.
+
+### Community 265 - "Community 265"
+Cohesion: 1.0
+Nodes (1): Return True if any child process of the pane has JUGGLE_IS_AGENT=1.
+
+### Community 266 - "Community 266"
+Cohesion: 1.0
+Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
+
+### Community 267 - "Community 267"
+Cohesion: 1.0
+Nodes (1): Dismiss all open action items for thread_id. Returns count dismissed.
+
+### Community 268 - "Community 268"
+Cohesion: 1.0
+Nodes (1): Insert new error_events row or increment count on duplicate.          Returns ne
+
+### Community 269 - "Community 269"
+Cohesion: 1.0
+Nodes (1): Update status (and optionally action_item_id) for an error_events row.
+
+### Community 270 - "Community 270"
+Cohesion: 1.0
+Nodes (1): Return all non-resolved error_events rows, newest last.
+
+### Community 271 - "Community 271"
+Cohesion: 1.0
+Nodes (1): Return count of non-resolved error_events rows.
+
+### Community 272 - "Community 272"
+Cohesion: 1.0
+Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
+
+### Community 273 - "Community 273"
+Cohesion: 1.0
+Nodes (1): Unarchive: status=active, show_in_list=1, user_label preserved.
+
+### Community 274 - "Community 274"
+Cohesion: 1.0
+Nodes (1): Create a new agent record. Returns the agent UUID.
+
+### Community 275 - "Community 275"
+Cohesion: 1.0
+Nodes (1): Look up an agent by UUID. Returns None if not found.
+
+### Community 276 - "Community 276"
+Cohesion: 1.0
+Nodes (1): Return all agents ordered by creation time.
+
+### Community 277 - "Community 277"
+Cohesion: 1.0
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+
+### Community 278 - "Community 278"
+Cohesion: 1.0
+Nodes (1): Delete an agent record.
+
+### Community 279 - "Community 279"
+Cohesion: 1.0
+Nodes (1): Return the best idle agent for a given thread using scoring.          Scoring (h
+
+### Community 280 - "Community 280"
+Cohesion: 1.0
+Nodes (1): record-pending-decision should append to open_questions.
+
+### Community 281 - "Community 281"
+Cohesion: 1.0
+Nodes (1): clear-pending-decision should remove entries by tool_use_id.
+
+### Community 282 - "Community 282"
+Cohesion: 1.0
+Nodes (1): Hooks should silently skip if user is in main thread.
+
+### Community 283 - "Community 283"
+Cohesion: 1.0
+Nodes (1): Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ.
+
+### Community 284 - "Community 284"
+Cohesion: 1.0
+Nodes (1): Parse last_active ISO timestamp, return seconds since now, or None.
+
+### Community 285 - "Community 285"
+Cohesion: 1.0
+Nodes (1): Return True if content is a junk/system message to be excluded from display.
+
+### Community 286 - "Community 286"
+Cohesion: 1.0
+Nodes (1): Create tables if not exist, run schema migrations, enable WAL mode.
+
+### Community 287 - "Community 287"
+Cohesion: 1.0
+Nodes (1): Return True if session.active == '1'.
+
+### Community 288 - "Community 288"
+Cohesion: 1.0
+Nodes (1): Return a value from the settings table, or default if not found.
+
+### Community 289 - "Community 289"
+Cohesion: 1.0
+Nodes (1): Public helper to write a session key (for tests).
+
+### Community 290 - "Community 290"
+Cohesion: 1.0
+Nodes (1): Create a new thread. Returns the UUID of the new thread.          Assigns next a
+
+### Community 291 - "Community 291"
+Cohesion: 1.0
+Nodes (1): Look up a thread by its UUID `id`. Returns None if not found.
+
+### Community 292 - "Community 292"
+Cohesion: 1.0
+Nodes (1): Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers U
+
+### Community 293 - "Community 293"
+Cohesion: 1.0
+Nodes (1): Update any column(s) on a thread row.
+
+### Community 294 - "Community 294"
+Cohesion: 1.0
+Nodes (1): Transition a thread to a new state ({'active','running','closed','archived'}).
+
+### Community 295 - "Community 295"
+Cohesion: 1.0
+Nodes (1): Update last_active_at to now without changing status.
+
+### Community 296 - "Community 296"
+Cohesion: 1.0
+Nodes (1): Return all threads matching the given status. Order: last_active_at DESC.
+
+### Community 297 - "Community 297"
+Cohesion: 1.0
+Nodes (1): Return the last user message and last assistant message for a thread.          R
+
+### Community 298 - "Community 298"
+Cohesion: 1.0
+Nodes (1): Return the last n Q/A pairs for a thread, most recent first.          Each item:
+
+### Community 299 - "Community 299"
+Cohesion: 1.0
+Nodes (1): Return threads where substantive user message delta >= threshold.          Uses
+
+### Community 300 - "Community 300"
+Cohesion: 1.0
+Nodes (1): Insert a notifications_v2 row. Returns new id.
+
+### Community 301 - "Community 301"
+Cohesion: 1.0
+Nodes (1): Delete notifications_v2 whose session_id != current. Returns rows deleted.
+
+### Community 302 - "Community 302"
+Cohesion: 1.0
+Nodes (1): Open action items ordered by (priority: high > normal > low), then created_at DE
+
+### Community 303 - "Community 303"
+Cohesion: 1.0
+Nodes (1): Return True if name is a registered domain.
+
+### Community 304 - "Community 304"
+Cohesion: 1.0
+Nodes (1): Set status='archived', show_in_list=0. Preserves user_label.
+
+### Community 305 - "Community 305"
+Cohesion: 1.0
+Nodes (1): Unarchive: status=active, show_in_list=1, user_label preserved.
+
+### Community 306 - "Community 306"
+Cohesion: 1.0
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+
+### Community 307 - "Community 307"
+Cohesion: 1.0
+Nodes (1): Return all agents ordered by creation time.
+
+### Community 308 - "Community 308"
+Cohesion: 1.0
+Nodes (1): Update any column(s) on an agent row. Serializes list values to JSON.
+
+### Community 309 - "Community 309"
+Cohesion: 1.0
+Nodes (1): Delete an agent record.
+
+### Community 310 - "Community 310"
+Cohesion: 1.0
+Nodes (1): Return the best idle agent for a given thread using scoring.          Scoring (h
+
+### Community 311 - "Community 311"
+Cohesion: 1.0
+Nodes (1): Poll capture-pane until a Claude UI readiness marker appears.          Returns T
+
+### Community 312 - "Community 312"
+Cohesion: 1.0
+Nodes (1): Verify a pasted prompt was submitted; retry Enter if stuck.          Success: a
+
+### Community 313 - "Community 313"
+Cohesion: 1.0
+Nodes (1): Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
+
+### Community 314 - "Community 314"
+Cohesion: 1.0
+Nodes (1): Spawn a new claude pane, register in DB, return agent dict.          db must be
+
+### Community 315 - "Community 315"
+Cohesion: 1.0
+Nodes (1): Return Unix timestamp of pane's last activity, or 0 on failure.
+
+### Community 316 - "Community 316"
+Cohesion: 1.0
+Nodes (1): Kill the agent's pane and remove it from the DB.
+
+### Community 317 - "Community 317"
+Cohesion: 1.0
+Nodes (1): Return True if any child process of the pane has JUGGLE_IS_AGENT=1.
+
+### Community 318 - "Community 318"
+Cohesion: 1.0
+Nodes (1): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose
+
+### Community 319 - "Community 319"
+Cohesion: 1.0
+Nodes (1): Recursively merge override into base. Returns a new dict.
+
+### Community 320 - "Community 320"
+Cohesion: 1.0
+Nodes (1): Return merged settings dict. Re-reads config on every call (no cache).      Load
+
+### Community 321 - "Community 321"
+Cohesion: 1.0
+Nodes (1): Shortcut: get a top-level setting value.
 
 ### Community 322 - "Community 322"
 Cohesion: 1.0
@@ -2506,7 +3384,7 @@ Nodes (1): Return True if session.active == '1'.
 
 ### Community 370 - "Community 370"
 Cohesion: 1.0
-Nodes (1): Update last_active_at to now without changing status.
+Nodes (1): Shortcut: get a top-level setting value.
 
 ### Community 371 - "Community 371"
 Cohesion: 1.0
@@ -4758,7 +5636,7 @@ Nodes (1): Clear pending decisions by tool_use_id prefix.
 
 ### Community 939 - "Community 939"
 Cohesion: 1.0
-Nodes (1): Entry point called by juggle_cli.py.
+Nodes (1): Summarize topics, decisions, blockers, and agent activity since cutoff.
 
 ### Community 940 - "Community 940"
 Cohesion: 1.0
@@ -4838,11 +5716,11 @@ Nodes (1): Render topics panel.      Wide: one row per topic with glyph + [label
 
 ### Community 959 - "Community 959"
 Cohesion: 1.0
-Nodes (1): Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)
+Nodes (1): Render the topics tree as a string. Returns 'No topics.' if no visible threads.
 
 ### Community 960 - "Community 960"
 Cohesion: 1.0
-Nodes (1): Render agents panel. Single-line per agent: glyph + [label] + id_short + role +
+Nodes (1): Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou
 
 ### Community 961 - "Community 961"
 Cohesion: 1.0
@@ -5691,7 +6569,7 @@ Nodes (1): Start the cockpit refresh loop using Rich Live.
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 369`** (1 nodes): `Return True if session.active == '1'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 370`** (1 nodes): `Update last_active_at to now without changing status.`
+- **Thin community `Community 370`** (1 nodes): `Shortcut: get a top-level setting value.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 371`** (1 nodes): `Public helper to write a session key (for tests).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -6817,7 +7695,7 @@ Nodes (1): Start the cockpit refresh loop using Rich Live.
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 938`** (1 nodes): `Clear pending decisions by tool_use_id prefix.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 939`** (1 nodes): `Entry point called by juggle_cli.py.`
+- **Thin community `Community 939`** (1 nodes): `Summarize topics, decisions, blockers, and agent activity since cutoff.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 940`** (1 nodes): `Recursively merge override into base. Returns a new dict.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -6857,9 +7735,9 @@ Nodes (1): Start the cockpit refresh loop using Rich Live.
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 958`** (1 nodes): `Render topics panel.      Wide: one row per topic with glyph + [label] + title.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 959`** (1 nodes): `Render actions panel.      Actions are expected pre-sorted (tier asc, age desc)`
+- **Thin community `Community 959`** (1 nodes): `Render the topics tree as a string. Returns 'No topics.' if no visible threads.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 960`** (1 nodes): `Render agents panel. Single-line per agent: glyph + [label] + id_short + role +`
+- **Thin community `Community 960`** (1 nodes): `Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 961`** (1 nodes): `Populate layout panels from state. Mutates layout in place.      If state is Non`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
