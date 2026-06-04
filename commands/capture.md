@@ -140,8 +140,11 @@ Invoke `juggle:remember` with the key facts.
 | real-estate, property, apartment, lease, mortgage | Real-estate project TODO |
 | AI-engineering, pipeline, embedding, model-training | AI engineering project TODO |
 | automation, script, launchd, cron, scheduled-task | Automation project TODO |
+| trading-edge, trading edge, news-ingest, news adapter, news-adapter, subreddit, bb-browser, backtest, news-insights | trading-edge repo → `/Users/mikechen/github/trading-edge/TODO.md` |
 
 **D2 rule:** Only route to a project TODO for sustained/ongoing work. One-off tasks or notes without a clear project context → `${INBOX}`.
+
+**Non-vault repo TODOs** (absolute paths like `/Users/mikechen/github/.../TODO.md`): append the task the same way, but SKIP the Obsidian-open step — open with `open -a neovide <path>` instead.
 
 **Step 4 — For Notes only:** Search the target file semantically to find a parent task to nest under.
 
