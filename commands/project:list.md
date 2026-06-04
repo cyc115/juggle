@@ -1,13 +1,13 @@
 ---
 name: project:list
-description: List all Juggle projects with ID, name, objective, and thread count
+description: List all Juggle projects (including closed) with ID, name, status, last-updated, thread count, and summary
 allowed-tools: Bash
 ---
 
-# /juggle:project:list — List Juggle Projects
+# /juggle:project:list — List All Juggle Projects
 
 ```bash
 uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py project list
 ```
 
-Report: project ID, name, objective (1 line), thread count. Table format.
+Shows ALL projects including closed. Columns: ID, name, status, last-updated, thread count, 1-line summary. Closed projects shown dimmed.

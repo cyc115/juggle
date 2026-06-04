@@ -156,23 +156,108 @@ def infer_project_id(topic: str, projects: list[dict], db=None) -> str:
 # CLI command handlers
 # ---------------------------------------------------------------------------
 
+def _resolve_project(db, query: str, include_closed: bool = False) -> dict | None:
+    """Find a project by exact id or name substring. Returns None if not found."""
+    projects = db.list_projects_with_state() if include_closed else db.list_projects()
+    # exact id match first
+    for p in projects:
+        if p["id"].lower() == query.lower():
+            return p
+    # substring match on name
+    ql = query.lower()
+    for p in projects:
+        if ql in p["name"].lower():
+            return p
+    return None
+
+
 def cmd_project_list(args):
     db = get_db(init=True)
-    projects = db.list_projects()
+    projects = db.list_projects_with_state()
     if _console:
-        table = Table(title="Projects")
+        table = Table(title="Projects (all)")
         table.add_column("ID", style="bold cyan")
         table.add_column("Name")
         table.add_column("Status")
+        table.add_column("Last Active")
         table.add_column("Threads", justify="right")
-        for p in sorted(projects, key=lambda x: (x["id"] == "INBOX", x["id"])):
-            count = db.count_threads_by_project(p["id"])
-            table.add_row(p["id"], p["name"], p["status"], str(count))
+        table.add_column("Summary")
+        for p in sorted(projects, key=lambda x: (x["id"] == "INBOX", x.get("status") == "closed", x["id"])):
+            summary_line = (p.get("summary") or "")[:60]
+            last = (p.get("last_active") or "")[:16]
+            style = "dim" if p.get("status") == "closed" else ""
+            table.add_row(
+                p["id"], p["name"], p["status"], last,
+                str(p.get("thread_count", 0)), summary_line,
+                style=style,
+            )
         _console.print(table)
     else:
-        for p in sorted(projects, key=lambda x: (x["id"] == "INBOX", x["id"])):
-            count = db.count_threads_by_project(p["id"])
-            print(f"{p['id']:<8} {p['name']:<30} {p['status']:<10} {count} threads")
+        for p in sorted(projects, key=lambda x: (x["id"] == "INBOX", x.get("status") == "closed", x["id"])):
+            summary_line = (p.get("summary") or "")[:60]
+            last = (p.get("last_active") or "")[:16]
+            closed_tag = " [closed]" if p.get("status") == "closed" else ""
+            print(
+                f"{p['id']:<8} {p['name']:<25} {p['status']:<8} {last:<16} "
+                f"{p.get('thread_count', 0):>3} threads  {summary_line}{closed_tag}"
+            )
+
+
+def cmd_project_close(args):
+    db = get_db(init=True)
+    query = " ".join(args.project_id) if isinstance(args.project_id, list) else args.project_id
+    p = _resolve_project(db, query, include_closed=False)
+    if not p:
+        print(f"Project not found (active): {query}")
+        sys.exit(1)
+    if p["id"] == INBOX_PROJECT_ID:
+        print("Cannot close the INBOX project.")
+        sys.exit(1)
+
+    print(f"Summarizing project {p['id']} ({p['name']})…")
+    from juggle_project_summary import summarize_project
+    from juggle_settings import get_settings
+    sonnet = get_settings().get("title_gen", {}).get("sonnet_model", "claude-sonnet-4-6")
+
+    def _llm(prompt: str) -> str:
+        try:
+            res = subprocess.run(
+                ["claude", "-p", prompt, "--model", sonnet],
+                capture_output=True, text=True, timeout=120,
+            )
+            return res.stdout.strip() if res.returncode == 0 else ""
+        except Exception:
+            return ""
+
+    proj_summary, thread_summaries = summarize_project(db, p["id"], llm_fn=_llm)
+    db.close_project(p["id"], proj_summary, thread_summaries)
+
+    print(f"\nProject {p['id']} ({p['name']}) closed.")
+    if proj_summary:
+        print(f"Summary: {proj_summary}")
+    print(f"\nRestore with: project open {p['id']}")
+
+
+def cmd_project_open(args):
+    db = get_db(init=True)
+    query = " ".join(args.project_id) if isinstance(args.project_id, list) else args.project_id
+    p = _resolve_project(db, query, include_closed=True)
+    if not p:
+        print(f"Project not found: {query}")
+        sys.exit(1)
+    if p.get("status") != "closed":
+        print(f"Project {p['id']} is not closed (status: {p['status']}).")
+        sys.exit(1)
+
+    db.open_project(p["id"])
+    threads = db.get_threads_by_project(p["id"])
+    print(f"Project {p['id']} ({p['name']}) restored.")
+    if p.get("summary"):
+        print(f"Summary: {p['summary']}")
+    if threads:
+        print(f"\nRestored topics ({len(threads)}):")
+        for t in threads:
+            print(f"  [{t['user_label']}] {t.get('title') or t['topic']}")
 
 
 def cmd_project_show(args):

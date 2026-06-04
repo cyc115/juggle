@@ -172,8 +172,8 @@
     "hash": "2ff808698985a3028e8cfd7aeb558892"
   },
   "/Users/mikechen/github/juggle/tests/test_projects.py": {
-    "mtime": 1780543147.5065212,
-    "hash": "3327685d7ec62b7c13c3e0b54d972815"
+    "mtime": 1780546775.7528756,
+    "hash": "fe2e1a854bb41a79c95b4dc58387f2c8"
   },
   "/Users/mikechen/github/juggle/tests/test_vault_commands.py": {
     "mtime": 1780179114.7680802,
@@ -276,8 +276,8 @@
     "hash": "789fa6f1c05f30097c3ae983896a2a99"
   },
   "/Users/mikechen/github/juggle/tests/test_projects_db.py": {
-    "mtime": 1780543147.5067103,
-    "hash": "357863f19d919af5117d4ebca1cfa262"
+    "mtime": 1780546775.7530925,
+    "hash": "a428b0f77341233eba4b407cbad18067"
   },
   "/Users/mikechen/github/juggle/tests/schedule/conftest.py": {
     "mtime": 1779746441.9789374,
@@ -340,8 +340,8 @@
     "hash": "2fb7b2f835c40c323af32040497ca86b"
   },
   "/Users/mikechen/github/juggle/src/juggle_db.py": {
-    "mtime": 1780543147.5062828,
-    "hash": "267304228b2c6c2bf3f21a9a0426cfd5"
+    "mtime": 1780546775.752445,
+    "hash": "9c37e9e593075e8174fd265667e2d84d"
   },
   "/Users/mikechen/github/juggle/src/juggle_cmd_threads.py": {
     "mtime": 1780541530.4606767,
@@ -412,8 +412,8 @@
     "hash": "b650dc0ba1902eb4d7fc7caf9476c871"
   },
   "/Users/mikechen/github/juggle/src/juggle_cmd_projects.py": {
-    "mtime": 1780543147.505988,
-    "hash": "e4a559cf9608d913fa401f4b43d00878"
+    "mtime": 1780546775.7502973,
+    "hash": "959314c5c80f6690d56b698a7a99b841"
   },
   "/Users/mikechen/github/juggle/src/juggle_cockpit_model.py": {
     "mtime": 1780541530.460977,
@@ -608,7 +608,7 @@
     "hash": "d96eaa5c2447d7d8c3e142b447659c6a"
   },
   "/Users/mikechen/github/juggle/docs/superpowers/specs/2026-06-03-classifier-correction-learning-plan.md": {
-    "mtime": 1780541865.3313036,
+    "mtime": 1780546775.743851,
     "hash": "6499af34c6baee7895e0eb15302388ec"
   },
   "/Users/mikechen/github/juggle/docs/superpowers/specs/2026-05-17-watchdog-test-harness.md": {
@@ -644,8 +644,8 @@
     "hash": "e046f944d52b764527a160098458d337"
   },
   "/Users/mikechen/github/juggle/commands/capture.md": {
-    "mtime": 1780248739.3943942,
-    "hash": "ff2f31e75fa1ca81019b9be533fdee90"
+    "mtime": 1780549199.3201957,
+    "hash": "385d17788d5cc81dd52a556f84bf1519"
   },
   "/Users/mikechen/github/juggle/commands/doctor.md": {
     "mtime": 1780179114.7622643,
@@ -688,8 +688,8 @@
     "hash": "eee93cf98c289405d032f5845165dadc"
   },
   "/Users/mikechen/github/juggle/commands/toggle-autopilot.md": {
-    "mtime": 1780179114.7636223,
-    "hash": "cd8c0b9e9039169b490895def25756b0"
+    "mtime": 1780551634.3991988,
+    "hash": "20425db3f30b2fd10ee7dbd92f594d52"
   },
   "/Users/mikechen/github/juggle/commands/project:show.md": {
     "mtime": 1780295674.728939,

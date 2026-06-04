@@ -192,6 +192,8 @@ CREATE TABLE IF NOT EXISTS projects (
   success_criteria TEXT NOT NULL DEFAULT '[]',
   out_of_scope     TEXT DEFAULT '',
   status           TEXT NOT NULL DEFAULT 'active',
+  summary          TEXT DEFAULT '',
+  closed_at        TEXT,
   created_at       TEXT NOT NULL,
   last_active      TEXT NOT NULL
 );
@@ -714,6 +716,18 @@ class JuggleDB:
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 28 (project_corrections) skipped: %s", e)
 
+        # Migration 29: summary + closed_at on projects (project close/open feature)
+        proj_cols = {r["name"] for r in conn.execute("PRAGMA table_info(projects)").fetchall()}
+        try:
+            if "summary" not in proj_cols:
+                conn.execute("ALTER TABLE projects ADD COLUMN summary TEXT DEFAULT ''")
+            if "closed_at" not in proj_cols:
+                conn.execute("ALTER TABLE projects ADD COLUMN closed_at TEXT")
+            conn.commit()
+            _log.info("Migration 29: summary + closed_at added to projects")
+        except sqlite3.OperationalError as e:
+            _log.warning("Migration 29 (projects summary/closed_at) skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -940,16 +954,74 @@ class JuggleDB:
     def list_projects(self, include_archived: bool = False) -> list[dict]:
         with self._connect() as conn:
             q = ("SELECT * FROM projects" if include_archived
-                 else "SELECT * FROM projects WHERE status != 'archived'")
+                 else "SELECT * FROM projects WHERE status NOT IN ('archived', 'closed')")
             return [dict(r) for r in conn.execute(q).fetchall()]
 
     def get_active_projects(self) -> list[dict]:
         """Active projects excluding INBOX — used for LLM assignment prompts."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM projects WHERE status = 'active' AND id != 'INBOX' ORDER BY created_at"
+                "SELECT * FROM projects WHERE status NOT IN ('archived', 'closed') "
+                "AND id != 'INBOX' ORDER BY created_at"
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def list_projects_with_state(self) -> list[dict]:
+        """All projects including closed, with thread_count. Used for project list command."""
+        with self._connect() as conn:
+            projects = [dict(r) for r in conn.execute(
+                "SELECT * FROM projects ORDER BY created_at"
+            ).fetchall()]
+            result = []
+            for p in projects:
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM threads WHERE project_id=?", (p["id"],)
+                ).fetchone()[0]
+                result.append({**p, "thread_count": count})
+        return result
+
+    def close_project(self, project_id: str, project_summary: str, thread_summaries: dict) -> None:
+        """Close a project: hide threads, write summaries, release busy agents. Guards INBOX."""
+        if project_id == INBOX_PROJECT_ID:
+            raise ValueError("Cannot close the INBOX project")
+        now = _now()
+        with self._connect() as conn:
+            thread_rows = conn.execute(
+                "SELECT id FROM threads WHERE project_id=?", (project_id,)
+            ).fetchall()
+            thread_ids = [r["id"] for r in thread_rows]
+
+            conn.execute(
+                "UPDATE projects SET status='closed', closed_at=?, summary=? WHERE id=?",
+                (now, project_summary, project_id),
+            )
+            for tid in thread_ids:
+                summary = thread_summaries.get(tid, "")
+                conn.execute(
+                    "UPDATE threads SET show_in_list=0, summary=? WHERE id=?",
+                    (summary, tid),
+                )
+            if thread_ids:
+                placeholders = ",".join("?" * len(thread_ids))
+                conn.execute(
+                    f"UPDATE agents SET status='idle', assigned_thread=NULL "
+                    f"WHERE assigned_thread IN ({placeholders}) AND status='busy'",
+                    thread_ids,
+                )
+            conn.commit()
+
+    def open_project(self, project_id: str) -> None:
+        """Restore a closed project: set active, clear closed_at, show all its threads."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE projects SET status='active', closed_at=NULL WHERE id=?",
+                (project_id,),
+            )
+            conn.execute(
+                "UPDATE threads SET show_in_list=1 WHERE project_id=?",
+                (project_id,),
+            )
+            conn.commit()
 
     def update_project(self, project_id: str, **kwargs) -> None:
         allowed = {"name", "objective", "success_criteria", "out_of_scope", "status", "last_active"}

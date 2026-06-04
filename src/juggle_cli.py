@@ -134,6 +134,8 @@ from juggle_cmd_projects import (
     cmd_project_edit,
     cmd_project_create,
     cmd_project_critique,
+    cmd_project_close,
+    cmd_project_open,
 )
 
 
@@ -807,6 +809,14 @@ def main():
     _p = _ps.add_parser("critique")
     _p.add_argument("project_id")
     _p.set_defaults(func=cmd_project_critique)
+
+    _p = _ps.add_parser("close")
+    _p.add_argument("project_id", nargs="+")
+    _p.set_defaults(func=cmd_project_close)
+
+    _p = _ps.add_parser("open")
+    _p.add_argument("project_id", nargs="+")
+    _p.set_defaults(func=cmd_project_open)
 
     args = parser.parse_args()
 
