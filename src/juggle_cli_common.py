@@ -19,9 +19,6 @@ DB_PATH = (
     else _DEFAULT_DB_PATH
 )
 
-# Env var already folded into get_settings(); keep constant for importers (juggle_cmd_agents etc.)
-JUGGLE_IDLE_THRESHOLD_SECS: int = _get_settings()["tmux"]["agent_idle_detection_secs"]
-
 JUGGLE_CONFIG_PATH = Path(_get_settings()["paths"]["config_dir"]) / "config.json"
 
 
