@@ -26,6 +26,14 @@ F="$HOME/.juggle/autopilot"; if [ -f "$F" ]; then rm "$F"; echo "AUTOPILOT OFF";
 4. Self-improve: when a failure mode recurs, append a one-line rule under "Learned rules" so it can't recur.
 5. Finish only when every feature is implemented and verified (or a true escalation hits). Report the outcome.
 
+## Status loop (auto-scheduled while work is pending)
+
+While autopilot is ON and ANY task is still incomplete (a running/queued agent, an unverified feature, or pending backlog), maintain a self-paced status loop via `ScheduleWakeup`. Each tick:
+1. Check status: `list-agents`, open threads, action items, and any background jobs (backfill, etc.).
+2. Recover stalls — the loop is the safety net for SILENT stalls (jammed panes do not self-notify). For any stuck/jammed/dead agent apply the send-task recovery rules above (capture the pane; if a paste sits unsubmitted send `Enter`; if wedged reset with `Escape`/`C-c`/`C-u` and re-dispatch; reuse a warm agent or spawn fresh and verify boot+submission).
+3. Push execution: dispatch any queued or now-unblocked work (idempotently — check a thread isn't already running before dispatching); verify newly-completed work.
+4. If any task remains: call `ScheduleWakeup` again (~270s during active work to stay cache-warm; ~1200s when merely waiting on a long job). If EVERYTHING is implemented AND verified (or a true escalation hits): STOP — do not reschedule — and report.
+
 ## Learned rules
 <!-- Claude appends concise, durable rules here as it hits and fixes issues. -->
 - **send-task can silently fail to submit:** if the target pane's editor is in `-- VISUAL --` (or any non-insert) mode, the pasted prompt sits in the input and Enter is swallowed — the agent shows "busy"/stalled but never runs. After every send-task, capture the pane; if it didn't enter a running state, send `Escape` + `C-c` + `C-u` to reset to insert mode, then re-send. Prefer reusing a warm idle agent over a cold spawn (cold spawns get reaped mid-boot).

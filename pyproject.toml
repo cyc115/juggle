@@ -7,7 +7,7 @@
 # version here is a placeholder and is not published.
 [project]
 name = "juggle"
-version = "1.43.0"
+version = "1.43.1"
 description = "Multi-topic conversation orchestrator (Claude Code plugin) — test/dev environment."
 requires-python = ">=3.12,<3.14"
 dependencies = [
