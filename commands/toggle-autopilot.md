@@ -28,3 +28,4 @@ F="$HOME/.juggle/autopilot"; if [ -f "$F" ]; then rm "$F"; echo "AUTOPILOT OFF";
 
 ## Learned rules
 <!-- Claude appends concise, durable rules here as it hits and fixes issues. -->
+- **send-task can silently fail to submit:** if the target pane's editor is in `-- VISUAL --` (or any non-insert) mode, the pasted prompt sits in the input and Enter is swallowed — the agent shows "busy"/stalled but never runs. After every send-task, capture the pane; if it didn't enter a running state, send `Escape` + `C-c` + `C-u` to reset to insert mode, then re-send. Prefer reusing a warm idle agent over a cold spawn (cold spawns get reaped mid-boot).
