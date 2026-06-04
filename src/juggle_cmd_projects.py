@@ -89,32 +89,58 @@ def _extract_json(text: str) -> dict | None:
     return None
 
 
+def _build_classifier_prompt(
+    topic: str,
+    projects: list[dict],
+    positives_by_project: dict[str, list[dict]],
+    corrections: list[dict],
+) -> str:
+    """Pure function: build the LLM classification prompt from structured inputs."""
+    project_parts = []
+    for p in projects:
+        part = f'{p["id"]}: {p["name"]} — {p["objective"]}'
+        examples = [t["topic"] for t in positives_by_project.get(p["id"], []) if t.get("topic")]
+        if examples:
+            part += f' | confirmed examples: {"; ".join(examples)}'
+        project_parts.append(part)
+
+    prompt = (
+        f'Topic: "{topic}". '
+        f'Projects: [{"; ".join(project_parts)}]. '
+    )
+    if corrections:
+        correction_parts = [
+            f'"{c["topic"]}" -> {c["to_project"]}'
+            for c in corrections
+        ]
+        prompt += f'Past corrections (reassigned by user): [{"; ".join(correction_parts)}]. '
+    prompt += (
+        'Which project fits best? '
+        'Return ONLY valid JSON with no explanation, no markdown fences: {"project_id": "<id_or_INBOX>"}'
+    )
+    return prompt
+
+
 def infer_project_id(topic: str, projects: list[dict], db=None) -> str:
-    """Returns best project_id or INBOX. db is optional; when provided, adds few-shot thread examples."""
+    """Returns best project_id or INBOX. db is optional; when provided, adds few-shot examples + corrections."""
     if not projects:
         return INBOX_PROJECT_ID
     valid_ids = {p["id"] for p in projects} | {INBOX_PROJECT_ID}
 
-    project_parts = []
-    for p in projects:
-        part = f'{p["id"]}: {p["name"]} — {p["objective"]}'
-        if db:
-            try:
-                existing = db.get_threads_by_project(p["id"])
-                topics = [t["topic"] for t in existing if t.get("topic")][:5]
-                if topics:
-                    part += f' | examples: {"; ".join(topics)}'
-            except Exception:
-                pass
-        project_parts.append(part)
+    positives_by_project: dict[str, list[dict]] = {}
+    corrections: list[dict] = []
+    if db:
+        try:
+            for p in projects:
+                positives_by_project[p["id"]] = db.get_human_assigned_threads_by_project(p["id"], limit=5)
+        except Exception:
+            pass
+        try:
+            corrections = db.get_recent_corrections(limit=5)
+        except Exception:
+            pass
 
-    project_list = "; ".join(project_parts)
-    prompt = (
-        f'Topic: "{topic}". '
-        f'Projects: [{project_list}]. '
-        f'Which project fits best? '
-        f'Return ONLY valid JSON with no explanation, no markdown fences: {{"project_id": "<id_or_INBOX>"}}'
-    )
+    prompt = _build_classifier_prompt(topic, projects, positives_by_project, corrections)
     raw = _cheap_llm_call(prompt, timeout=15)
     if not raw:
         return INBOX_PROJECT_ID
