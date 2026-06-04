@@ -489,25 +489,6 @@ def cmd_close_thread(args):
     print(f"Thread {label} ({thread['topic']}) closed.{suffix}")
 
 
-def _sort_key_for_topic(thread: dict, current_id: str, db) -> tuple:
-    """Return a sort key tuple for cmd_show_topics ordering."""
-    tid = thread["id"]
-    emoji = get_thread_state(db, thread, current_id)
-
-    if emoji == "⏸️":
-        tier = 0
-    elif emoji == "🏃\u200d♂️":
-        tier = 1
-    elif tid == current_id:
-        tier = 2
-    elif emoji in ("💤", "✅", "❌"):
-        tier = 3
-    else:
-        tier = 2  # active but not current
-
-    return (tier,)
-
-
 def _cleanup_orphaned_threads(db) -> None:
     """Find 'running' threads with no busy agent; convert each to closed + action_item."""
     with db._connect() as conn:
