@@ -23,6 +23,7 @@ from juggle_tmux import JuggleTmuxManager
 from juggle_watchdog import (
     _classify_agent_state,
     _is_source_stale,
+    _kill_existing_watchdog_from_pidfile,
     check_orphaned_threads,
     classify_pane_state,
     execute_recovery,
@@ -38,33 +39,24 @@ _WATCHDOG_SRC = Path(__file__).parent.parent / "src" / "juggle_watchdog.py"
 
 _POLL_INTERVAL = int(os.environ.get("JUGGLE_WATCHDOG_INTERVAL", "30"))
 
+# Single authoritative pidfile — no more duplicate config_dir/watchdog.pid
 SINGLETON_PID_FILE = Path.home() / ".juggle" / "watchdog.pid"
-
-
-def _kill_existing_watchdog():
-    if not SINGLETON_PID_FILE.exists():
-        return
-    try:
-        old_pid = int(SINGLETON_PID_FILE.read_text().strip())
-        if old_pid == os.getpid():
-            return
-        os.kill(old_pid, signal.SIGTERM)
-        for _ in range(20):
-            time.sleep(0.1)
-            try:
-                os.kill(old_pid, 0)
-            except ProcessLookupError:
-                break
-        else:
-            os.kill(old_pid, signal.SIGKILL)
-        logging.info("watchdog: killed previous instance (PID %d)", old_pid)
-    except (ValueError, ProcessLookupError, PermissionError):
-        pass
 
 
 def _write_singleton_pid():
     SINGLETON_PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SINGLETON_PID_FILE.write_text(str(os.getpid()))
+    # Atomic write via rename so concurrent readers never see a partial file
+    tmp = SINGLETON_PID_FILE.with_suffix(".pid.tmp")
+    tmp.write_text(str(os.getpid()))
+    tmp.replace(SINGLETON_PID_FILE)
+    # Re-read and verify we own the file (guard against race with another start)
+    try:
+        claimed = int(SINGLETON_PID_FILE.read_text().strip())
+        if claimed != os.getpid():
+            logging.warning("watchdog: pidfile claimed by PID %d after write — exiting", claimed)
+            sys.exit(1)
+    except (ValueError, OSError):
+        pass
 
 
 def _cleanup_singleton_pid():
@@ -204,13 +196,9 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
 
 
 def main() -> None:
-    _kill_existing_watchdog()
+    _kill_existing_watchdog_from_pidfile(SINGLETON_PID_FILE)
     _write_singleton_pid()
     atexit.register(_cleanup_singleton_pid)
-
-    config_dir = Path(get_settings()["paths"]["config_dir"])
-    pid_file = config_dir / "watchdog.pid"
-    pid_file.write_text(str(os.getpid()))
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
     signal.signal(signal.SIGINT, _handle_sigterm)
@@ -242,7 +230,7 @@ def main() -> None:
                     pass
             time.sleep(_POLL_INTERVAL)
     finally:
-        pid_file.unlink(missing_ok=True)
+        _cleanup_singleton_pid()
         _log.info("Watchdog stopped.")
 
 

@@ -137,9 +137,12 @@ def test_full_stall_recovery_cycle(db, tmp_path):
     assert new["status"] == "busy"
     snaps = list(recovery_dir.glob(f"{agent_id}-*.txt"))
     assert len(snaps) == 1
+    # Successful auto-recovery emits notifications, not action items
     items = db.get_open_action_items()
-    assert len(items) == 2
-    assert {it["priority"] for it in items} == {"high", "normal"}
+    assert len(items) == 0, (
+        f"Auto-recovery should emit notifications only, got action items: "
+        f"{[it['message'] for it in items]}"
+    )
 
 
 def test_orphan_detection_repro(db):
@@ -203,9 +206,9 @@ def test_orphan_auto_recovery_dispatches(db):
         ).fetchone()
     assert row is not None
 
+    # Auto-recovery emits a notification, not an action item
     items = db.get_open_action_items()
-    recovery_items = [it for it in items if "re-dispatch" in it["message"].lower() or "recovery" in it["message"].lower()]
-    assert recovery_items, f"Expected recovery action item, got: {[it['message'] for it in items]}"
+    assert items == [], f"Auto-recovery should not file action items, got: {[it['message'] for it in items]}"
 
 
 def test_orphan_no_task_falls_back_to_manual(db):

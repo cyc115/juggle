@@ -409,7 +409,8 @@ def test_execute_recovery_second_stall_blocked(tmp_path):
     )
 
     items = db.get_open_action_items()
-    assert any("stalled AGAIN" in it["message"] for it in items)
+    assert any("[RQ]" in it["message"] for it in items)
+    assert any("Decide:" in it["message"] for it in items)
     mgr.spawn_agent.assert_not_called()
     # DA-5: thread must be 'failed' even in retry-blocked case
     assert db.get_thread(thread_id)["status"] == "failed"
@@ -456,9 +457,9 @@ def test_execute_recovery_full_flow(tmp_path):
     assert updated_new["watchdog_retried"] == 1
     assert updated_new["status"] == "busy"
     mgr.send_task.assert_called_once_with("%6", "do the work")
+    # Successful auto-recovery emits notifications only — no action items
     items = db.get_open_action_items()
-    assert "high" in {it["priority"] for it in items}
-    assert any("auto-re-dispatched" in it["message"] for it in items)
+    assert items == [], f"Expected no action items for auto-recovery, got: {[it['message'] for it in items]}"
 
 
 # ── alive_slow + closed-thread guard ─────────────────────────────────────────

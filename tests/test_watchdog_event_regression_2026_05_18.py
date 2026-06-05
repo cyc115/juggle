@@ -97,7 +97,8 @@ def test_retry_blocked_event_created_when_watchdog_retried_1(db, mock_mgr, tmp_p
         ).fetchall()
     assert len(items) > 0
     assert items[0]["priority"] == "high"
-    assert "AGAIN after watchdog retry" in items[0]["message"]
+    assert "[RQ]" in items[0]["message"]
+    assert "Decide:" in items[0]["message"]
 
 
 def test_retry_blocked_event_multiple_failures(db, mock_mgr, tmp_path):

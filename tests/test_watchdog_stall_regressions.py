@@ -228,9 +228,10 @@ def test_retry_blocked_when_watchdog_retried_equals_1(db, mock_mgr, tmp_path):
     events = db.get_watchdog_events(agent_id)
     assert any(e["event_type"] == "retry_blocked" for e in events)
 
-    # Should create high-priority action item indicating manual intervention needed
+    # Should create high-priority [RQ] action item with decision text
     items = db.get_open_action_items()
-    assert any("AGAIN after watchdog retry" in it["message"] for it in items)
+    assert any("[RQ]" in it["message"] for it in items)
+    assert any("Decide:" in it["message"] for it in items)
     assert any(it["priority"] == "high" for it in items)
 
 

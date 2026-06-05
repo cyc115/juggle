@@ -1,4 +1,12 @@
-"""Juggle agent watchdog — pure functions and inspect_agent for the watchdog daemon."""
+"""Juggle agent watchdog — pure functions and inspect_agent for the watchdog daemon.
+
+Design principle
+----------------
+- Action item (add_action_item) = a user decision or action is required.
+  Use only when auto-recovery is exhausted or impossible.
+- Notification (add_notification_v2) = FYI / status update.
+  Use for transient events the system is already handling automatically.
+"""
 
 from __future__ import annotations
 
@@ -642,8 +650,9 @@ def execute_recovery(
             db.add_action_item(
                 thread_id=thread_id,
                 message=(
-                    f"🛑 [{label}] agent stalled AGAIN after watchdog retry — "
-                    f"manual intervention required. Snapshot: {snap_path}"
+                    f"[RQ] [{label}] {role} agent failed 2× (auto-recovery exhausted). "
+                    f"Decide: re-dispatch / abandon / investigate. "
+                    f"Cause: stalled/crashed again after watchdog retry."
                 ),
                 type_="failure",
                 priority="high",
@@ -657,14 +666,13 @@ def execute_recovery(
         return
 
     if thread_id:
-        db.add_action_item(
+        db.add_notification_v2(
             thread_id=thread_id,
             message=(
-                f"🚨 [{label}] agent stalled/crashed — snapshot at {snap_path}, "
-                f"auto-retrying"
+                f"[Watchdog] [{label}] {role} stalled/crashed — auto-retrying "
+                f"(recovery snapshot: {snap_path.name})"
             ),
-            type_="failure",
-            priority="high",
+            session_id=session_id,
         )
 
     new_agent = mgr.spawn_agent(db, role=role, model=model)
@@ -737,14 +745,13 @@ def execute_recovery(
         return
 
     if thread_id:
-        db.add_action_item(
+        db.add_notification_v2(
             thread_id=thread_id,
             message=(
-                f"⚠️ [{label}] agent auto-re-dispatched after stall — "
-                f"verify result when complete"
+                f"[Watchdog] [{label}] {role} agent auto-re-dispatched to "
+                f"{new_agent_id[:8]} after stall"
             ),
-            type_="manual_step",
-            priority="normal",
+            session_id=session_id,
         )
 
     db.add_watchdog_event(
@@ -887,16 +894,20 @@ def check_orphaned_threads(
                         event_type="orphan_recovery",
                         snapshot_path=None,
                     )
-                    db.add_action_item(
+                    _sid = ""
+                    try:
+                        _sid = get_session_id(db)
+                    except Exception:
+                        pass
+                    db.add_notification_v2(
                         thread_id=thread_id,
                         message=(
-                            f"🔄 [{label}] orphaned thread auto-recovery re-dispatch — "
-                            f"new agent {new_agent_id[:8]} sent last task "
+                            f"[Watchdog] [{label}] orphaned thread auto-recovery: "
+                            f"re-dispatched to agent {new_agent_id[:8]} "
                             f"(attempt {attempt_count + 1}/{max_recovery_attempts}, "
-                            f"{mins} min no agent). Verify result when complete."
+                            f"{mins} min no agent)"
                         ),
-                        type_="manual_step",
-                        priority="normal",
+                        session_id=_sid,
                     )
                     did_recover = True
                     _log.info(
@@ -913,15 +924,13 @@ def check_orphaned_threads(
                     )
 
         if not did_recover:
-            task_snippet = f"\n  Last task: {last_task[:80]}..." if last_task else ""
+            task_snippet = f" Last task: {last_task[:80]}..." if last_task else ""
             db.add_action_item(
                 thread_id=thread_id,
                 message=(
-                    f"🔴 [{label}] orphaned — background thread with no agent for {mins} min"
-                    f"{task_snippet}\n"
-                    f"  State: orphaned\n"
-                    f"  Last activity: {mins} min ago\n"
-                    f"  Next step: re-dispatch manually"
+                    f"[RQ] [{label}] orphaned thread — auto-recovery exhausted. "
+                    f"Decide: re-dispatch / abandon / investigate. "
+                    f"Cause: background thread with no agent for {mins} min.{task_snippet}"
                 ),
                 type_="failure",
                 priority="high",
@@ -943,6 +952,66 @@ def check_orphaned_threads(
         )
 
     return orphaned
+
+
+# ---------------------------------------------------------------------------
+# Singleton helpers (used by daemon entry point, tested independently)
+# ---------------------------------------------------------------------------
+
+
+def _is_watchdog_process(pid: int) -> bool:
+    """Return True if the process with given PID is a juggle watchdog."""
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return "watchdog" in result.stdout.lower()
+    except Exception:
+        return False
+
+
+def _kill_existing_watchdog_from_pidfile(pidfile_path: Path) -> None:
+    """Kill the watchdog recorded in pidfile_path — only if it really is a watchdog.
+
+    Verifies cmdline before sending SIGTERM so stale PID files pointing at
+    unrelated processes are never acted upon.
+    """
+    import signal as _signal
+
+    if not pidfile_path.exists():
+        return
+    try:
+        old_pid = int(pidfile_path.read_text().strip())
+    except (ValueError, OSError):
+        return
+    if old_pid == os.getpid():
+        return
+    try:
+        os.kill(old_pid, 0)  # existence probe
+    except (ProcessLookupError, PermissionError):
+        return  # stale pidfile — process gone
+    if not _is_watchdog_process(old_pid):
+        _log.warning(
+            "watchdog: PID %d in %s is not a watchdog — skipping kill",
+            old_pid, pidfile_path,
+        )
+        return
+    try:
+        os.kill(old_pid, _signal.SIGTERM)
+        for _ in range(20):
+            _time.sleep(0.1)
+            try:
+                os.kill(old_pid, 0)
+            except ProcessLookupError:
+                break
+        else:
+            os.kill(old_pid, _signal.SIGKILL)
+        _log.info("watchdog: killed previous instance (PID %d)", old_pid)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 # ---------------------------------------------------------------------------

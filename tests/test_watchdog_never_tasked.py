@@ -273,8 +273,8 @@ def test_old_never_tasked_agent_still_decommissioned(db, mock_mgr, tmp_path):
     mock_mgr.kill_pane.assert_called_once()
 
 
-def test_execute_recovery_with_last_task_creates_action_item(db, mock_mgr, tmp_path):
-    """Agent that had a real task and stalled should still create action item and retry."""
+def test_execute_recovery_with_last_task_emits_notification_and_retries(db, mock_mgr, tmp_path):
+    """Agent with a real task that stalled should emit a notification and auto-retry."""
     thread_id = db.create_thread("has task thread", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%20")
     db.update_agent(
@@ -296,6 +296,8 @@ def test_execute_recovery_with_last_task_creates_action_item(db, mock_mgr, tmp_p
     # Should have spawned a new agent (retry path)
     mock_mgr.spawn_agent.assert_called_once()
 
-    # Should have created an action item (stalled/crashed notification)
+    # First stall auto-recovery → notification only, no action item
     items = db.get_open_action_items()
-    assert len(items) > 0, "Agent with last_task should create action item on recovery"
+    assert len(items) == 0, (
+        f"First auto-recovery should emit notification only, got: {[it['message'] for it in items]}"
+    )
