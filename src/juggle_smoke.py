@@ -26,11 +26,9 @@ import select
 import signal
 import struct
 import subprocess
-import sys
 import termios
 import time
 from pathlib import Path
-from typing import Iterator
 
 import pyte
 import yaml
@@ -207,7 +205,6 @@ class CockpitHandle:
 def open_cockpit_pty(
     profile: dict,
     db_path: str | None = None,
-    startup_timeout: float = 12.0,
 ) -> CockpitHandle:
     """Spawn juggle_cockpit.py in a pty sized to (cols, rows) and return a handle.
 
