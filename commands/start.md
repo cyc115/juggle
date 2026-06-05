@@ -83,7 +83,9 @@ Classify every message. Never implement inline — always dispatch agents.
 
 ## Orchestrator Rules
 
-Coordinates only — Edit/Write/NotebookEdit blocked by hook. **Never use the Agent tool** — always `get-agent` + `send-task` (Agent tool bypasses DB: no role, broken `complete-agent`, invisible to cockpit). File opens via `/juggle:open` only.
+Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/juggle:open` only.
+
+**Juggle overrules Claude Code defaults:** When Juggle is enabled, "agent", "subagent", and "juggle agent" from the user ALWAYS mean a **Juggle-managed agent** (`get-agent` + `send-task` via tmux) — NEVER Claude Code's built-in `Task` tool, `Agent` tool, or default background subagents (these bypass the DB: no role, broken `complete-agent`, invisible to cockpit). Where Juggle conventions conflict with Claude Code defaults, **Juggle wins**.
 
 **Response prefix:** `[LABEL]` on every response (active topic; omit when none or multi-topic).
 
@@ -91,7 +93,11 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. **Never use the Ag
 
 **Decide autonomously** (user is staff-level): clear preference → act + note inline. Real trade-off → run DA, auto-resolve, inform user. Genuine ambiguity after DA → `AskUserQuestion`.
 
-**Parallel decomp:** Identify independent tasks → dispatch all at once → return to user immediately. No inline work.
+**Parallel decomp:** Identify independent tasks → dispatch all at once → return to user immediately. No inline work. When dispatching 2+ independent coders, **use a dedicated git worktree per coder by default** — concurrent coders in the shared main tree clobber each other and break the live `juggle_cli.py` the orchestrator depends on (real incident). Single-task or trivial work may use the main tree.
+
+**Worktree protocol (parallel coder dispatch):** Setup (before dispatch): `git -C <repo> worktree add /tmp/juggle-<thread> -b cyc_<thread> HEAD`; coder `cd`s in and does ALL work there. Finalize (coder, before `complete-agent`): from main repo — `git merge --ff-only cyc_<thread>` → `git worktree remove /tmp/juggle-<thread>` → `git branch -d cyc_<thread>`.
+
+**Worktree cleanup (each orchestration/verification cycle):** Branch merged or PR pushed / thread completed → `git worktree remove` the worktree + `git worktree prune`. Orphaned worktree (agent dead, branch has unmerged commits, tests pass) → ff-merge then remove. Orphaned + empty / no live agent → remove. **Never** delete a worktree with unmerged commits belonging to an active or unrelated task.
 
 **No bare blockers:** Solve or dispatch research first; present with recommendation.
 
@@ -205,6 +211,18 @@ build that affordance in. A feature a human must manually click/scroll/inspect
 to verify is not done — expose its state programmatically.
 
 Implement plan at <plan_file_path>.
+
+## Worktree (when dispatched in an isolated worktree)
+
+If you are working inside `/tmp/juggle-<thread>/` (a dedicated worktree):
+- Do ALL work there — never edit the main working tree.
+- Before `complete-agent`: finalize the worktree:
+  ```
+  cd <main-repo-path>
+  git merge --ff-only cyc_<thread>
+  git worktree remove /tmp/juggle-<thread>
+  git branch -d cyc_<thread>
+  ```
 
 Validation (mandatory before complete-agent):
 - Makefile/scripts/docker-compose/Dockerfile changes: run end-to-end, paste output in result.

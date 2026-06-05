@@ -212,6 +212,18 @@ output, deterministic exit codes, headless or pilot-driven test harnesses.
 Before implementing any behavior, ask "how will an agent prove this works?" and
 build that affordance in. A feature a human must manually click/scroll/inspect
 to verify is not done — expose its state programmatically.
+
+## Worktree (when dispatched in an isolated worktree)
+
+If you are working inside `/tmp/juggle-<thread>/` (a dedicated worktree):
+- Do ALL work there — never edit the main working tree.
+- Before `complete-agent`: finalize the worktree:
+  ```
+  cd <main-repo-path>
+  git merge --ff-only cyc_<thread>
+  git worktree remove /tmp/juggle-<thread>
+  git branch -d cyc_<thread>
+  ```
 ```
 
 **Planner** (role = `planner`):
@@ -279,6 +291,12 @@ Run get-agent + send-task twice — once for researcher, once for coder — in t
 ### Parallel dispatch (Q3 = multiple coders)
 
 Run get-agent + send-task for each coder. Split the scope from Q2 across the two coders (e.g., frontend vs backend, service A vs service B). Each task file contains its scoped subtask only.
+
+**Worktree isolation (mandatory for parallel coders):** Before each `send-task`, create a dedicated worktree:
+```bash
+git -C <repo> worktree add /tmp/juggle-<thread> -b cyc_<thread> HEAD
+```
+Include the worktree path and finalize instructions in each coder's task file (see Worktree section in Coder behavioral spec above).
 
 ### Pool exhausted
 
