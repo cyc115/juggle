@@ -8,6 +8,7 @@ import re as _re
 import subprocess
 import sys
 import threading
+from collections.abc import Sequence
 from pathlib import Path
 
 SRC_DIR = Path(__file__).parent
@@ -237,7 +238,7 @@ def drift_score(centroid: list[float], target: list[float]) -> float:
     return 1.0 - max(-1.0, min(1.0, cosine_sim))
 
 
-def _build_vocab(all_topics: list[str]) -> dict[str, int]:
+def _build_vocab(all_topics: Sequence[str]) -> dict[str, int]:
     """Build word → index vocabulary from all topics (words > 2 chars, deduped)."""
     words: list[str] = []
     seen: set[str] = set()
@@ -249,7 +250,7 @@ def _build_vocab(all_topics: list[str]) -> dict[str, int]:
     return {w: i for i, w in enumerate(words)}
 
 
-def _topics_to_bow_vector(topics: list[str], vocab: dict[str, int]) -> list[float]:
+def _topics_to_bow_vector(topics: Sequence[str], vocab: dict[str, int]) -> list[float]:
     """Term-frequency BoW vector over a shared vocabulary."""
     vec = [0.0] * len(vocab)
     for topic in topics:
