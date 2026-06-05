@@ -127,6 +127,10 @@
     "mtime": 1779743366.4443023,
     "hash": "bd957895d871e817894164b0ba210c2b"
   },
+  "/Users/mikechen/github/juggle/tests/test_llm_dispatch.py": {
+    "mtime": 1780633516.307008,
+    "hash": "676b222d395ca9c7a256e254e043f34b"
+  },
   "/Users/mikechen/github/juggle/tests/test_db_watchdog.py": {
     "mtime": 1780283427.744493,
     "hash": "3a79d84159190f7fe6514795715f2b2f"
@@ -180,8 +184,8 @@
     "hash": "2ff808698985a3028e8cfd7aeb558892"
   },
   "/Users/mikechen/github/juggle/tests/test_projects.py": {
-    "mtime": 1780546775.7528756,
-    "hash": "fe2e1a854bb41a79c95b4dc58387f2c8"
+    "mtime": 1780633645.9958475,
+    "hash": "6347be192811d20f8d260208faaf66f3"
   },
   "/Users/mikechen/github/juggle/tests/test_vault_commands.py": {
     "mtime": 1780179114.7680802,
@@ -288,8 +292,12 @@
     "hash": "789fa6f1c05f30097c3ae983896a2a99"
   },
   "/Users/mikechen/github/juggle/tests/test_projects_db.py": {
-    "mtime": 1780546775.7530925,
-    "hash": "a428b0f77341233eba4b407cbad18067"
+    "mtime": 1780633594.9856575,
+    "hash": "5d41fe02075e9572ad8dcc74a747fe9d"
+  },
+  "/Users/mikechen/github/juggle/tests/test_project_synth.py": {
+    "mtime": 1780633721.3128157,
+    "hash": "1d2826843621352dc184cfd0a933002a"
   },
   "/Users/mikechen/github/juggle/tests/schedule/conftest.py": {
     "mtime": 1779746441.9789374,
@@ -352,8 +360,8 @@
     "hash": "2fb7b2f835c40c323af32040497ca86b"
   },
   "/Users/mikechen/github/juggle/src/juggle_db.py": {
-    "mtime": 1780553584.3414404,
-    "hash": "20a2951b644ddb84da44a2c5de30307d"
+    "mtime": 1780633627.2402918,
+    "hash": "de34000b788f63d6a50f06c733388d65"
   },
   "/Users/mikechen/github/juggle/src/juggle_cmd_threads.py": {
     "mtime": 1780541530.4606767,
@@ -404,8 +412,8 @@
     "hash": "80f3900137127db4a7d6bdf8634bc6ed"
   },
   "/Users/mikechen/github/juggle/src/juggle_cli.py": {
-    "mtime": 1780629400.9152374,
-    "hash": "48fe123135389d6ba9bbd14bcd899c86"
+    "mtime": 1780633806.7143345,
+    "hash": "daedd308b945ec43d9b3d67430952f1e"
   },
   "/Users/mikechen/github/juggle/src/juggle_cmd_doctor.py": {
     "mtime": 1779742608.3313913,
@@ -428,8 +436,8 @@
     "hash": "e04f8aa0bd517868226bb435239418cd"
   },
   "/Users/mikechen/github/juggle/src/juggle_cmd_projects.py": {
-    "mtime": 1780553623.2842224,
-    "hash": "4d988d5e72bd55471ef2578fa88cb940"
+    "mtime": 1780633806.7146187,
+    "hash": "ae66277e3b6a4a8670aff9c5b448968b"
   },
   "/Users/mikechen/github/juggle/src/juggle_cockpit_model.py": {
     "mtime": 1780541530.460977,
@@ -440,8 +448,8 @@
     "hash": "f6813c0c3baa705fd703c77ba8f53d51"
   },
   "/Users/mikechen/github/juggle/src/juggle_cli_common.py": {
-    "mtime": 1780541530.4603057,
-    "hash": "99c61e2aab78aeb6e67e8f8241c92d7c"
+    "mtime": 1780633557.0506048,
+    "hash": "0e80e350730114e0ab5ced3655eef751"
   },
   "/Users/mikechen/github/juggle/src/juggle_search_offline.py": {
     "mtime": 1779327954.5451362,
@@ -460,8 +468,8 @@
     "hash": "e47fbcef8daa673f783f8ff8e4b6fe4d"
   },
   "/Users/mikechen/github/juggle/src/juggle_settings.py": {
-    "mtime": 1780283433.7227607,
-    "hash": "4b742a53eda6afa6c457d0b2b5db2450"
+    "mtime": 1780633494.1156418,
+    "hash": "6a882a3db164d9ce122b16a7bffdc71e"
   },
   "/Users/mikechen/github/juggle/src/juggle_cockpit_widgets.py": {
     "mtime": 1779743366.3954458,
@@ -590,6 +598,10 @@
   "/Users/mikechen/github/juggle/docs/plans/2026-05-30-juggle-self-heal-on-error-plan.md": {
     "mtime": 1780129067.6759384,
     "hash": "adf43ddc9f2c7c7c683dc7d23800374a"
+  },
+  "/Users/mikechen/github/juggle/docs/specs/2026-06-05-project-assignment-automation.md": {
+    "mtime": 1780631743.214869,
+    "hash": "e8931f54700f65b2c9be7b276f5efaa7"
   },
   "/Users/mikechen/github/juggle/docs/specs/2026-06-04-cockpit-viewport-smoke.md": {
     "mtime": 1780630126.3588715,
