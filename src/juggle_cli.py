@@ -901,6 +901,19 @@ def main():
 
     args = parser.parse_args()
 
+    # Warn when watchdog is not running — it owns periodic reaping
+    if "_JUGGLE_TEST_DB" not in os.environ:
+        try:
+            from juggle_watchdog_health import is_watchdog_alive
+            if not is_watchdog_alive():
+                print(
+                    "Warning: juggle watchdog is not running or unresponsive. "
+                    "Start it with: juggle watchdog start",
+                    file=sys.stderr,
+                )
+        except Exception:
+            pass
+
     try:
         args.func(args)
     except Exception as e:
