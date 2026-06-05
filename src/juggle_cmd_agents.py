@@ -535,11 +535,6 @@ def cmd_get_agent(args):
     thread_uuid = _resolve_thread(db, args.thread_id)
     mgr = JuggleTmuxManager()
 
-    # Purge stale agents
-    from juggle_tmux import reap_stale_agents
-
-    reap_stale_agents(db, mgr)
-
     all_agents = db.get_all_agents()
     if len(all_agents) >= MAX_BACKGROUND_AGENTS:
         print(
