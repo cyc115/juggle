@@ -1,0 +1,10 @@
+# Cockpit viewport profiles — edit dims to match your real terminals (tput cols; tput lines).
+# cols = terminal width in characters, rows = terminal height in characters.
+profiles:
+  2k_full:  { cols: 240, rows: 67,  desc: "2K monitor, fullscreen" }
+  2k_half:  { cols: 120, rows: 67,  desc: "2K monitor, half-screen split" }
+  2k_third: { cols: 80,  rows: 67,  desc: "2K monitor, one-third column" }
+  portrait: { cols: 110, rows: 130, desc: "monitor rotated 90 degrees, vertical" }
+  custom_1: { cols: 100, rows: 50,  desc: "user-defined slot 1" }
+  custom_2: { cols: 160, rows: 48,  desc: "user-defined slot 2" }
+  custom_3: { cols: 200, rows: 55,  desc: "user-defined slot 3" }

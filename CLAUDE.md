@@ -39,6 +39,16 @@ Use `uv run src/juggle_cli.py cockpit --out` to render the cockpit to stdout for
 
 Use `uv run src/juggle_cli.py cockpit --screenshot /tmp/cockpit.png` to save a PNG image of the cockpit (via Rich SVG + cairosvg). Claude can then `Read /tmp/cockpit.png` for visual debugging. SVG is also supported: `--screenshot /tmp/cockpit.svg`.
 
+## Cockpit Viewport Matrix
+
+After any cockpit layout change, run the smoke harness against all viewports:
+
+```bash
+uv run src/juggle_cli.py cockpit --smoke --all-viewports
+```
+
+Profiles live in `config/viewports.yaml` (7 profiles: 2k_full 240×67, 2k_half 120×67, 2k_third 80×67, portrait 110×130, custom_1/2/3). All must pass overflow, real-estate, and chrome checks before merging. Frame dumps land in `data/cockpit-viewport-review/` (gitignored except `.gitkeep`).
+
 # Design Philosophy
 
 **Core principle:** juggle is a thin, reliable orchestrator — behaviour lives in deterministic code (one source of truth), not prompts, and is built by reusing existing primitives rather than adding abstractions.

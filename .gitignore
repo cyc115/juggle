@@ -44,5 +44,8 @@ dist/
 .codesight/
 graphify-out/cache/
 
+# Cockpit viewport smoke frames (generated, not tracked)
+data/cockpit-viewport-review/*.txt
+
 # Local secrets
 docker/.env

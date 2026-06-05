@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.12,<3.14"
-# dependencies = ["rich", "httpx"]
+# dependencies = ["rich", "httpx", "pyte", "pyyaml"]
 # ///
 """
 Juggle CLI - called by LLM via Bash tool for state changes.
@@ -144,7 +144,50 @@ def cmd_cockpit(args):
 
     With --out: render all panes as plain text to stdout then exit (no TUI).
     With --profile: run headless resource-usage profiling harness (no TUI).
+    With --smoke: run viewport layout smoke test matrix (pty+pyte harness).
     """
+    if getattr(args, "smoke", False):
+        import json as _json
+        from juggle_smoke import load_viewports, run_smoke
+
+        vp_path = Path(__file__).parent.parent / "config" / "viewports.yaml"
+        viewports = load_viewports(vp_path)
+
+        viewport_name = getattr(args, "viewport_name", None)
+        if viewport_name:
+            if viewport_name not in viewports:
+                print(
+                    f"Unknown viewport: {viewport_name!r}. "
+                    f"Available: {sorted(viewports)}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            viewports = {viewport_name: viewports[viewport_name]}
+
+        out_dir = Path("data/cockpit-viewport-review")
+        interactive = getattr(args, "interactive", False)
+        results = run_smoke(
+            viewports,
+            db_path=getattr(args, "db_path", None),
+            output_dir=out_dir,
+            interactive=interactive,
+        )
+
+        if getattr(args, "json_out", False):
+            print(_json.dumps(results, indent=2))
+        else:
+            any_fail = False
+            for r in results:
+                status = "PASS" if r.get("pass") else "FAIL"
+                if not r.get("pass"):
+                    any_fail = True
+                dims = f"{r['cols']}x{r['rows']}"
+                err = r.get("error", "")
+                trunc = r.get("truncation", {}).get("count", 0)
+                trunc_str = f" (truncations:{trunc})" if trunc else ""
+                print(f"{status}  {r['profile']:12s}  {dims:8s}{trunc_str}  {err}")
+        sys.exit(1 if any_fail else 0)
+
     import subprocess as _sp
     src = Path(__file__).parent
     script = src / "juggle_cockpit.py"
@@ -762,6 +805,34 @@ def main():
         help="Duration in seconds for --profile (default: 60)",
     )
     p_cockpit.add_argument("--screenshot", metavar="PATH", help="Save PNG/JPG/SVG screenshot to PATH")
+    p_cockpit.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Run viewport smoke test matrix (renders all profiles via pty+pyte)",
+    )
+    p_cockpit.add_argument(
+        "--viewport",
+        dest="viewport_name",
+        metavar="NAME",
+        default=None,
+        help="Smoke-test a single named viewport profile (e.g. 2k_third)",
+    )
+    p_cockpit.add_argument(
+        "--all-viewports",
+        action="store_true",
+        help="Smoke-test all viewport profiles (default when --smoke is given)",
+    )
+    p_cockpit.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Also exercise keyboard nav, resize, and UI flows during smoke",
+    )
+    p_cockpit.add_argument(
+        "--json",
+        dest="json_out",
+        action="store_true",
+        help="Output smoke results as JSON",
+    )
     p_cockpit.set_defaults(func=cmd_cockpit)
 
     # schedule-reflect (Mon 03:00 local / 0 8 * * 1 UTC)
