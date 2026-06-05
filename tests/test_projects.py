@@ -13,40 +13,72 @@ PROJECTS = [
 
 def test_infer_exact_match():
     from juggle_cmd_projects import infer_project_id
-    with patch("juggle_cmd_projects._cheap_llm_call", return_value='{"project_id": "P1"}'):
-        assert infer_project_id("automate investing ideas", PROJECTS) == "P1"
+    with patch("juggle_cmd_projects.llm_call", return_value='{"project_id": "P1", "confidence": 0.9}'):
+        pid, conf = infer_project_id("automate investing ideas", PROJECTS)
+    assert pid == "P1"
+    assert conf == pytest.approx(0.9)
 
 
 def test_infer_empty_projects_returns_inbox_without_llm_call():
     from juggle_cmd_projects import infer_project_id
-    with patch("juggle_cmd_projects._cheap_llm_call") as mock:
+    with patch("juggle_cmd_projects.llm_call") as mock:
         result = infer_project_id("some topic", [])
     mock.assert_not_called()
-    assert result == "INBOX"
+    assert result == ("INBOX", 0.0)
 
 
 def test_infer_unknown_project_id_returns_inbox():
     from juggle_cmd_projects import infer_project_id
-    with patch("juggle_cmd_projects._cheap_llm_call", return_value='{"project_id": "P99"}'):
-        assert infer_project_id("some topic", PROJECTS) == "INBOX"
+    with patch("juggle_cmd_projects.llm_call", return_value='{"project_id": "P99", "confidence": 0.8}'):
+        pid, _ = infer_project_id("some topic", PROJECTS)
+    assert pid == "INBOX"
 
 
 def test_infer_llm_returns_inbox_sentinel():
     from juggle_cmd_projects import infer_project_id
-    with patch("juggle_cmd_projects._cheap_llm_call", return_value='{"project_id": "INBOX"}'):
-        assert infer_project_id("random topic", PROJECTS) == "INBOX"
+    with patch("juggle_cmd_projects.llm_call", return_value='{"project_id": "INBOX", "confidence": 0.7}'):
+        pid, _ = infer_project_id("random topic", PROJECTS)
+    assert pid == "INBOX"
 
 
 def test_infer_llm_returns_none_returns_inbox():
     from juggle_cmd_projects import infer_project_id
-    with patch("juggle_cmd_projects._cheap_llm_call", return_value=None):
-        assert infer_project_id("some topic", PROJECTS) == "INBOX"
+    with patch("juggle_cmd_projects.llm_call", return_value=None):
+        result = infer_project_id("some topic", PROJECTS)
+    assert result == ("INBOX", 0.0)
 
 
 def test_infer_invalid_json_returns_inbox():
     from juggle_cmd_projects import infer_project_id
-    with patch("juggle_cmd_projects._cheap_llm_call", return_value="not json at all"):
-        assert infer_project_id("some topic", PROJECTS) == "INBOX"
+    with patch("juggle_cmd_projects.llm_call", return_value="not json at all"):
+        pid, _ = infer_project_id("some topic", PROJECTS)
+    assert pid == "INBOX"
+
+
+def test_infer_low_confidence_returns_inbox():
+    from juggle_cmd_projects import infer_project_id
+    with patch("juggle_cmd_projects.llm_call",
+               return_value='{"project_id": "P1", "confidence": 0.3}'):
+        pid, conf = infer_project_id("ambiguous topic", PROJECTS)
+    assert pid == "INBOX"
+    assert conf == pytest.approx(0.3)
+
+
+def test_infer_high_confidence_returns_project():
+    from juggle_cmd_projects import infer_project_id
+    with patch("juggle_cmd_projects.llm_call",
+               return_value='{"project_id": "P1", "confidence": 0.9}'):
+        pid, conf = infer_project_id("automate investing ideas", PROJECTS)
+    assert pid == "P1"
+    assert conf == pytest.approx(0.9)
+
+
+def test_infer_returns_tuple():
+    from juggle_cmd_projects import infer_project_id
+    with patch("juggle_cmd_projects.llm_call", return_value=None):
+        result = infer_project_id("some topic", PROJECTS)
+    assert isinstance(result, tuple)
+    assert result == ("INBOX", 0.0)
 
 
 def test_assign_project_background_thread_is_not_daemon(tmp_path):
@@ -56,7 +88,7 @@ def test_assign_project_background_thread_is_not_daemon(tmp_path):
     db = JuggleDB(str(tmp_path / "test.db"))
     db.init_db()
     tid = db.create_thread("some topic", session_id="s1")
-    with patch("juggle_cmd_projects._cheap_llm_call", return_value='{"project_id": "INBOX"}'):
+    with patch("juggle_cmd_projects.llm_call", return_value='{"project_id": "INBOX", "confidence": 0.5}'):
         t = assign_project_background(db, tid, "some topic", _return_thread=True)
         assert t.daemon is False
         t.join(timeout=5)
@@ -70,7 +102,7 @@ def test_assign_project_background_updates_db(tmp_path):
     pid = db.create_project(name="Investing", objective="Automate stock ideas")
     tid = db.create_thread("automate investing ideas", session_id="s1")
     assert db.get_thread(tid)["project_id"] == "INBOX"
-    with patch("juggle_cmd_projects._cheap_llm_call", return_value=f'{{"project_id": "{pid}"}}'):
+    with patch("juggle_cmd_projects.llm_call", return_value=f'{{"project_id": "{pid}", "confidence": 0.9}}'):
         t = assign_project_background(db, tid, "automate investing ideas", _return_thread=True)
         t.join(timeout=5)
     assert db.get_thread(tid)["project_id"] == pid
@@ -82,7 +114,7 @@ def test_assign_project_background_silent_on_llm_failure(tmp_path):
     db = JuggleDB(str(tmp_path / "test.db"))
     db.init_db()
     tid = db.create_thread("some topic", session_id="s1")
-    with patch("juggle_cmd_projects._cheap_llm_call", side_effect=Exception("network error")):
+    with patch("juggle_cmd_projects.llm_call", side_effect=Exception("network error")):
         t = assign_project_background(db, tid, "some topic", _return_thread=True)
         t.join(timeout=5)
     assert db.get_thread(tid)["project_id"] == "INBOX"
@@ -159,7 +191,7 @@ def test_assign_project_background_sets_assigned_by_auto(tmp_path):
     db.init_db()
     pid = db.create_project(name="Investing", objective="Automate ideas")
     tid = db.create_thread("automate investing ideas", session_id="s1")
-    with patch("juggle_cmd_projects._cheap_llm_call", return_value=f'{{"project_id": "{pid}"}}'):
+    with patch("juggle_cmd_projects.llm_call", return_value=f'{{"project_id": "{pid}", "confidence": 0.9}}'):
         t = assign_project_background(db, tid, "automate investing ideas", _return_thread=True)
         t.join(timeout=5)
     assert db.get_thread(tid)["assigned_by"] == "auto"
@@ -236,13 +268,12 @@ def test_infer_project_id_uses_human_positives_and_corrections(tmp_path):
 
     projects = db.get_active_projects()
     captured = {}
-    original_cheap_llm = None
 
     def capturing_llm(prompt, **kwargs):
         captured["prompt"] = prompt
-        return f'{{"project_id": "{pid}"}}'
+        return f'{{"project_id": "{pid}", "confidence": 0.9}}'
 
-    with patch("juggle_cmd_projects._cheap_llm_call", side_effect=capturing_llm):
+    with patch("juggle_cmd_projects.llm_call", side_effect=capturing_llm):
         infer_project_id("some trading topic", projects, db=db)
 
     assert "sell TSLA puts" in captured["prompt"]
@@ -375,3 +406,48 @@ def test_project_edit_existing_flags_regression(tmp_path):
     assert p["name"] == "New Name"
     assert p["objective"] == "New Objective"
     assert p["out_of_scope"] == "Out of scope text"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: bulk + archived assign
+# ---------------------------------------------------------------------------
+
+import types
+
+
+def _make_args(**kw):
+    ns = types.SimpleNamespace()
+    for k, v in kw.items():
+        setattr(ns, k, v)
+    return ns
+
+
+def test_cmd_project_assign_archived_thread(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import cmd_project_assign
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project("Dev", "obj")
+    tid = db.create_thread("archived task", session_id="s1")
+    db.archive_thread(tid)
+    t = db.get_thread(tid)
+    label = t["user_label"]
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        cmd_project_assign(_make_args(thread_id=[label], project_id=pid))
+    assert db.get_thread(tid)["project_id"] == pid
+
+
+def test_cmd_project_assign_bulk(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import cmd_project_assign
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project("Dev", "obj")
+    t1 = db.create_thread("task one", session_id="s1")
+    t2 = db.create_thread("task two", session_id="s1")
+    l1 = db.get_thread(t1)["user_label"]
+    l2 = db.get_thread(t2)["user_label"]
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        cmd_project_assign(_make_args(thread_id=[l1, l2, pid], project_id=None))
+    assert db.get_thread(t1)["project_id"] == pid
+    assert db.get_thread(t2)["project_id"] == pid

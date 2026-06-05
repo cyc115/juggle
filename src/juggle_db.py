@@ -745,6 +745,18 @@ class JuggleDB:
         except sqlite3.OperationalError as e:
             _log.warning("Migration 30 (match_profile) skipped: %s", e)
 
+        # Migration 31: assigned_confidence on threads
+        threads_cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        if "assigned_confidence" not in threads_cols:
+            try:
+                conn.execute(
+                    "ALTER TABLE threads ADD COLUMN assigned_confidence REAL DEFAULT NULL"
+                )
+                conn.commit()
+                _log.info("Migration 31: assigned_confidence added to threads")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 31 (assigned_confidence) skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
