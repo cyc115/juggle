@@ -29,6 +29,7 @@ from juggle_schedule_common import (  # noqa: E402
     gh_pr_list_head,
     git_commit,
     git_push,
+    has_busy_agents,
     mark_run_complete,
     today_str,
     write_report,
@@ -457,6 +458,13 @@ def run(dry_run: bool = False) -> int:
 
     db = get_db()
 
+    # Safety gate: abort if any agent is mid-task to prevent git clobber
+    if not dry_run and has_busy_agents(db):
+        msg = "Reflect aborted — agent(s) currently busy. Re-run after agents complete."
+        logger.warning(msg)
+        print(f"ABORTED: {msg}", file=sys.stderr)
+        return 1
+
     autofix_ref = _find_autofix_pr_ref()
 
     # Run all sections — continue on error, partial digest is better than no digest
@@ -512,7 +520,11 @@ def run(dry_run: bool = False) -> int:
         return 0
 
     # Commit digest to main (reflect does NOT use a PR branch — additive markdown only)
-    committed = git_commit(f"chore(schedule): reflect digest {today}")
+    out_path_str = str(out_path.relative_to(JUGGLE_REPO))
+    committed = git_commit(
+        f"chore(schedule): reflect digest {today}",
+        paths=[out_path_str],
+    )
     if committed:
         git_push()
 

@@ -30,6 +30,7 @@ from juggle_schedule_common import (  # noqa: E402
     get_db,
     git_commit,
     git_push,
+    has_busy_agents,
     mark_run_complete,
     today_str,
     write_report,
@@ -296,6 +297,13 @@ def run(dry_run: bool = False) -> int:
 
     db = get_db()
 
+    # Safety gate: abort if any agent is mid-task to prevent git clobber
+    if not dry_run and has_busy_agents(db):
+        msg = "Dogfood aborted — agent(s) currently busy. Re-run after agents complete."
+        logger.warning(msg)
+        print(f"ABORTED: {msg}", file=sys.stderr)
+        return 1
+
     # Pre-flight: check for prior open dogfood thread
     prior = _check_prior_dogfood_thread(db)
     if prior:
@@ -357,8 +365,11 @@ def run(dry_run: bool = False) -> int:
         print(f"DRY RUN: cost estimate ${cost_tracker.total:.4f}")
         return 0
 
-    # Commit and push
-    committed = git_commit(f"chore(schedule): dogfood report {today}")
+    # Commit only the report file — never stage agent work-in-progress
+    committed = git_commit(
+        f"chore(schedule): dogfood report {today}",
+        paths=[str(out_path.relative_to(JUGGLE_REPO))],
+    )
     if committed:
         git_push()
 
@@ -376,7 +387,10 @@ def _write_and_commit(today: str, since_date: str, agent_output: str, cost_total
     tmp_path = Path("/tmp/schedule-dogfood-sample-report.md") if dry_run else None
     write_report(out_path, report_content, dry_run=dry_run, tmp_override=tmp_path)
     if not dry_run:
-        git_commit(f"chore(schedule): dogfood report {today} [partial]")
+        git_commit(
+            f"chore(schedule): dogfood report {today} [partial]",
+            paths=[str(out_path.relative_to(JUGGLE_REPO))],
+        )
         git_push()
 
 

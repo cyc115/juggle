@@ -221,6 +221,16 @@ def db_query(db, sql: str, params=()) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def has_busy_agents(db) -> bool:
+    """Return True if any agent currently has status='busy'."""
+    try:
+        rows = db_query(db, "SELECT id FROM agents WHERE status = 'busy' LIMIT 1")
+        return len(rows) > 0
+    except Exception as e:
+        logger.warning("has_busy_agents check failed: %s", e)
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Date helpers
 # ---------------------------------------------------------------------------
@@ -260,10 +270,14 @@ def git_run(args: list[str], cwd: Path | None = None, check: bool = True) -> sub
     return subprocess.run(cmd, capture_output=True, text=True, check=check, cwd=str(cwd))
 
 
-def git_commit(message: str, cwd: Path | None = None) -> bool:
+def git_commit(message: str, cwd: Path | None = None,
+               paths: list[str] | None = None) -> bool:
     cwd = cwd or JUGGLE_REPO
     try:
-        git_run(["add", "-A"], cwd=cwd)
+        if paths:
+            git_run(["add", "--"] + paths, cwd=cwd)
+        else:
+            git_run(["add", "-A"], cwd=cwd)
         result = git_run(["diff", "--cached", "--quiet"], cwd=cwd, check=False)
         if result.returncode == 0:
             logger.info("git_commit: nothing to commit")

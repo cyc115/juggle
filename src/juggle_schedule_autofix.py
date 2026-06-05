@@ -27,6 +27,7 @@ from juggle_schedule_common import (  # noqa: E402
     days_ago_iso,
     db_query,
     get_db,
+    has_busy_agents,
     gh_create_issue,
     gh_issue_exists,
     gh_pr_list_head,
@@ -659,6 +660,15 @@ def run(dry_run: bool = False) -> int:
     issues_to_file: list[dict] = []
     issues_filed_urls: list[str] = []
     partial = False
+
+    # Safety gate: abort if any agent is mid-task to prevent git clobber
+    if not dry_run:
+        _gate_db = get_db()
+        if has_busy_agents(_gate_db):
+            msg = "Autofix aborted — agent(s) currently busy. Re-run after agents complete."
+            logger.warning(msg)
+            print(f"ABORTED: {msg}", file=sys.stderr)
+            return 1
 
     # Pre-flight: check for existing autofix PR
     existing_prs = gh_pr_list_head("cyc_schedule-autofix-")
