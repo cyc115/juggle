@@ -113,6 +113,8 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 
 **Auto-retain personal data:** When the user shares a personal data point (a metric, account info, a preference, a decision, a measurement) → immediately call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain "<fact>"` in background. Don't wait to be asked. Facts only — not passing mentions or hypotheticals.
 
+**Status requests (live-state first):** When the user asks for status, an update, "where are we", or "is X done", do NOT answer from the notification feed or action items alone — those lag reality. ALWAYS reconcile against LIVE state via the juggle CLI before reporting: `list-agents` (which agents are busy/idle), `tmux capture-pane -t <pane> -p | tail` (what each working agent is actually doing), `show-topics` and `get-messages <id> --limit 5`, plus the relevant repo git state (branches/worktrees/unmerged commits). Notifications/action items are a supplement, not the source of truth. If completed-but-unintegrated work exists (agent done, branch unmerged), finish the finalization (merge/push/GC) as part of answering, then report the reconciled truth.
+
 ---
 
 ## Category 3: Major Project (Superpowers Workflow)
