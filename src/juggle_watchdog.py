@@ -420,13 +420,25 @@ def _classify_agent_state(pane_content: str, pane_exists: bool) -> str:
 # Nudge + notify — for alive-but-slow agents
 # ---------------------------------------------------------------------------
 
+_CONTINUE_INSTRUCTION = (
+    "You appear paused. Assess your task: if work remains, continue to completion and "
+    "do not wait for input; if everything is complete, run your complete-agent command "
+    "now; if blocked, call complete-agent with 'BLOCKER: <what>'."
+)
+# Escalating backoff (seconds) indexed by prior nudge count (clamped at last entry).
+_NUDGE_BACKOFF_SECS = [0, 5 * 60, 15 * 60, 30 * 60]
+# In-memory per-agent nudge state: {agent_id: (last_fired_time, fire_count)}
+_nudge_state: dict[str, tuple[float, int]] = {}
+
 
 def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
-    """Send a harmless Enter nudge and emit a notification for passive user visibility.
+    """Send a continue-instruction nudge and emit a notification for passive user visibility.
 
+    Uses escalating backoff to avoid spamming on every watchdog cycle.
+    Sends Escape + continue instruction + Enter (not a bare Enter) to resume
+    an agent paused at a turn boundary.
     Does NOT kill the pane or spawn a replacement, and does NOT file a blocking
-    action item.  alive-but-slow is informational — it surfaces as a notification
-    so the user can glance at it without being forced to act.
+    action item.  alive-but-slow is informational.
     """
     from datetime import datetime, timezone
 
@@ -435,6 +447,13 @@ def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
     thread_id = agent.get("assigned_thread")
     role = agent.get("role", "researcher")
     label = _get_thread_label(db, thread_id) if thread_id else agent_id[:8]
+
+    # Backoff gate: skip if within the escalating quiet window for this agent.
+    last_fired, fire_count = _nudge_state.get(agent_id, (0.0, 0))
+    backoff_secs = _NUDGE_BACKOFF_SECS[min(fire_count, len(_NUDGE_BACKOFF_SECS) - 1)]
+    now_ts = _time.time()
+    if fire_count > 0 and (now_ts - last_fired) < backoff_secs:
+        return
 
     last_active_str = agent.get("last_active") or agent.get("last_active_at")
     stalled_for = 0
@@ -447,11 +466,17 @@ def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
         except (ValueError, TypeError):
             pass
 
-    # Literal Enter — may unstick a permission prompt; harmless otherwise
+    # Send Escape to exit any mode, then the continue instruction, then Enter.
+    # Mirrors the empirically-proven sequence that unsticks an agent at a turn boundary.
     try:
+        mgr._run_tmux("send-keys", "-t", pane_id, "Escape")
+        _time.sleep(0.1)
+        mgr._run_tmux("send-keys", "-t", pane_id, _CONTINUE_INSTRUCTION)
         mgr._run_tmux("send-keys", "-t", pane_id, "Enter")
     except Exception:
         pass
+
+    _nudge_state[agent_id] = (now_ts, fire_count + 1)
 
     tail_lines = "\n".join(content.splitlines()[-5:]) if content else "(no content)"
     message = (

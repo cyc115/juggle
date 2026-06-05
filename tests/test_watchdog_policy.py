@@ -7,7 +7,18 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+
+@pytest.fixture(autouse=True)
+def reset_nudge_state():
+    """Clear module-level backoff state between tests for isolation."""
+    import juggle_watchdog
+    juggle_watchdog._nudge_state.clear()
+    yield
+    juggle_watchdog._nudge_state.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -84,15 +95,26 @@ def test_nudge_and_notify_does_not_call_kill_pane():
     mgr.kill_pane.assert_not_called()
 
 
-def test_nudge_and_notify_sends_enter():
-    from juggle_watchdog import nudge_and_notify
+def test_nudge_sends_continue_instruction():
+    """Nudge must send Escape + approved continue text + Enter — NOT a bare Enter."""
+    from juggle_watchdog import nudge_and_notify, _CONTINUE_INSTRUCTION
 
     db = _make_db_mock()
     mgr = MagicMock()
 
     nudge_and_notify(db, mgr, _make_agent(pane_id="%99"), content="Working…")
 
-    mgr._run_tmux.assert_called_once_with("send-keys", "-t", "%99", "Enter")
+    calls = [c.args for c in mgr._run_tmux.call_args_list]
+    # Must send Escape first
+    assert any("Escape" in c for c in calls), f"Expected Escape in calls: {calls}"
+    # Must include the approved continue instruction
+    sent_texts = [c for c in calls if len(c) > 3 and c[-1] not in ("Enter", "Escape")]
+    assert sent_texts, f"Expected continue text in send-keys calls: {calls}"
+    assert sent_texts[0][-1] == _CONTINUE_INSTRUCTION, (
+        f"Expected exact continue instruction, got: {sent_texts[0][-1]!r}"
+    )
+    # Must end with Enter
+    assert any("Enter" in c for c in calls), f"Expected Enter in calls: {calls}"
 
 
 def test_nudge_and_notify_sends_notification_not_action_item():
@@ -109,6 +131,36 @@ def test_nudge_and_notify_sends_notification_not_action_item():
     assert "alive-but-stalled" in notif_kwargs["message"]
     # Must NOT file a blocking action item
     db.add_action_item.assert_not_called()
+
+
+def test_nudge_backoff_suppresses_repeat(tmp_path):
+    """Second call within backoff window is suppressed; call after window fires."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from juggle_db import JuggleDB
+    from juggle_watchdog import nudge_and_notify
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    thread_id = db.create_thread("backoff test", session_id="")
+    db.update_thread(thread_id, status="background")
+    agent_id = db.create_agent(role="coder", pane_id="%55")
+    db.update_agent(agent_id, status="busy", assigned_thread=thread_id)
+    agent = db.get_agent(agent_id)
+
+    mgr = MagicMock()
+
+    # First call: should fire
+    nudge_and_notify(db, mgr, agent, content="Cogitated\nWorking")
+    assert mgr._run_tmux.called, "First nudge should fire"
+    first_call_count = mgr._run_tmux.call_count
+    assert db.get_open_action_items() == []  # still no action items
+
+    # Second call immediately: should be suppressed by backoff
+    mgr.reset_mock()
+    nudge_and_notify(db, mgr, agent, content="Cogitated\nWorking")
+    assert not mgr._run_tmux.called, "Second immediate nudge should be suppressed by backoff"
 
 
 # ---------------------------------------------------------------------------
