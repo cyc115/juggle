@@ -280,11 +280,19 @@ class CockpitApp(App):
         yield Header(show_clock=True)
         with Horizontal(id="layout"):
             yield Static("", id="topics")
-            yield Splitter("topics", "right")
+            yield Splitter(
+                "topics", "right",
+                min_left_pct=_MIN_TOPICS_PCT,
+                min_right_pct=100 - _MAX_TOPICS_PCT,
+            )
             with Vertical(id="right"):
                 with Horizontal(id="upper"):
                     yield Static("", id="actions")
-                    yield Splitter("actions", "agents")
+                    yield Splitter(
+                        "actions", "agents",
+                        min_left_pct=int(_MIN_ACTIONS_RATIO * 100),
+                        min_right_pct=int(_MIN_AGENTS_RATIO * 100),
+                    )
                     yield Static("", id="agents")
                 yield HSplitter("upper", "notifications")
                 yield Static("", id="notifications")
@@ -401,12 +409,7 @@ class CockpitApp(App):
                 self._offsets["notifications"], max(0, len(state.notifications) - 3)
             )
 
-            size = self.size
-            try:
-                topics_width = self.query_one("#topics").size.width
-            except Exception:
-                topics_width = size.width  # fallback to terminal width
-            bp = pick_breakpoint(topics_width)
+            bp = pick_breakpoint(self.size.width)
             off = self._offsets
             active = self._active_pane
 
@@ -750,11 +753,7 @@ class CockpitApp(App):
 
     def on_resize(self, event: events.Resize) -> None:
         from juggle_cockpit_view import pick_breakpoint
-        try:
-            topics_width = self.query_one("#topics").size.width or event.size.width
-        except Exception:
-            topics_width = event.size.width
-        bp = pick_breakpoint(topics_width)
+        bp = pick_breakpoint(event.size.width)
         try:
             if bp == "wide":
                 if self._last_bp != "wide":

@@ -25,7 +25,13 @@ class Splitter(Static):
     }
     """
 
-    def __init__(self, left_id: str, right_id: str) -> None:
+    def __init__(
+        self,
+        left_id: str,
+        right_id: str,
+        min_left_pct: int = 10,
+        min_right_pct: int = 10,
+    ) -> None:
         super().__init__("│")
         self._left_id = left_id
         self._right_id = right_id
@@ -33,6 +39,8 @@ class Splitter(Static):
         self._drag_start_x: int = 0
         self._left_start_w: int = 0
         self._right_start_w: int = 0
+        self._min_left_pct = min_left_pct
+        self._min_right_pct = min_right_pct
 
     def on_mouse_down(self, event: events.MouseDown) -> None:
         left = self.app.query_one(f"#{self._left_id}")
@@ -48,13 +56,19 @@ class Splitter(Static):
         if not self._dragging:
             return
         delta = event.screen_x - self._drag_start_x
+        total = self._left_start_w + self._right_start_w
+        if total <= 0:
+            return
+        new_left_cells = self._left_start_w + delta
+        new_left_pct = max(
+            self._min_left_pct,
+            min(100 - self._min_right_pct, int(new_left_cells / total * 100)),
+        )
+        new_right_pct = 100 - new_left_pct
         left = self.app.query_one(f"#{self._left_id}")
         right = self.app.query_one(f"#{self._right_id}")
-        total = self._left_start_w + self._right_start_w
-        new_left = max(8, min(total - 8, self._left_start_w + delta))
-        new_right = total - new_left
-        left.styles.width = new_left
-        right.styles.width = new_right
+        left.styles.width = f"{new_left_pct}%"
+        right.styles.width = f"{new_right_pct}%"
         event.stop()
 
     def on_mouse_up(self, event: events.MouseUp) -> None:
