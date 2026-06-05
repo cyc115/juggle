@@ -181,3 +181,119 @@ async def test_palette_close_preserves_layout(tmp_path, monkeypatch):
         assert agents.size.width == 23, (
             f"#agents changed after resize: {agents.size.width}, expected 23"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test 7 — _compute_ratios: collapsed topics (0 cells) gets floored, never 0.0
+# ---------------------------------------------------------------------------
+
+
+def test_compute_ratios_floors_zero_topics():
+    """If topics renders at 0 cells (collapsed), result must floor to _MIN_TOPICS_RATIO."""
+    from juggle_cockpit import _compute_ratios, _MIN_TOPICS_RATIO
+
+    ratios = _compute_ratios(0, 100, 50)
+    assert ratios[0] >= _MIN_TOPICS_RATIO, (
+        f"topics ratio {ratios[0]} is below floor {_MIN_TOPICS_RATIO}"
+    )
+    assert sum(ratios) == pytest.approx(1.0, abs=0.01)
+
+
+def test_compute_ratios_floors_near_zero_topics():
+    """Very small (but non-zero) topics must still be floored to _MIN_TOPICS_RATIO."""
+    from juggle_cockpit import _compute_ratios, _MIN_TOPICS_RATIO
+
+    # 1 cell out of 240 → raw ratio 0.004, well below floor
+    ratios = _compute_ratios(1, 180, 59)
+    assert ratios[0] >= _MIN_TOPICS_RATIO
+    assert sum(ratios) == pytest.approx(1.0, abs=0.01)
+
+
+def test_compute_ratios_floors_all_columns():
+    """Every column has a minimum; all floors must be respected after renorm."""
+    from juggle_cockpit import _compute_ratios, _MIN_TOPICS_RATIO, _MIN_ACTIONS_RATIO, _MIN_AGENTS_RATIO
+
+    # Extreme: topics collapsed, agents tiny
+    ratios = _compute_ratios(0, 230, 1)
+    assert ratios[0] >= _MIN_TOPICS_RATIO
+    assert ratios[1] >= _MIN_ACTIONS_RATIO
+    assert ratios[2] >= _MIN_AGENTS_RATIO
+    assert sum(ratios) == pytest.approx(1.0, abs=0.01)
+
+
+def test_compute_ratios_normal_input_unchanged_by_floor():
+    """Healthy widths (all well above floor) must not be distorted."""
+    from juggle_cockpit import _compute_ratios
+
+    # 72+96+72 = 240; ratios 0.30/0.40/0.30 — all above any reasonable floor
+    ratios = _compute_ratios(72, 96, 72)
+    assert ratios[0] == pytest.approx(0.30, abs=0.01)
+    assert ratios[1] == pytest.approx(0.40, abs=0.01)
+    assert ratios[2] == pytest.approx(0.30, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Test 8 — _sanitize_col_ratios: corrupted config self-heals on load
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_col_ratios_corrupted_returns_default():
+    """[0.0, 0.45, 0.55] is a known-bad config — must return the default."""
+    from juggle_cockpit import _sanitize_col_ratios
+
+    bad = [0.0, 0.45, 0.55]
+    result = _sanitize_col_ratios(bad)
+    assert result[0] > 0.0, "Corrupted topics ratio must not be returned as-is"
+    assert len(result) == 3
+    assert sum(result) == pytest.approx(1.0, abs=0.01)
+
+
+def test_sanitize_col_ratios_wrong_length_returns_default():
+    """Wrong-length list must return the default."""
+    from juggle_cockpit import _sanitize_col_ratios
+
+    assert len(_sanitize_col_ratios([0.5, 0.5])) == 3
+    assert len(_sanitize_col_ratios([0.33, 0.33, 0.33, 0.01])) == 3
+
+
+def test_sanitize_col_ratios_non_sum_returns_default():
+    """Ratios that don't sum to ~1.0 must return the default."""
+    from juggle_cockpit import _sanitize_col_ratios
+
+    bad_sum = [0.10, 0.10, 0.10]  # sums to 0.30
+    result = _sanitize_col_ratios(bad_sum)
+    assert sum(result) == pytest.approx(1.0, abs=0.01)
+
+
+def test_sanitize_col_ratios_healthy_passthrough():
+    """Healthy ratios must pass through unchanged."""
+    from juggle_cockpit import _sanitize_col_ratios
+
+    good = [0.30, 0.40, 0.30]
+    assert _sanitize_col_ratios(good) == good
+
+
+# ---------------------------------------------------------------------------
+# Test 9 — _clamp_col_pct: apply-site clamp helper
+# ---------------------------------------------------------------------------
+
+
+def test_clamp_col_pct_zero_becomes_min():
+    """0% topics must be raised to _MIN_TOPICS_PCT."""
+    from juggle_cockpit import _clamp_col_pct, _MIN_TOPICS_PCT
+
+    assert _clamp_col_pct(0) == _MIN_TOPICS_PCT
+
+
+def test_clamp_col_pct_100_becomes_max():
+    """100% topics must be clamped to _MAX_TOPICS_PCT."""
+    from juggle_cockpit import _clamp_col_pct, _MAX_TOPICS_PCT
+
+    assert _clamp_col_pct(100) == _MAX_TOPICS_PCT
+
+
+def test_clamp_col_pct_normal_passthrough():
+    """A normal 30% value must pass through unchanged."""
+    from juggle_cockpit import _clamp_col_pct
+
+    assert _clamp_col_pct(30) == 30

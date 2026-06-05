@@ -460,6 +460,34 @@ def cmd_project_edit(args):
     print(f"Project {args.project_id} updated.")
 
 
+def cmd_project_synth(args):
+    db = get_db(init=True)
+    if getattr(args, "all", False):
+        projects = db.get_active_projects()
+    elif getattr(args, "dirty", False):
+        projects = db.get_dirty_projects()
+    else:
+        p = db.get_project(args.project_id)
+        if not p:
+            print(f"Project not found: {args.project_id}")
+            sys.exit(1)
+        projects = [p]
+
+    if not projects:
+        print("No projects to synthesize.")
+        return
+
+    for p in projects:
+        pid = p["id"]
+        print(f"Synthesizing {pid} ({p['name']})...", end=" ", flush=True)
+        result = synth_project(db, pid, force=getattr(args, "all", False))
+        if result:
+            preview = result.split("\n")[0][:80]
+            print(f"done. Profile: {preview}")
+        else:
+            print("skipped (no threads).")
+
+
 def cmd_project_create(args):
     db = get_db(init=True)
     if args.force:

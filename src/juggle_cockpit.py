@@ -52,18 +52,76 @@ from juggle_cockpit_modals import _ConfirmModal, _HelpModal, _PromptModal, _Tail
 from juggle_cockpit_widgets import HSplitter, Splitter
 
 
+# ---------------------------------------------------------------------------
+# Column-width floor constants
+# ---------------------------------------------------------------------------
+
+_MIN_TOPICS_RATIO: float = 0.15   # topics pane minimum fraction of total width
+_MIN_ACTIONS_RATIO: float = 0.15  # actions pane minimum fraction of right width
+_MIN_AGENTS_RATIO: float = 0.10   # agents pane minimum fraction of right width
+_MIN_TOPICS_PCT: int = 15         # apply-site minimum for topics as integer percent
+_MAX_TOPICS_PCT: int = 60         # apply-site maximum for topics as integer percent
+_DEFAULT_COL_RATIOS: list[float] = [0.30, 0.40, 0.30]
+
+
+def _sanitize_col_ratios(ratios: object) -> list[float]:
+    """Validate and floor column_ratios loaded from config.
+
+    Returns ratios unchanged if healthy; falls back to _DEFAULT_COL_RATIOS
+    when the list is wrong length, any column is below its floor, or the
+    sum is far from 1.0.  Self-heals existing corrupted configs on load.
+    """
+    try:
+        lst = list(ratios)
+    except TypeError:
+        return list(_DEFAULT_COL_RATIOS)
+    if len(lst) != 3:
+        return list(_DEFAULT_COL_RATIOS)
+    t, a, ag = (float(x) for x in lst)
+    if not (0.9 <= t + a + ag <= 1.1):
+        return list(_DEFAULT_COL_RATIOS)
+    if t < _MIN_TOPICS_RATIO or a < _MIN_ACTIONS_RATIO or ag < _MIN_AGENTS_RATIO:
+        return list(_DEFAULT_COL_RATIOS)
+    return [t, a, ag]
+
+
+def _clamp_col_pct(pct: int, lo: int = _MIN_TOPICS_PCT, hi: int = _MAX_TOPICS_PCT) -> int:
+    """Clamp an integer percent to [lo, hi].  Prevents 0% or 100% topics."""
+    return max(lo, min(hi, pct))
+
+
+
 def _compute_ratios(topics_cells: float, actions_cells: float, agents_cells: float) -> list[float]:
     """Normalize actual rendered cell widths to [topics, actions, agents] ratios summing to 1.0.
 
     Uses size.width (absolute cells) so the result is correct regardless of whether
     styles were set as percent (initial mount) or as cell integers (post-drag).
-    The last element absorbs floating-point rounding to ensure exact sum of 1.0.
+    Guarantees each column >= its floor: floors are satisfied first, then the
+    remaining space is distributed proportionally among all columns.  Prevents
+    any column from being persisted as 0 even when physically collapsed.
     """
     total = topics_cells + actions_cells + agents_cells
     if total <= 0:
         return []
-    t = round(topics_cells / total, 2)
-    a = round(actions_cells / total, 2)
+    t = topics_cells / total
+    a = actions_cells / total
+    ag = 1.0 - t - a
+    # Distribute space: each column gets its floor guarantee first, then the
+    # leftover is shared proportionally to how much each column *exceeds* its floor.
+    floors = (_MIN_TOPICS_RATIO, _MIN_ACTIONS_RATIO, _MIN_AGENTS_RATIO)
+    raw = (t, a, ag)
+    above = tuple(max(0.0, r - f) for r, f in zip(raw, floors))
+    above_total = sum(above)
+    remaining = 1.0 - sum(floors)  # space available beyond the guaranteed floors
+    if above_total > 0:
+        result = [f + ab / above_total * remaining for f, ab in zip(floors, above)]
+    else:
+        # All columns collapsed to zero or below floors — normalize floors directly
+        fs = sum(floors)
+        result = [f / fs for f in floors]
+    t, a, ag = result
+    t = round(t, 2)
+    a = round(a, 2)
     ag = round(1.0 - t - a, 2)
     return [t, a, ag]
 
@@ -90,7 +148,7 @@ def _write_ratios(config_path: Path, ratios: list[float]) -> None:
 
 _SETTINGS = _get_settings()
 REFRESH_INTERVAL: float = _SETTINGS["cockpit"]["refresh_interval_secs"]
-_COL_RATIOS: list[float] = _SETTINGS["cockpit"]["column_ratios"]  # [topics, actions, agents]
+_COL_RATIOS: list[float] = _sanitize_col_ratios(_SETTINGS["cockpit"]["column_ratios"])  # [topics, actions, agents]
 _NOTIF_RATIO: int = _SETTINGS["cockpit"]["notification_ratio"]  # % height for notifications
 
 # ---------------------------------------------------------------------------
@@ -146,10 +204,12 @@ class CockpitApp(App):
     }
     #topics {
         height: 100%;
+        min-width: 24;
     }
     #right {
         height: 100%;
         layout: vertical;
+        min-width: 20;
     }
     #upper {
         layout: horizontal;
@@ -242,7 +302,7 @@ class CockpitApp(App):
 
         # Apply settings-driven initial sizes.
         t, a, ag = _COL_RATIOS
-        topics_w = int(t * 100)
+        topics_w = _clamp_col_pct(int(t * 100))
         right_w = 100 - topics_w
         inner_total = a + ag
         actions_pct = int(a / inner_total * 100) if inner_total > 0 else 50
@@ -702,7 +762,7 @@ class CockpitApp(App):
                     # Transitioning narrow/medium → wide: restore column widths from config.
                     # Heights (#upper / #notifications) are preserved from HSplitter drag.
                     t, a, ag = _COL_RATIOS
-                    topics_w = int(t * 100)
+                    topics_w = _clamp_col_pct(int(t * 100))
                     self.query_one("#topics").styles.display = "block"
                     self.query_one("#topics").styles.width = f"{topics_w}%"
                     self.query_one("#right").styles.width = f"{100 - topics_w}%"

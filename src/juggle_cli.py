@@ -136,6 +136,7 @@ from juggle_cmd_projects import (
     cmd_project_critique,
     cmd_project_close,
     cmd_project_open,
+    cmd_project_synth,
 )
 
 
@@ -891,6 +892,13 @@ def main():
     _p = _ps.add_parser("open")
     _p.add_argument("project_id", nargs="+")
     _p.set_defaults(func=cmd_project_open)
+
+    _p = _ps.add_parser("synth", help="Synthesize match_profile for project(s)")
+    _synth_group = _p.add_mutually_exclusive_group()
+    _synth_group.add_argument("--all", action="store_true", help="Re-synth all active projects")
+    _synth_group.add_argument("--dirty", action="store_true", help="Re-synth only dirty projects")
+    _p.add_argument("project_id", nargs="?", help="Project id (omit if --all or --dirty)")
+    _p.set_defaults(func=cmd_project_synth)
 
     args = parser.parse_args()
 

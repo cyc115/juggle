@@ -205,6 +205,7 @@ class CockpitHandle:
 def open_cockpit_pty(
     profile: dict,
     db_path: str | None = None,
+    env: dict | None = None,
 ) -> CockpitHandle:
     """Spawn juggle_cockpit.py in a pty sized to (cols, rows) and return a handle.
 
@@ -227,7 +228,7 @@ def open_cockpit_pty(
     if db_path:
         cmd += ["--db", db_path]
 
-    env = {**os.environ, "TERM": "xterm-256color", "COLUMNS": str(cols), "LINES": str(rows)}
+    env = {**os.environ, "TERM": "xterm-256color", "COLUMNS": str(cols), "LINES": str(rows), **(env or {})}
 
     proc = subprocess.Popen(
         cmd,

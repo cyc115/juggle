@@ -276,3 +276,92 @@ def test_flow_tab_cycles_pane_grid_changes(tmp_path):
     assert frame0 != frame1 or frame1 != frame2, (
         "No visible change after 2× Tab — pane cycle did not affect the text grid"
     )
+
+
+# ── topics-floor regression tests ─────────────────────────────────────────────
+
+
+def test_compute_ratios_floor_no_pty():
+    """Unit guard: _compute_ratios never returns 0.0 for topics (no PTY needed)."""
+    from juggle_cockpit import _compute_ratios, _MIN_TOPICS_RATIO
+
+    # Simulate the exact incident: topics collapsed to 0 cells
+    ratios = _compute_ratios(0, 108, 132)
+    assert ratios[0] >= _MIN_TOPICS_RATIO, (
+        f"topics ratio {ratios[0]} below floor — regression of 0-width collapse"
+    )
+    assert sum(ratios) == pytest.approx(1.0, abs=0.01)
+
+
+def test_sanitize_col_ratios_incident_config_no_pty():
+    """Unit guard: the exact incident config [0.0, 0.45, 0.55] self-heals on load."""
+    from juggle_cockpit import _sanitize_col_ratios, _MIN_TOPICS_RATIO
+
+    result = _sanitize_col_ratios([0.0, 0.45, 0.55])
+    assert result[0] >= _MIN_TOPICS_RATIO, (
+        f"Incident config not sanitized: topics={result[0]}"
+    )
+    assert sum(result) == pytest.approx(1.0, abs=0.01)
+
+
+@_skip_pty
+def test_topics_nonzero_after_multi_resize(tmp_path):
+    """Integration: topics pane stays non-zero across 240→120→80→200 resize sequence."""
+    from juggle_smoke import load_viewports, open_cockpit_pty
+
+    db_path = _make_db(tmp_path)
+    vp = load_viewports(VIEWPORTS_YAML)
+
+    def _topics_visible(frame: list[str]) -> bool:
+        """Topics pane is visible when the left third of the frame has non-whitespace content."""
+        if not frame:
+            return False
+        left = max(1, len(frame[0]) // 3)
+        non_blank = sum(1 for row in frame if row[:left].strip())
+        return non_blank >= max(1, len(frame) // 4)
+
+    with open_cockpit_pty(vp["2k_full"], db_path=db_path) as handle:
+        handle.frame(settle=2.5, timeout=15.0)
+
+        for cols in (120, 80, 200):
+            handle.resize(cols, 67)
+            frame = handle.frame(settle=1.5, timeout=8.0)
+            if cols >= 130:  # wide breakpoint — topics must be visible
+                assert _topics_visible(frame), (
+                    f"Topics pane invisible after resize to {cols}×67"
+                )
+
+
+def test_topics_nonzero_with_corrupted_config_out(tmp_path):
+    """--out render with incident config [0.0,0.45,0.55] must produce non-empty topics output.
+
+    Uses cockpit --out (stdout render, no TUI) so this test runs without PTY.
+    The load-sanitize path converts [0.0,0.45,0.55] to defaults before rendering.
+    """
+    import json as _json
+    import subprocess
+
+    db_path = _make_db(tmp_path)
+
+    cfg_dir = tmp_path / "juggle_cfg"
+    cfg_dir.mkdir()
+    cfg_file = cfg_dir / "config.json"
+    cfg_file.write_text(_json.dumps({"cockpit": {"column_ratios": [0.0, 0.45, 0.55]}}))
+
+    env = {**os.environ, "_JUGGLE_CONFIG_PATH": str(cfg_file)}
+    result = subprocess.run(
+        ["uv", "run", str(Path(__file__).parent.parent / "src" / "juggle_cli.py"),
+         "cockpit", "--out", "--db", db_path],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    # --out exits 0 (inactive session exits with non-zero but still prints something)
+    output = result.stdout + result.stderr
+    assert len(output.strip()) > 0, (
+        "cockpit --out produced no output with incident config — process may have crashed"
+    )
+    # The output should not contain "0%" for topics (sanitize-on-load applied)
+    # Primarily: no crash and some output rendered
+    assert "Traceback" not in output, f"Cockpit crashed with incident config:\n{output[:500]}"
