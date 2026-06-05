@@ -461,6 +461,133 @@ def test_execute_recovery_full_flow(tmp_path):
     assert any("auto-re-dispatched" in it["message"] for it in items)
 
 
+# ── alive_slow + closed-thread guard ─────────────────────────────────────────
+
+
+def test_execute_recovery_alive_slow_closed_thread_idles_agent(tmp_path):
+    """alive_slow agent on a CLOSED thread must be idled, not nudged.
+
+    Repro: complete-agent closes the thread but the agent row stays busy.
+    Watchdog classifies the pane as alive_slow and previously spammed
+    nudge_and_notify every cycle forever.
+    Fix: skip nudge, set agent idle/unassigned when assigned thread is closed.
+    """
+    from juggle_watchdog import execute_recovery
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    thread_id = db.create_thread("test", session_id="")
+    db.set_thread_status(thread_id, "closed")
+
+    agent_id = db.create_agent(role="coder", pane_id="%5")
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="do work",
+        watchdog_retried=0,
+    )
+
+    mgr = MagicMock()
+    mgr.verify_pane.return_value = True  # pane exists → alive_slow
+    recovery_dir = tmp_path / "recovery"
+
+    execute_recovery(
+        db,
+        mgr,
+        db.get_agent(agent_id),
+        "Working...",  # "Working" is a _CLAUDE_UI_MARKERS entry → alive_slow
+        recovery_dir=recovery_dir,
+        session_id="",
+    )
+
+    # Must NOT nudge — the thread is closed
+    mgr._run_tmux.assert_not_called()
+
+    # Agent must be idled and unassigned
+    agent = db.get_agent(agent_id)
+    assert agent is not None
+    assert agent["status"] == "idle"
+    assert agent["assigned_thread"] is None
+
+
+def test_execute_recovery_alive_slow_active_thread_still_nudges(tmp_path):
+    """alive_slow agent on an ACTIVE thread still calls nudge (no regression)."""
+    from juggle_watchdog import execute_recovery
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    thread_id = db.create_thread("test", session_id="")
+    # thread stays "active" (default)
+
+    agent_id = db.create_agent(role="coder", pane_id="%5")
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="do work",
+        watchdog_retried=0,
+    )
+
+    mgr = MagicMock()
+    mgr.verify_pane.return_value = True
+    recovery_dir = tmp_path / "recovery"
+
+    execute_recovery(
+        db,
+        mgr,
+        db.get_agent(agent_id),
+        "Working...",
+        recovery_dir=recovery_dir,
+        session_id="",
+    )
+
+    # Must nudge — thread is active
+    mgr._run_tmux.assert_called()
+
+    # Agent stays busy (nudge doesn't idle the agent)
+    agent = db.get_agent(agent_id)
+    assert agent is not None
+    assert agent["status"] == "busy"
+
+
+def test_execute_recovery_alive_slow_no_assigned_thread_no_crash(tmp_path):
+    """alive_slow agent with assigned_thread=None must not crash."""
+    from juggle_watchdog import execute_recovery
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+
+    agent_id = db.create_agent(role="coder", pane_id="%5")
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=None,
+        last_task="do work",
+        watchdog_retried=0,
+    )
+
+    mgr = MagicMock()
+    mgr.verify_pane.return_value = True
+    recovery_dir = tmp_path / "recovery"
+
+    # Should not raise
+    execute_recovery(
+        db,
+        mgr,
+        db.get_agent(agent_id),
+        "Working...",
+        recovery_dir=recovery_dir,
+        session_id="",
+    )
+
+    # No thread → treat as active → nudge called
+    mgr._run_tmux.assert_called()
+
+
 # ── hot-restart: should_hot_restart pure-function tests ──────────────────────
 
 

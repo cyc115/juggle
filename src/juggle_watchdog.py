@@ -537,6 +537,16 @@ def execute_recovery(
     pane_exists = mgr.verify_pane(live["pane_id"])
     agent_state = _classify_agent_state(pane_content, pane_exists)
     if agent_state == "alive_slow":
+        _t = live.get("assigned_thread")
+        if _t:
+            _thread = db.get_thread(_t)
+            if _thread and _thread.get("status") == "closed":
+                _log.info(
+                    "Watchdog: agent %s alive_slow but thread %s is closed — idling agent",
+                    agent_id[:8], _t[:8],
+                )
+                db.update_agent(agent_id, status="idle", assigned_thread=None)
+                return
         nudge_and_notify(db, mgr, live, pane_content)
         return
 
