@@ -195,7 +195,10 @@ CREATE TABLE IF NOT EXISTS projects (
   summary          TEXT DEFAULT '',
   closed_at        TEXT,
   created_at       TEXT NOT NULL,
-  last_active      TEXT NOT NULL
+  last_active      TEXT NOT NULL,
+  match_profile    TEXT DEFAULT '',
+  profile_synth_at TEXT,
+  profile_dirty    INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -728,6 +731,20 @@ class JuggleDB:
         except sqlite3.OperationalError as e:
             _log.warning("Migration 29 (projects summary/closed_at) skipped: %s", e)
 
+        # Migration 30: match_profile + profile_synth_at + profile_dirty on projects
+        proj_cols = {r["name"] for r in conn.execute("PRAGMA table_info(projects)").fetchall()}
+        try:
+            if "match_profile" not in proj_cols:
+                conn.execute("ALTER TABLE projects ADD COLUMN match_profile TEXT DEFAULT ''")
+            if "profile_synth_at" not in proj_cols:
+                conn.execute("ALTER TABLE projects ADD COLUMN profile_synth_at TEXT")
+            if "profile_dirty" not in proj_cols:
+                conn.execute("ALTER TABLE projects ADD COLUMN profile_dirty INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+            _log.info("Migration 30: match_profile columns added to projects")
+        except sqlite3.OperationalError as e:
+            _log.warning("Migration 30 (match_profile) skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -1024,7 +1041,8 @@ class JuggleDB:
             conn.commit()
 
     def update_project(self, project_id: str, **kwargs) -> None:
-        allowed = {"name", "objective", "success_criteria", "out_of_scope", "status", "last_active"}
+        allowed = {"name", "objective", "success_criteria", "out_of_scope", "status",
+                   "last_active", "match_profile", "profile_synth_at", "profile_dirty"}
         fields = {k: v for k, v in kwargs.items() if k in allowed}
         if not fields:
             return
@@ -1032,6 +1050,30 @@ class JuggleDB:
         with self._connect() as conn:
             conn.execute(f"UPDATE projects SET {set_clause} WHERE id = ?", (*fields.values(), project_id))
             conn.commit()
+
+    def set_match_profile(self, project_id: str, match_profile: str) -> None:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE projects SET match_profile=?, profile_synth_at=?, profile_dirty=0 WHERE id=?",
+                (match_profile, now, project_id),
+            )
+            conn.commit()
+
+    def mark_project_dirty(self, project_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE projects SET profile_dirty=1 WHERE id=?",
+                (project_id,),
+            )
+            conn.commit()
+
+    def get_dirty_projects(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM projects WHERE profile_dirty=1 AND status NOT IN ('archived','closed') AND id != 'INBOX'",
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def count_threads_by_project(self, project_id: str) -> int:
         with self._connect() as conn:

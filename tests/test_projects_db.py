@@ -115,3 +115,42 @@ def test_get_human_assigned_threads_by_project(tmp_path):
     human_threads = db.get_human_assigned_threads_by_project(pid, limit=3)
     assert len(human_threads) == 1
     assert human_threads[0]["topic"] == "topic alpha"
+
+
+# --- Migration 30: match_profile columns ---
+
+def test_migration_30_adds_match_profile_columns(tmp_path):
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    p = db.get_project("INBOX")
+    assert "match_profile" in p
+    assert "profile_dirty" in p
+    assert "profile_synth_at" in p
+
+
+def test_set_match_profile_clears_dirty(tmp_path):
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project("Test", "Test objective")
+    db.mark_project_dirty(pid)
+    assert db.get_project(pid)["profile_dirty"] == 1
+    db.set_match_profile(pid, "Software dev threads: feature work, CI fixes.")
+    p = db.get_project(pid)
+    assert p["profile_dirty"] == 0
+    assert p["match_profile"] == "Software dev threads: feature work, CI fixes."
+    assert p["profile_synth_at"] is not None
+
+
+def test_get_dirty_projects_excludes_clean(tmp_path):
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    p1 = db.create_project("Dirty", "obj")
+    p2 = db.create_project("Clean", "obj")
+    db.mark_project_dirty(p1)
+    dirty = db.get_dirty_projects()
+    ids = [p["id"] for p in dirty]
+    assert p1 in ids
+    assert p2 not in ids
