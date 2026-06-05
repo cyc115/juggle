@@ -107,6 +107,8 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 
 **Code review:** Always background agent, never inline.
 
+**Background long-running Bash:** Any potentially-slow command (full test suites/pytest, builds, installs, docker, large git clone/push, network fetches) MUST run with `run_in_background=true` (or a bounded `timeout`), then poll the output file — never block the orchestrator on an unbounded foreground command. Heuristic: foreground-only for commands expected <~10 s; anything that can exceed that or can hang → background. See also: Dispatch Protocols (all agent work goes through tmux, not inline Bash).
+
 **Personal questions — recall first:** Any question about personal info (finances, accounts, health, preferences, past decisions, measurements, personal history) → call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<question>"` before answering. Never answer from training data alone. If Hindsight returns nothing, say so explicitly.
 
 **Auto-retain personal data:** When the user shares a personal data point (a metric, account info, a preference, a decision, a measurement) → immediately call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain "<fact>"` in background. Don't wait to be asked. Facts only — not passing mentions or hypotheticals.
