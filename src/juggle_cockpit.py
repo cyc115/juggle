@@ -226,7 +226,6 @@ class CockpitApp(App):
         self._db = _make_cockpit_db(db_path)
         self._offsets: dict[str, int] = {p: 0 for p in _SCROLL_PANES}
         self._active_pane: str = "notifications"
-        self._last_reap: float = 0.0
         self._last_bp: str = "wide"  # tracks previous breakpoint for resize transitions
         self._filter: dict[str, str] = {
             "actions": "",
@@ -356,16 +355,6 @@ class CockpitApp(App):
         )
 
         try:
-            # Throttled reaper (60s)
-            now = time.time()
-            if now - self._last_reap >= 60 and self._cockpit_mgr is not None:
-                try:
-                    from juggle_tmux import reap_stale_agents
-                    reap_stale_agents(self._db, self._cockpit_mgr)
-                    self._last_reap = now
-                except Exception:
-                    pass
-
             state = _snapshot(self._db)
 
             # --- Bell / desktop notification diff (skip first tick; prev is empty) ---
