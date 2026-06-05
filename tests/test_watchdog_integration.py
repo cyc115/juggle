@@ -142,6 +142,150 @@ def test_full_stall_recovery_cycle(db, tmp_path):
     assert {it["priority"] for it in items} == {"high", "normal"}
 
 
+def test_orphan_detection_repro(db):
+    """Detection repro: background+no-agent+old last_active → flagged; control with busy agent → not flagged."""
+    from datetime import datetime, timezone, timedelta
+    from juggle_watchdog import check_orphaned_threads
+
+    past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
+
+    t1 = db.create_thread("orphan", session_id="")
+    db.update_thread(t1, status="background")
+    with db._connect() as conn:
+        conn.execute("UPDATE threads SET last_active_at=? WHERE id=?", (past, t1))
+        conn.commit()
+
+    t2 = db.create_thread("control", session_id="")
+    db.update_thread(t2, status="background")
+    a2 = db.create_agent(role="coder", pane_id="%1")
+    db.update_agent(a2, status="busy", assigned_thread=t2)
+    with db._connect() as conn:
+        conn.execute("UPDATE threads SET last_active_at=? WHERE id=?", (past, t2))
+        conn.commit()
+
+    orphaned = check_orphaned_threads(db, orphan_threshold=300.0)
+    assert t1 in orphaned
+    assert t2 not in orphaned
+
+
+def test_orphan_auto_recovery_dispatches(db):
+    """Orphan with last_dispatched_task → spawn+send_task called, recovery event + dedup recorded."""
+    from datetime import datetime, timezone, timedelta
+    from unittest.mock import MagicMock
+    from juggle_watchdog import check_orphaned_threads
+
+    past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
+    t = db.create_thread("recover me", session_id="")
+    db.update_thread(t, status="background")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE threads SET last_active_at=?, last_dispatched_task=?, "
+            "last_dispatched_role=?, last_dispatched_model=? WHERE id=?",
+            (past, "do the work", "coder", "claude-sonnet-4-6", t),
+        )
+        conn.commit()
+
+    new_agent_id = db.create_agent(role="coder", pane_id="%99")
+    new_agent = db.get_agent(new_agent_id)
+    mgr = MagicMock()
+    mgr.spawn_agent.return_value = new_agent
+
+    orphaned = check_orphaned_threads(db, orphan_threshold=300.0, mgr=mgr)
+
+    assert t in orphaned
+    mgr.spawn_agent.assert_called_once()
+    mgr.send_task.assert_called_once()
+
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM watchdog_events WHERE thread_id=? AND event_type='orphan_recovery'",
+            (t,),
+        ).fetchone()
+    assert row is not None
+
+    items = db.get_open_action_items()
+    recovery_items = [it for it in items if "re-dispatch" in it["message"].lower() or "recovery" in it["message"].lower()]
+    assert recovery_items, f"Expected recovery action item, got: {[it['message'] for it in items]}"
+
+
+def test_orphan_no_task_falls_back_to_manual(db):
+    """No last_dispatched_task → manual action item, spawn NOT called."""
+    from datetime import datetime, timezone, timedelta
+    from unittest.mock import MagicMock
+    from juggle_watchdog import check_orphaned_threads
+
+    past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
+    t = db.create_thread("no task", session_id="")
+    db.update_thread(t, status="background")
+    with db._connect() as conn:
+        conn.execute("UPDATE threads SET last_active_at=? WHERE id=?", (past, t))
+        conn.commit()
+
+    mgr = MagicMock()
+    check_orphaned_threads(db, orphan_threshold=300.0, mgr=mgr)
+
+    mgr.spawn_agent.assert_not_called()
+    items = db.get_open_action_items()
+    assert any("orphan" in it["message"].lower() for it in items)
+
+
+def test_orphan_pool_full_falls_back_to_manual(db):
+    """Pool at max capacity → spawn NOT called, manual action item filed."""
+    from datetime import datetime, timezone, timedelta
+    from unittest.mock import MagicMock
+    from juggle_watchdog import check_orphaned_threads
+
+    for i in range(20):
+        aid = db.create_agent(role="coder", pane_id=f"%{i+10}")
+        db.update_agent(aid, status="busy")
+
+    past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
+    t = db.create_thread("pool full", session_id="")
+    db.update_thread(t, status="background")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE threads SET last_active_at=?, last_dispatched_task='do work' WHERE id=?",
+            (past, t),
+        )
+        conn.commit()
+
+    mgr = MagicMock()
+    check_orphaned_threads(db, orphan_threshold=300.0, mgr=mgr)
+    mgr.spawn_agent.assert_not_called()
+
+
+def test_orphan_max_attempts_falls_back_to_manual(db):
+    """≥2 prior recovery attempts → spawn NOT called, manual action item."""
+    from datetime import datetime, timezone, timedelta
+    from unittest.mock import MagicMock
+    from juggle_watchdog import check_orphaned_threads
+
+    past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
+    t = db.create_thread("max attempts", session_id="")
+    db.update_thread(t, status="background")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE threads SET last_active_at=?, last_dispatched_task='do work' WHERE id=?",
+            (past, t),
+        )
+        conn.commit()
+
+    db.add_watchdog_event(
+        agent_id="orphan_detector", thread_id=t,
+        event_type="orphan_recovery", snapshot_path=None,
+    )
+    db.add_watchdog_event(
+        agent_id="orphan_detector", thread_id=t,
+        event_type="orphan_recovery", snapshot_path=None,
+    )
+
+    mgr = MagicMock()
+    check_orphaned_threads(db, orphan_threshold=300.0, mgr=mgr)
+    mgr.spawn_agent.assert_not_called()
+    items = db.get_open_action_items()
+    assert any("orphan" in it["message"].lower() or "manual" in it["message"].lower() for it in items)
+
+
 def test_allowlist_resolution_no_recovery(db, tmp_path):
     """Permission prompt auto-resolved — no recovery, no action item."""
     from juggle_watchdog import classify_pane_state

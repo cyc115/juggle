@@ -749,15 +749,23 @@ def execute_recovery(
 # ---------------------------------------------------------------------------
 
 
+_ORPHAN_MAX_RECOVERY_ATTEMPTS = 2
+
+
 def check_orphaned_threads(
     db: Any,
     *,
     orphan_threshold: float = 300.0,
     dedup_window_hours: float = 24.0,
+    mgr: Any = None,
+    max_recovery_attempts: int = _ORPHAN_MAX_RECOVERY_ATTEMPTS,
 ) -> list[str]:
-    """Scan background threads with no active agent; file action items for orphans.
+    """Scan background threads with no active agent; auto-recover or file action items.
 
     Returns list of orphaned thread_ids detected this cycle. Uses 24h dedup guard.
+    When mgr is provided and last_dispatched_task exists, auto-recovers by re-dispatching
+    the last task to a fresh agent (reusing execute_recovery spawn path).
+    Falls back to manual action item if: no mgr, no task, pool full, or max attempts reached.
     """
     from datetime import datetime, timezone, timedelta
 
@@ -773,6 +781,9 @@ def check_orphaned_threads(
             "SELECT assigned_thread FROM agents WHERE status='busy' AND assigned_thread IS NOT NULL"
         ).fetchall()
         busy_thread_ids = {r["assigned_thread"] for r in busy_rows}
+        busy_count = conn.execute(
+            "SELECT COUNT(*) FROM agents WHERE status='busy'"
+        ).fetchone()[0]
 
     orphaned: list[str] = []
 
@@ -808,21 +819,89 @@ def check_orphaned_threads(
         label = thread.get("user_label") or thread.get("label") or thread_id[:8]
         mins = int(orphaned_for // 60)
         last_task = thread.get("last_dispatched_task")
-        task_snippet = f"\n  Last task: {last_task[:80]}..." if last_task else ""
+        role = thread.get("last_dispatched_role") or "coder"
+        model = thread.get("last_dispatched_model")
 
-        db.add_action_item(
-            thread_id=thread_id,
-            message=(
-                f"🔴 [{label}] orphaned — background thread with no agent for {mins} min"
-                f"{task_snippet}\n"
-                f"  State: orphaned\n"
-                f"  Last activity: {mins} min ago\n"
-                f"  Recovery attempted: none (auto-recovery OOS v1)\n"
-                f"  Next step: re-dispatch manually"
-            ),
-            type_="failure",
-            priority="high",
-        )
+        # Attempt auto-recovery when possible
+        did_recover = False
+        if mgr is not None and last_task:
+            with db._connect() as conn:
+                attempt_count = conn.execute(
+                    "SELECT COUNT(*) FROM watchdog_events "
+                    "WHERE thread_id=? AND event_type='orphan_recovery'",
+                    (thread_id,),
+                ).fetchone()[0]
+
+            try:
+                from juggle_settings import get_settings as _get_settings
+                max_agents = int(_get_settings().get("max_agents", 20))
+            except Exception:
+                max_agents = 20
+
+            pool_full = busy_count >= max_agents
+
+            if attempt_count < max_recovery_attempts and not pool_full:
+                try:
+                    new_agent = mgr.spawn_agent(db, role=role, model=model)
+                    new_agent_id = new_agent["id"]
+                    new_pane_id = new_agent["pane_id"]
+                    ts = now.isoformat()
+                    db.update_agent(
+                        new_agent_id,
+                        status="busy",
+                        assigned_thread=thread_id,
+                        last_active=ts,
+                        busy_since=ts,
+                        last_task=last_task,
+                    )
+                    db.update_thread(thread_id, status="background")
+                    mgr.send_task(new_pane_id, last_task)
+                    db.add_watchdog_event(
+                        agent_id="orphan_detector",
+                        thread_id=thread_id,
+                        event_type="orphan_recovery",
+                        snapshot_path=None,
+                    )
+                    db.add_action_item(
+                        thread_id=thread_id,
+                        message=(
+                            f"🔄 [{label}] orphaned thread auto-recovery re-dispatch — "
+                            f"new agent {new_agent_id[:8]} sent last task "
+                            f"(attempt {attempt_count + 1}/{max_recovery_attempts}, "
+                            f"{mins} min no agent). Verify result when complete."
+                        ),
+                        type_="manual_step",
+                        priority="normal",
+                    )
+                    did_recover = True
+                    _log.info(
+                        "Watchdog: orphan auto-recovery — thread %s re-dispatched to agent %s (attempt %d)",
+                        thread_id[:8],
+                        new_agent_id[:8],
+                        attempt_count + 1,
+                    )
+                except Exception as exc:
+                    _log.error(
+                        "Watchdog: orphan auto-recovery failed for thread %s: %s",
+                        thread_id[:8],
+                        exc,
+                    )
+
+        if not did_recover:
+            task_snippet = f"\n  Last task: {last_task[:80]}..." if last_task else ""
+            db.add_action_item(
+                thread_id=thread_id,
+                message=(
+                    f"🔴 [{label}] orphaned — background thread with no agent for {mins} min"
+                    f"{task_snippet}\n"
+                    f"  State: orphaned\n"
+                    f"  Last activity: {mins} min ago\n"
+                    f"  Next step: re-dispatch manually"
+                ),
+                type_="failure",
+                priority="high",
+            )
+
         # DA-7: use sentinel agent_id, not empty string
         db.add_watchdog_event(
             agent_id="orphan_detector",
