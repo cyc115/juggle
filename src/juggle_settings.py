@@ -307,6 +307,17 @@ DEFAULTS: dict = {
         "haiku_model": "claude-haiku-4-5-20251001",
         "timeout_secs": 10,
     },
+    # LLM dispatcher profiles (model ids are editable in config.json)
+    "llm_profiles": {
+        "cheap": {
+            "openrouter_model": "deepseek/deepseek-chat-v3-0324:free",
+            "fallback_model": "claude-haiku-4-5-20251001",
+        },
+        "normal": {
+            "openrouter_model": "moonshotai/kimi-k2:free",
+            "fallback_model": "claude-sonnet-4-6",
+        },
+    },
 }
 
 
