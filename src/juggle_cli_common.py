@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess
 import sys
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -149,45 +150,58 @@ def _extract_decision_prompt(last_assistant: str | None, last_user: str | None) 
     return "🤔 Waiting for input"
 
 
-def _cheap_llm_call(prompt: str, timeout: int = 10) -> str | None:
-    """OpenRouter (Tier 1) -> Haiku subprocess (Tier 2) -> None on total failure.
-    No DB side-effects. Caller decides what to do with None."""
+def llm_call(prompt: str, profile: str = "cheap", timeout: int = 10) -> str | None:
+    """Profile-based LLM dispatcher.
+
+    Profiles defined in settings.llm_profiles (cheap / normal).
+    Flow: OpenRouter primary -> Claude subprocess fallback -> None.
+    """
+    import json as _json
     from juggle_settings import get_settings
-    cfg = get_settings().get("title_gen", {})
+    profiles = get_settings().get("llm_profiles", {})
+    if profile not in profiles:
+        raise ValueError(f"Unknown LLM profile: {profile!r}. Valid: {list(profiles)}")
+    cfg = profiles[profile]
     api_key = os.environ.get("OPENROUTER_KEY", "")
-    if cfg.get("openrouter_enabled", True) and api_key:
+    if api_key:
         try:
-            import urllib.request, json as _json
             body = _json.dumps({
-                "model": cfg.get("openrouter_model", "meta-llama/llama-3.1-8b-instruct:free"),
+                "model": cfg["openrouter_model"],
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 50,
+                "max_tokens": 200,
             }).encode()
             req = urllib.request.Request(
                 "https://openrouter.ai/api/v1/chat/completions",
-                data=body,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                body,
+                {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
             )
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = _json.loads(resp.read())
             text = (data["choices"][0]["message"].get("content") or "").strip()
             if text:
-                logging.info("_cheap_llm_call: openrouter -> %r", text[:60])
+                logging.info("llm_call(%s): openrouter -> %r", profile, text[:60])
                 return text
         except Exception as e:
-            logging.warning("_cheap_llm_call: openrouter failed: %s", e)
+            logging.warning("llm_call(%s): openrouter failed: %s", profile, e)
     try:
-        haiku = cfg.get("haiku_model", "claude-haiku-4-5-20251001")
         result = subprocess.run(
-            ["claude", "-p", prompt, "--model", haiku],
+            ["claude", "-p", prompt, "--model", cfg["fallback_model"]],
             capture_output=True, text=True, timeout=timeout,
         )
         if result.returncode == 0 and result.stdout.strip():
-            logging.info("_cheap_llm_call: haiku -> %r", result.stdout.strip()[:60])
+            logging.info("llm_call(%s): fallback -> %r", profile, result.stdout.strip()[:60])
             return result.stdout.strip()
     except Exception as e:
-        logging.warning("_cheap_llm_call: haiku failed: %s", e)
+        logging.warning("llm_call(%s): fallback failed: %s", profile, e)
     return None
+
+
+def _cheap_llm_call(prompt: str, timeout: int = 10) -> str | None:
+    """Shim: delegates to llm_call(profile='cheap'). Kept for call-site compat."""
+    return llm_call(prompt, profile="cheap", timeout=timeout)
 
 
 def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
