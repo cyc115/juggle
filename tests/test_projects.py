@@ -202,6 +202,26 @@ def test_build_classifier_prompt_includes_corrections():
     assert "options trading" in prompt
 
 
+def test_build_classifier_prompt_includes_match_profile():
+    from juggle_cmd_projects import _build_classifier_prompt
+    projects = [
+        {"id": "P1", "name": "LifeOS Dev", "objective": "Build AI platform",
+         "match_profile": "Codebase work: agent dispatch, Terraform, CI. NOT: finance."},
+    ]
+    prompt = _build_classifier_prompt("fix terraform deploy", projects, {}, [])
+    assert "Codebase work" in prompt
+
+
+def test_build_classifier_prompt_no_match_profile_unchanged():
+    from juggle_cmd_projects import _build_classifier_prompt
+    projects = [
+        {"id": "P1", "name": "LifeOS Dev", "objective": "Build AI platform"},
+    ]
+    prompt = _build_classifier_prompt("fix terraform deploy", projects, {}, [])
+    assert "P1" in prompt
+    assert "LifeOS Dev" in prompt
+
+
 def test_infer_project_id_uses_human_positives_and_corrections(tmp_path):
     from juggle_db import JuggleDB
     from juggle_cmd_projects import infer_project_id

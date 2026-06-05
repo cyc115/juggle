@@ -99,24 +99,23 @@ def _build_classifier_prompt(
     project_parts = []
     for p in projects:
         part = f'{p["id"]}: {p["name"]} — {p["objective"]}'
+        mp = (p.get("match_profile") or "").strip()
+        if mp:
+            part += f' | profile: {mp}'
         examples = [t["topic"] for t in positives_by_project.get(p["id"], []) if t.get("topic")]
         if examples:
-            part += f' | confirmed examples: {"; ".join(examples)}'
+            part += f' | confirmed: {"; ".join(examples)}'
         project_parts.append(part)
 
-    prompt = (
-        f'Topic: "{topic}". '
-        f'Projects: [{"; ".join(project_parts)}]. '
-    )
+    prompt = f'Topic: "{topic}". Projects: [{"; ".join(project_parts)}]. '
     if corrections:
         correction_parts = [
-            f'"{c["topic"]}" -> {c["to_project"]}'
-            for c in corrections
+            f'"{c["topic"]}" -> {c["to_project"]}' for c in corrections
         ]
-        prompt += f'Past corrections (reassigned by user): [{"; ".join(correction_parts)}]. '
+        prompt += f'Past corrections: [{"; ".join(correction_parts)}]. '
     prompt += (
         'Which project fits best? '
-        'Return ONLY valid JSON with no explanation, no markdown fences: {"project_id": "<id_or_INBOX>"}'
+        'Return ONLY valid JSON: {"project_id": "<id_or_INBOX>", "confidence": <0.0-1.0>}'
     )
     return prompt
 
