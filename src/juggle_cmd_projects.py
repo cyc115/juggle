@@ -12,7 +12,7 @@ from pathlib import Path
 SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(SRC_DIR))
 
-from juggle_cli_common import _cheap_llm_call, get_db
+from juggle_cli_common import _cheap_llm_call, get_db, llm_call
 
 INBOX_PROJECT_ID = "INBOX"
 log = logging.getLogger(__name__)
@@ -161,6 +161,49 @@ def build_match_profile_prompt(
         f"3. NOT: <5-10 comma-separated words for sibling projects that should NOT match>\n\n"
         f"Output only those three lines. No preamble."
     )
+
+
+def _assign_thread_to_project(
+    db, thread_uuid: str, project_id: str, assigned_by: str = "human"
+) -> None:
+    """Assign a thread and mark the old project dirty if the project changed."""
+    t = db.get_thread(thread_uuid)
+    if not t:
+        return
+    old_project = t.get("project_id", INBOX_PROJECT_ID)
+    db.update_thread(thread_uuid, project_id=project_id, assigned_by=assigned_by)
+    if old_project != project_id and old_project != INBOX_PROJECT_ID:
+        db.mark_project_dirty(old_project)
+
+
+def synth_project(db, project_id: str, force: bool = False) -> str | None:
+    """Synthesize match_profile for one project. Returns new profile or None if skipped.
+
+    Skips if no threads exist and force=False (nothing to learn from).
+    """
+    project = db.get_project(project_id)
+    if not project:
+        return None
+    with db._connect() as conn:
+        rows = conn.execute(
+            "SELECT topic, assigned_by FROM threads "
+            "WHERE project_id=? AND show_in_list=1 "
+            "ORDER BY CASE assigned_by WHEN 'human' THEN 0 ELSE 1 END, last_active DESC",
+            (project_id,),
+        ).fetchall()
+    threads = [dict(r) for r in rows]
+    if not threads and not force:
+        log.info("synth_project: skipping %s — no threads", project_id)
+        return None
+    corrections = db.get_recent_corrections(limit=10)
+    prompt = build_match_profile_prompt(project, threads, corrections)
+    result = llm_call(prompt, profile="cheap", timeout=20)
+    if not result:
+        log.warning("synth_project: LLM returned None for %s", project_id)
+        return None
+    db.set_match_profile(project_id, result.strip())
+    log.info("synth_project: synthesized profile for %s", project_id)
+    return result.strip()
 
 
 def infer_project_id(topic: str, projects: list[dict], db=None) -> str:
@@ -338,19 +381,36 @@ def cmd_project_show(args):
 
 def cmd_project_assign(args):
     db = get_db(init=True)
-    t = db.get_thread_by_user_label(args.thread_id)
-    if not t:
-        print(f"Thread not found: {args.thread_id}")
-        sys.exit(1)
-    p = db.get_project(args.project_id)
+    # Unpack: if thread_id is a list with >1 entries, last is project_id
+    if isinstance(args.thread_id, list) and len(args.thread_id) > 1:
+        project_id = args.thread_id[-1]
+        thread_ids = args.thread_id[:-1]
+    else:
+        project_id = args.project_id
+        thread_ids = args.thread_id if isinstance(args.thread_id, list) else [args.thread_id]
+
+    p = db.get_project(project_id)
     if not p:
-        print(f"Project not found: {args.project_id}")
+        print(f"Project not found: {project_id}")
         sys.exit(1)
-    from_project = t.get("project_id", "INBOX")
-    db.update_thread(t["id"], project_id=args.project_id, assigned_by="human")
-    if from_project != args.project_id:
-        db.log_project_correction(t["topic"], from_project=from_project, to_project=args.project_id)
-    print(f"Thread [{args.thread_id}] -> project {args.project_id} ({p['name']})")
+
+    for tid_input in thread_ids:
+        t = db.get_thread_by_user_label(tid_input)
+        if not t:
+            with db._connect() as conn:
+                row = conn.execute(
+                    "SELECT * FROM threads WHERE user_label=? OR id=?",
+                    (tid_input.upper(), tid_input),
+                ).fetchone()
+            t = dict(row) if row else None
+        if not t:
+            print(f"Thread not found: {tid_input}")
+            continue
+        from_project = t.get("project_id", "INBOX")
+        _assign_thread_to_project(db, t["id"], project_id, assigned_by="human")
+        if from_project != project_id:
+            db.log_project_correction(t["topic"], from_project=from_project, to_project=project_id)
+        print(f"Thread [{tid_input}] -> project {project_id} ({p['name']})")
 
 
 def cmd_project_edit(args):
