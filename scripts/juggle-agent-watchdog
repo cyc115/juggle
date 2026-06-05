@@ -20,6 +20,7 @@ sys.path.insert(0, str(SRC_DIR))
 from juggle_db import JuggleDB, DB_PATH
 from juggle_settings import get_settings
 from juggle_tmux import JuggleTmuxManager
+from juggle_watchdog_health import write_heartbeat
 from juggle_watchdog import (
     _classify_agent_state,
     _is_source_stale,
@@ -108,6 +109,7 @@ def _capture_pane(mgr: JuggleTmuxManager, pane_id: str, lines: int = 80) -> str 
 
 
 def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
+    write_heartbeat()
     snapshot_dir, recovery_dir = _get_dirs()
     now_ts = time.time()
     session_id = get_session_id(db)
@@ -193,6 +195,13 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     # Loop 2: orphaned thread detection
     _orphan_threshold = float(os.environ.get("JUGGLE_ORPHAN_THRESHOLD", "300"))
     check_orphaned_threads(db, orphan_threshold=_orphan_threshold)
+
+    # Generic stale-agent reap (pass 1: idle TTL / dead panes; pass 2: orphan panes)
+    from juggle_tmux import reap_stale_agents
+    try:
+        reap_stale_agents(db, mgr)
+    except Exception:
+        pass
 
 
 def main() -> None:

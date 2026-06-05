@@ -901,16 +901,18 @@ def main():
 
     args = parser.parse_args()
 
-    # Reap stale agents on every CLI invocation (skip in test mode)
+    # Warn when watchdog is not running — it owns periodic reaping
     if "_JUGGLE_TEST_DB" not in os.environ:
         try:
-            from juggle_tmux import reap_stale_agents, JuggleTmuxManager
-
-            _reap_db = get_db()
-            _reap_mgr = JuggleTmuxManager()
-            reap_stale_agents(_reap_db, _reap_mgr)
+            from juggle_watchdog_health import is_watchdog_alive
+            if not is_watchdog_alive():
+                print(
+                    "Warning: juggle watchdog is not running or unresponsive. "
+                    "Start it with: juggle start",
+                    file=sys.stderr,
+                )
         except Exception:
-            pass  # Non-fatal; reaper can be skipped
+            pass
 
     try:
         args.func(args)

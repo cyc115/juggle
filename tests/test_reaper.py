@@ -187,3 +187,103 @@ def test_reaper_reaps_decommission_pending_agent():
 
     assert reaped == 1
     mock_mgr.decommission_agent.assert_called_once_with(mock_db, "pending-agent")
+
+
+import time as _time_mod
+
+
+def test_pass2_skips_orphan_pane_within_boot_grace():
+    """Pass 2 must NOT kill a JUGGLE_IS_AGENT pane younger than boot grace."""
+    from juggle_tmux import reap_stale_agents
+
+    mock_db = mock.MagicMock()
+    mock_mgr = mock.MagicMock()
+    mock_mgr.session_name = "juggle"
+    mock_db.get_all_agents.return_value = []
+    mock_db.get_current_thread.return_value = "t1"
+
+    fresh_start = int(_time_mod.time())  # just created
+
+    def fake_run(cmd, **kwargs):
+        r = mock.MagicMock()
+        if "list-panes" in cmd:
+            r.returncode = 0
+            r.stdout = "%pane-new\n"
+        elif "display-message" in cmd:
+            r.returncode = 0
+            r.stdout = str(fresh_start)
+        else:
+            r.returncode = 1
+            r.stdout = ""
+        return r
+
+    with mock.patch("subprocess.run", side_effect=fake_run):
+        with mock.patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True):
+            reaped = reap_stale_agents(mock_db, mock_mgr)
+
+    assert reaped == 0, f"should not reap pane within grace, got {reaped}"
+    mock_mgr.kill_pane.assert_not_called()
+
+
+def test_pass2_kills_orphan_pane_past_boot_grace():
+    """Pass 2 MUST kill a JUGGLE_IS_AGENT pane older than boot grace with no DB record."""
+    from juggle_tmux import reap_stale_agents
+
+    mock_db = mock.MagicMock()
+    mock_mgr = mock.MagicMock()
+    mock_mgr.session_name = "juggle"
+    mock_db.get_all_agents.return_value = []
+    mock_db.get_current_thread.return_value = "t1"
+
+    old_start = int(_time_mod.time()) - 300  # 5 min old, well past 120s grace
+
+    def fake_run(cmd, **kwargs):
+        r = mock.MagicMock()
+        if "list-panes" in cmd:
+            r.returncode = 0
+            r.stdout = "%pane-old\n"
+        elif "display-message" in cmd:
+            r.returncode = 0
+            r.stdout = str(old_start)
+        else:
+            r.returncode = 1
+            r.stdout = ""
+        return r
+
+    with mock.patch("subprocess.run", side_effect=fake_run):
+        with mock.patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True):
+            reaped = reap_stale_agents(mock_db, mock_mgr)
+
+    assert reaped == 1, f"should reap old orphan pane, got {reaped}"
+    mock_mgr.kill_pane.assert_called_once_with("%pane-old")
+
+
+def test_pass2_skips_pane_when_start_time_unreadable():
+    """Pass 2 is conservative: if pane age can't be read, skip (don't kill)."""
+    from juggle_tmux import reap_stale_agents
+
+    mock_db = mock.MagicMock()
+    mock_mgr = mock.MagicMock()
+    mock_mgr.session_name = "juggle"
+    mock_db.get_all_agents.return_value = []
+    mock_db.get_current_thread.return_value = "t1"
+
+    def fake_run(cmd, **kwargs):
+        r = mock.MagicMock()
+        if "list-panes" in cmd:
+            r.returncode = 0
+            r.stdout = "%pane-unknown\n"
+        elif "display-message" in cmd:
+            r.returncode = 1  # tmux can't read start time
+            r.stdout = ""
+        else:
+            r.returncode = 1
+            r.stdout = ""
+        return r
+
+    with mock.patch("subprocess.run", side_effect=fake_run):
+        with mock.patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True):
+            reaped = reap_stale_agents(mock_db, mock_mgr)
+
+    assert reaped == 0, "should not kill when pane age is unreadable"
+    mock_mgr.kill_pane.assert_not_called()
