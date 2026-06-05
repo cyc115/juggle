@@ -88,3 +88,99 @@ def test_build_match_profile_prompt_bounded_thread_count():
     threads = [{"topic": f"thread {i}", "assigned_by": "human"} for i in range(50)]
     prompt = build_match_profile_prompt(project, threads, [])
     assert prompt.count("thread ") <= 32
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: drift_score
+# ---------------------------------------------------------------------------
+
+def test_drift_score_identical_vectors_is_zero():
+    from juggle_cmd_projects import drift_score
+    v = [1.0, 0.5, 0.3]
+    assert drift_score(v, v) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_drift_score_orthogonal_is_one():
+    from juggle_cmd_projects import drift_score
+    assert drift_score([1.0, 0.0], [0.0, 1.0]) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_drift_score_handles_zero_vector():
+    from juggle_cmd_projects import drift_score
+    assert drift_score([0.0, 0.0], [1.0, 0.0]) == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: check_and_resynth_if_drifted
+# ---------------------------------------------------------------------------
+
+def test_check_and_resynth_triggers_on_drift(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import check_and_resynth_if_drifted
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project("Dev", "Build software")
+    for i in range(5):
+        tid = db.create_thread(f"software task {i}", session_id="s1")
+        db.update_thread(tid, project_id=pid, assigned_by="human")
+    db.set_match_profile(pid, "Software dev. KEYWORDS: code, deploy. NOT: finance")
+    with patch("juggle_cmd_projects.synth_project") as mock_synth:
+        with patch("juggle_cmd_projects.drift_score", return_value=0.9):
+            check_and_resynth_if_drifted(db, pid, threshold=0.5)
+    mock_synth.assert_called_once_with(db, pid)
+
+
+def test_check_and_resynth_skips_below_threshold(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import check_and_resynth_if_drifted
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project("Dev", "obj")
+    tid = db.create_thread("task", session_id="s1")
+    db.update_thread(tid, project_id=pid, assigned_by="human")
+    db.set_match_profile(pid, "Software dev. KEYWORDS: code. NOT: finance")
+    # Add more threads so we have >= 3
+    for i in range(3):
+        t = db.create_thread(f"extra {i}", session_id="s1")
+        db.update_thread(t, project_id=pid, assigned_by="human")
+    with patch("juggle_cmd_projects.synth_project") as mock_synth:
+        with patch("juggle_cmd_projects.drift_score", return_value=0.1):
+            check_and_resynth_if_drifted(db, pid, threshold=0.5)
+    mock_synth.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: resweep_inbox
+# ---------------------------------------------------------------------------
+
+def test_resweep_inbox_reclassifies_unassigned(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import resweep_inbox
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project("Dev", "Build software")
+    tid = db.create_thread("software task", session_id="s1")
+    assert db.get_thread(tid)["project_id"] == "INBOX"
+    with patch("juggle_cmd_projects.infer_project_id", return_value=(pid, 0.85)):
+        resweep_inbox(db, limit=10)
+    assert db.get_thread(tid)["project_id"] == pid
+
+
+def test_resweep_inbox_respects_limit(tmp_path):
+    from juggle_db import JuggleDB
+    from juggle_cmd_projects import resweep_inbox
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    db.create_project("Dev", "Build software")
+    for i in range(10):
+        db.create_thread(f"task {i}", session_id="s1")
+    call_count = 0
+
+    def fake_infer(topic, projects, db=None, **kw):
+        nonlocal call_count
+        call_count += 1
+        return ("INBOX", 0.3)
+
+    with patch("juggle_cmd_projects.infer_project_id", side_effect=fake_infer):
+        resweep_inbox(db, limit=5)
+    assert call_count == 5
