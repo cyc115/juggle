@@ -90,7 +90,6 @@ def _clamp_col_pct(pct: int, lo: int = _MIN_TOPICS_PCT, hi: int = _MAX_TOPICS_PC
     return max(lo, min(hi, pct))
 
 
-
 def _compute_ratios(topics_cells: float, actions_cells: float, agents_cells: float) -> list[float]:
     """Normalize actual rendered cell widths to [topics, actions, agents] ratios summing to 1.0.
 
