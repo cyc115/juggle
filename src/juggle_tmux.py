@@ -459,9 +459,8 @@ def _pane_has_juggle_agent_env(pane_id: str) -> bool:
 
 def _get_pane_start_time(pane_id: str) -> float | None:
     """Return Unix epoch when the pane was created, or None on any failure."""
-    import subprocess as _sp
     try:
-        r = _sp.run(
+        r = subprocess.run(
             ["tmux", "display-message", "-p", "-t", pane_id, "#{pane_start_time}"],
             capture_output=True, text=True, timeout=3,
         )
@@ -551,8 +550,7 @@ def reap_stale_agents(db, mgr):
                 pane_start = _get_pane_start_time(pane_id)
                 if pane_start is None:
                     continue  # conservative: skip if age unreadable
-                import time as _t
-                if _t.time() - pane_start < cold_start_grace:
+                if time.time() - pane_start < cold_start_grace:
                     continue  # within boot grace — skip
                 mgr.kill_pane(pane_id)
                 reaped += 1

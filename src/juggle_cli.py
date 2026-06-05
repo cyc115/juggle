@@ -908,7 +908,7 @@ def main():
             if not is_watchdog_alive():
                 print(
                     "Warning: juggle watchdog is not running or unresponsive. "
-                    "Start it with: juggle watchdog start",
+                    "Start it with: juggle start",
                     file=sys.stderr,
                 )
         except Exception:
