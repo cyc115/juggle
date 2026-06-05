@@ -120,6 +120,49 @@ def _build_classifier_prompt(
     return prompt
 
 
+_SYNTH_MAX_HUMAN = 20
+_SYNTH_MAX_AUTO = 10
+
+
+def build_match_profile_prompt(
+    project: dict,
+    threads: list[dict],
+    corrections: list[dict],
+) -> str:
+    """Pure function: build synthesis prompt for one project's match_profile.
+
+    Weights human-assigned threads highest; auto-assigned weakly included to
+    avoid feedback-loop reinforcement. Bounded to prevent token overrun.
+    """
+    human_topics = [t["topic"] for t in threads if t.get("assigned_by") == "human"]
+    auto_topics = [t["topic"] for t in threads if t.get("assigned_by") != "human"]
+    human_sample = human_topics[:_SYNTH_MAX_HUMAN]
+    auto_sample = auto_topics[:_SYNTH_MAX_AUTO]
+
+    correction_lines = [
+        f'  - "{c["topic"]}" was moved OUT (to {c["to_project"]})'
+        for c in (corrections or [])[:5]
+    ]
+
+    confirmed_section = "\n".join(f"  - {t}" for t in human_sample) or "  (none yet)"
+    auto_section = "\n".join(f"  - {t}" for t in auto_sample) or "  (none yet)"
+    correction_section = "\n".join(correction_lines) or "  (none)"
+
+    return (
+        f"Synthesize a match_profile for the project below.\n\n"
+        f"Project: {project['name']} (id={project['id']})\n"
+        f"Objective: {project['objective']}\n\n"
+        f"Human-confirmed thread topics (trust these most):\n{confirmed_section}\n\n"
+        f"Auto-assigned thread topics (use lightly):\n{auto_section}\n\n"
+        f"Topics recently moved OUT of this project:\n{correction_section}\n\n"
+        f"Write a match_profile with exactly three lines:\n"
+        f"1. A compact 1-2 sentence description of what belongs in this project.\n"
+        f"2. KEYWORDS: <5-10 comma-separated signal words>\n"
+        f"3. NOT: <5-10 comma-separated words for sibling projects that should NOT match>\n\n"
+        f"Output only those three lines. No preamble."
+    )
+
+
 def infer_project_id(topic: str, projects: list[dict], db=None) -> str:
     """Returns best project_id or INBOX. db is optional; when provided, adds few-shot examples + corrections."""
     if not projects:
