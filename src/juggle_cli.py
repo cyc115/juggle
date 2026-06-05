@@ -859,8 +859,7 @@ def main():
     _p.set_defaults(func=cmd_project_show)
 
     _p = _ps.add_parser("assign")
-    _p.add_argument("thread_id")
-    _p.add_argument("project_id")
+    _p.add_argument("thread_id", nargs="+", help="One or more thread labels/UUIDs; last arg is project_id")
     _p.set_defaults(func=cmd_project_assign)
 
     _p = _ps.add_parser("edit")
