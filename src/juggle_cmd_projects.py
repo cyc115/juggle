@@ -316,6 +316,15 @@ def cmd_project_edit(args):
     if not db.get_project(args.project_id):
         print(f"Project not found: {args.project_id}")
         sys.exit(1)
+
+    has_criterion = bool(getattr(args, "success_criterion", None))
+    has_json = getattr(args, "success_criteria_json", None) is not None
+    has_clear = getattr(args, "clear_success_criteria", False)
+
+    if has_criterion and has_json:
+        print("Error: --success-criterion and --success-criteria-json are mutually exclusive.")
+        sys.exit(1)
+
     updates = {}
     if args.name:
         updates["name"] = args.name
@@ -323,8 +332,27 @@ def cmd_project_edit(args):
         updates["objective"] = args.objective
     if args.out_of_scope is not None:
         updates["out_of_scope"] = args.out_of_scope
+
+    if has_clear:
+        updates["success_criteria"] = "[]"
+    elif has_criterion:
+        updates["success_criteria"] = json.dumps(args.success_criterion)
+    elif has_json:
+        try:
+            parsed = json.loads(args.success_criteria_json)
+        except json.JSONDecodeError:
+            print("Error: --success-criteria-json is not valid JSON.")
+            sys.exit(1)
+        if not isinstance(parsed, list):
+            print("Error: --success-criteria-json must be a JSON array.")
+            sys.exit(1)
+        if not all(isinstance(c, str) for c in parsed):
+            print("Error: --success-criteria-json items must all be strings.")
+            sys.exit(1)
+        updates["success_criteria"] = json.dumps(parsed)
+
     if not updates:
-        print("Nothing to update. Use --name, --objective, or --out-of-scope.")
+        print("Nothing to update. Use --name, --objective, --out-of-scope, --success-criterion, --success-criteria-json, or --clear-success-criteria.")
         sys.exit(1)
     db.update_project(args.project_id, **updates)
     print(f"Project {args.project_id} updated.")

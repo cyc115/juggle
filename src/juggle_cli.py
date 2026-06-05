@@ -867,6 +867,9 @@ def main():
     _p.add_argument("--name")
     _p.add_argument("--objective")
     _p.add_argument("--out-of-scope", dest="out_of_scope")
+    _p.add_argument("--success-criterion", dest="success_criterion", action="append", metavar="CRITERION")
+    _p.add_argument("--success-criteria-json", dest="success_criteria_json", metavar="JSON")
+    _p.add_argument("--clear-success-criteria", dest="clear_success_criteria", action="store_true")
     _p.set_defaults(func=cmd_project_edit)
 
     _p = _ps.add_parser("create")

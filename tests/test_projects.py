@@ -227,3 +227,131 @@ def test_infer_project_id_uses_human_positives_and_corrections(tmp_path):
 
     assert "sell TSLA puts" in captured["prompt"]
     assert "buy AAPL calls" in captured["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# cmd_project_edit — success_criteria
+# ---------------------------------------------------------------------------
+
+def _make_project_db(tmp_path):
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    pid = db.create_project(name="Alpha", objective="Do stuff")
+    return db, pid
+
+
+def _edit_args(**kwargs):
+    defaults = {
+        "project_id": None,
+        "name": None,
+        "objective": None,
+        "out_of_scope": None,
+        "success_criterion": None,
+        "success_criteria_json": None,
+        "clear_success_criteria": False,
+    }
+    defaults.update(kwargs)
+    return type("Args", (), defaults)()
+
+
+def test_project_edit_success_criterion_repeatable_sets_list(tmp_path):
+    from juggle_cmd_projects import cmd_project_edit
+    db, pid = _make_project_db(tmp_path)
+    args = _edit_args(
+        project_id=pid,
+        success_criterion=["Pipeline ingests all sources", "Daily digest produced"],
+    )
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        cmd_project_edit(args)
+    import json
+    stored = json.loads(db.get_project(pid)["success_criteria"])
+    assert stored == ["Pipeline ingests all sources", "Daily digest produced"]
+
+
+def test_project_edit_success_criteria_json_valid(tmp_path):
+    from juggle_cmd_projects import cmd_project_edit
+    db, pid = _make_project_db(tmp_path)
+    args = _edit_args(project_id=pid, success_criteria_json='["a", "b"]')
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        cmd_project_edit(args)
+    import json
+    stored = json.loads(db.get_project(pid)["success_criteria"])
+    assert stored == ["a", "b"]
+
+
+def test_project_edit_success_criteria_json_invalid_json_errors(tmp_path, capsys):
+    from juggle_cmd_projects import cmd_project_edit
+    db, pid = _make_project_db(tmp_path)
+    args = _edit_args(project_id=pid, success_criteria_json="not valid json")
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        with pytest.raises(SystemExit) as exc:
+            cmd_project_edit(args)
+    assert exc.value.code == 1
+    # No DB write — success_criteria unchanged
+    import json
+    stored = json.loads(db.get_project(pid)["success_criteria"])
+    assert stored == []
+
+
+def test_project_edit_success_criteria_json_non_list_errors(tmp_path):
+    from juggle_cmd_projects import cmd_project_edit
+    db, pid = _make_project_db(tmp_path)
+    args = _edit_args(project_id=pid, success_criteria_json='{"key": "val"}')
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        with pytest.raises(SystemExit) as exc:
+            cmd_project_edit(args)
+    assert exc.value.code == 1
+
+
+def test_project_edit_success_criteria_json_non_string_items_errors(tmp_path):
+    from juggle_cmd_projects import cmd_project_edit
+    db, pid = _make_project_db(tmp_path)
+    args = _edit_args(project_id=pid, success_criteria_json='[1, 2]')
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        with pytest.raises(SystemExit) as exc:
+            cmd_project_edit(args)
+    assert exc.value.code == 1
+
+
+def test_project_edit_clear_success_criteria(tmp_path):
+    from juggle_cmd_projects import cmd_project_edit
+    import json
+    db, pid = _make_project_db(tmp_path)
+    db.update_project(pid, success_criteria=json.dumps(["existing criterion"]))
+    args = _edit_args(project_id=pid, clear_success_criteria=True)
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        cmd_project_edit(args)
+    stored = json.loads(db.get_project(pid)["success_criteria"])
+    assert stored == []
+
+
+def test_project_edit_both_criterion_and_json_errors(tmp_path):
+    from juggle_cmd_projects import cmd_project_edit
+    db, pid = _make_project_db(tmp_path)
+    args = _edit_args(
+        project_id=pid,
+        success_criterion=["a"],
+        success_criteria_json='["b"]',
+    )
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        with pytest.raises(SystemExit) as exc:
+            cmd_project_edit(args)
+    assert exc.value.code == 1
+
+
+def test_project_edit_existing_flags_regression(tmp_path):
+    from juggle_cmd_projects import cmd_project_edit
+    db, pid = _make_project_db(tmp_path)
+    args = _edit_args(
+        project_id=pid,
+        name="New Name",
+        objective="New Objective",
+        out_of_scope="Out of scope text",
+    )
+    with patch("juggle_cmd_projects.get_db", return_value=db):
+        cmd_project_edit(args)
+    p = db.get_project(pid)
+    assert p["name"] == "New Name"
+    assert p["objective"] == "New Objective"
+    assert p["out_of_scope"] == "Out of scope text"
