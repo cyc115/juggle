@@ -580,6 +580,12 @@ def main():
         default="sonnet",
         help="Claude model alias or full name (default: sonnet)",
     )
+    p_get_agent.add_argument(
+        "--repo",
+        dest="repo",
+        default=None,
+        help="Filter idle agents to matching repo_path (default: current cwd git toplevel)",
+    )
     p_get_agent.set_defaults(func=cmd_get_agent)
 
     # release-agent

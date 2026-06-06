@@ -432,7 +432,16 @@ class JuggleTmuxManager:
         pane_id = self.spawn_pane()
         self.start_claude_in_pane(pane_id, model=model, role=role)
 
-        agent_id = db.create_agent(role=role, pane_id=pane_id, harness=harness_id)
+        # Detect repo_path at spawn time for get-agent --repo filtering
+        try:
+            repo_path = subprocess.check_output(
+                ["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
+                text=True
+            ).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            repo_path = ""  # not a git repo
+
+        agent_id = db.create_agent(role=role, pane_id=pane_id, harness=harness_id, repo_path=repo_path)
         return db.get_agent(agent_id)
 
     def get_pane_last_used(self, pane_id: str) -> int:

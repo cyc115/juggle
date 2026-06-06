@@ -86,7 +86,8 @@ CREATE TABLE IF NOT EXISTS agents (
   busy_since                 TEXT,
   last_send_task_pane_hash   TEXT,
   last_send_task_at          TEXT,
-  last_activity_at           TEXT
+  last_activity_at           TEXT,
+  repo_path                  TEXT
 );
 """
 
@@ -777,6 +778,18 @@ class JuggleDB:
             _log.info("Migration 32: harness + oneshot_pid columns added to agents")
         except sqlite3.OperationalError as e:
             _log.warning("Migration 32 (harness/oneshot_pid) skipped: %s", e)
+
+        # Migration 33: repo_path on agents
+        agents_cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()
+        }
+        if "repo_path" not in agents_cols:
+            try:
+                conn.execute("ALTER TABLE agents ADD COLUMN repo_path TEXT")
+                conn.commit()
+                _log.info("Migration 33: repo_path column added to agents")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 33 (repo_path) skipped: %s", e)
 
     # ------------------------------------------------------------------
     # Session helpers
@@ -1608,7 +1621,7 @@ class JuggleDB:
     # Agent pool operations
     # ------------------------------------------------------------------
 
-    def create_agent(self, role: str, pane_id: str, harness: str | None = None) -> str:
+    def create_agent(self, role: str, pane_id: str, harness: str | None = None, repo_path: str | None = None) -> str:
         """Create a new agent record. Returns the agent UUID."""
         new_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -1616,10 +1629,10 @@ class JuggleDB:
             conn.execute(
                 """
                 INSERT INTO agents
-                  (id, role, pane_id, assigned_thread, status, context_threads, created_at, last_active, harness)
-                VALUES (?, ?, ?, NULL, 'idle', '[]', ?, ?, ?)
+                  (id, role, pane_id, assigned_thread, status, context_threads, created_at, last_active, harness, repo_path)
+                VALUES (?, ?, ?, NULL, 'idle', '[]', ?, ?, ?, ?)
                 """,
-                (new_id, role, pane_id, now, now, harness),
+                (new_id, role, pane_id, now, now, harness, repo_path),
             )
             conn.commit()
         return new_id
@@ -1893,3 +1906,16 @@ class JuggleDB:
                 candidates.append(t)
 
         return candidates
+
+
+        # Migration 33: repo_path on agents
+        agents_cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()
+        }
+        if "repo_path" not in agents_cols:
+            try:
+                conn.execute("ALTER TABLE agents ADD COLUMN repo_path TEXT")
+                conn.commit()
+                _log.info("Migration 33: repo_path column added to agents")
+            except sqlite3.OperationalError as e:
+                _log.warning("Migration 33 (repo_path) skipped: %s", e)

@@ -128,3 +128,23 @@ def test_get_best_agent_signature_has_no_domain():
 
     sig = inspect.signature(JuggleDB.get_best_agent)
     assert "domain" not in sig.parameters
+
+
+# ── Fix 1: repo_path on agents ──────────────────────────────────────────────
+
+def test_agent_repo_path_stored_on_create(db):
+    agent_id = db.create_agent(role="coder", pane_id="%1", repo_path="/home/user/myproject")
+    agent = db.get_agent(agent_id)
+    assert agent["repo_path"] == "/home/user/myproject"
+
+
+def test_agent_repo_path_nullable(db):
+    agent_id = db.create_agent(role="coder", pane_id="%1")
+    agent = db.get_agent(agent_id)
+    assert agent["repo_path"] is None
+
+
+def test_ranked_idle_agents_includes_repo_path(db):
+    db.create_agent(role="coder", pane_id="%1", repo_path="/repo/a")
+    agents = db.get_ranked_idle_agents("thread-1")
+    assert agents[0].get("repo_path") == "/repo/a"
