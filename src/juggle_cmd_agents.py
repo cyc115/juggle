@@ -485,6 +485,14 @@ def cmd_spawn_agent(args):
 
 def cmd_list_agents(args):
     db = get_db()
+    # Self-heal: reconcile stale busy one-shot agents before listing.
+    sys.path.insert(0, str(SRC_DIR))
+    try:
+        from juggle_tmux import reconcile_oneshot_agents
+        reconcile_oneshot_agents(db)
+    except Exception:
+        pass
+
     agents = db.get_all_agents()
     if not agents:
         print("No agents.")
@@ -492,11 +500,17 @@ def cmd_list_agents(args):
 
     now = datetime.now(timezone.utc)
 
-    def _agent_age(last_active: str) -> str:
-        if not last_active:
+    def _agent_age(a) -> str:
+        """Age from busy_since if busy, else last_active (fallback)."""
+        ts = None
+        if a.get("status") == "busy" and a.get("busy_since"):
+            ts = a["busy_since"]
+        else:
+            ts = a.get("last_active")
+        if not ts:
             return "-"
         try:
-            dt = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             secs = int((now - dt).total_seconds())
@@ -521,8 +535,11 @@ def cmd_list_agents(args):
         status = a.get("status") or "-"
         pane = a.get("pane_id") or "-"
         topic_lbl = _agent_topic_label(a)
-        age = _agent_age(a.get("last_active") or "")
-        print(f"{short_id} {role:<8} {status:<5} {pane} [{topic_lbl}] {age}")
+        age = _agent_age(a)
+        harness = a.get("harness") or "-"
+        model = a.get("model")
+        hmodel = f"{harness}/{model}" if model else harness
+        print(f"{short_id} {role:<8} {status:<5} {pane} [{topic_lbl}] {age:<4} {hmodel}")
 
 
 def cmd_get_agent(args):
@@ -752,19 +769,25 @@ def cmd_send_task(args):
     db.update_agent(args.agent_id, last_active=now)
     if adapter.is_interactive:
         pane_hash = mgr.send_task(pane_id, full_prompt, is_new=is_new)
+        oneshot_pid = None
     else:
         # One-shot: spawn a fresh `<harness> ... <prompt>` process in the pane;
         # it runs to completion and exits. No warm REPL, no marker polling.
-        pane_hash = mgr.run_task_oneshot(
+        pane_hash, oneshot_pid = mgr.run_task_oneshot(
             pane_id, full_prompt, role=_role, model=agent.get("model")
         )
     now_iso = datetime.now(timezone.utc).isoformat()
-    db.update_agent(
-        args.agent_id,
+    # Persist harness + model for all agents; oneshot_pid for one-shot agents.
+    _update_fields: dict = dict(
         last_task=full_prompt,
         last_send_task_pane_hash=pane_hash,
         last_send_task_at=now_iso,
+        harness=adapter.id,
+        model=adapter._cfg.get("model") or agent.get("model"),
     )
+    if not adapter.is_interactive and oneshot_pid is not None:
+        _update_fields["oneshot_pid"] = oneshot_pid
+    db.update_agent(args.agent_id, **_update_fields)
     print(f"Task sent to agent {args.agent_id[:8]} (pane {pane_id}).")
 
 

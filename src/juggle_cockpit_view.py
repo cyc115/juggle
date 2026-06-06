@@ -282,16 +282,21 @@ def render_agents(
         t_active.add_column(no_wrap=True)  # [topic]
         t_active.add_column(no_wrap=True)  # role
         t_active.add_column(no_wrap=True)  # age
+        t_active.add_column(no_wrap=True)  # harness
         for agent in active_agents:
             i = sorted_agents.index(agent) + 1
             glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
             st = _row_style(agent.status)
+            hmodel = agent.harness or ""
+            if agent.model:
+                hmodel = f"{hmodel}/{agent.model}" if hmodel else agent.model
             t_active.add_row(
                 Text(f"#{i}", style=Style(dim=True)),
                 Text(glyph),
                 Text(f"[{agent.topic_id}]", style=st),
                 Text(f"(A) {agent.role}", style=st),
                 Text(format_age(agent.age_secs), style=st),
+                Text(hmodel, style=Style(dim=True)),
             )
         parts.append(t_active)
 
@@ -305,16 +310,21 @@ def render_agents(
         t_pool.add_column(no_wrap=True)  # glyph
         t_pool.add_column(no_wrap=True)  # name
         t_pool.add_column(no_wrap=True)  # duration
+        t_pool.add_column(no_wrap=True)  # harness
 
         for agent in pool_agents:
             i = sorted_agents.index(agent) + 1
             glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
             st = _row_style(agent.status)
+            hmodel = agent.harness or ""
+            if agent.model:
+                hmodel = f"{hmodel}/{agent.model}" if hmodel else agent.model
             t_pool.add_row(
                 Text(f"#{i}", style=Style(dim=True)),
                 Text(glyph),
                 Text(f"(A) {agent.role}", style=st),
                 Text(format_age(agent.age_secs), style=st),
+                Text(hmodel, style=Style(dim=True)),
             )
 
         if scheduled:

@@ -762,6 +762,22 @@ class JuggleDB:
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 31 (assigned_confidence) skipped: %s", e)
 
+        # Migration 32: harness + oneshot_pid on agents
+        agents_cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()
+        }
+        try:
+            for col, defn in [
+                ("harness", "TEXT"),
+                ("oneshot_pid", "INTEGER"),
+            ]:
+                if col not in agents_cols:
+                    conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {defn}")
+            conn.commit()
+            _log.info("Migration 32: harness + oneshot_pid columns added to agents")
+        except sqlite3.OperationalError as e:
+            _log.warning("Migration 32 (harness/oneshot_pid) skipped: %s", e)
+
     # ------------------------------------------------------------------
     # Session helpers
     # ------------------------------------------------------------------
@@ -1592,7 +1608,7 @@ class JuggleDB:
     # Agent pool operations
     # ------------------------------------------------------------------
 
-    def create_agent(self, role: str, pane_id: str) -> str:
+    def create_agent(self, role: str, pane_id: str, harness: str | None = None) -> str:
         """Create a new agent record. Returns the agent UUID."""
         new_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -1600,10 +1616,10 @@ class JuggleDB:
             conn.execute(
                 """
                 INSERT INTO agents
-                  (id, role, pane_id, assigned_thread, status, context_threads, created_at, last_active)
-                VALUES (?, ?, ?, NULL, 'idle', '[]', ?, ?)
+                  (id, role, pane_id, assigned_thread, status, context_threads, created_at, last_active, harness)
+                VALUES (?, ?, ?, NULL, 'idle', '[]', ?, ?, ?)
                 """,
-                (new_id, role, pane_id, now, now),
+                (new_id, role, pane_id, now, now, harness),
             )
             conn.commit()
         return new_id

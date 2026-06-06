@@ -416,12 +416,39 @@ def _classify_agent_state(pane_content: str, pane_exists: bool) -> str:
     - alive_slow: Claude UI is visible — agent is thinking/working/finished but still alive
     - dead: pane no longer exists in tmux
     - never_fired: pane exists but shows shell with no Claude UI (truncated launch, crash, etc.)
+
+    Only meaningful for interactive harnesses (Claude Code) — for non-interactive
+    (one-shot) agents, use ``_agent_is_non_interactive`` + ``oneshot_agent_alive``.
     """
     if not pane_exists:
         return "dead"
     if any(marker in pane_content for marker in _CLAUDE_UI_MARKERS):
         return "alive_slow"
     return "never_fired"
+
+
+def _agent_is_non_interactive(agent: dict) -> bool:
+    """Return True if the agent's persisted harness is non-interactive (one-shot).
+
+    Resolves the adapter from the **persisted** harness id (so a recycled claude
+    pane still shows as interactive even if current config says reasonix).
+    """
+    try:
+        harness_id = agent.get("harness")
+        if not harness_id:
+            return False
+        # Resolve using the agent's OWN harness config, not the current global default.
+        from juggle_settings import get_settings
+        agent_cfg = get_settings().get("agent", {})
+        harnesses = agent_cfg.get("harnesses") or {}
+        hcfg = harnesses.get(harness_id)
+        if hcfg is not None:
+            # Use the adapter type from config to determine interactivity
+            is_interactive = hcfg.get("interactive", True)
+            return not is_interactive
+        return False
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -568,20 +595,40 @@ def execute_recovery(
 
     # Policy: never kill a live agent. Only recover dead / never-fired panes.
     pane_exists = mgr.verify_pane(live["pane_id"])
-    agent_state = _classify_agent_state(pane_content, pane_exists)
-    if agent_state == "alive_slow":
-        _t = live.get("assigned_thread")
-        if _t:
-            _thread = db.get_thread(_t)
-            if _thread and _thread.get("status") == "closed":
-                _log.info(
-                    "Watchdog: agent %s alive_slow but thread %s is closed — idling agent",
-                    agent_id[:8], _t[:8],
-                )
-                db.update_agent(agent_id, status="idle", assigned_thread=None)
-                return
-        nudge_and_notify(db, mgr, live, pane_content)
-        return
+
+    if _agent_is_non_interactive(live):
+        # One-shot agent: use PID liveness, not pane markers.
+        # Pane markers are meaningless for non-interactive harnesses (no Claude UI).
+        from juggle_tmux import oneshot_agent_alive as _oneshot_alive
+        if _oneshot_alive(live):
+            # Still running — no recovery needed.
+            _log.info(
+                "Watchdog: non-interactive agent %s is alive (PID check) — skipping",
+                agent_id[:8],
+            )
+            return
+        # Dead one-shot + pane still exists but process died → treat as never_fired
+        # Fall through to recovery below.
+        if not pane_exists:
+            agent_state = "dead"
+        else:
+            # Process died but pane may still show shell — proceed to recovery.
+            agent_state = "never_fired"
+    else:
+        agent_state = _classify_agent_state(pane_content, pane_exists)
+        if agent_state == "alive_slow":
+            _t = live.get("assigned_thread")
+            if _t:
+                _thread = db.get_thread(_t)
+                if _thread and _thread.get("status") == "closed":
+                    _log.info(
+                        "Watchdog: agent %s alive_slow but thread %s is closed — idling agent",
+                        agent_id[:8], _t[:8],
+                    )
+                    db.update_agent(agent_id, status="idle", assigned_thread=None)
+                    return
+            nudge_and_notify(db, mgr, live, pane_content)
+            return
 
     thread_id = live.get("assigned_thread")
     role = live.get("role", "researcher")
@@ -1080,6 +1127,25 @@ def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
         "action_item_id": None,
         "notification_id": None,
     }
+
+    # Non-interactive (one-shot) agent: skip pane-marker classification entirely.
+    # Use PID-based liveness instead — pane markers (Claude UI) are meaningless.
+    if _agent_is_non_interactive(agent):
+        from juggle_tmux import oneshot_agent_alive as _oneshot_alive
+        if _oneshot_alive(agent):
+            result["state"] = "working"
+            return result
+        # Dead one-shot: reconcile via the same path as crashed.
+        if raw_content is None:
+            return _handle_crashed(
+                db, agent, thread_id, label, session_id, result,
+                pane_content="", snapshot_dir=snapshot_dir,
+            )
+        # Process died but pane still exists — treat as crashed (shell prompt).
+        return _handle_crashed(
+            db, agent, thread_id, label, session_id, result,
+            pane_content=_strip_ansi(raw_content), snapshot_dir=snapshot_dir,
+        )
 
     if raw_content is None:
         # Pane gone entirely

@@ -330,7 +330,7 @@ class JuggleTmuxManager:
         role: str | None = None,
         model: str | None = None,
         audit: bool = False,
-    ) -> str:
+    ):
         """Dispatch a task to a NON-interactive harness as a one-shot process.
 
         Simpler than ``send_task``: there is no warm REPL to wait on and no
@@ -338,18 +338,21 @@ class JuggleTmuxManager:
         one-shot command (``adapter.build_task_command``) is pasted into the
         pane, and the process runs to completion and exits. We still paste via
         load-buffer/paste-buffer so the (short, fixed) command line is reliable,
-        and return a pane-tail hash for parity with ``send_task``.
+        and return a (pane_hash, child_pid) tuple. child_pid is None if the PID
+        could not be determined.
 
         Honours JUGGLE_TMUX_MOCK_SEND like ``send_task`` for tests.
         """
         import hashlib as _hashlib
+        import subprocess as _sp
+        import time as _time
 
         from juggle_harness import get_adapter
 
         if not pane_id or not pane_id.strip():
             raise ValueError("run_task_oneshot called with empty pane_id")
         if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
-            return _hashlib.sha256(prompt.encode()).hexdigest()[:16]
+            return _hashlib.sha256(prompt.encode()).hexdigest()[:16], None
 
         agent_cfg = _get_settings().get("agent", {})
         adapter = get_adapter(role, agent_cfg=agent_cfg)
@@ -374,10 +377,20 @@ class JuggleTmuxManager:
             self._run_tmux("send-keys", "-t", pane_id, "Enter")
             cap = self._run_tmux("capture-pane", "-pt", pane_id, "-S", "-10")
             tail = (getattr(cap, "stdout", "") or "")
-            return _hashlib.sha256(tail.encode()).hexdigest()[:16]
+            pane_hash = _hashlib.sha256(tail.encode()).hexdigest()[:16]
+
+            # Resolve the child PID of the one-shot process. Poll a few short
+            # attempts because there is a race between send-keys and process spawn.
+            child_pid = None
+            for _ in range(6):
+                _time.sleep(0.15)
+                pid = _get_oneshot_child_pid(pane_id)
+                if pid is not None:
+                    child_pid = pid
+                    break
+
+            return pane_hash, child_pid
         finally:
-            # The pasted command (a small temp file) is consumed immediately; the
-            # prompt file is cleaned by the `; rm -f` appended above.
             if Path(cmd_tmp).exists():
                 os.unlink(cmd_tmp)
 
@@ -387,12 +400,21 @@ class JuggleTmuxManager:
         db must be a JuggleDB instance with init_db() already called.
         Raises ValueError if pool is at MAX_BACKGROUND_AGENTS.
         Mock mode: if JUGGLE_TMUX_MOCK_PANE set, skip tmux and use that pane_id directly.
+
+        Tags the agent with the **launch-time** harness id so recycled panes
+        (started under one harness, still running that REPL) display correctly
+        even after a config switch.
         """
         import sys
         from pathlib import Path as _Path
 
         sys.path.insert(0, str(_Path(__file__).parent))
         from juggle_db import MAX_BACKGROUND_AGENTS
+        from juggle_harness import get_adapter
+
+        agent_cfg = _get_settings().get("agent", {})
+        adapter = get_adapter(role, agent_cfg=agent_cfg)
+        harness_id = adapter.id
 
         agents = db.get_all_agents()
         if len(agents) >= MAX_BACKGROUND_AGENTS:
@@ -403,14 +425,14 @@ class JuggleTmuxManager:
 
         mock_pane = os.environ.get("JUGGLE_TMUX_MOCK_PANE")
         if mock_pane:
-            agent_id = db.create_agent(role=role, pane_id=mock_pane)
+            agent_id = db.create_agent(role=role, pane_id=mock_pane, harness=harness_id)
             return db.get_agent(agent_id)
 
         self.ensure_session()
         pane_id = self.spawn_pane()
         self.start_claude_in_pane(pane_id, model=model, role=role)
 
-        agent_id = db.create_agent(role=role, pane_id=pane_id)
+        agent_id = db.create_agent(role=role, pane_id=pane_id, harness=harness_id)
         return db.get_agent(agent_id)
 
     def get_pane_last_used(self, pane_id: str) -> int:
@@ -465,6 +487,164 @@ def _pane_has_juggle_agent_env(pane_id: str) -> bool:
     except Exception:
         pass
     return False
+
+
+def _get_oneshot_child_pid(pane_id: str) -> int | None:
+    """Return the PID of a one-shot child process in *pane_id*, or None.
+
+    Finds the pane's shell PID then looks for a child with JUGGLE_IS_AGENT=1
+    in its environment — the same technique ``_pane_has_juggle_agent_env`` uses.
+    """
+    import subprocess as _sp
+
+    try:
+        pane_pid = _sp.run(
+            ["tmux", "display-message", "-t", pane_id, "-p", "#{pane_pid}"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        ).stdout.strip()
+        if not pane_pid:
+            return None
+        children = (
+            _sp.run(
+                ["pgrep", "-P", pane_pid],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            .stdout.strip()
+            .splitlines()
+        )
+        for child in children:
+            env_out = _sp.run(
+                ["ps", "eww", "-p", child],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            ).stdout
+            if "JUGGLE_IS_AGENT=1" in env_out:
+                return int(child)
+    except Exception:
+        pass
+    return None
+
+
+def oneshot_agent_alive(agent: dict) -> bool:
+    """Return True if a one-shot agent process is still running.
+
+    Checks the persisted ``oneshot_pid`` via ``os.kill(pid, 0)``.
+    Falls back to ``_pane_has_juggle_agent_env`` when oneshot_pid is not set.
+    """
+    import os as _os
+
+    pid = agent.get("oneshot_pid")
+    if pid is not None:
+        try:
+            _os.kill(int(pid), 0)
+            return True
+        except (ProcessLookupError, OSError, ValueError, TypeError):
+            return False
+    # Fallback: check if the pane still has a child with JUGGLE_IS_AGENT=1
+    pane_id = agent.get("pane_id")
+    if pane_id:
+        return _pane_has_juggle_agent_env(pane_id)
+    return False
+
+
+def reconcile_oneshot_agents(db) -> int:
+    """Reconcile stale busy one-shot agents: dead PID → idle + failure action item.
+
+    Only acts on agents whose harness is NON-interactive, status=="busy",
+    assigned_thread is not closed/failed, and past a ~20s grace window from
+    ``last_send_task_at``.
+
+    Returns the number of agents reconciled.
+    """
+    import os as _os
+    from datetime import datetime, timezone
+
+    from juggle_harness import get_adapter
+    from juggle_settings import get_settings as _gs
+
+    reconciled = 0
+    now = datetime.now(timezone.utc)
+    # Reuse the boot-grace setting for consistency with the watchdog.
+    try:
+        grace_secs = float(_gs().get("agent_boot_grace_secs", 20))
+    except Exception:
+        grace_secs = 20
+
+    for agent in db.get_all_agents():
+        if agent.get("status") != "busy":
+            continue
+
+        harness_id = agent.get("harness")
+        if not harness_id:
+            continue
+
+        # Resolve interactivity from the agent's PERSISTED harness config, not
+        # the current global default. A recycled claude pane must still be
+        # treated as interactive even after a config switch to reasonix.
+        try:
+            agent_cfg = _gs().get("agent", {})
+            harnesses = agent_cfg.get("harnesses") or {}
+            hcfg = harnesses.get(harness_id)
+            if hcfg is not None:
+                is_interactive = hcfg.get("interactive", True)
+                if is_interactive:
+                    continue
+            else:
+                # Unknown harness — safe default: treat as interactive, skip.
+                continue
+        except Exception:
+            continue
+
+        # Thread already closed/failed → leave untouched (complete/fail-agent
+        # already handled it).
+        thread_id = agent.get("assigned_thread")
+        if thread_id:
+            thread = db.get_thread(thread_id)
+            if thread and thread.get("status") in ("closed", "failed", "archived"):
+                continue
+
+        # Still alive → leave untouched.
+        if oneshot_agent_alive(agent):
+            continue
+
+        # Within grace window → leave untouched (process may still be spawning).
+        last_send_at = agent.get("last_send_task_at")
+        if last_send_at:
+            try:
+                send_dt = datetime.fromisoformat(last_send_at.replace("Z", "+00:00"))
+                if send_dt.tzinfo is None:
+                    send_dt = send_dt.replace(tzinfo=timezone.utc)
+                if (now - send_dt).total_seconds() < grace_secs:
+                    continue
+            except (ValueError, TypeError):
+                pass
+
+        # Dead one-shot with an open thread → set agent idle, file failure.
+        label = thread_id[:8] if thread_id else agent["id"][:8]
+        if thread_id:
+            t = db.get_thread(thread_id)
+            if t:
+                label = t.get("user_label") or t.get("label") or thread_id[:8]
+
+        db.update_agent(agent["id"], status="idle", assigned_thread=None)
+        if thread_id:
+            db.add_action_item(
+                thread_id=thread_id,
+                message=(
+                    f"⚠️ [{label}] one-shot agent process died without calling "
+                    f"complete-agent — investigate and re-dispatch"
+                ),
+                type_="failure",
+                priority="high",
+            )
+        reconciled += 1
+
+    return reconciled
 
 
 def _get_pane_start_time(pane_id: str) -> float | None:

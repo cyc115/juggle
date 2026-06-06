@@ -212,7 +212,8 @@ def _make_in_memory_db():
           id TEXT PRIMARY KEY, role TEXT NOT NULL, pane_id TEXT NOT NULL,
           assigned_thread TEXT, status TEXT NOT NULL DEFAULT 'idle',
           context_threads TEXT NOT NULL DEFAULT '[]',
-          created_at TEXT NOT NULL, last_active TEXT NOT NULL
+          created_at TEXT NOT NULL, last_active TEXT NOT NULL,
+          harness TEXT, model TEXT, busy_since TEXT, oneshot_pid INTEGER
         );
         CREATE TABLE notifications (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,7 +269,9 @@ def _make_in_memory_db():
         ),
     )
     conn.execute(
-        "INSERT INTO agents VALUES(?,?,?,?,?,?,?,?)",
+        "INSERT INTO agents(id, role, pane_id, assigned_thread, status, "
+        "context_threads, created_at, last_active, harness, model) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?)",
         (
             "abcd1234-0000-0000-0000-000000000000",
             "coder",
@@ -278,6 +281,8 @@ def _make_in_memory_db():
             "[]",
             now,
             now,
+            "claude",
+            "sonnet",
         ),
     )
     conn.execute(

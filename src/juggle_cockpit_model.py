@@ -40,6 +40,8 @@ class Agent:
     topic_id: str | None  # assigned thread label or None
     age_secs: int
     pane_id: str | None = None  # tmux pane ID e.g. "%664"; None if missing
+    harness: str | None = None  # harness adapter id e.g. "claude", "reasonix"
+    model: str | None = None  # model name e.g. "sonnet", "deepseek-v4-pro"
 
 
 @dataclass(frozen=True)
@@ -360,9 +362,16 @@ def snapshot(db) -> CockpitState:
         )
 
     # --- Agents ---
+    # Self-heal: reconcile stale busy one-shot agents before building the view.
+    try:
+        from juggle_tmux import reconcile_oneshot_agents
+        reconcile_oneshot_agents(db)
+    except Exception:
+        pass
+
     agent_rows = conn.execute(
         """
-        SELECT id, role, assigned_thread, status, last_active, pane_id
+        SELECT id, role, assigned_thread, status, last_active, pane_id, harness, model, busy_since
         FROM agents ORDER BY created_at
         """
     ).fetchall()
@@ -386,14 +395,18 @@ def snapshot(db) -> CockpitState:
             ).fetchone()
             if tr:
                 topic_label_a = tr["user_label"] or (tr["id"] or "")[:6]
+        # Age: busy agents use busy_since; idle/others use last_active.
+        age_ts = r["busy_since"] if display_status == "busy" and r["busy_since"] else r["last_active"]
         agents.append(
             Agent(
                 id_short=a_id[:8],
                 role=role,
                 status=display_status,
                 topic_id=topic_label_a,
-                age_secs=_age_secs(r["last_active"]),
+                age_secs=_age_secs(age_ts),
                 pane_id=r["pane_id"] or None,
+                harness=r["harness"] or None,
+                model=r["model"] or None,
             )
         )
 
