@@ -504,24 +504,21 @@ def test_send_task_raises_when_pane_not_ready(mgr):
     mock_submit.assert_not_called()
 
 
-def test_send_task_warns_but_does_not_raise_when_submission_unverified(mgr, caplog):
-    """If wait_for_submission returns False, send_task logs a warning and returns."""
-    import logging
+def test_send_task_raises_on_unverified_submission(mgr):
+    """If wait_for_submission returns False, send_task raises RuntimeError.
 
-    caplog.set_level(logging.WARNING)
+    Updated from the old warn-only behavior (Fix 1: unsubmitted tasks silently
+    left agent at 0 tokens — orchestrator had to manually press Enter x3).
+    """
+    import pytest
     with (
         patch.object(mgr, "wait_for_ready_to_paste", return_value=True),
         patch.object(mgr, "wait_for_submission", return_value=False),
         patch("subprocess.run", return_value=_ok()),
         patch("time.sleep"),
     ):
-        # Should not raise
-        mgr.send_task("%3", "task body")
-    assert any(
-        "submission not verified" in r.message.lower()
-        or "submission" in r.message.lower()
-        for r in caplog.records
-    ), f"expected a warning log; got {[r.message for r in caplog.records]}"
+        with pytest.raises(RuntimeError, match="submission not verified"):
+            mgr.send_task("%3", "task body")
 
 
 def test_spawn_agent_creates_db_record(mgr, tmp_path):

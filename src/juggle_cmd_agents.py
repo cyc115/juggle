@@ -642,6 +642,10 @@ def cmd_get_agent(args):
             continue  # pre-migration agent, unknown repo — skip
         if target_repo and agent_repo != target_repo:
             continue  # mismatched repo — skip, don't decommission
+        # Fix 5: hard role filter — role score (+1) is not enough to prevent a
+        # wrong-role agent (e.g. planner) winning on context score (+2) for a coder request.
+        if args.role and candidate.get("role") != args.role:
+            continue
         if mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
             agent = candidate
             break

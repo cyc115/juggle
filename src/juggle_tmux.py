@@ -158,6 +158,20 @@ class JuggleTmuxManager:
         )
         return pane_id in result.stdout.splitlines()
 
+    def capture_pane(self, pane_id: str) -> str | None:
+        """Capture current pane content; return raw text or None on failure.
+
+        Used by watchdog liveness recheck. Mock: JUGGLE_TMUX_MOCK_PANE_CONTENT
+        env var returns that value (or empty string) instead of calling tmux.
+        """
+        mock_content = os.environ.get("JUGGLE_TMUX_MOCK_PANE_CONTENT", None)
+        if mock_content is not None:
+            return mock_content
+        result = self._run_tmux("capture-pane", "-pt", pane_id)
+        if result.returncode != 0:
+            return None
+        return result.stdout
+
     def kill_pane(self, pane_id: str) -> None:
         """Kill a tmux pane. No-op if JUGGLE_TMUX_MOCK_KILL=1."""
         if os.environ.get("JUGGLE_TMUX_MOCK_KILL") == "1":
@@ -314,9 +328,9 @@ class JuggleTmuxManager:
             pane_hash = _hashlib.sha256(tail.encode()).hexdigest()[:16]
             self._run_tmux("send-keys", "-t", pane_id, "C-m")
             if not self.wait_for_submission(pane_id, prompt, timeout=15):
-                logging.warning(
-                    "send_task: submission not verified for pane %s — may need manual retry",
-                    pane_id,
+                raise RuntimeError(
+                    f"send_task: submission not verified for pane {pane_id} after retries — "
+                    "task not sent; watchdog will file action item"
                 )
         finally:
             if Path(tmp).exists():

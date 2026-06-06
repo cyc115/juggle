@@ -632,7 +632,7 @@ def execute_recovery(
 
     thread_id = live.get("assigned_thread")
     role = live.get("role", "researcher")
-    model = live.get("model")
+    model = None  # Fix 4: always use current config model; never forward stale snapshot model
     last_task = live.get("last_task")
     label = _get_thread_label(db, thread_id) if thread_id else agent_id[:8]
 
@@ -669,6 +669,23 @@ def execute_recovery(
             snapshot_path=None,
         )
         return
+
+    # Liveness recheck (Fix 3): re-capture pane content before committing to recovery.
+    # If the hash changed since the watchdog's original observation, the agent is still
+    # working (e.g. running a long test suite) — abort to avoid duplicate dispatch.
+    try:
+        _recheck_content = mgr.capture_pane(live["pane_id"])
+        if _recheck_content is not None:
+            _initial_hash = _hash_tail(_strip_ansi(pane_content))
+            _recheck_hash = _hash_tail(_strip_ansi(_recheck_content))
+            if _initial_hash != _recheck_hash:
+                _log.info(
+                    "Watchdog: recovery aborted for %s — pane hash changed (agent still active)",
+                    agent_id[:8],
+                )
+                return
+    except Exception as _exc:
+        _log.debug("Watchdog: liveness recheck failed for %s: %s — proceeding", agent_id[:8], _exc)
 
     snap_path = write_recovery_snapshot(agent_id, pane_content, recovery_dir)
     _log.info("Watchdog: recovery snapshot saved to %s", snap_path)
@@ -725,6 +742,19 @@ def execute_recovery(
     new_agent = mgr.spawn_agent(db, role=role, model=model)
     new_agent_id = new_agent["id"]
     new_pane_id = new_agent["pane_id"]
+
+    # Fix 3b: if thread was closed DURING spawn (original agent finished just-in-time),
+    # release the recovery agent immediately — update_thread below would otherwise
+    # overwrite the "closed" status, hiding the completion.
+    if thread_id:
+        _thread_post_spawn = db.get_thread(thread_id)
+        if _thread_post_spawn and _thread_post_spawn.get("status") == "closed":
+            _log.info(
+                "Watchdog: recovery agent %s released — thread %s closed during spawn window",
+                new_agent_id[:8], thread_id[:8],
+            )
+            db.update_agent(new_agent_id, status="idle", assigned_thread=None)
+            return
 
     from datetime import datetime, timezone
 
@@ -898,7 +928,7 @@ def check_orphaned_threads(
         label = thread.get("user_label") or thread.get("label") or thread_id[:8]
         mins = int(orphaned_for // 60)
         last_task = thread.get("last_dispatched_task")
-        role = thread.get("last_dispatched_role") or "coder"
+        role = thread.get("last_dispatched_role")  # None = unknown; auto-recovery skipped
         model = thread.get("last_dispatched_model")
 
         # Attempt auto-recovery when possible
@@ -919,7 +949,7 @@ def check_orphaned_threads(
 
             pool_full = busy_count >= max_agents
 
-            if attempt_count < max_recovery_attempts and not pool_full:
+            if attempt_count < max_recovery_attempts and not pool_full and role:
                 try:
                     new_agent = mgr.spawn_agent(db, role=role, model=model)
                     new_agent_id = new_agent["id"]
