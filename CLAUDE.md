@@ -91,3 +91,9 @@ Every change/feature MUST be verified with the repo's harness smoke suite before
 - full `pytest` green, plus `juggle_cli.py doctor --dry-run` smoke against a tmp DB
 - cockpit/TUI changes: run the viewport smoke harness (`--smoke`)
 Paste the suite summary line as evidence in the completion result. Completion claims without harness evidence are invalid.
+
+## Architecture gate (mandatory, every iteration)
+Act as a senior architect on every build pass:
+- **Small, single-purpose files.** Target ≤300 lines/module; an agent should grasp a module without reading the whole file. When a feature touches a file that has outgrown its purpose, EXTRACT first (separate refactor commit, tests green), then add the feature.
+- **Refactor pass per iteration:** before completing, scan the files you touched — split mixed-concern modules, extract shared helpers, kill dead code. Pure-mechanical refactor commits are separate from behavior commits.
+- Module boundaries follow domain seams (ingest / signals / screening / panels / state), not convenience.
