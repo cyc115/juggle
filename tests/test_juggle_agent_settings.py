@@ -172,3 +172,47 @@ def test_write_overlay_with_overrides_is_per_agent_file(fake_settings, tmp_path)
     # unique filenames so concurrent agents don't clobber each other
     assert p1 != p2
     assert p1.parent == tmp_path / "agent-settings"
+
+
+# ── editorMode:normal — force non-vim for all background agents ───────────────
+
+def test_editor_mode_normal_in_overlay_for_all_roles():
+    """Every agent role must get editorMode==normal in its overlay.
+
+    Uses the REAL get_settings() so it proves the value flows from DEFAULTS
+    through the live install — no config.json edit required.
+    RED before DEFAULTS carries editorMode; GREEN after.
+    """
+    for role in (None, "researcher", "coder", "planner"):
+        overlay = jas.build_agent_overlay(role)
+        assert overlay.get("editorMode") == "normal", (
+            f"role={role!r}: overlay must have editorMode==normal to override "
+            f"host vim setting; got {overlay.get('editorMode')!r}"
+        )
+
+
+def test_editor_mode_survives_audit_mode(monkeypatch):
+    """audit_mode strips per-role deny but must NOT remove editorMode.
+
+    Patches only audit_mode=True on top of the real settings so this test
+    also depends on DEFAULTS carrying editorMode.
+    """
+    real = jas.get_settings()
+    patched = {**real, "agent": {**real["agent"], "audit_mode": True}}
+    monkeypatch.setattr(jas, "get_settings", lambda: patched)
+    overlay = jas.build_agent_overlay("coder")
+    assert overlay.get("editorMode") == "normal", (
+        f"editorMode must survive audit_mode; got {overlay.get('editorMode')!r}"
+    )
+
+
+def test_write_overlay_has_editor_mode_normal(tmp_path, monkeypatch):
+    """write_agent_overlay must write editorMode==normal into the JSON file."""
+    real = jas.get_settings()
+    patched = {**real, "paths": {**real.get("paths", {}), "config_dir": str(tmp_path)}}
+    monkeypatch.setattr(jas, "get_settings", lambda: patched)
+    path = jas.write_agent_overlay("coder")
+    data = json.loads(path.read_text())
+    assert data.get("editorMode") == "normal", (
+        f"written overlay JSON must have editorMode==normal; got {data.get('editorMode')!r}"
+    )

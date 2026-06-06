@@ -201,6 +201,11 @@ DEFAULTS: dict = {
         # permissions.deny here doubles as the token-saving lever: a bare tool
         # name removes that tool from the agent's context entirely.
         "settings_overlay_base": {
+            # Force non-vim editor mode for all background agents regardless of
+            # the host's global ~/.claude/settings.json (which may set vim mode).
+            # Vim mode breaks tmux paste dispatch: send_task pastes into NORMAL
+            # mode and the keystrokes are interpreted as editor commands.
+            "editorMode": "normal",
             "permissions": {
                 "deny": [
                     # opentabs browser tools (78 tools) — wildcard collapses to one entry
