@@ -1,11 +1,16 @@
 ---
-description: Create a launchd LaunchAgent that runs on a schedule and appears in the Juggle cockpit
+description: Create a scheduled task that runs on a schedule and appears in the Juggle cockpit (macOS launchd / Linux systemd / cron)
 allowed-tools: Bash, Read, Write
 ---
 
 # /juggle:schedule
 
-Create a macOS launchd LaunchAgent for a recurring task. The plist is named `me.mikechen.<label>` so it appears automatically in the Juggle cockpit's Pool section.
+Create a recurring scheduled task using the platform-appropriate backend:
+- **macOS** — launchd LaunchAgent (plist in `~/Library/LaunchAgents/`)
+- **Linux (systemd)** — systemd user timer (units in `~/.config/systemd/user/`)
+- **Linux (fallback)** — crontab entry
+
+The task label is prefixed so it appears automatically in the Juggle cockpit's Pool section.
 
 ## Arguments
 
@@ -81,3 +86,41 @@ Print:
 - Log: path
 - Status from \`launchctl list\`
 - "Appears in Juggle cockpit as: \`<label>\`"
+
+---
+
+## Linux — systemd user timer
+
+On Linux with systemd, run instead:
+
+\`\`\`python
+from juggle_scheduler import get_backend, ScheduleSpec
+backend = get_backend()  # auto-selects SystemdUserBackend or CronBackend
+backend.install(ScheduleSpec(
+    label="<label>",
+    program="<absolute-path-to-program>",
+    interval_secs=<N>,        # every N seconds, OR
+    calendar={"hour": H, "minute": M},  # daily at HH:MM
+))
+\`\`\`
+
+Units are written to `~/.config/systemd/user/juggle-<label>.{service,timer}`.
+Logs: `~/.juggle/logs/juggle-<label>.log`
+
+**Important:** For tasks to fire when you are logged out, enable linger once:
+\`\`\`bash
+sudo loginctl enable-linger $USER
+# Verify: loginctl show-user $USER | grep Linger
+\`\`\`
+
+To view logs: `journalctl --user -u juggle-<label> -f`
+
+To remove: `python3 -c "from juggle_scheduler import get_backend; get_backend().uninstall('<label>')"`
+
+---
+
+## Linux — cron fallback
+
+On Linux without systemd, `get_backend()` falls back to `CronBackend`, which manages entries in the user's crontab. Logs go to `~/.juggle/logs/<label>.log`.
+
+**Note:** Cron has no missed-run catch-up — if the machine is off at the scheduled time, the run is skipped.

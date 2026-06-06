@@ -123,40 +123,17 @@ def _launchctl_status(label: str) -> tuple[int | None, int | None]:
 
 
 def fetch_scheduled_tasks() -> list[ScheduledTask]:
-    """Discover me.mikechen.* and com.claude.schedule.* launchd agents."""
-    tasks: list[ScheduledTask] = []
-    plist_dir = os.path.expanduser("~/Library/LaunchAgents")
-    seen: set[str] = set()
-    for pattern in ("me.mikechen.*.plist", "com.claude.schedule.*.plist"):
-        for path in sorted(glob.glob(os.path.join(plist_dir, pattern))):
-            try:
-                with open(path, "rb") as f:
-                    data = plistlib.load(f)
-                label = data.get("Label", os.path.basename(path).removesuffix(".plist"))
-                if label in seen:
-                    continue
-                seen.add(label)
-                schedule = _parse_schedule(data)
-                pid, last_exit = _launchctl_status(label)
-                if pid is not None:
-                    status = "running"
-                elif last_exit is None:
-                    status = "unknown"
-                elif last_exit == 0:
-                    status = "ok"
-                else:
-                    status = "failed"
-                short = label.removeprefix("me.mikechen.").removeprefix(
-                    "com.claude.schedule."
-                )
-                tasks.append(
-                    ScheduledTask(
-                        label=short, schedule=schedule, status=status, pid=pid
-                    )
-                )
-            except Exception:
-                continue
-    return tasks
+    """Discover scheduled tasks via the platform-appropriate backend."""
+    try:
+        from juggle_scheduler import get_backend
+        backend = get_backend()
+        infos = backend.list_tasks()
+    except Exception:
+        return []
+    return [
+        ScheduledTask(label=i.label, schedule=i.schedule, status=i.status, pid=i.pid)
+        for i in infos
+    ]
 
 
 def format_age(secs: int | None) -> str:
