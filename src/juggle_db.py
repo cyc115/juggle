@@ -37,7 +37,10 @@ CREATE TABLE IF NOT EXISTS threads (
   last_active     TEXT NOT NULL,
   last_dispatched_task  TEXT,
   last_dispatched_role  TEXT,
-  last_dispatched_model TEXT
+  last_dispatched_model TEXT,
+  worktree_path         TEXT,
+  worktree_branch       TEXT,
+  main_repo_path        TEXT
 );
 """
 
@@ -790,6 +793,23 @@ class JuggleDB:
                 _log.info("Migration 33: repo_path column added to agents")
             except sqlite3.OperationalError as e:
                 _log.warning("Migration 33 (repo_path) skipped: %s", e)
+
+        # Migration 34: worktree columns on threads
+        threads_cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
+        try:
+            for col, defn in [
+                ("worktree_path", "TEXT"),
+                ("worktree_branch", "TEXT"),
+                ("main_repo_path", "TEXT"),
+            ]:
+                if col not in threads_cols:
+                    conn.execute(f"ALTER TABLE threads ADD COLUMN {col} {defn}")
+            conn.commit()
+            _log.info("Migration 34: worktree columns added to threads")
+        except sqlite3.OperationalError as e:
+            _log.warning("Migration 34 (worktree) skipped: %s", e)
 
     # ------------------------------------------------------------------
     # Session helpers

@@ -1,6 +1,11 @@
 """Tests for Task 3 completion CLI commands."""
 
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
 import pytest
 from juggle_db import JuggleDB
 
@@ -125,3 +130,107 @@ def test_cmd_close_thread_sets_closed_state(db, capsys):
     args = argparse.Namespace(thread_id=tid)
     cmd_close_thread(args)
     assert db.get_thread(tid)["status"] == "closed"
+
+
+# ── Fix 3: Worktree finalization tests ──────────────────────────────────────
+
+import subprocess
+from pathlib import Path
+
+def test_finalize_worktree_no_metadata_skips(tmp_path):
+    """Thread has no worktree_path → success, no-op."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from juggle_cmd_agents import _finalize_worktree
+    thread = {}
+    success, msg = _finalize_worktree(thread)
+    assert success, "Should succeed with no metadata"
+
+
+def test_finalize_worktree_success(tmp_path):
+    """Full cycle: create mock repo → worktree → commit → finalize."""
+    main = tmp_path / "main"
+    main.mkdir()
+    subprocess.run(["git", "-C", str(main), "init"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(main), "config", "user.email", "test@test.com"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(main), "config", "user.name", "Test"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(main), "commit", "--allow-empty", "-m", "init"], check=True, capture_output=True)
+
+    wt_path = tmp_path / "worktree"
+    branch = "test-branch"
+    subprocess.run(["git", "-C", str(main), "worktree", "add", str(wt_path), "-b", branch, "HEAD"],
+                   check=True, capture_output=True)
+    # Make a commit in the worktree
+    (wt_path / "newfile").write_text("hello")
+    subprocess.run(["git", "-C", str(wt_path), "add", "."], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(wt_path), "commit", "-m", "test commit"], check=True, capture_output=True)
+
+    # Now call _finalize_worktree
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from juggle_cmd_agents import _finalize_worktree
+    thread = {
+        "worktree_path": str(wt_path),
+        "worktree_branch": branch,
+        "main_repo_path": str(main),
+    }
+    success, msg = _finalize_worktree(thread)
+    assert success, f"_finalize_worktree failed: {msg}"
+    assert not wt_path.exists(), f"Worktree still exists at {wt_path}"
+    # Verify branch was deleted
+    result = subprocess.run(["git", "-C", str(main), "branch"], capture_output=True, text=True)
+    assert branch not in result.stdout, f"Branch {branch} still exists"
+
+
+def test_finalize_worktree_already_removed(tmp_path):
+    """Worktree path doesn't exist → success, no-op."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from juggle_cmd_agents import _finalize_worktree
+    thread = {
+        "worktree_path": str(tmp_path / "nonexistent"),
+        "worktree_branch": "ghost-branch",
+        "main_repo_path": str(tmp_path / "main"),
+    }
+    success, msg = _finalize_worktree(thread)
+    assert success, f"Should succeed for already-removed worktree: {msg}"
+    assert "already removed" in msg.lower() or success
+
+
+def test_finalize_worktree_non_ff_leaves_worktree(tmp_path):
+    """Diverged main → merge fails → returns failure, worktree intact."""
+    main = tmp_path / "main"
+    main.mkdir()
+    subprocess.run(["git", "-C", str(main), "init"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(main), "config", "user.email", "test@test.com"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(main), "config", "user.name", "Test"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(main), "commit", "--allow-empty", "-m", "init"], check=True, capture_output=True)
+
+    wt_path = tmp_path / "worktree"
+    branch = "divergent-branch"
+    subprocess.run(["git", "-C", str(main), "worktree", "add", str(wt_path), "-b", branch, "HEAD"],
+                   check=True, capture_output=True)
+
+    # Divert main: make a commit on main
+    (main / "diverged_file").write_text("main change")
+    subprocess.run(["git", "-C", str(main), "add", "."], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(main), "commit", "-m", "main diverged"], check=True, capture_output=True)
+
+    # Make a commit in the worktree (different branch)
+    (wt_path / "wt_file").write_text("wt change")
+    subprocess.run(["git", "-C", str(wt_path), "add", "."], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(wt_path), "commit", "-m", "wt commit"], check=True, capture_output=True)
+
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from juggle_cmd_agents import _finalize_worktree
+    thread = {
+        "worktree_path": str(wt_path),
+        "worktree_branch": branch,
+        "main_repo_path": str(main),
+    }
+    success, msg = _finalize_worktree(thread)
+    # Should fail because main diverged (ff-only won't work)
+    assert not success, f"Should fail for non-ff: {msg}"
+    assert wt_path.exists(), f"Worktree should still exist on non-ff"

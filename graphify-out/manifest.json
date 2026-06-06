@@ -88,8 +88,8 @@
     "hash": "6a0d50193c763f592976cce0cd078f6a"
   },
   "/private/tmp/juggle-hardening/tests/test_juggle_settings.py": {
-    "mtime": 1780763462.537326,
-    "hash": "847d0062c6db7890506a6ccc907d62d2"
+    "mtime": 1780763729.5581322,
+    "hash": "d5f99ffef6c901923da47eb7125405d1"
   },
   "/private/tmp/juggle-hardening/tests/test_cockpit_snapshots.py": {
     "mtime": 1780763462.5293856,
@@ -444,8 +444,8 @@
     "hash": "2775bfcf4f9ec3a7ab283ec43e1eab3b"
   },
   "/private/tmp/juggle-hardening/src/juggle_cli.py": {
-    "mtime": 1780763645.563025,
-    "hash": "c92f9d758f4304ffd1dcd22de1d2b8eb"
+    "mtime": 1780763751.0116582,
+    "hash": "e50d2db235a7dd130442ff362c87dc26"
   },
   "/private/tmp/juggle-hardening/src/juggle_scheduler.py": {
     "mtime": 1780763462.5171788,
@@ -508,8 +508,8 @@
     "hash": "e47fbcef8daa673f783f8ff8e4b6fe4d"
   },
   "/private/tmp/juggle-hardening/src/juggle_settings.py": {
-    "mtime": 1780763462.5180297,
-    "hash": "dc651dee4dfcc9efb9684662fee20536"
+    "mtime": 1780763745.617293,
+    "hash": "99a7676bbcca96b142284a52bc120fa7"
   },
   "/private/tmp/juggle-hardening/src/juggle_cockpit_widgets.py": {
     "mtime": 1780763462.5121942,
@@ -520,8 +520,8 @@
     "hash": "7eb147cb206210b59358c4631f5e27fb"
   },
   "/private/tmp/juggle-hardening/src/juggle_cmd_agents.py": {
-    "mtime": 1780763700.1160634,
-    "hash": "289644244480860e7e078be015c242ad"
+    "mtime": 1780763758.2615502,
+    "hash": "bb9fd8019ad75600908235727771c3f8"
   },
   "/private/tmp/juggle-hardening/src/juggle_agent_settings.py": {
     "mtime": 1780763462.5076692,

@@ -616,6 +616,24 @@ def main():
         action="store_true",
         help="Skip role template prepend (use raw prompt file content only)",
     )
+    p_send_task.add_argument(
+        "--worktree-path",
+        dest="worktree_path",
+        default=None,
+        help="Worktree path for orchestrator-owned finalization",
+    )
+    p_send_task.add_argument(
+        "--worktree-branch",
+        dest="worktree_branch",
+        default=None,
+        help="Worktree branch for orchestrator-owned finalization",
+    )
+    p_send_task.add_argument(
+        "--main-repo-path",
+        dest="main_repo_path",
+        default=None,
+        help="Main repo path for orchestrator-owned finalization",
+    )
     p_send_task.set_defaults(func=cmd_send_task)
 
     # set-watchdog

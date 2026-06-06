@@ -85,6 +85,54 @@ def _matches_plan(summary: str) -> bool:
     return any(p.search(summary) for p in _PLAN_PATTERNS)
 
 
+def _finalize_worktree(thread: dict) -> tuple:
+    """Finalize a worktree: ff-merge → remove → branch-delete.
+
+    Returns (success: bool, message: str). Never destroys unmerged commits.
+    """
+    worktree_path = (thread.get("worktree_path") or "").strip()
+    worktree_branch = (thread.get("worktree_branch") or "").strip()
+    main_repo_path = (thread.get("main_repo_path") or "").strip()
+
+    if not worktree_path or not worktree_branch or not main_repo_path:
+        return True, ""  # No worktree to finalize
+
+    if not Path(worktree_path).exists():
+        return True, f"Worktree already removed: {worktree_path}"
+
+    if not Path(main_repo_path).exists():
+        return False, f"Main repo not found: {main_repo_path}"
+
+    # 1. Try ff-only merge from worktree branch
+    result = subprocess.run(
+        ["git", "-C", main_repo_path, "merge", "--ff-only", worktree_branch],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return False, (
+            f"Cannot ff-merge {worktree_branch} into main. "
+            f"Worktree left at {worktree_path}. Manual resolution required."
+        )
+
+    # 2. Remove worktree
+    result = subprocess.run(
+        ["git", "-C", main_repo_path, "worktree", "remove", worktree_path],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return False, f"Worktree remove failed: {result.stderr.strip()}"
+
+    # 3. Delete branch
+    result = subprocess.run(
+        ["git", "-C", main_repo_path, "branch", "-d", worktree_branch],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return True, f"Merged + worktree removed, but branch delete failed: {result.stderr.strip()}"
+
+    return True, f"Worktree {worktree_path} finalized (merged {worktree_branch})."
+
+
 def cmd_complete_agent(args):
     """Mark agent complete: thread → closed, create notifications_v2 row,
     convert any open_questions to action_items."""
@@ -96,6 +144,17 @@ def cmd_complete_agent(args):
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
+
+    # Finalize worktree BEFORE closing the thread
+    ft_success, ft_msg = _finalize_worktree(thread)
+    if not ft_success:
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"⚠️ Worktree finalization failed: {ft_msg}",
+            type_="manual_step",
+            priority="high",
+        )
+        args.result_summary = f"{args.result_summary} [WARNING: worktree not finalized — {ft_msg}]"
 
     # Current session id
     with db._connect() as conn:
