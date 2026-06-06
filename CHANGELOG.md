@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-06 (v1.45.0)
+- **Fix 1 — Agent repo context**: `repo_path TEXT` column on `agents` table (Migration 33); recorded at spawn via `git rev-parse --show-toplevel`; `get-agent` now filters idle agents by repo match (NULL = incompatible, mismatched = skipped, new agent spawned). `--repo` flag added to `get-agent`.
+- **Fix 2 — Role task templates**: `task_templates` added to `DEFAULTS` (coder/planner/researcher); prepended by `send-task` before the universal preamble; `--no-template` escape hatch; overrideable via `~/.juggle/config.json`.
+- **Fix 3 — Orchestrator-owned worktree finalization**: `worktree_path`, `worktree_branch`, `main_repo_path` columns on `threads` table (Migration 34); recorded via `send-task --worktree-*` flags; `complete-agent` runs ff-merge → worktree remove → branch-delete automatically; failures create HIGH action items, never destroy unmerged commits.
+- **Fix 4 — juggle start always restarts watchdog**: `_start_watchdog` adds a global `pkill -f juggle-agent-watchdog` sweep before the pidfile-based kill, catching orphaned processes from crashed sessions.
+
 ## 2026-05-31 (v1.39.0)
 - **Pluggable sub-agent harnesses**: sub-agent invocation is now harness-agnostic. `src/juggle_harness.py` is the framework (`HarnessAdapter` contract + registry + `get_adapter`); each harness is self-contained under `src/harnesses/` (or a config-only `template`), owning launch, per-role restriction, context delivery, and capabilities. Selection via `agent.harness` / `agent.harness_by_role` / `agent.harnesses` (default `claude`; a missing `harnesses` block falls back to the built-in claude harness — zero behaviour change). Docs: `docs/harness-adapters.md`.
   - **Claude** (`harnesses/claude.py`): per-role `permissions.deny` via the `--settings` JSON overlay; anchor via juggle hooks; interactive warm-pane REPL.
