@@ -323,6 +323,49 @@ class JuggleTmuxManager:
                 os.unlink(tmp)
         return pane_hash
 
+    def send_message(self, pane_id: str, text: str) -> bool:
+        """Send a steering message to an already-running agent pane.
+
+        Unlike send_task, skips wait_for_ready_to_paste — the agent is expected
+        to already be processing a task. Requires the pane to exist and have a
+        live JUGGLE_IS_AGENT process.
+
+        Raises RuntimeError if pane missing, process dead, or submission fails.
+        """
+        import time as _time
+
+        if not pane_id or not pane_id.strip():
+            raise ValueError("send_message called with empty pane_id")
+        if os.environ.get("JUGGLE_TMUX_MOCK_SEND") == "1":
+            return True
+
+        if not self.verify_pane(pane_id):
+            raise RuntimeError(
+                f"Pane {pane_id} not found in session {self.session_name}"
+            )
+        if not _pane_has_juggle_agent_env(pane_id):
+            raise RuntimeError(
+                f"No live agent process in pane {pane_id} — send_message requires a running agent"
+            )
+
+        tmp = f"/tmp/juggle_msg_{uuid.uuid4().hex[:8]}.txt"
+        buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
+        Path(tmp).write_text(text)
+        try:
+            self._run_tmux("load-buffer", "-b", buf_name, tmp)
+            self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
+            self._run_tmux("delete-buffer", "-b", buf_name)
+            _time.sleep(0.4)
+            self._run_tmux("send-keys", "-t", pane_id, "C-m")
+            if not self.wait_for_submission(pane_id, text, timeout=15):
+                raise RuntimeError(
+                    f"Message submission not verified for pane {pane_id} — Enter may not have landed"
+                )
+        finally:
+            if Path(tmp).exists():
+                os.unlink(tmp)
+        return True
+
     def run_task_oneshot(
         self,
         pane_id: str,

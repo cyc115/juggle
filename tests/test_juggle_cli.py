@@ -982,3 +982,77 @@ def test_known_flags_accepted_request_action(tmp_path):
     )
     # Should not fail with "unrecognized arguments"
     assert "unrecognized arguments" not in result.stderr
+
+
+# ── send-message command ─────────────────────────────────────────────────────
+
+def test_send_message_cli_success(started_db):
+    db_path, thread_id = started_db
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
+        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+    agent_id = r.stdout.strip().split()[0]
+
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
+        result = run_cli(["send-message", agent_id, "please handle the edge case"], db_path)
+    assert result.returncode == 0
+    assert "sent" in result.stdout.lower()
+
+
+def test_send_message_cli_json_output(started_db):
+    db_path, thread_id = started_db
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
+        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+    agent_id = r.stdout.strip().split()[0]
+
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
+        result = run_cli(["send-message", "--json", agent_id, "steer this"], db_path)
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    assert data["ok"] is True
+    assert data["agent_id"] == agent_id
+
+
+def test_send_message_cli_error_missing_agent(started_db):
+    db_path, _ = started_db
+    result = run_cli(["send-message", "nonexistent-id", "hello"], db_path)
+    assert result.returncode == 1
+
+
+# ── harness gate in coder template ───────────────────────────────────────────
+
+def test_send_task_coder_template_includes_harness_gate(started_db, tmp_path):
+    """send-task with coder role must inject HARNESS GATE into the prompt."""
+    db_path, thread_id = started_db
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
+        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+    agent_id = r.stdout.strip().split()[0]
+
+    prompt_file = tmp_path / "task.txt"
+    prompt_file.write_text("Do the thing.\n")
+
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
+        run_cli(["send-task", agent_id, str(prompt_file)], db_path)
+
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    agent = JuggleDB(str(db_path)).get_agent(agent_id)
+    assert "HARNESS GATE" in agent["last_task"]
+
+
+def test_send_task_no_template_bypasses_harness_gate(started_db, tmp_path):
+    """--no-template must skip harness gate injection."""
+    db_path, thread_id = started_db
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
+        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+    agent_id = r.stdout.strip().split()[0]
+
+    prompt_file = tmp_path / "task.txt"
+    prompt_file.write_text("Do the thing.\n")
+
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
+        run_cli(["send-task", "--no-template", agent_id, str(prompt_file)], db_path)
+
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+    agent = JuggleDB(str(db_path)).get_agent(agent_id)
+    assert "HARNESS GATE" not in agent["last_task"]

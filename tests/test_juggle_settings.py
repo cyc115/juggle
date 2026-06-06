@@ -83,3 +83,9 @@ def test_task_template_override():
         finally:
             os.unlink(f.name)
             os.environ.pop("_JUGGLE_CONFIG_PATH", None)
+
+
+def test_coder_template_includes_harness_gate():
+    from juggle_settings import DEFAULTS
+    coder = DEFAULTS["task_templates"]["coder"]
+    assert "HARNESS GATE" in coder

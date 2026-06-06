@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-06-06 (v1.46.0)
+- **send-message command**: `juggle send-message <agent_id> "<text>"` steers a running agent mid-task. Uses load-buffer + paste-buffer + 0.4s delay + C-m + `wait_for_submission` retry loop (same as `send_task`); skips `wait_for_ready_to_paste` (pane already busy). Requires pane exists + live `JUGGLE_IS_AGENT` process; exits non-zero if submission unverified. `--json` output flag.
+- **Harness gate in coder template**: `DEFAULTS["task_templates"]["coder"]` now includes a mandatory `HARNESS GATE` clause requiring agents to run the repo's smoke suite and paste the summary in their completion result. `--no-template` bypasses as before.
+
 ## 2026-06-06 (v1.45.0)
 - **Fix 1 — Agent repo context**: `repo_path TEXT` column on `agents` table (Migration 33); recorded at spawn via `git rev-parse --show-toplevel`; `get-agent` now filters idle agents by repo match (NULL = incompatible, mismatched = skipped, new agent spawned). `--repo` flag added to `get-agent`.
 - **Fix 2 — Role task templates**: `task_templates` added to `DEFAULTS` (coder/planner/researcher); prepended by `send-task` before the universal preamble; `--no-template` escape hatch; overrideable via `~/.juggle/config.json`.

@@ -841,3 +841,61 @@ def test_reap_grace_expires_and_deletes_old_missing_pane_agent(tmp_path):
         "Agent past cold-start grace with dead pane should be reaped"
     )
     assert reaped >= 1
+
+
+# ── send_message ─────────────────────────────────────────────────────────────
+
+import os
+
+
+def test_send_message_mock_returns_true(mgr):
+    """JUGGLE_TMUX_MOCK_SEND=1 bypasses real tmux and returns True."""
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
+        result = mgr.send_message("%3", "steer this way")
+    assert result is True
+
+
+def test_send_message_uses_load_buffer_not_bare_send_keys(mgr):
+    """send_message must paste via load-buffer/paste-buffer, not bare send-keys."""
+    tmux_calls = []
+
+    def capture(*args):
+        tmux_calls.append(args[0])
+        if args[0] == "list-panes":
+            return _ok(stdout="%3\n")
+        if args[0] == "capture-pane":
+            return _ok(stdout="esc to interrupt\n")
+        return _ok()
+
+    with patch.object(mgr, "_run_tmux", side_effect=capture):
+        with patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True):
+            mgr.send_message("%3", "add edge case handling")
+
+    assert "load-buffer" in tmux_calls
+    assert "paste-buffer" in tmux_calls
+
+
+def test_send_message_raises_if_pane_missing(mgr):
+    """Raises RuntimeError when pane does not exist in session."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = _ok(stdout="%1\n%2\n")  # %99 not listed
+        with pytest.raises(RuntimeError, match="not found"):
+            mgr.send_message("%99", "hello")
+
+
+def test_send_message_raises_if_no_live_agent(mgr):
+    """Raises RuntimeError when pane exists but no live agent process."""
+    with patch.object(mgr, "verify_pane", return_value=True):
+        with patch("juggle_tmux._pane_has_juggle_agent_env", return_value=False):
+            with pytest.raises(RuntimeError, match="process"):
+                mgr.send_message("%3", "hello")
+
+
+def test_send_message_raises_on_submission_failure(mgr):
+    """Raises RuntimeError if wait_for_submission times out."""
+    with patch.object(mgr, "verify_pane", return_value=True):
+        with patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True):
+            with patch.object(mgr, "wait_for_submission", return_value=False):
+                with patch.object(mgr, "_run_tmux", return_value=_ok()):
+                    with pytest.raises(RuntimeError, match="submission"):
+                        mgr.send_message("%3", "hello")

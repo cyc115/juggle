@@ -881,6 +881,35 @@ def cmd_send_task(args):
     print(f"Task sent to agent {args.agent_id[:8]} (pane {pane_id}).")
 
 
+def cmd_send_message(args):
+    db = get_db()
+    agent = db.get_agent(args.agent_id)
+    if agent is None:
+        if getattr(args, "json_out", False):
+            print(json.dumps({"ok": False, "error": f"Agent {args.agent_id} not found"}))
+        else:
+            print(f"Error: Agent {args.agent_id} not found.")
+        sys.exit(1)
+
+    pane_id = agent["pane_id"]
+    from juggle_tmux import JuggleTmuxManager
+
+    mgr = JuggleTmuxManager()
+    try:
+        mgr.send_message(pane_id, args.text)
+    except RuntimeError as e:
+        if getattr(args, "json_out", False):
+            print(json.dumps({"ok": False, "error": str(e)}))
+        else:
+            print(f"Error: {e}")
+        sys.exit(1)
+
+    if getattr(args, "json_out", False):
+        print(json.dumps({"ok": True, "agent_id": args.agent_id, "pane_id": pane_id}))
+    else:
+        print(f"Message sent to agent {args.agent_id[:8]} (pane {pane_id}).")
+
+
 def cmd_set_watchdog(args):
     db = get_db()
     agent = db.get_agent(args.agent_id)

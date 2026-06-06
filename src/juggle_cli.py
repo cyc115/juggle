@@ -105,6 +105,7 @@ from juggle_cmd_agents import (
     cmd_release_agent,
     cmd_decommission_agent,
     cmd_send_task,
+    cmd_send_message,
     cmd_request_action,
     cmd_ack_action,
     cmd_list_actions,
@@ -635,6 +636,20 @@ def main():
         help="Main repo path for orchestrator-owned finalization",
     )
     p_send_task.set_defaults(func=cmd_send_task)
+
+    # send-message
+    p_send_msg = subparsers.add_parser(
+        "send-message", help="Send a steering message to a running agent pane"
+    )
+    p_send_msg.add_argument("agent_id", help="Agent UUID")
+    p_send_msg.add_argument("text", help="Message text to send to the agent")
+    p_send_msg.add_argument(
+        "--json",
+        dest="json_out",
+        action="store_true",
+        help="Output result as JSON",
+    )
+    p_send_msg.set_defaults(func=cmd_send_message)
 
     # set-watchdog
     p_set_watchdog = subparsers.add_parser(

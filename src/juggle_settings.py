@@ -48,7 +48,12 @@ DEFAULTS: dict = {
             "### Scope\n"
             "- Only files directly related to the task\n"
             "- No refactoring, cleanup, or bonus work\n"
-            "- Do NOT modify AGENTS.md, CLAUDE.md, or .codegraph files\n"
+            "- Do NOT modify AGENTS.md, CLAUDE.md, or .codegraph files\n\n"
+            "HARNESS GATE: run the repo's harness smoke suite "
+            "(trading-edge: `uv run pytest -m pilot`; "
+            "juggle: full pytest + doctor --dry-run on a tmp DB) "
+            "and paste the suite summary line in your completion result. "
+            "Completion without harness evidence is invalid.\n"
         ),
         "planner": (
             "## Role: Planner\n\n"
