@@ -773,6 +773,19 @@ def cmd_send_task(args):
         is_new = False
 
     prompt = prompt_path.read_text()
+
+    # Prepend role task template (unless --no-template)
+    skip_template = getattr(args, "no_template", False)
+    if not skip_template:
+        role = agent.get("role")
+        if role:
+            templates = _get_settings().get("task_templates", {})
+            template = templates.get(role, "")
+            if template:
+                qg = _get_settings()["agent"].get("quality_gate_skill", "mike:pre-pr")
+                template = template.replace("{quality_gate_skill}", qg)
+                prompt = template + "\n---\n\n" + prompt.rstrip()
+
     full_prompt = UNIVERSAL_PREAMBLE + prompt.rstrip()
 
     # Inline the role anchor for harnesses that don't run juggle's hooks. Claude

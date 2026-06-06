@@ -611,6 +611,11 @@ def main():
     )
     p_send_task.add_argument("agent_id", help="Agent UUID")
     p_send_task.add_argument("prompt_file", help="Path to prompt file")
+    p_send_task.add_argument(
+        "--no-template",
+        action="store_true",
+        help="Skip role template prepend (use raw prompt file content only)",
+    )
     p_send_task.set_defaults(func=cmd_send_task)
 
     # set-watchdog

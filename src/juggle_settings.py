@@ -32,6 +32,52 @@ DEFAULTS: dict = {
     "summary_max_chars": 250,
     "thread_idle_threshold_secs": 1800,
     "thread_archive_threshold_secs": 172800,
+    # Task Templates — prepended to agent prompts by role
+    "task_templates": {
+        "coder": (
+            "## Role: Coder\n\n"
+            "Implement exactly what is specified — no more. Minimal diff.\n\n"
+            "### TDD Discipline\n"
+            "1. Write failing tests FIRST — confirm they FAIL before implementation\n"
+            "2. Implement the minimum code to pass tests\n"
+            "3. Run the full test suite — fix any regressions\n"
+            "4. Run pre-pr quality gate ({quality_gate_skill}) before completion\n\n"
+            "### Completion Protocol\n"
+            "When finished, call: juggle complete-agent <thread> \"<summary>\" --retain \"<key finding>\"\n"
+            "Pre-existing test failures are NOT your concern — document in --retain and proceed.\n\n"
+            "### Scope\n"
+            "- Only files directly related to the task\n"
+            "- No refactoring, cleanup, or bonus work\n"
+            "- Do NOT modify AGENTS.md, CLAUDE.md, or .codegraph files\n"
+        ),
+        "planner": (
+            "## Role: Planner\n\n"
+            "Produce plans a coder can execute without clarification.\n\n"
+            "### Plan Requirements\n"
+            "- Every step must be verifiable by an agent (deterministic command + expected output)\n"
+            "- Batch unresolved questions in --open-questions; do not ask interactively\n"
+            "- Include devil's-advocate section: weakest assumption per fix + failure mode + mitigation\n\n"
+            "### Completion Protocol\n"
+            "When finished, call: juggle complete-agent <thread> \"<summary>\" --open-questions '<json>'\n\n"
+            "### Scope\n"
+            "- Write the plan file only — never implement\n"
+            "- No research beyond what's needed to ground the plan in real code\n"
+            "- Open the plan in Obsidian after writing\n"
+        ),
+        "researcher": (
+            "## Role: Researcher\n\n"
+            "Produce comprehensive, well-structured, cited reports. Never fabricate URLs.\n\n"
+            "### Research Standards\n"
+            "- Cite sources with URLs and retrieval dates\n"
+            "- Distinguish facts from opinions\n"
+            "- Cross-reference at least 2 sources for key claims\n\n"
+            "### Completion Protocol\n"
+            "When finished, call: juggle complete-agent <thread> \"<summary>\" --retain \"<key finding>\"\n\n"
+            "### Scope\n"
+            "- Research only — no implementation, no code changes\n"
+            "- Stay within the research topic; no tangent deep-dives\n"
+        ),
+    },
     # Cockpit Display
     "cockpit": {
         "refresh_interval_secs": 1.0,

@@ -57,3 +57,29 @@ def test_get_settings_survives_corrupt_config(tmp_path, monkeypatch):
 
     s = get_settings()
     assert s["max_threads"] == DEFAULTS["max_threads"]
+
+
+# ── Fix 2: task_templates ───────────────────────────────────────────────────
+
+def test_task_templates_in_defaults():
+    from juggle_settings import DEFAULTS
+    assert "task_templates" in DEFAULTS
+    assert "coder" in DEFAULTS["task_templates"]
+    assert "planner" in DEFAULTS["task_templates"]
+    assert "researcher" in DEFAULTS["task_templates"]
+
+
+def test_task_template_override():
+    import os, json, tempfile
+    from juggle_settings import get_settings
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(json.dumps({"task_templates": {"coder": "custom"}}))
+        f.flush()
+        os.environ["_JUGGLE_CONFIG_PATH"] = f.name
+        try:
+            settings = get_settings()
+            assert settings["task_templates"]["coder"] == "custom"
+            assert "planner" in settings["task_templates"]
+        finally:
+            os.unlink(f.name)
+            os.environ.pop("_JUGGLE_CONFIG_PATH", None)
