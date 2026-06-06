@@ -58,6 +58,18 @@ def _start_watchdog() -> None:
     import subprocess
     import time
 
+    # Step 0: Global sweep — kill any stale watchdog processes
+    # regardless of session (pidfiles may be lost).
+    try:
+        subprocess.run(
+            ["pkill", "-f", "juggle-agent-watchdog"],
+            capture_output=True,
+            timeout=5,
+        )
+        time.sleep(0.5)  # Let processes exit cleanly
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass  # pkill not available or timed out — continue
+
     pid_file = _watchdog_pid_file()
 
     # Kill any prior watchdog for this session (idempotent restart).

@@ -1,4 +1,9 @@
 import signal
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 
@@ -295,10 +300,11 @@ def test_start_watchdog_kills_prior_pid_same_session(tmp_path, monkeypatch):
 
     with patch("juggle_settings.get_settings", return_value={"paths": {"config_dir": str(tmp_path)}}):
         with patch.object(juggle_cmd_threads, "_watchdog_script", return_value=script_path):
-            with patch("subprocess.Popen", return_value=mock_proc):
-                with patch("os.kill", side_effect=fake_kill):
-                    with patch("time.sleep"):
-                        juggle_cmd_threads._start_watchdog()
+            with patch("subprocess.run", return_value=MagicMock(returncode=0)):
+                with patch("subprocess.Popen", return_value=mock_proc):
+                    with patch("os.kill", side_effect=fake_kill):
+                        with patch("time.sleep"):
+                            juggle_cmd_threads._start_watchdog()
 
     assert old_pid in killed, "Expected SIGTERM sent to old PID"
     # New PID must be written to this session's pidfile
@@ -327,13 +333,63 @@ def test_start_watchdog_does_not_touch_other_session_pidfile(tmp_path, monkeypat
 
     with patch("juggle_settings.get_settings", return_value={"paths": {"config_dir": str(tmp_path)}}):
         with patch.object(juggle_cmd_threads, "_watchdog_script", return_value=script_path):
-            with patch("subprocess.Popen", return_value=mock_proc):
-                with patch("os.kill", side_effect=fake_kill):
-                    with patch("time.sleep"):
-                        juggle_cmd_threads._start_watchdog()
+            with patch("subprocess.run", return_value=MagicMock(returncode=0)):
+                with patch("subprocess.Popen", return_value=mock_proc):
+                    with patch("os.kill", side_effect=fake_kill):
+                        with patch("time.sleep"):
+                            juggle_cmd_threads._start_watchdog()
 
     for pid, _ in killed:
         assert pid != other_pid, "Must not touch another session's PID"
 
     for pid, _ in killed:
         assert pid != other_pid, "Must not touch another session's PID"
+
+
+# ── Fix 4: watchdog pkill sweep ─────────────────────────────────────────────
+
+def test_start_watchdog_pkill_called(monkeypatch, tmp_path):
+    """Verify _start_watchdog calls pkill for stale watchdogs."""
+    import subprocess as _sp
+    import os as _os
+    import sys
+    sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent.parent / "src"))
+
+    pkill_calls = []
+    def fake_run(cmd, **kwargs):
+        if isinstance(cmd, list) and any("pkill" in str(c) for c in cmd):
+            pkill_calls.append(cmd)
+        return _sp.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(_sp, "run", fake_run)
+    monkeypatch.setattr(_os, "kill", lambda *a: None)
+
+    # Mock pidfile path
+    from juggle_cmd_threads import _start_watchdog, _watchdog_pid_file
+    monkeypatch.setattr("juggle_cmd_threads._watchdog_pid_file", lambda: tmp_path / "watchdog.pid")
+
+    _start_watchdog()
+    assert len(pkill_calls) >= 1, f"Expected at least 1 pkill call, got {len(pkill_calls)}"
+
+
+def test_start_watchdog_idempotent(monkeypatch, tmp_path):
+    """Call _start_watchdog twice — should not raise."""
+    import subprocess as _sp
+    import os as _os
+    import sys
+    sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent.parent / "src"))
+
+    def fake_run(cmd, **kwargs):
+        return _sp.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(_sp, "run", fake_run)
+    monkeypatch.setattr(_os, "kill", lambda *a: None)
+
+    from juggle_cmd_threads import _start_watchdog
+    monkeypatch.setattr("juggle_cmd_threads._watchdog_pid_file", lambda: tmp_path / "watchdog.pid")
+    monkeypatch.setattr("juggle_cmd_threads._watchdog_script", lambda: tmp_path / "fake_script.py")
+    # Ensure script exists
+    (tmp_path / "fake_script.py").write_text("import time; time.sleep(0.1)")
+
+    _start_watchdog()
+    _start_watchdog()  # should not raise
