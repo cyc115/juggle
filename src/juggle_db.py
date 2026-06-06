@@ -184,6 +184,11 @@ CREATE TABLE IF NOT EXISTS error_events (
 
 INBOX_PROJECT_ID = "INBOX"
 
+# Maximum character length for action item and notification messages.
+# Overflow is truncated with a pointer suffix pointing to get-messages.
+MAX_ACTION_NOTIF_LENGTH = 280
+_POINTER_SUFFIX = " …(full detail: get-messages {})"
+
 CREATE_PROJECTS = """
 CREATE TABLE IF NOT EXISTS projects (
   id               TEXT PRIMARY KEY,
@@ -1340,8 +1345,16 @@ class JuggleDB:
     # Notifications v2 (session-scoped, spec schema)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _truncate_message(message: str, thread_id: str) -> str:
+        """Truncate message to MAX_ACTION_NOTIF_LENGTH with pointer suffix."""
+        if len(message) <= MAX_ACTION_NOTIF_LENGTH:
+            return message
+        return message[:MAX_ACTION_NOTIF_LENGTH] + _POINTER_SUFFIX.format(thread_id[:6])
+
     def add_notification_v2(self, thread_id, message: str, session_id: str) -> int:
         """Insert a notifications_v2 row. Returns new id."""
+        message = self._truncate_message(message, thread_id)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             cur = conn.execute(
@@ -1410,6 +1423,7 @@ class JuggleDB:
     def add_action_item(
         self, thread_id, message: str, type_: str, priority: str = "normal"
     ) -> int:
+        message = self._truncate_message(message, thread_id)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             cur = conn.execute(

@@ -290,6 +290,21 @@ On complete: short bullets only. No raw output.
 
 ---
 
+## Notification & Action Item Format
+
+Keep every notification and action item **concise** — one sentence, plain English. The pane shows at most ~280 characters; detail lives in thread messages (`get-messages <id>`).
+
+Format: **what happened** + **what's needed (if action)**. Never raw output, never call graphs, never multi-paragraph dumps.
+
+### Examples
+
+| | |
+|---|---|
+| GOOD notification | `Researcher found 3 async libs — all support Python 3.12+.` |
+| GOOD action item | `Plan written to plan/2026-05-17-foo.md — review before dispatching coder.` |
+| BAD (blob) → concise | ~~`Full dependency graph: module A → B → C → D → E → F → G (circular at E). All imports traced through 14 files totaling 2300 lines. See attached.`~~ → `Circular dependency found at E in module chain A→…→G. Review plan for decoupling.` |
+
+---
 ## Cockpit
 
 `juggle cockpit` — launch live dashboard (Textual, requires tmux mouse mode on).

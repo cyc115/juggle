@@ -183,7 +183,7 @@ def cmd_complete_agent(args):
 
     # 6a. Role-based action items
     role = (agent.get("role") if agent else None) or getattr(args, "role", None)
-    if role == "researcher":
+    if role == "researcher" and open_questions:
         db.add_action_item(
             thread_id=thread_uuid,
             message=f"Review: {args.result_summary}",

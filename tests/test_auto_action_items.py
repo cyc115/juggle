@@ -290,3 +290,141 @@ def test_a2_plain_done_all_tests_committed_no_action(db):
     assert _no_keyword_items(db) == [], (
         f"Expected no action items, got: {db.get_open_action_items()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Fix A: researcher without open_questions → notification only (no action item)
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+
+def test_complete_agent_researcher_no_open_questions_creates_notification_not_action(db):
+    """Researcher complete-agent with NO open_questions → NOTIFICATION, not action item."""
+    from juggle_cmd_agents import cmd_complete_agent
+
+    tid = db.create_thread("research-topic", session_id="s")
+    db.update_thread(tid, status="background", open_questions="[]")
+
+    args = argparse.Namespace(
+        thread_id=tid,
+        result_summary="Found 3 candidate libraries, all support async.",
+        retain_text=None,
+        role="researcher",
+        open_questions=None,
+    )
+    cmd_complete_agent(args)
+
+    # Should NOT create any keyword action item
+    keyword_items = [
+        i for i in db.get_open_action_items()
+        if i["type"] in ("review", "decision", "manual_step", "question")
+    ]
+    assert keyword_items == [], (
+        f"Expected no action items for researcher without open_questions, got: {keyword_items}"
+    )
+
+    # But a notification should exist (session_id from DB, which is "" when unset)
+    notifs = db.get_notifications_for_session("")
+    assert any(
+        "Found 3 candidate libraries" in n["message"] for n in notifs
+    ), f"Expected notification, got: {notifs}"
+
+
+def test_complete_agent_researcher_with_open_questions_creates_action(db):
+    """Researcher complete-agent WITH open_questions → action item IS created."""
+    from juggle_cmd_agents import cmd_complete_agent
+
+    tid = db.create_thread("research-topic-oq", session_id="s")
+    db.update_thread(tid, status="background",
+                     open_questions=_json.dumps([{"text": "Should we use lib A or B?"}]))
+
+    args = argparse.Namespace(
+        thread_id=tid,
+        result_summary="Research complete. Two viable options.",
+        retain_text=None,
+        role="researcher",
+        open_questions=None,
+    )
+    cmd_complete_agent(args)
+
+    items = db.get_open_action_items()
+    # Should have: the open_question action item (type="question") + researcher review item
+    assert any(
+        i["type"] == "review" and "Research complete" in i["message"]
+        for i in items
+    ), f"Expected review action item when open_questions exist, got: {items}"
+
+    assert any(
+        i["type"] == "question" and "Should we use lib A or B" in i["message"]
+        for i in items
+    ), f"Expected open_question action item, got: {items}"
+
+
+# ---------------------------------------------------------------------------
+# Fix B1: length cap on action + notification text
+# ---------------------------------------------------------------------------
+
+def test_action_item_truncated_at_280_chars(db):
+    """Action item text > 280 chars is truncated with pointer suffix."""
+    tid = db.create_thread("trunc-topic", session_id="s")
+    long_text = "x" * 500
+    aid = db.add_action_item(
+        thread_id=tid,
+        message=long_text,
+        type_="manual_step",
+        priority="normal",
+    )
+    items = db.get_open_action_items()
+    item = next(i for i in items if i["id"] == aid)
+    max_expected = 280 + len(" …(full detail: get-messages ") + 36 + 1
+    assert len(item["message"]) <= max_expected, (
+        f"Expected truncated message, got {len(item['message'])} chars"
+    )
+    assert "…(full detail: get-messages" in item["message"], (
+        f"Expected pointer suffix, got: {item['message']}"
+    )
+    # The original long text should NOT be fully present
+    assert "x" * 400 not in item["message"]
+
+
+def test_notification_truncated_at_280_chars(db):
+    """Notification text > 280 chars is truncated with pointer suffix."""
+    tid = db.create_thread("trunc-notif-topic", session_id="s")
+    long_text = "y" * 600
+    nid = db.add_notification_v2(
+        thread_id=tid,
+        message=long_text,
+        session_id="s",
+    )
+    notifs = db.get_notifications_for_session("s")
+    notif = next(n for n in notifs if n["id"] == nid)
+    max_expected = 280 + len(" …(full detail: get-messages ") + 36 + 1
+    assert len(notif["message"]) <= max_expected
+    assert "…(full detail: get-messages" in notif["message"]
+    assert "y" * 400 not in notif["message"]
+
+
+def test_short_text_not_truncated(db):
+    """Short action/notification text is NOT truncated."""
+    tid = db.create_thread("short-topic", session_id="s")
+    short_text = "All tests pass, committed to main."
+
+    aid = db.add_action_item(
+        thread_id=tid,
+        message=short_text,
+        type_="manual_step",
+        priority="normal",
+    )
+    items = db.get_open_action_items()
+    item = next(i for i in items if i["id"] == aid)
+    assert item["message"] == short_text
+
+    nid = db.add_notification_v2(
+        thread_id=tid,
+        message=short_text,
+        session_id="s",
+    )
+    notifs = db.get_notifications_for_session("s")
+    notif = next(n for n in notifs if n["id"] == nid)
+    assert notif["message"] == short_text
