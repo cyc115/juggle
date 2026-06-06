@@ -14,7 +14,7 @@
 
 </div>
 
-![Juggle in action — Cockpit v2 with orchestrator and nvim](docs/images/juggle-in-action.png)
+![Juggle Cockpit — live orchestration dashboard](docs/images/juggle-in-action.png)
 
 > **What you're seeing:** orchestrator (top-left) dispatching parallel coders by writing task files, nvim (top-right) holding open context, and the **Cockpit v2** (full-width bottom) tracking Topics, Action Items, and live Agents. Threads `[LJ]` and `[LK]` here are critiquing the same TF provider examples in parallel — one via Claude (juggle), one via Codex.
 
