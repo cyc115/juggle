@@ -542,7 +542,15 @@ def cmd_get_agent(args):
         )
         sys.exit(1)
 
-    agent = db.get_best_agent(thread_uuid, role=args.role)
+    # Walk ranked idle candidates; pick the first one whose pane is actually
+    # ready at the Claude UI prompt (single-shot capture-pane check).  If none
+    # of the idle agents are ready — the pane may still be rendering, mid-
+    # shutdown, or have stray input — fall through to spawn a fresh agent.
+    agent = None
+    for candidate in db.get_ranked_idle_agents(thread_uuid, role=args.role):
+        if mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
+            agent = candidate
+            break
     is_new = agent is None
 
     if is_new:

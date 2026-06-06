@@ -533,7 +533,7 @@ def test_get_agent_reuses_idle_agent(started_db):
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         run_cli(["spawn-agent", "coder"], db_path)
-        # get-agent must also run with mock so dead-pane purge doesn't delete the agent
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_NOT_READY_PANES": ""}):
         result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
     assert result.returncode == 0
     parts = result.stdout.strip().split()
@@ -548,6 +548,7 @@ def test_get_agent_marks_busy(started_db):
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         run_cli(["spawn-agent", "coder"], db_path)
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_NOT_READY_PANES": ""}):
         result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
 
     agent_id = result.stdout.strip().split()[0]
@@ -558,12 +559,89 @@ def test_get_agent_marks_busy(started_db):
     assert agent["assigned_thread"] == thread_id
 
 
-def test_release_agent_marks_idle(started_db):
+def test_get_agent_skips_non_ready_idle_and_spawns(started_db):
+    """An idle agent whose pane is NOT ready must be skipped — spawn new."""
+    db_path, thread_id = started_db
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
+        run_cli(["spawn-agent", "coder"], db_path)
+    # Mark %3 as NOT ready; new spawns get %5
+    with patch.dict(os.environ, {
+        "JUGGLE_TMUX_MOCK_NOT_READY_PANES": "%3",
+        "JUGGLE_TMUX_MOCK_PANE": "%5",
+    }):
+        result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+    assert result.returncode == 0
+    parts = result.stdout.strip().split()
+    assert len(parts) == 3  # agent_id, pane_id, "new"
+    assert parts[1] == "%5", f"expected new pane %5, got {parts[1]}"
+    assert parts[2] == "new"
+
+
+def test_get_agent_reuses_ready_idle_no_spawn(started_db):
+    """A ready idle agent must be reused — no new spawn."""
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
 
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
+        r = run_cli(["spawn-agent", "coder"], db_path)
+    first_agent_id = r.stdout.strip().split()[0]
+
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_NOT_READY_PANES": ""}):
+        result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+    assert result.returncode == 0
+    parts = result.stdout.strip().split()
+    assert len(parts) == 2  # agent_id, pane_id (no "new")
+    assert parts[1] == "%3"
+    assert parts[0] == first_agent_id  # exact same agent reused
+
+    db = JuggleDB(str(db_path))
+    agent = db.get_agent(first_agent_id)
+    assert agent is not None
+    assert agent["status"] == "busy"
+    assert agent["assigned_thread"] == thread_id
+
+
+def test_get_agent_stdout_contract_preserved(started_db):
+    """Stdout format must be exactly '<uuid> <pane>[ new]'."""
+    db_path, thread_id = started_db
+    # New agent path
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%9"}):
+        result = run_cli(["get-agent", thread_id], db_path)
+    assert result.returncode == 0
+    parts_new = result.stdout.strip().split()
+    assert len(parts_new) == 3
+    assert parts_new[2] == "new"
+    # Verify UUID format (36 chars, 4 dashes)
+    assert len(parts_new[0]) == 36
+    assert parts_new[0].count("-") == 4
+
+    # Reused agent path
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(str(db_path))
+    db.update_agent(parts_new[0], status="idle", assigned_thread=None)
+    # Start a second thread so we can reuse
+    tid2 = db.create_thread("Second", session_id="")
+    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_NOT_READY_PANES": ""}):
+        result2 = run_cli(["get-agent", tid2, "--role", "researcher"], db_path)
+    assert result2.returncode == 0
+    parts_reuse = result2.stdout.strip().split()
+    assert len(parts_reuse) == 2  # no "new"
+    assert len(parts_reuse[0]) == 36
+    assert parts_reuse[0].count("-") == 4
+
+
+def test_release_agent_marks_idle(started_db):
+    sys.path.insert(0, SRC_DIR)
+    from juggle_db import JuggleDB
+
+    db_path, thread_id = started_db
+    with patch.dict(os.environ, {
+        "JUGGLE_TMUX_MOCK_PANE": "%3",
+        "JUGGLE_TMUX_MOCK_NOT_READY_PANES": "",
+    }):
         r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
         agent_id = r.stdout.strip().split()[0]
         result = run_cli(["release-agent", agent_id, "--force"], db_path)
@@ -581,7 +659,10 @@ def test_release_agent_adds_context_thread(started_db):
     from juggle_db import JuggleDB
 
     db_path, thread_id = started_db
-    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
+    with patch.dict(os.environ, {
+        "JUGGLE_TMUX_MOCK_PANE": "%3",
+        "JUGGLE_TMUX_MOCK_NOT_READY_PANES": "",
+    }):
         r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
         agent_id = r.stdout.strip().split()[0]
         run_cli(["release-agent", agent_id, "--force"], db_path)
@@ -598,7 +679,10 @@ def test_release_agent_decommissions_pending(started_db):
     from juggle_db import JuggleDB
 
     db_path, thread_id = started_db
-    with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
+    with patch.dict(os.environ, {
+        "JUGGLE_TMUX_MOCK_PANE": "%3",
+        "JUGGLE_TMUX_MOCK_NOT_READY_PANES": "",
+    }):
         r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 

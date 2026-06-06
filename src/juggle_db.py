@@ -1672,6 +1672,35 @@ class JuggleDB:
 
         return max(idle, key=_score)
 
+    def get_ranked_idle_agents(
+        self, thread_id: str, role: str | None = None
+    ) -> list[dict]:
+        """Return all idle agents sorted by best-first scoring.
+
+        Uses the same scoring as get_best_agent:
+          +3 if agent is currently assigned to this thread
+          +2 if thread_id is in agent's context_threads
+          +1 if agent's role matches the requested role
+        Ties broken by most recent last_active.
+        Returns empty list if no idle agents exist.
+        """
+        idle = [a for a in self.get_all_agents() if a["status"] == "idle"]
+        if not idle:
+            return []
+
+        def _score(agent: dict) -> tuple:
+            context = json.loads(agent.get("context_threads") or "[]")
+            s = 0
+            if agent.get("assigned_thread") == thread_id:
+                s += 3
+            if thread_id in context:
+                s += 2
+            if role and agent["role"] == role:
+                s += 1
+            return (s, agent["last_active"])
+
+        return sorted(idle, key=_score, reverse=True)
+
     def get_agent_by_thread(self, thread_id: str) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(

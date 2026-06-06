@@ -178,7 +178,17 @@ class JuggleTmuxManager:
         exhausted. Both knobs default from settings (`tmux.ready_poll_attempts`
         / `tmux.ready_poll_interval_secs`) and are overridable via the
         JUGGLE_READY_POLL_ATTEMPTS / JUGGLE_READY_POLL_INTERVAL_SECS env vars.
+
+        Mock mode: when JUGGLE_TMUX_MOCK_NOT_READY_PANES is set (even to empty
+        string), panes listed in the comma-separated value are considered NOT
+        ready (return False); all other panes are ready (return True). No real
+        tmux call is made.
         """
+        _not_ready = os.environ.get("JUGGLE_TMUX_MOCK_NOT_READY_PANES", None)
+        if _not_ready is not None:
+            not_ready_set = set(p.strip() for p in _not_ready.split(",") if p.strip())
+            return pane_id not in not_ready_set
+
         tmux_cfg = _get_settings()["tmux"]
         if attempts is None:
             attempts = tmux_cfg["ready_poll_attempts"]
