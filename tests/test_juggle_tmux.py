@@ -899,3 +899,43 @@ def test_send_message_raises_on_submission_failure(mgr):
                 with patch.object(mgr, "_run_tmux", return_value=_ok()):
                     with pytest.raises(RuntimeError, match="submission"):
                         mgr.send_message("%3", "hello")
+
+
+def test_send_message_returns_queued_when_pane_shows_queue_indicator(mgr):
+    """send_message on a busy pane returns 'queued' instead of raising RuntimeError.
+
+    When the agent is mid-turn, Claude Code queues the incoming message and shows
+    'Press up to edit queued messages'. That IS success — the message landed.
+    """
+    queue_pane_output = (
+        "Agent is processing…\nPress up to edit queued messages\n> \n"
+    )
+
+    def fake_run_tmux(*args):
+        if args[0] == "capture-pane":
+            return _ok(stdout=queue_pane_output)
+        return _ok()
+
+    with (
+        patch.object(mgr, "verify_pane", return_value=True),
+        patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True),
+        patch.object(mgr, "wait_for_submission", return_value=False),
+        patch.object(mgr, "_run_tmux", side_effect=fake_run_tmux),
+        patch("time.sleep"),
+    ):
+        result = mgr.send_message("%3", "steer this way")
+
+    assert result == "queued", f"expected 'queued', got {result!r}"
+
+
+def test_send_message_still_raises_when_neither_submitted_nor_queued(mgr):
+    """send_message raises RuntimeError when pane shows neither submission nor queue."""
+    with (
+        patch.object(mgr, "verify_pane", return_value=True),
+        patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True),
+        patch.object(mgr, "wait_for_submission", return_value=False),
+        patch.object(mgr, "_run_tmux", return_value=_ok(stdout="some unrelated output\n")),
+        patch("time.sleep"),
+    ):
+        with pytest.raises(RuntimeError, match="submission"):
+            mgr.send_message("%3", "hello")

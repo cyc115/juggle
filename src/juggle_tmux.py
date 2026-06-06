@@ -358,6 +358,10 @@ class JuggleTmuxManager:
             _time.sleep(0.4)
             self._run_tmux("send-keys", "-t", pane_id, "C-m")
             if not self.wait_for_submission(pane_id, text, timeout=15):
+                cap = self._run_tmux("capture-pane", "-p", "-t", pane_id, "-S", "-10")
+                pane_out = (getattr(cap, "stdout", "") or "") if cap else ""
+                if "Press up to edit queued messages" in pane_out:
+                    return "queued"
                 raise RuntimeError(
                     f"Message submission not verified for pane {pane_id} — Enter may not have landed"
                 )

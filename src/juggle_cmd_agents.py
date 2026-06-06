@@ -896,7 +896,7 @@ def cmd_send_message(args):
 
     mgr = JuggleTmuxManager()
     try:
-        mgr.send_message(pane_id, args.text)
+        result = mgr.send_message(pane_id, args.text)
     except RuntimeError as e:
         if getattr(args, "json_out", False):
             print(json.dumps({"ok": False, "error": str(e)}))
@@ -904,10 +904,16 @@ def cmd_send_message(args):
             print(f"Error: {e}")
         sys.exit(1)
 
-    if getattr(args, "json_out", False):
-        print(json.dumps({"ok": True, "agent_id": args.agent_id, "pane_id": pane_id}))
+    if result == "queued":
+        if getattr(args, "json_out", False):
+            print(json.dumps({"ok": True, "status": "queued", "agent_id": args.agent_id, "pane_id": pane_id}))
+        else:
+            print(f"Message queued for agent {args.agent_id[:8]} (pane {pane_id}) — will process at turn end.")
     else:
-        print(f"Message sent to agent {args.agent_id[:8]} (pane {pane_id}).")
+        if getattr(args, "json_out", False):
+            print(json.dumps({"ok": True, "status": "sent", "agent_id": args.agent_id, "pane_id": pane_id}))
+        else:
+            print(f"Message sent to agent {args.agent_id[:8]} (pane {pane_id}).")
 
 
 def cmd_set_watchdog(args):
