@@ -85,3 +85,9 @@ Rules:
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
 - After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+
+## Harness smoke-test gate (mandatory)
+Every change/feature MUST be verified with the repo's harness smoke suite before completion or merge:
+- full `pytest` green, plus `juggle_cli.py doctor --dry-run` smoke against a tmp DB
+- cockpit/TUI changes: run the viewport smoke harness (`--smoke`)
+Paste the suite summary line as evidence in the completion result. Completion claims without harness evidence are invalid.
