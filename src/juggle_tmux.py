@@ -14,6 +14,10 @@ from juggle_settings import get_settings as _get_settings
 # harness adapter can't be resolved (see _harness_markers).
 _READY_MARKERS = ("bypass permissions on", "/effort")
 _SUBMISSION_MARKERS = ("esc to interrupt", "✻", "✶")
+# Markers indicating the agent is already processing (consumed prompt, started tool calls).
+# Used in wait_for_submission to detect the fast-agent false-negative: prompt left the
+# input box before the first poll, so _SUBMISSION_MARKERS are gone but agent is running.
+_ACTIVITY_MARKERS = ("⏺",)
 _DETECT_TAIL_LINES = 10  # lines of scrollback tail used for submission/stuck detection
 _PROMPT_HEAD_CHARS = 40
 
@@ -256,9 +260,13 @@ class JuggleTmuxManager:
             )
             out = getattr(result, "stdout", "") or ""
             tail = out.splitlines()[-_DETECT_TAIL_LINES:]
+            bottom = "\n".join(tail)
+            # (a) explicit submission markers
             if any(m in line for m in submission_markers for line in tail):
                 return True
-            bottom = "\n".join(tail)
+            # (c) queued-messages indicator — prompt landed, agent is mid-turn
+            if "Press up to edit queued messages" in bottom:
+                return True
             stuck = (
                 "[Pasted text" in bottom
                 or "-- INSERT --" in bottom
@@ -268,6 +276,9 @@ class JuggleTmuxManager:
                     for line in bottom.splitlines()
                 )
             )
+            # (b) input box clear AND activity markers — agent already consumed prompt
+            if not stuck and any(m in bottom for m in _ACTIVITY_MARKERS):
+                return True
             if stuck and retries < max_enter_retries:
                 if "-- INSERT --" in bottom:
                     self._run_tmux("send-keys", "-t", pane_id, "Escape")

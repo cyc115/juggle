@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-06-06 (v1.47.1)
+- **Fix: send_task false-negative on fast agents**: `wait_for_submission` now passes if (a) submission markers present, (b) input box clear + `⏺` activity marker (agent consumed prompt before verification snapshot), or (c) `Press up to edit queued messages` indicator. Only raises when prompt text is still in the input box after retries. Fixes the v1.47.0 false-negative where `send_task` to panes %763/%811 raised "submission not verified" even though both tasks were processed correctly.
+
 ## 2026-06-06 (v1.46.0)
 - **send-message command**: `juggle send-message <agent_id> "<text>"` steers a running agent mid-task. Uses load-buffer + paste-buffer + 0.4s delay + C-m + `wait_for_submission` retry loop (same as `send_task`); skips `wait_for_ready_to_paste` (pane already busy). Requires pane exists + live `JUGGLE_IS_AGENT` process; exits non-zero if submission unverified. `--json` output flag.
 - **Harness gate in coder template**: `DEFAULTS["task_templates"]["coder"]` now includes a mandatory `HARNESS GATE` clause requiring agents to run the repo's smoke suite and paste the summary in their completion result. `--no-template` bypasses as before.

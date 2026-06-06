@@ -936,3 +936,98 @@ def test_send_message_still_raises_when_neither_submitted_nor_queued(mgr):
     ):
         with pytest.raises(RuntimeError, match="submission"):
             mgr.send_message("%3", "hello")
+
+
+# ── v1.47.1: extended submitted-state detection (false-negative fix) ─────────
+
+
+def test_wait_for_submission_returns_true_when_agent_already_running_with_tool_call(mgr):
+    """Agent consumed prompt and started tool calls before verification snapshot.
+
+    Repro (v1.47.0): send_task to a fast agent — prompt left the input box,
+    but submission markers ('esc to interrupt' / '✻') had already scrolled off
+    by the time wait_for_submission polled. Pane shows ⏺ tool output with no
+    prompt text in input box. Old code: no marker → timeout → raises. Fix: ⏺
+    activity marker + empty input box → submitted.
+    """
+    prompt = "implement the new feature across the codebase"
+    # Pane shows tool call output — prompt is gone, no submission marker, ⏺ present
+    tool_call_output = "⏺ Bash(\"find . -name '*.py'\")\n  file1.py\n  file2.py\n"
+
+    with (
+        patch.object(mgr, "_run_tmux", return_value=MagicMock(stdout=tool_call_output)),
+        patch("time.sleep"),
+    ):
+        result = mgr.wait_for_submission("%763", prompt, timeout=3, max_enter_retries=0)
+
+    assert result is True, (
+        "⏺ activity marker with empty input box must be treated as submitted; "
+        "agent consumed prompt faster than verification snapshot — this is the v1.47.0 false-negative"
+    )
+
+
+def test_wait_for_submission_returns_true_for_queued_indicator(mgr):
+    """'Press up to edit queued messages' means the message landed in Claude Code's queue.
+
+    This is the same queued-state logic that send_message handles (v1.46.1). Both
+    send_task and send_message now share one verifier that recognises this state.
+    """
+    prompt = "steer the agent this way"
+    queued_output = "Agent is processing…\nPress up to edit queued messages\n> \n"
+
+    with (
+        patch.object(mgr, "_run_tmux", return_value=MagicMock(stdout=queued_output)),
+        patch("time.sleep"),
+    ):
+        result = mgr.wait_for_submission("%811", prompt, timeout=3, max_enter_retries=0)
+
+    assert result is True, (
+        "'Press up to edit queued messages' must be treated as submitted; "
+        "agent is busy and the message is queued — this is a success state, not a failure"
+    )
+
+
+def test_wait_for_submission_genuinely_stuck_prompt_in_box_still_returns_false(mgr):
+    """Prompt text still visible in input box after retries → False (genuine failure).
+
+    Ensures the extended detection does NOT accidentally return True when the task
+    is genuinely unsubmitted (prompt text still in the input box).
+    """
+    prompt = "implement the new feature across the codebase"
+    head = prompt[:40]
+    # Input box still shows the prompt head
+    stuck_output = f"❯ {head} more words here\n"
+
+    with (
+        patch.object(mgr, "_run_tmux", return_value=MagicMock(stdout=stuck_output)),
+        patch("time.sleep"),
+    ):
+        result = mgr.wait_for_submission("%3", prompt, timeout=2, max_enter_retries=0)
+
+    assert result is False, (
+        "prompt text visible in input box must still return False — "
+        "genuine stuck state must not be masked by extended detection"
+    )
+
+
+def test_send_task_does_not_raise_when_agent_already_running(mgr):
+    """send_task must not raise when a fast agent consumed the prompt before verification.
+
+    Repro: panes %763 and %811 — both tasks submitted and processed correctly,
+    but send_task raised 'submission not verified' because wait_for_submission
+    didn't recognise the ⏺ running state.
+    """
+    tool_call_output = "⏺ Read(\"src/juggle_tmux.py\")\n  content here\n"
+
+    def fake_tmux(*args):
+        if args[0] == "capture-pane":
+            return _ok(stdout=tool_call_output)
+        return _ok()
+
+    with (
+        patch.object(mgr, "wait_for_ready_to_paste", return_value=True),
+        patch.object(mgr, "_run_tmux", side_effect=fake_tmux),
+        patch("time.sleep"),
+    ):
+        # Must not raise RuntimeError
+        pane_hash = mgr.send_task("%763", "implement the new feature")
