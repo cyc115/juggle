@@ -857,6 +857,40 @@ class JuggleDB:
             ).fetchone()
         return row["value"] if row else default
 
+    def get_orchestrator_session_id(self) -> str:
+        """Return the session_id of the active orchestrator, or '' if not set."""
+        with self._connect() as conn:
+            return self._get_session_key(conn, "orchestrator_session_id") or ""
+
+    def set_orchestrator_session_id(self, sid: str) -> None:
+        """Record (or clear) the orchestrator session ID and timestamp."""
+        import time as _time
+
+        with self._connect() as conn:
+            self._set_session_key(conn, "orchestrator_session_id", sid)
+            if sid:
+                self._set_session_key(
+                    conn, "orchestrator_session_ts", str(_time.time())
+                )
+            conn.commit()
+
+    def get_orchestrator_session_ts(self) -> float:
+        """Return the timestamp when the orchestrator session was last registered."""
+        with self._connect() as conn:
+            val = self._get_session_key(conn, "orchestrator_session_ts")
+        try:
+            return float(val) if val else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    def touch_orchestrator_session_ts(self) -> None:
+        """Refresh the orchestrator session heartbeat timestamp to now."""
+        import time as _time
+
+        with self._connect() as conn:
+            self._set_session_key(conn, "orchestrator_session_ts", str(_time.time()))
+            conn.commit()
+
     def _set_session_key_external(self, key: str, value: str):
         """Public helper to write a session key (for tests)."""
         with self._connect() as conn:

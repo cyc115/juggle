@@ -274,6 +274,17 @@ def handle_user_prompt_submit(data: dict) -> None:
 
     autopilot = _autopilot_context()
 
+    # Heartbeat: refresh orchestrator session TTL so a long-running session
+    # does not expire mid-work (TTL resets on every prompt from the orchestrator).
+    try:
+        curr_sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+        if curr_sid and is_active():
+            db = get_db()
+            if db.get_orchestrator_session_id() == curr_sid:
+                db.touch_orchestrator_session_ts()
+    except Exception:
+        pass
+
     # Autopilot is independent of juggle mode — re-assert it even when inactive.
     if not is_active():
         if autopilot:
@@ -619,6 +630,46 @@ def _log_agent_tool_use(data: dict) -> None:
         logging.warning("agent tool-use logging failed: %s", exc)
 
 
+_ORCHESTRATOR_SESSION_TTL_SECS = 86400  # 24 hours
+
+
+def _is_orchestrator_session(data: dict) -> bool:
+    """Return True iff the current session is the registered orchestrator and not stale.
+
+    Guards handle_pre_tool_use: only block edits in the exact session that ran
+    /juggle:start, never in other active Claude Code sessions.
+
+    Rules:
+    - orchestrator_session_id not set → False (safe default: allow all)
+    - current session_id != orchestrator_session_id → False (different session)
+    - registration timestamp older than TTL → False (stale; clear and allow)
+    - otherwise → True (block)
+    """
+    import time
+
+    try:
+        db = get_db()
+        orch_sid = db.get_orchestrator_session_id()
+        if not orch_sid:
+            return False  # no orchestrator registered → allow all sessions
+
+        curr_sid = data.get("session_id", "")
+        if curr_sid != orch_sid:
+            return False  # different session → not the orchestrator
+
+        # TTL check: stale orchestrator session should not haunt new sessions
+        ts = db.get_orchestrator_session_ts()
+        if ts and (time.time() - ts) > _ORCHESTRATOR_SESSION_TTL_SECS:
+            db.set_orchestrator_session_id("")  # expire the stale registration
+            logging.info("PreToolUse: orchestrator session %s expired (>24h)", orch_sid[:8])
+            return False
+
+        return True
+    except Exception as exc:
+        logging.warning("_is_orchestrator_session check failed: %s", exc)
+        return False  # on error, fail open (allow) to avoid false positives
+
+
 def handle_pre_tool_use(data: dict) -> None:
     """Hard-block Edit/Write/NotebookEdit/Bash-writes in the orchestrator main thread.
 
@@ -640,7 +691,9 @@ def handle_pre_tool_use(data: dict) -> None:
         tool_name = data.get("tool_name", "")
         BLOCKED_TOOLS = {"Edit", "Write", "NotebookEdit"}
         _TMP_PREFIXES = ("/tmp/", "/private/tmp/")
-        if tool_name in BLOCKED_TOOLS:
+        # Blocking only applies to the exact session that activated orchestrator mode.
+        # All other sessions (incl. non-juggle windows) are allowed through.
+        if tool_name in BLOCKED_TOOLS and _is_orchestrator_session(data):
             file_path = data.get("tool_input", {}).get("file_path", "")
             if tool_name in ("Write", "Edit") and any(
                 file_path.startswith(p) for p in _TMP_PREFIXES
@@ -662,7 +715,7 @@ def handle_pre_tool_use(data: dict) -> None:
             }
             print(json.dumps(output), file=sys.stderr)
             sys.exit(2)
-        if tool_name == "Bash":
+        if tool_name == "Bash" and _is_orchestrator_session(data):
             command = data.get("tool_input", {}).get("command", "")
             matched = _bash_write_pattern(command)
             if matched:

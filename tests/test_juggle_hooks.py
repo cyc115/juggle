@@ -121,11 +121,13 @@ def _reload_hooks(monkeypatch, active_db):
     import juggle_hooks
 
     importlib.reload(juggle_hooks)
+    monkeypatch.setattr(juggle_hooks, "DB_PATH", active_db.db_path)
     return juggle_hooks
 
 
 def test_pre_tool_use_blocks_edit_in_orchestrator(active_db, monkeypatch, capsys):
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    active_db.set_orchestrator_session_id("deadbeef1234")
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -142,6 +144,7 @@ def test_pre_tool_use_blocks_edit_in_orchestrator(active_db, monkeypatch, capsys
 
 def test_pre_tool_use_blocks_write_in_orchestrator(active_db, monkeypatch):
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    active_db.set_orchestrator_session_id("abc")
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -456,6 +459,7 @@ def test_pre_tool_use_write_to_private_tmp_is_allowed(active_db, monkeypatch):
 
 def test_pre_tool_use_write_to_repo_is_blocked(active_db, monkeypatch):
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    active_db.set_orchestrator_session_id("abc")
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -488,6 +492,7 @@ def test_pre_tool_use_edit_to_tmp_is_allowed(active_db, monkeypatch):
 
 def test_pre_tool_use_edit_to_repo_is_blocked(active_db, monkeypatch):
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    active_db.set_orchestrator_session_id("abc")
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
 
     with pytest.raises(SystemExit) as exc_info:

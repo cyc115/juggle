@@ -177,6 +177,10 @@ def cmd_start(_):
     db = get_db()
     db.init_db()
     db.set_active(True)
+    # Record which Claude Code session is the orchestrator so PreToolUse can
+    # scope the edit-block to exactly this session, not every active session.
+    orch_sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    db.set_orchestrator_session_id(orch_sid)
 
     # Auto-start talkback if enabled in config
     _maybe_start_talkback()
@@ -206,6 +210,7 @@ def cmd_start(_):
 def cmd_stop(_):
     db = get_db()
     db.set_active(False)
+    db.set_orchestrator_session_id("")  # clear so stale sessions don't haunt new ones
 
     threads = db.get_all_threads()
     if threads:
