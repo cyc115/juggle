@@ -4,6 +4,10 @@
 
 (none)
 
+## Backlog
+
+- [ ] Juggle worktrees + `depends_on` ordering — extend the TE worktree pattern (`cyc_<label>` branch + `/tmp/juggle-<label>`) to juggle-repo topics, and add a `depends_on` field to `juggle new` so dispatch blocks until dependencies close. Evidence: 2 juggle same-repo concurrent pairs with real file overlap observed in 2 days (UD∩UI on `juggle_cmd_agents.py`; SY∩TB on `.claude-plugin/plugin.json`); 0 actual conflicts but resolved by timing luck. DDL already designed in TF doc. Evidence: [[knowledge/projects/juggle/2026-06-07-topic-dag-evaluation]]. Scope: lighter alternative to full DAG — ~50 LOC + migration 35; skip `_dag_tick` auto-dispatch and auto-decomposer.
+
 ## Done
 
 - [x] Watchdog action items now actionable: auto-recoverable events emit notifications; exhausted recovery emits `[RQ]+Decide:+Cause:` action item. Singleton hygiene: `_kill_existing_watchdog` verifies PID is a watchdog before killing; atomic pidfile write; removed duplicate config_dir/watchdog.pid. v1.45.1 ✅ 2026-06-05
