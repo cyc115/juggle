@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import glob
-import os
-import plistlib
 import subprocess
 import time
 from dataclasses import dataclass
