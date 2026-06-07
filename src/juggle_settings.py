@@ -30,6 +30,10 @@ DEFAULTS: dict = {
     "stale_summary_message_threshold": 3,
     "agent_boot_grace_secs": 120,
     "summary_max_chars": 250,
+    # Per-repo integration config. Key = absolute repo path.
+    # Example: {"/home/user/juggle": {"push_mode": "direct", "test_cmd": "pytest"}}
+    # push_mode: "direct" = ff-merge+push main | "pr" = push branch only | "none" = local merge only
+    "repos": {},
     "thread_idle_threshold_secs": 1800,
     "thread_archive_threshold_secs": 172800,
     # Task Templates — prepended to agent prompts by role
@@ -441,3 +445,16 @@ def get(key: str, default=None):
 def get_nested(section: str, key: str, default=None):
     """Shortcut: get a nested setting value from a named section."""
     return get_settings().get(section, {}).get(key, default)
+
+
+def get_repo_config(repo_path: str) -> dict:
+    """Return integration config for repo_path with safe defaults.
+
+    Unknown repos get push_mode='none' and test_cmd='' — intentionally safe.
+    """
+    repos = get_settings().get("repos", {})
+    cfg = repos.get(str(repo_path), {})
+    return {
+        "push_mode": cfg.get("push_mode", "none"),
+        "test_cmd": cfg.get("test_cmd", ""),
+    }
