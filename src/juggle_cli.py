@@ -481,6 +481,22 @@ def main():
     )
     p_complete.set_defaults(func=cmd_complete_agent)
 
+    # integrate
+    p_integrate = subparsers.add_parser(
+        "integrate", help="Rebase-aware atomic worktree finalization: fetch → rebase → test → ff-merge → push"
+    )
+    p_integrate.add_argument("thread_id", help="Thread ID or label")
+    p_integrate.add_argument(
+        "--allow-main",
+        action="store_true",
+        dest="allow_main",
+        default=False,
+        help="Allow integration even if worktree fields are missing (operator bypass)",
+    )
+    p_integrate.set_defaults(
+        func=lambda a: __import__("juggle_cmd_integrate").cmd_integrate(a)
+    )
+
     # fail-agent
     p_fail = subparsers.add_parser("fail-agent", help="Mark agent task as failed")
     p_fail.add_argument("thread_id", help="Thread ID or label")
@@ -634,6 +650,13 @@ def main():
         dest="main_repo_path",
         default=None,
         help="Main repo path for orchestrator-owned finalization",
+    )
+    p_send_task.add_argument(
+        "--allow-main",
+        action="store_true",
+        dest="allow_main",
+        default=False,
+        help="Bypass worktree guard and allow coder/planner to run in main worktree (logged)",
     )
     p_send_task.set_defaults(func=cmd_send_task)
 

@@ -382,9 +382,12 @@ def test_complete_agent_routes_through_run_integrate(git_repo, tmp_path):
     db.add_action_item = Mock()
     db.get_last_exchange.return_value = {"last_user": "", "last_assistant": ""}
     db.insert_agent_completion = Mock()
-    db._connect = Mock().__enter__ = Mock(return_value=Mock(
+    _cm = Mock()
+    _cm.__enter__ = Mock(return_value=Mock(
         execute=Mock(return_value=Mock(fetchone=Mock(return_value=None)))
     ))
+    _cm.__exit__ = Mock(return_value=False)
+    db._connect = Mock(return_value=_cm)
 
     integrate_calls = []
 

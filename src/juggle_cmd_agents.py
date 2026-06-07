@@ -24,7 +24,10 @@ from juggle_cli_common import (
     _resolve_thread,
     get_db,
 )
+import juggle_cmd_integrate
+from juggle_harness import get_adapter
 from juggle_settings import get_settings as _get_settings
+from juggle_tmux import JuggleTmuxManager
 
 _AGENT_TTL_SECS: int = _get_settings()["agent_idle_ttl_secs"]
 
@@ -171,17 +174,21 @@ def _create_worktree(
 def cmd_complete_agent(args):
     """Mark agent complete: thread → closed, create notifications_v2 row,
     convert any open_questions to action_items."""
-    import juggle_cli_common as _common
-
-    db = _common.get_db()
-    thread_uuid = _common._resolve_thread(db, args.thread_id)
+    db = get_db()
+    thread_uuid = _resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
 
-    # Finalize worktree BEFORE closing the thread
-    ft_success, ft_msg = _finalize_worktree(thread)
+    # Finalize worktree BEFORE closing the thread.
+    # Route through _run_integrate (rebase-aware) when worktree fields are present;
+    # fall back to bare _finalize_worktree for pre-migration threads.
+    if thread.get("worktree_path") and thread.get("worktree_branch") and thread.get("main_repo_path"):
+        ft_success, ft_msg = juggle_cmd_integrate._run_integrate(thread, db)
+    else:
+        ft_success, ft_msg = _finalize_worktree(thread)
+
     if not ft_success:
         db.add_action_item(
             thread_id=thread_uuid,
@@ -845,13 +852,9 @@ def cmd_send_task(args):
         sys.exit(1)
 
     sys.path.insert(0, str(SRC_DIR))
-    from juggle_tmux import JuggleTmuxManager
-
     mgr = JuggleTmuxManager()
 
     _role = agent.get("role")
-    from juggle_harness import get_adapter
-
     adapter = get_adapter(_role)
 
     pane_id = agent["pane_id"]
@@ -870,6 +873,76 @@ def cmd_send_task(args):
     else:
         is_new = False
 
+    # ── Worktree auto-create + hard guard (coder/planner only) ───────────────
+    thread_uuid_wt = agent.get("assigned_thread")
+    thread_wt = db.get_thread(thread_uuid_wt) if thread_uuid_wt else None
+    _worktree_context = ""
+
+    if _role in ("coder", "planner") and thread_wt:
+        thread_label_wt = (thread_wt.get("user_label") or thread_wt["id"][:6])
+        repo_path_wt = (agent.get("repo_path") or "").strip()
+        allow_main_wt = getattr(args, "allow_main", False)
+
+        # Explicit CLI overrides: persist to thread and reload
+        cli_wt_path = (getattr(args, "worktree_path", None) or "").strip()
+        cli_wt_branch = (getattr(args, "worktree_branch", None) or "").strip()
+        cli_main_repo = (getattr(args, "main_repo_path", None) or "").strip()
+        if cli_wt_path:
+            db.update_thread(
+                thread_uuid_wt,
+                worktree_path=cli_wt_path,
+                worktree_branch=cli_wt_branch or thread_wt.get("worktree_branch"),
+                main_repo_path=cli_main_repo or repo_path_wt,
+            )
+            thread_wt = db.get_thread(thread_uuid_wt)
+
+        existing_wt = (thread_wt.get("worktree_path") or "").strip()
+
+        if not existing_wt and repo_path_wt and not allow_main_wt:
+            ok_wt, wt_path_new, branch_new, msg_wt = _create_worktree(
+                repo_path_wt, thread_label_wt
+            )
+            if ok_wt:
+                db.update_thread(
+                    thread_uuid_wt,
+                    worktree_path=wt_path_new,
+                    worktree_branch=branch_new,
+                    main_repo_path=repo_path_wt,
+                )
+                thread_wt = db.get_thread(thread_uuid_wt)
+                existing_wt = wt_path_new
+                print(f"[juggle] {msg_wt}", file=sys.stderr)
+            else:
+                print(f"[juggle] WARNING: worktree auto-create failed: {msg_wt}", file=sys.stderr)
+
+        # Hard guard: refuse main-worktree dispatch for coder/planner
+        if not existing_wt and repo_path_wt and not allow_main_wt:
+            print(
+                f"Error: Cannot dispatch {_role} task without an isolated worktree "
+                f"(repo={repo_path_wt}). Worktree auto-create failed. "
+                f"Use --allow-main to override (bypass is logged)."
+            )
+            sys.exit(1)
+
+        if allow_main_wt and repo_path_wt:
+            print(
+                f"[juggle] WARNING: --allow-main used for {_role} on {repo_path_wt} "
+                f"(thread {thread_label_wt}) — main-worktree guard bypassed.",
+                file=sys.stderr,
+            )
+
+        # Inject worktree CWD preamble (comes after UNIVERSAL_PREAMBLE)
+        if existing_wt:
+            branch_label_wt = (thread_wt.get("worktree_branch") or "") if thread_wt else ""
+            _worktree_context = (
+                f"## Working Directory\n"
+                f"This task runs in an isolated worktree. "
+                f"cd into it before any git or file operations:\n"
+                f"```bash\ncd {existing_wt}\n```\n"
+                f"Branch: `{branch_label_wt}`\n\n---\n\n"
+            )
+    # ── End worktree guard ────────────────────────────────────────────────────
+
     prompt = prompt_path.read_text()
 
     # Prepend role task template (unless --no-template)
@@ -884,7 +957,7 @@ def cmd_send_task(args):
                 template = template.replace("{quality_gate_skill}", qg)
                 prompt = template + "\n---\n\n" + prompt.rstrip()
 
-    full_prompt = UNIVERSAL_PREAMBLE + prompt.rstrip()
+    full_prompt = UNIVERSAL_PREAMBLE + _worktree_context + prompt.rstrip()
 
     # Inline the role anchor for harnesses that don't run juggle's hooks. Claude
     # Code injects it via its UserPromptSubmit hook, so decorate_task is a no-op
