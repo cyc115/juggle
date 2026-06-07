@@ -400,12 +400,11 @@ def test_complete_agent_routes_through_run_integrate(git_repo, tmp_path):
     args.result_summary = "done"
     args.retain = None
 
-    with patch("juggle_cmd_agents.get_db", return_value=db):
-        with patch("juggle_cmd_agents._resolve_thread", return_value="thread-uuid-1"):
+    with patch("juggle_cli_common.get_db", return_value=db):
+        with patch("juggle_cli_common._resolve_thread", return_value="thread-uuid-1"):
             with patch("juggle_cmd_agents.juggle_cmd_integrate") as mock_mod:
                 mock_mod._run_integrate.side_effect = fake_run_integrate
-                with patch.dict("sys.modules", {"juggle_cmd_integrate": mock_mod}):
-                    cmd_complete_agent(args)
+                cmd_complete_agent(args)
 
     assert integrate_calls, "_run_integrate was not called"
     assert integrate_calls[0]["worktree_branch"] == "cyc_AB"

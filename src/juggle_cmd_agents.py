@@ -174,8 +174,9 @@ def _create_worktree(
 def cmd_complete_agent(args):
     """Mark agent complete: thread → closed, create notifications_v2 row,
     convert any open_questions to action_items."""
-    db = get_db()
-    thread_uuid = _resolve_thread(db, args.thread_id)
+    import juggle_cli_common as _common
+    db = _common.get_db()
+    thread_uuid = _common._resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
     if not thread:
         print(f"Error: Thread {args.thread_id} not found.")
@@ -884,9 +885,12 @@ def cmd_send_task(args):
         allow_main_wt = getattr(args, "allow_main", False)
 
         # Explicit CLI overrides: persist to thread and reload
-        cli_wt_path = (getattr(args, "worktree_path", None) or "").strip()
-        cli_wt_branch = (getattr(args, "worktree_branch", None) or "").strip()
-        cli_main_repo = (getattr(args, "main_repo_path", None) or "").strip()
+        _v = getattr(args, "worktree_path", None)
+        cli_wt_path = _v.strip() if isinstance(_v, str) else ""
+        _v = getattr(args, "worktree_branch", None)
+        cli_wt_branch = _v.strip() if isinstance(_v, str) else ""
+        _v = getattr(args, "main_repo_path", None)
+        cli_main_repo = _v.strip() if isinstance(_v, str) else ""
         if cli_wt_path:
             db.update_thread(
                 thread_uuid_wt,
