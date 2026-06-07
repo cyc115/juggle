@@ -664,7 +664,8 @@ def cmd_get_agent(args):
         sys.exit(1)
 
     # Resolve target repo for filtering (default: current cwd git toplevel)
-    target_repo = getattr(args, "repo", None)
+    explicit_repo = getattr(args, "repo", None)
+    target_repo = explicit_repo
     if target_repo is None:
         try:
             target_repo = subprocess.check_output(
@@ -673,25 +674,35 @@ def cmd_get_agent(args):
         except (subprocess.CalledProcessError, FileNotFoundError):
             target_repo = ""
 
+    # Resolve requested harness: explicit --harness flag > config default
+    agent_cfg = _get_settings().get("agent", {})
+    requested_harness = getattr(args, "harness", None) or agent_cfg.get("harness") or "claude"
+
     # Walk ranked idle candidates; pick the first one whose pane is actually
     # ready at the Claude UI prompt (single-shot capture-pane check).  If none
     # of the idle agents are ready — the pane may still be rendering, mid-
     # shutdown, or have stray input — fall through to spawn a fresh agent.
     agent = None
-    for candidate in db.get_ranked_idle_agents(thread_uuid, role=args.role):
-        # Filter by repo_path: NULL = pre-migration → incompatible; skip mismatched
-        agent_repo = candidate.get("repo_path")
-        if agent_repo is None:
-            continue  # pre-migration agent, unknown repo — skip
-        if target_repo and agent_repo != target_repo:
-            continue  # mismatched repo — skip, don't decommission
-        # Fix 5: hard role filter — role score (+1) is not enough to prevent a
-        # wrong-role agent (e.g. planner) winning on context score (+2) for a coder request.
-        if args.role and candidate.get("role") != args.role:
-            continue
-        if mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
-            agent = candidate
-            break
+    if not getattr(args, "fresh", False):
+        for candidate in db.get_ranked_idle_agents(thread_uuid, role=args.role):
+            # Filter by repo_path: NULL = pre-migration → incompatible; skip mismatched
+            agent_repo = candidate.get("repo_path")
+            if agent_repo is None:
+                continue  # pre-migration agent, unknown repo — skip
+            if target_repo and agent_repo != target_repo:
+                continue  # mismatched repo — skip, don't decommission
+            # Fix 5: hard role filter — role score (+1) is not enough to prevent a
+            # wrong-role agent (e.g. planner) winning on context score (+2) for a coder request.
+            if args.role and candidate.get("role") != args.role:
+                continue
+            if candidate.get("harness") != requested_harness:
+                continue  # harness mismatch — spawn fresh on correct harness
+            if mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
+                # Reset pane cwd so a stranded agent starts clean
+                reset_dir = target_repo or os.path.expanduser("~")
+                mgr._run_tmux("send-keys", "-t", candidate["pane_id"], f"cd {reset_dir}", "Enter")
+                agent = candidate
+                break
     is_new = agent is None
 
     if is_new:
@@ -714,6 +725,8 @@ def cmd_get_agent(args):
     _model_arg = getattr(args, "model", None)
     if _model_arg:
         _update_kw["model"] = _model_arg
+    if explicit_repo:
+        _update_kw["repo_path"] = target_repo
     db.update_agent(agent["id"], **_update_kw)
     db.update_thread(thread_uuid, status="background")
 
@@ -881,7 +894,6 @@ def cmd_send_task(args):
 
     if _role in ("coder", "planner") and thread_wt:
         thread_label_wt = (thread_wt.get("user_label") or thread_wt["id"][:6])
-        repo_path_wt = (agent.get("repo_path") or "").strip()
         allow_main_wt = getattr(args, "allow_main", False)
 
         # Explicit CLI overrides: persist to thread and reload
@@ -891,6 +903,14 @@ def cmd_send_task(args):
         cli_wt_branch = _v.strip() if isinstance(_v, str) else ""
         _v = getattr(args, "main_repo_path", None)
         cli_main_repo = _v.strip() if isinstance(_v, str) else ""
+
+        # Resolve target repo: (1) --main-repo-path arg (2) agent.repo_path (3) thread repo
+        # Never fall back to os.getcwd() — if unresolved, skip auto-create
+        repo_path_wt = (
+            cli_main_repo
+            or (agent.get("repo_path") or "").strip()
+            or (thread_wt.get("main_repo_path") or "").strip()
+        )
         if cli_wt_path:
             db.update_thread(
                 thread_uuid_wt,

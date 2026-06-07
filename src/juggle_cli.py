@@ -603,6 +603,18 @@ def main():
         default=None,
         help="Filter idle agents to matching repo_path (default: current cwd git toplevel)",
     )
+    p_get_agent.add_argument(
+        "--harness",
+        dest="harness",
+        default=None,
+        help="Request specific harness backend (default: config agent.harness)",
+    )
+    p_get_agent.add_argument(
+        "--fresh",
+        dest="fresh",
+        action="store_true",
+        help="Force a new agent spawn, skipping idle reuse",
+    )
     p_get_agent.set_defaults(func=cmd_get_agent)
 
     # release-agent
