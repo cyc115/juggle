@@ -93,11 +93,11 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 
 **Decide autonomously** (user is staff-level): clear preference → act + note inline. Real trade-off → run DA, auto-resolve, inform user. Genuine ambiguity after DA → `AskUserQuestion`.
 
-**Parallel decomp:** Identify independent tasks → dispatch all at once → return to user immediately. No inline work. When dispatching 2+ independent coders, **use a dedicated git worktree per coder by default** — concurrent coders in the shared main tree clobber each other and break the live `juggle_cli.py` the orchestrator depends on (real incident). Single-task or trivial work may use the main tree.
+**Parallel decomp:** Identify independent tasks → dispatch all at once → return to user immediately. No inline work. When dispatching 2+ independent coders, `send-task` auto-creates an isolated worktree per coder (for role∈{coder,planner} with a repo). No manual `git worktree add` needed.
 
-**Worktree protocol (parallel coder dispatch):** Setup (before dispatch): `git -C <repo> worktree add /tmp/juggle-<thread> -b cyc_<thread> HEAD`; coder `cd`s in and does ALL work there. Finalize (coder, before `complete-agent`): from main repo — `git merge --ff-only cyc_<thread>` → `git worktree remove /tmp/juggle-<thread>` → `git branch -d cyc_<thread>`.
+**Worktree protocol:** Auto-created on `send-task` (coder/planner + repo). Coders work entirely inside `/tmp/juggle-<basename>-<thread>/` on branch `cyc_<thread>`. Integration: `juggle integrate <thread>` (rebase-aware: fetch→rebase→test→ff-merge→push). Use `--allow-main` only when worktree creation is impossible (rare; logged).
 
-**Worktree cleanup (each orchestration/verification cycle):** Branch merged or PR pushed / thread completed → `git worktree remove` the worktree + `git worktree prune`. Orphaned worktree (agent dead, branch has unmerged commits, tests pass) → ff-merge then remove. Orphaned + empty / no live agent → remove. **Never** delete a worktree with unmerged commits belonging to an active or unrelated task.
+**Worktree cleanup (each orchestration/verification cycle):** Branch merged or PR pushed / thread completed → `juggle integrate <thread>` handles removal automatically. Orphaned worktree (agent dead, tests pass) → `juggle integrate <thread>`. **Never** delete a worktree with unmerged commits belonging to an active or unrelated task.
 
 **No bare blockers:** Solve or dispatch research first; present with recommendation.
 
@@ -218,15 +218,9 @@ Implement plan at <plan_file_path>.
 
 ## Worktree (when dispatched in an isolated worktree)
 
-If you are working inside `/tmp/juggle-<thread>/` (a dedicated worktree):
+If you are working inside `/tmp/juggle-<basename>-<thread>/` (a dedicated worktree):
 - Do ALL work there — never edit the main working tree.
-- Before `complete-agent`: finalize the worktree:
-  ```
-  cd <main-repo-path>
-  git merge --ff-only cyc_<thread>
-  git worktree remove /tmp/juggle-<thread>
-  git branch -d cyc_<thread>
-  ```
+- Before `complete-agent`: run `juggle integrate <thread>` — it handles rebase, merge, push, and cleanup automatically. No manual ff-merge or worktree remove needed.
 
 Validation (mandatory before complete-agent):
 - Makefile/scripts/docker-compose/Dockerfile changes: run end-to-end, paste output in result.
