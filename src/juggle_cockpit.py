@@ -34,13 +34,11 @@ from textual.widgets import Footer, Header, Static
 from juggle_db import JuggleDB
 from juggle_settings import get_settings as _get_settings
 from juggle_cockpit_helpers import (
-    _PRIORITY_TIER_MAP,
     _SCROLL_PANES,
     _apply_filter_actions,
     _apply_filter_text,
     _new_blocker_actions,
     _newly_failed_agents,
-    _parse_filter,
     _resolve_actions_by_thread_label,
     _resolve_agent_by_index,
     _resolve_thread_by_label,
@@ -1061,7 +1059,6 @@ if __name__ == "__main__":
     if args.screenshot:
         import os
         from rich.console import Console as _Console
-        from juggle_cockpit_view import render_static_from_state as _render
         from juggle_cockpit_model import snapshot as _snapshot
         import sqlite3 as _sqlite3
         from juggle_db import JuggleDB
