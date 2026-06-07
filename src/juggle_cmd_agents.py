@@ -133,6 +133,41 @@ def _finalize_worktree(thread: dict) -> tuple:
     return True, f"Worktree {worktree_path} finalized (merged {worktree_branch})."
 
 
+def _create_worktree(
+    repo_path: str, thread_label: str, worktree_root: str = "/tmp"
+) -> tuple[bool, str, str, str]:
+    """Create an isolated git worktree for a thread.
+
+    Returns (success, worktree_path, branch, message).
+    worktree_path and branch are empty strings on failure.
+    Idempotent: if worktree_path already exists, returns (True, path, branch, "already exists").
+    """
+    basename = Path(repo_path).name
+    worktree_path = str(Path(worktree_root) / f"juggle-{basename}-{thread_label}")
+    branch = f"cyc_{thread_label}"
+
+    if Path(worktree_path).exists():
+        return True, worktree_path, branch, f"Worktree already exists: {worktree_path}"
+
+    result = subprocess.run(
+        ["git", "-C", repo_path, "worktree", "add", "-b", branch, worktree_path],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return False, "", "", f"git worktree add failed: {result.stderr.strip()}"
+
+    # Symlink .venv for immediate test runs — skip silently when absent
+    main_venv = Path(repo_path) / ".venv"
+    worktree_venv = Path(worktree_path) / ".venv"
+    if main_venv.exists() and not worktree_venv.exists():
+        try:
+            worktree_venv.symlink_to(main_venv)
+        except OSError:
+            pass
+
+    return True, worktree_path, branch, f"Worktree created: {worktree_path} on branch {branch}"
+
+
 def cmd_complete_agent(args):
     """Mark agent complete: thread → closed, create notifications_v2 row,
     convert any open_questions to action_items."""
