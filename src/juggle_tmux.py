@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Juggle Tmux Manager — persistent agent pool via tmux panes."""
 
-import logging
 import os
 import subprocess
 import time
@@ -416,7 +415,6 @@ class JuggleTmuxManager:
         Honours JUGGLE_TMUX_MOCK_SEND like ``send_task`` for tests.
         """
         import hashlib as _hashlib
-        import subprocess as _sp
         import time as _time
 
         from juggle_harness import get_adapter
@@ -497,7 +495,14 @@ class JuggleTmuxManager:
 
         mock_pane = os.environ.get("JUGGLE_TMUX_MOCK_PANE")
         if mock_pane:
-            agent_id = db.create_agent(role=role, pane_id=mock_pane, harness=harness_id)
+            try:
+                mock_repo = subprocess.check_output(
+                    ["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
+                    text=True, stderr=subprocess.DEVNULL,
+                ).strip()
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                mock_repo = ""
+            agent_id = db.create_agent(role=role, pane_id=mock_pane, harness=harness_id, repo_path=mock_repo)
             return db.get_agent(agent_id)
 
         self.ensure_session()
@@ -642,10 +647,8 @@ def reconcile_oneshot_agents(db) -> int:
 
     Returns the number of agents reconciled.
     """
-    import os as _os
     from datetime import datetime, timezone
 
-    from juggle_harness import get_adapter
     from juggle_settings import get_settings as _gs
 
     reconciled = 0

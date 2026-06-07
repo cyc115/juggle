@@ -425,7 +425,7 @@ def _find_autofix_pr_ref() -> str:
 # Issue filing (priority-ordered, capped at 5, deduped)
 # ---------------------------------------------------------------------------
 
-def _file_reflect_issues(sections: dict, today: str, report_path: Path, dry_run: bool) -> list[str]:
+def _file_reflect_issues(sections: dict, today: str, _report_path: Path, dry_run: bool) -> list[str]:
     filed = []
     for section_id in ISSUE_PRIORITY:
         if len(filed) >= MAX_ISSUES:

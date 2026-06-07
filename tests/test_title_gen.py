@@ -34,7 +34,9 @@ def _cfg(**overrides) -> dict:
             "openrouter_model": "meta-llama/llama-3.1-8b-instruct:free",
             "haiku_model": "claude-haiku-4-5-20251001",
             "timeout_secs": 5,
-        }
+        },
+        # llm_call() requires llm_profiles to be present in settings
+        "llm_profiles": DEFAULTS["llm_profiles"],
     }
     base["title_gen"].update(overrides)
     return base
@@ -98,15 +100,18 @@ def test_tier1_skipped_when_env_key_missing(monkeypatch):
 
 
 def test_tier1_skipped_when_openrouter_disabled(monkeypatch):
+    """OpenRouter is skipped when OPENROUTER_KEY env var is absent (new gating mechanism).
+
+    Previously gated by title_gen.openrouter_enabled setting; now gated by OPENROUTER_KEY
+    presence in llm_call(). title_gen.openrouter_enabled is no longer read.
+    """
     from juggle_cli_common import _generate_title_for_thread
 
     db = _db()
-    monkeypatch.setenv("OPENROUTER_KEY", "sk-test-key")
+    monkeypatch.delenv("OPENROUTER_KEY", raising=False)
     mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout="Haiku Title\n"))
 
-    with patch(
-        "juggle_settings.get_settings", return_value=_cfg(openrouter_enabled=False)
-    ):
+    with patch("juggle_settings.get_settings", return_value=_cfg()):
         with patch("urllib.request.urlopen") as mock_urlopen:
             with patch("subprocess.run", mock_run):
                 _generate_title_for_thread(db, "uuid-1", "Something")

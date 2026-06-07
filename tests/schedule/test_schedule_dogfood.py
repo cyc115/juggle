@@ -1,11 +1,8 @@
 """Tests for juggle_schedule_dogfood."""
-import json
-import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
@@ -97,6 +94,7 @@ def test_cost_cap_aborts_and_writes_partial(tmp_path):
          patch.object(dogfood, "_tmux_session_exists", return_value=False), \
          patch.object(dogfood, "_run_headless_research", fake_headless), \
          patch.object(dogfood, "REPORTS_DIR", tmp_path), \
+         patch.object(dogfood, "JUGGLE_REPO", tmp_path), \
          patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
          patch("juggle_schedule_common.JUGGLE_DIR", tmp_path):
         result = dogfood.run(dry_run=False)

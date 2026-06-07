@@ -303,6 +303,7 @@ def test_classification_candidates_empty_input():
 
 
 def test_post_tool_use_forbidden_tool_warns(active_db, monkeypatch):
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
     import importlib
     import io
@@ -372,6 +373,7 @@ def test_user_prompt_submit_injects_autopilot_when_active(
     active_db, monkeypatch, tmp_path, capsys
 ):
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     flag = tmp_path / "autopilot"
     flag.touch()
     monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", flag)
@@ -388,6 +390,7 @@ def test_user_prompt_submit_injects_autopilot_when_inactive(
 ):
     active_db.set_active(False)
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     flag = tmp_path / "autopilot"
     flag.touch()
     monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", flag)

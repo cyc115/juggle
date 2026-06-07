@@ -797,7 +797,7 @@ def run(dry_run: bool = False) -> int:
     return 0
 
 
-def _handle_cost_cap(exc, pr_sections, branch, today, all_sections, issues_filed, dry_run):
+def _handle_cost_cap(exc, pr_sections, branch, today, _all_sections, issues_filed, dry_run):
     logger.error("cost cap exceeded: %s", exc)
     if not dry_run:
         gh_create_issue(

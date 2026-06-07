@@ -1,10 +1,15 @@
 """Tests for Task 5 tiered context injection."""
 
 import json
-import os
 import pytest
 from juggle_db import JuggleDB
 from juggle_context import _build
+
+
+@pytest.fixture(autouse=True)
+def _clear_agent_env(monkeypatch):
+    """Prevent JUGGLE_IS_AGENT=1 (set in agent Claude sessions) from tainting orchestrator-path tests."""
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
 
 
 @pytest.fixture
@@ -45,7 +50,7 @@ def test_tier2_closed_thread_within_ttl_one_line(db):
     assert "[A] ✅ closed  | tax-submit" in out
     # Tier 2 should NOT include Summary/Key decisions/Q&A block for closed threads
     lines = out.splitlines()
-    idx = next(i for i, l in enumerate(lines) if "[A] ✅ closed" in l)
+    idx = next(i for i, ln in enumerate(lines) if "[A] ✅ closed" in ln)
     # Next non-empty line must not start with "Summary:"
     for nxt in lines[idx + 1 : idx + 3]:
         assert not nxt.lstrip().startswith("Summary:")

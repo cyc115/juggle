@@ -1926,16 +1926,3 @@ class JuggleDB:
                 candidates.append(t)
 
         return candidates
-
-
-        # Migration 33: repo_path on agents
-        agents_cols = {
-            r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()
-        }
-        if "repo_path" not in agents_cols:
-            try:
-                conn.execute("ALTER TABLE agents ADD COLUMN repo_path TEXT")
-                conn.commit()
-                _log.info("Migration 33: repo_path column added to agents")
-            except sqlite3.OperationalError as e:
-                _log.warning("Migration 33 (repo_path) skipped: %s", e)

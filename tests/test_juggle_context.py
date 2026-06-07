@@ -9,6 +9,12 @@ from juggle_db import JuggleDB
 from juggle_context import ContextBuilder, build_context_string
 
 
+@pytest.fixture(autouse=True)
+def _clear_agent_env(monkeypatch):
+    """Prevent JUGGLE_IS_AGENT=1 (set in agent Claude sessions) from tainting orchestrator-path tests."""
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+
 # ---------------------------------------------------------------------------
 # Agent sessions must get ONLY the role anchor — never the orchestrator
 # dashboard (token-saving: the "JUGGLE ACTIVE" block is orchestrator-only and

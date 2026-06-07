@@ -44,7 +44,8 @@ def test_askuser_creates_action_item(tmp_path, monkeypatch):
     assert items[0]["type"] == "decision"
 
 
-def test_askuser_dismisses_action_item_on_answer(tmp_path):
+def test_askuser_dismisses_action_item_on_answer(tmp_path, monkeypatch):
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     from juggle_db import JuggleDB
 
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))

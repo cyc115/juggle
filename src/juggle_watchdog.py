@@ -1102,7 +1102,7 @@ def _config_dir() -> Path:
     return Path(get_settings()["paths"]["config_dir"])
 
 
-def inspect_agent(agent_id: str, db: Any, tmux_session: str) -> dict:
+def inspect_agent(agent_id: str, db: Any, _tmux_session: str) -> dict:
     """Inspect a single agent's tmux pane and take action based on state.
 
     Args:
