@@ -32,6 +32,34 @@ Parse `$ARGUMENTS` to extract:
 
 Then:
 
+### 0. Harden the script (REQUIRED — do this before writing the plist)
+
+launchd runs with a restricted PATH that omits `~/.local/bin` where `claude`, `uv`, and
+other user binaries live. Any script the plist calls MUST contain all three of the
+following. If the script already exists, patch it; if you're writing it, include this
+as the opening block:
+
+```bash
+# [1] PATH — prepend user dirs so launchd can find claude, uv, brew tools
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+# [2] Absolute binary resolution with fallbacks (add one line per external binary)
+CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
+UV_BIN="$(command -v uv || echo "$HOME/.local/bin/uv")"
+# Then invoke via: "$CLAUDE_BIN" -p ...; "$UV_BIN" run ...
+
+# [3] Exit trap + startup log line (tee so BOTH internal log AND launchd log capture it)
+LOG="/path/to/app.log"
+_on_exit() { local rc=$?; echo "[$(date '+%Y-%m-%d %H:%M:%S')] EXIT rc=$rc" | tee -a "$LOG"; }
+trap _on_exit EXIT
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] START" | tee -a "$LOG"
+```
+
+**Checklist before moving to step 1:**
+- [ ] Script exports `PATH` with `$HOME/.local/bin` first
+- [ ] Each external binary has a resolved `_BIN` var with `|| echo` fallback; invoked via `"$VAR"`
+- [ ] EXIT trap fires on any exit (including early 127); START line uses `tee -a` not `>>`
+
 ### 1. Write the plist
 
 Write to `/Users/mikechen/Library/LaunchAgents/me.mikechen.<label>.plist`:
