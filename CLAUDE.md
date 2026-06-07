@@ -97,3 +97,6 @@ Act as a senior architect on every build pass:
 - **Small, single-purpose files.** Target ≤300 lines/module; an agent should grasp a module without reading the whole file. When a feature touches a file that has outgrown its purpose, EXTRACT first (separate refactor commit, tests green), then add the feature.
 - **Refactor pass per iteration:** before completing, scan the files you touched — split mixed-concern modules, extract shared helpers, kill dead code. Pure-mechanical refactor commits are separate from behavior commits.
 - Module boundaries follow domain seams (ingest / signals / screening / panels / state), not convenience.
+
+## Regression-pin gate (mandatory)
+Every bug/regression fix MUST add a specific pinned test that (a) fails on the pre-fix code (demonstrate RED before fixing), (b) names the incident in its docstring (date + one-line symptom), and (c) lives in the standard suite (not a skipped/optional marker). These pins are the refactor safety net: refactors MUST keep all regression pins green, and a pin may never be deleted or weakened without explicit user approval — if a refactor makes a pin obsolete, rewrite it to assert the same behavior through the new seam.
