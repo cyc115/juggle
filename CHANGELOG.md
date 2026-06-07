@@ -1,3 +1,12 @@
+```
+## 2026-06-07
+- Linux scheduling backends + platform abstraction for scheduler (v1.48.0)
+- Watchdog now sole periodic reaper; added heartbeat module for monitoring
+- Action/notification classification with learned rules for concision
+- Assign Phase 5: bulk operations + archived thread support (v1.45.0)
+- Classifier Phase 4: confidence thresholds, INBOX fallback, resweep logic
+```
+
 # Changelog
 
 ## 2026-05-31 (v1.39.0)
