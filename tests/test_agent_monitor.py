@@ -1,6 +1,8 @@
-"""Tests for scripts/juggle-agent-monitor polling logic."""
+"""Tests for scripts/juggle-agent-monitor polling logic and singleton hygiene."""
 
 import importlib.util
+import os
+import signal
 import sys
 from pathlib import Path
 
@@ -97,3 +99,83 @@ def test_poll_respects_last_seen_id(db):
 
     assert len(lines) == 1
     assert new_id == nid2
+
+
+# ---------------------------------------------------------------------------
+# Singleton hygiene tests (mirroring test_watchdog_actionable_items.py pattern)
+# ---------------------------------------------------------------------------
+
+
+def test_kill_existing_monitor_skips_non_monitor_process(tmp_path, monkeypatch):
+    """Must NOT kill a process whose cmdline does not contain 'juggle-agent-monitor'."""
+    mod = _load_monitor()
+
+    pidfile = tmp_path / "monitor.pid"
+    pidfile.write_text("99999")
+
+    killed: list[tuple[int, int]] = []
+
+    def fake_kill(pid: int, sig: int) -> None:
+        if sig == 0:
+            return  # process "exists"
+        killed.append((pid, sig))
+
+    monkeypatch.setattr("os.kill", fake_kill)
+    monkeypatch.setattr(mod, "_is_monitor_process", lambda pid: False)
+
+    mod._kill_existing_monitor_from_pidfile(pidfile)
+
+    assert killed == [], "Must not kill a process that is not a monitor"
+
+
+def test_kill_existing_monitor_kills_confirmed_monitor(tmp_path, monkeypatch):
+    """Must send SIGTERM to a confirmed monitor process."""
+    mod = _load_monitor()
+
+    pidfile = tmp_path / "monitor.pid"
+    pidfile.write_text("99999")
+
+    killed: list[tuple[int, int]] = []
+
+    def fake_kill(pid: int, sig: int) -> None:
+        if sig == 0:
+            if killed:
+                raise ProcessLookupError
+            return  # alive initially
+        killed.append((pid, sig))
+
+    monkeypatch.setattr("os.kill", fake_kill)
+    monkeypatch.setattr(mod, "_is_monitor_process", lambda pid: True)
+
+    mod._kill_existing_monitor_from_pidfile(pidfile)
+
+    assert any(sig == signal.SIGTERM for _, sig in killed), (
+        "Must send SIGTERM to confirmed monitor PID"
+    )
+
+
+def test_kill_existing_monitor_skips_own_pid(tmp_path, monkeypatch):
+    """Must not kill itself even if pidfile contains our own PID."""
+    mod = _load_monitor()
+
+    pidfile = tmp_path / "monitor.pid"
+    pidfile.write_text(str(os.getpid()))
+
+    killed: list = []
+    monkeypatch.setattr("os.kill", lambda pid, sig: killed.append((pid, sig)) if sig != 0 else None)
+    monkeypatch.setattr(mod, "_is_monitor_process", lambda pid: True)
+
+    mod._kill_existing_monitor_from_pidfile(pidfile)
+
+    assert not any(sig != 0 for _, sig in killed), "Must not kill own PID"
+
+
+def test_kill_existing_monitor_handles_missing_pidfile(tmp_path):
+    """Must handle gracefully when pidfile does not exist."""
+    mod = _load_monitor()
+
+    pidfile = tmp_path / "monitor.pid"
+    # No write — file does not exist
+
+    # Should not raise
+    mod._kill_existing_monitor_from_pidfile(pidfile)

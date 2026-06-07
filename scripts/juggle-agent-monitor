@@ -9,7 +9,11 @@ Each line printed is one completed agent: [LABEL] role: title
 Role is 'researcher' when a review action item exists; 'coder' otherwise.
 """
 
+import atexit
+import os
+import signal
 import sqlite3
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -17,9 +21,75 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from juggle_settings import get_settings
 
+SINGLETON_PID_FILE = Path.home() / ".juggle" / "monitor.pid"
+
 
 def _db_path() -> Path:
     return Path(get_settings()["paths"]["data_dir"]) / "juggle.db"
+
+
+def _is_monitor_process(pid: int) -> bool:
+    """Return True if the process with given PID is a juggle-agent-monitor."""
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return "juggle-agent-monitor" in result.stdout
+    except Exception:
+        return False
+
+
+def _kill_existing_monitor_from_pidfile(pidfile_path: Path) -> None:
+    """Kill the monitor recorded in pidfile_path — only if it really is a monitor.
+
+    Kills the entire process group so the uv-run parent and python child both
+    die, leaving no orphan. Verifies cmdline before sending any signal.
+    """
+    if not pidfile_path.exists():
+        return
+    try:
+        old_pid = int(pidfile_path.read_text().strip())
+    except (ValueError, OSError):
+        return
+    if old_pid == os.getpid():
+        return
+    try:
+        os.kill(old_pid, 0)  # existence probe
+    except (ProcessLookupError, PermissionError):
+        return  # stale pidfile — process gone
+    if not _is_monitor_process(old_pid):
+        return
+    try:
+        os.kill(old_pid, signal.SIGTERM)
+        for _ in range(20):
+            time.sleep(0.1)
+            try:
+                os.kill(old_pid, 0)
+            except ProcessLookupError:
+                break
+        else:
+            os.kill(old_pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _write_singleton_pid() -> None:
+    SINGLETON_PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SINGLETON_PID_FILE.with_suffix(".pid.tmp")
+    tmp.write_text(str(os.getpid()))
+    tmp.replace(SINGLETON_PID_FILE)
+
+
+def _cleanup_singleton_pid() -> None:
+    try:
+        if SINGLETON_PID_FILE.exists():
+            if int(SINGLETON_PID_FILE.read_text().strip()) == os.getpid():
+                SINGLETON_PID_FILE.unlink()
+    except Exception:
+        pass
 
 
 def _role_for_thread(conn: sqlite3.Connection, thread_id: str) -> str:
@@ -69,6 +139,10 @@ def _init_cursor(db_path: Path) -> int:
 
 
 def main() -> None:
+    _kill_existing_monitor_from_pidfile(SINGLETON_PID_FILE)
+    _write_singleton_pid()
+    atexit.register(_cleanup_singleton_pid)
+
     db_path = _db_path()
     last_seen_id = _init_cursor(db_path)
     emitted: set[str] = set()  # deduplicate by thread_id
