@@ -708,7 +708,8 @@ def cmd_get_agent(args):
     if is_new:
         try:
             agent = mgr.spawn_agent(
-                db, args.role or "researcher", model=getattr(args, "model", None)
+                db, args.role or "researcher", model=getattr(args, "model", None),
+                harness_override=requested_harness,
             )
             print(
                 f"[juggle] No idle agent available, spawned new agent {agent['id'][:8]}.",
@@ -869,7 +870,9 @@ def cmd_send_task(args):
     mgr = JuggleTmuxManager()
 
     _role = agent.get("role")
-    adapter = get_adapter(_role)
+    _dispatch_cfg = _get_settings().get("agent", {})
+    _agent_harness = agent.get("harness") or _dispatch_cfg.get("harness") or "claude"
+    adapter = get_adapter(_role, agent_cfg=dict(_dispatch_cfg, harness=_agent_harness))
 
     pane_id = agent["pane_id"]
 

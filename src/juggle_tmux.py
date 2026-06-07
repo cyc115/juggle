@@ -103,7 +103,8 @@ class JuggleTmuxManager:
         return pane_id
 
     def start_agent_in_pane(
-        self, pane_id: str, model: str | None = None, role: str | None = None
+        self, pane_id: str, model: str | None = None, role: str | None = None,
+        agent_cfg: dict | None = None,
     ) -> None:
         """Launch the configured agent harness in a pane.
 
@@ -123,7 +124,8 @@ class JuggleTmuxManager:
         """
         from juggle_harness import get_adapter
 
-        agent_cfg = _get_settings().get("agent", {})
+        if agent_cfg is None:
+            agent_cfg = _get_settings().get("agent", {})
         adapter = get_adapter(role, agent_cfg=agent_cfg)
         if not adapter.is_interactive:
             # One-shot harness (e.g. codex exec): nothing to launch up front — the
@@ -464,7 +466,8 @@ class JuggleTmuxManager:
             if Path(cmd_tmp).exists():
                 os.unlink(cmd_tmp)
 
-    def spawn_agent(self, db, role: str, model: str | None = None) -> dict:
+    def spawn_agent(self, db, role: str, model: str | None = None,
+                    harness_override: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.
 
         db must be a JuggleDB instance with init_db() already called.
@@ -483,6 +486,8 @@ class JuggleTmuxManager:
         from juggle_harness import get_adapter
 
         agent_cfg = _get_settings().get("agent", {})
+        if harness_override:
+            agent_cfg = dict(agent_cfg, harness=harness_override)
         adapter = get_adapter(role, agent_cfg=agent_cfg)
         harness_id = adapter.id
 
@@ -507,7 +512,7 @@ class JuggleTmuxManager:
 
         self.ensure_session()
         pane_id = self.spawn_pane()
-        self.start_claude_in_pane(pane_id, model=model, role=role)
+        self.start_agent_in_pane(pane_id, model=model, role=role, agent_cfg=agent_cfg)
 
         # Detect repo_path at spawn time for get-agent --repo filtering
         try:
