@@ -35,7 +35,8 @@ from juggle_schedule_common import (  # noqa: E402
     write_report,
 )
 
-COST_CAP = 2.00
+COST_CAP = 1.00     # overall run cap
+SECTION_CAP = 0.35  # per-section budget — one section can't exhaust the whole run
 ROUTINE = "reflect"
 MAX_ISSUES = 5
 
@@ -452,9 +453,9 @@ def _file_reflect_issues(sections: dict, today: str, _report_path: Path, dry_run
 
 def run(dry_run: bool = False) -> int:
     today = today_str()
-    cost_tracker = CostTracker(cap_usd=COST_CAP, routine=ROUTINE, dry_run=dry_run)
     sections: dict = {}
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    total_cost = 0.0
 
     db = get_db()
 
@@ -467,46 +468,82 @@ def run(dry_run: bool = False) -> int:
 
     autofix_ref = _find_autofix_pr_ref()
 
-    # Run all sections — continue on error, partial digest is better than no digest
+    def _st() -> CostTracker:
+        """Fresh per-section tracker — one expensive section can't exhaust the run budget."""
+        return CostTracker(cap_usd=SECTION_CAP, routine=ROUTINE, dry_run=dry_run)
+
+    def _over_overall_cap() -> bool:
+        return not dry_run and total_cost >= COST_CAP
+
+    # Run all sections — continue on error, partial digest is better than no digest.
+    # Per-section trackers (v1.23.1): each section has its own SECTION_CAP budget so
+    # one expensive RF cannot block all subsequent sections.
     try:
-        rf1_watchdog(db, cost_tracker, sections)
+        st = _st()
+        rf1_watchdog(db, st, sections)
+        total_cost += st.total
     except CostCapExceeded as e:
         logger.error("Cost cap hit at RF-1: %s", e)
-        sections.setdefault("RF-1", "## Watchdog Health\n\n*[COST CAP]*\n")
+        sections.setdefault("RF-1", "## Watchdog Health\n\n*[COST CAP REACHED — SKIPPED]*\n")
 
-    try:
-        rf2_action_items(db, cost_tracker, sections)
-    except CostCapExceeded as e:
-        logger.error("Cost cap hit at RF-2: %s", e)
-        sections.setdefault("RF-2", "## Action Item Fatigue\n\n*[COST CAP]*\n")
+    if _over_overall_cap():
+        sections.setdefault("RF-2", "## Action Item Fatigue\n\n*[COST CAP REACHED — SKIPPED]*\n")
+    else:
+        try:
+            st = _st()
+            rf2_action_items(db, st, sections)
+            total_cost += st.total
+        except CostCapExceeded as e:
+            logger.error("Cost cap hit at RF-2: %s", e)
+            sections.setdefault("RF-2", "## Action Item Fatigue\n\n*[COST CAP REACHED — SKIPPED]*\n")
 
-    try:
-        rf3_completion_quality(db, cost_tracker, sections)
-    except CostCapExceeded as e:
-        logger.error("Cost cap hit at RF-3: %s", e)
-        sections.setdefault("RF-3", "## Agent Output Quality\n\n*[COST CAP]*\n")
+    if _over_overall_cap():
+        sections.setdefault("RF-3", "## Agent Output Quality\n\n*[COST CAP REACHED — SKIPPED]*\n")
+    else:
+        try:
+            st = _st()
+            rf3_completion_quality(db, st, sections)
+            total_cost += st.total
+        except CostCapExceeded as e:
+            logger.error("Cost cap hit at RF-3: %s", e)
+            sections.setdefault("RF-3", "## Agent Output Quality\n\n*[COST CAP REACHED — SKIPPED]*\n")
 
-    rf4_context_bloat(db, sections)
+    rf4_context_bloat(db, sections)  # no LLM — always runs
 
-    try:
-        rf5_hindsight_lint(cost_tracker, sections)
-    except CostCapExceeded as e:
-        logger.error("Cost cap hit at RF-5: %s", e)
-        sections.setdefault("RF-5", "## Memory Health\n\n*[COST CAP]*\n")
+    if _over_overall_cap():
+        sections.setdefault("RF-5", "## Memory Health\n\n*[COST CAP REACHED — SKIPPED]*\n")
+    else:
+        try:
+            st = _st()
+            rf5_hindsight_lint(st, sections)
+            total_cost += st.total
+        except CostCapExceeded as e:
+            logger.error("Cost cap hit at RF-5: %s", e)
+            sections.setdefault("RF-5", "## Memory Health\n\n*[COST CAP REACHED — SKIPPED]*\n")
 
-    try:
-        rf6_auto_memory(cost_tracker, sections)
-    except CostCapExceeded as e:
-        logger.error("Cost cap hit at RF-6: %s", e)
-        sections.setdefault("RF-6", "## Auto-Memory Contradictions\n\n*[COST CAP]*\n")
+    if _over_overall_cap():
+        sections.setdefault("RF-6", "## Auto-Memory Contradictions\n\n*[COST CAP REACHED — SKIPPED]*\n")
+    else:
+        try:
+            st = _st()
+            rf6_auto_memory(st, sections)
+            total_cost += st.total
+        except CostCapExceeded as e:
+            logger.error("Cost cap hit at RF-6: %s", e)
+            sections.setdefault("RF-6", "## Auto-Memory Contradictions\n\n*[COST CAP REACHED — SKIPPED]*\n")
 
-    try:
-        rf7_skill_drift(db, cost_tracker, sections)
-    except CostCapExceeded as e:
-        logger.error("Cost cap hit at RF-7: %s", e)
-        sections.setdefault("RF-7", "## Skill Drift\n\n*[COST CAP]*\n")
+    if _over_overall_cap():
+        sections.setdefault("RF-7", "## Skill Drift\n\n*[COST CAP REACHED — SKIPPED]*\n")
+    else:
+        try:
+            st = _st()
+            rf7_skill_drift(db, st, sections)
+            total_cost += st.total
+        except CostCapExceeded as e:
+            logger.error("Cost cap hit at RF-7: %s", e)
+            sections.setdefault("RF-7", "## Skill Drift\n\n*[COST CAP REACHED — SKIPPED]*\n")
 
-    rf8_dogfood_pulse(sections)
+    rf8_dogfood_pulse(sections)  # no LLM — always runs
 
     digest = _build_digest(today, sections, autofix_ref)
 
@@ -516,7 +553,7 @@ def run(dry_run: bool = False) -> int:
 
     if dry_run:
         print(f"DRY RUN: digest written to {tmp_path}")
-        print(f"DRY RUN: cost estimate ${cost_tracker.total:.4f}")
+        print(f"DRY RUN: cost estimate ${total_cost:.4f}")
         return 0
 
     # Commit digest to main (reflect does NOT use a PR branch — additive markdown only)
@@ -533,7 +570,7 @@ def run(dry_run: bool = False) -> int:
     logger.info("reflect: filed %d issues", len(issued))
 
     mark_run_complete(ROUTINE)
-    print(f"reflect complete: reports/reflect-{today}.md | {len(issued)} issues | cost=${cost_tracker.total:.4f}")
+    print(f"reflect complete: reports/reflect-{today}.md | {len(issued)} issues | cost=${total_cost:.4f}")
     return 0
 
 
