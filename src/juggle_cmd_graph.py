@@ -199,36 +199,56 @@ def cmd_project_graph_load(args):
         )
         sys.exit(1)
 
+    # Single transaction (DA round-2 BLOCKER-1c, 2026-06-10): per-node commits
+    # left a half-applied spec when a later upsert raised. All-or-nothing.
     created = updated = unchanged = 0
-    for n in nodes:
-        prev = existing.get(n["id"])
-        if prev is None:
-            db_graph.create_node(
-                db,
-                node_id=n["id"],
-                project_id=args.project,
-                title=n["title"],
-                prompt=n["prompt"],
-                verify_cmd=n["verify_cmd"],
-            )
-            db_graph.replace_edges(db, n["id"], sorted(n["deps"]))
-            created += 1
-        elif prev["state"] in db_graph.PROTECTED_STATES or not _content_changed(
-            prev, n, n["deps"], db
-        ):
-            unchanged += 1
-        else:
-            db_graph.update_node_content(
-                db, n["id"], title=n["title"], prompt=n["prompt"], verify_cmd=n["verify_cmd"]
-            )
-            db_graph.replace_edges(db, n["id"], sorted(n["deps"]))
-            if prev["state"] != "pending":
-                db_graph.node_transition(db, n["id"], "reload")
-            updated += 1
+    conn = db._connect()
+    try:
+        for n in nodes:
+            prev = existing.get(n["id"])
+            if prev is None:
+                db_graph.create_node(
+                    db,
+                    node_id=n["id"],
+                    project_id=args.project,
+                    title=n["title"],
+                    prompt=n["prompt"],
+                    verify_cmd=n["verify_cmd"],
+                    conn=conn,
+                )
+                db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
+                created += 1
+            elif prev["state"] in db_graph.PROTECTED_STATES or not _content_changed(
+                prev, n, n["deps"], db
+            ):
+                unchanged += 1
+            else:
+                db_graph.update_node_content(
+                    db, n["id"], title=n["title"], prompt=n["prompt"],
+                    verify_cmd=n["verify_cmd"], conn=conn,
+                )
+                db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
+                if prev["state"] != "pending":
+                    db_graph.node_transition(db, n["id"], "reload", conn=conn)
+                updated += 1
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(
+            f"Graph load FAILED — rolled back, no nodes changed: {e}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    finally:
+        conn.close()
 
+    # Resume the blocked tail of any node the reload just fixed (BLOCKER-1b):
+    # blocked-failed ⇄ pending re-derived from current dep states.
+    unblocked, _reblocked = db_graph.recompute_blocked(db, args.project)
     ready = db_graph.recompute_ready(db, args.project)
+    resumed = f" resumed: {', '.join(unblocked)}." if unblocked else ""
     print(
         f"Graph loaded for project {args.project}: {len(nodes)} node(s) "
         f"({created} new, {updated} updated, {unchanged} unchanged). "
-        f"ready: {', '.join(ready) if ready else '(none new)'}"
+        f"ready: {', '.join(ready) if ready else '(none new)'}.{resumed}"
     )

@@ -57,6 +57,48 @@ def mark_completion(
     return node_transition(db, node_id, "integrate_ok")
 
 
+_BLOCKING_STATES = frozenset(
+    {"failed-exec", "failed-integration", "failed-verify", "blocked-failed"}
+)
+
+
+def recompute_blocked(db, project_id: str) -> tuple[list[str], list[str]]:
+    """Re-derive blocked-failed from current dep states (after a spec reload).
+
+    DA round-2 BLOCKER-1 (2026-06-10): reloading a fixed spec resurrected the
+    failed node but its blocked-failed dependents stayed dead forever (no
+    transition out of blocked-failed). Invariant restored here: a node is
+    blocked-failed IFF some direct dep is failed-*/blocked-failed. Fixpoint:
+      * blocked-failed node with NO blocking dep  → 'reload'   → pending
+      * pending node WITH a blocking dep          → 'dep_fail' → blocked-failed
+        (covers a blocked node whose content was edited: the load loop reloads
+        it to pending while one of its deps is still failed)
+    The graph is a DAG and failed-* roots are fixed during the loop, so the
+    fixpoint is unique and the loop terminates. Returns (unblocked, reblocked).
+    """
+    from dbops.db_graph import get_deps, get_node, list_nodes, node_transition
+
+    unblocked: list[str] = []
+    reblocked: list[str] = []
+    changed = True
+    while changed:
+        changed = False
+        for node in list_nodes(db, project_id):
+            if node["state"] not in ("blocked-failed", "pending"):
+                continue
+            deps = [get_node(db, d) for d in get_deps(db, node["id"])]
+            blocking = any(d and d["state"] in _BLOCKING_STATES for d in deps)
+            if node["state"] == "blocked-failed" and not blocking:
+                node_transition(db, node["id"], "reload")
+                unblocked.append(node["id"])
+                changed = True
+            elif node["state"] == "pending" and blocking:
+                node_transition(db, node["id"], "dep_fail")
+                reblocked.append(node["id"])
+                changed = True
+    return unblocked, reblocked
+
+
 def propagate_failure(db, node_id: str) -> list[str]:
     """Block ALL transitive dependents of a failed node. Returns blocked ids.
 

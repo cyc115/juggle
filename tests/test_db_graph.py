@@ -171,6 +171,10 @@ def test_full_legal_happy_path(db):
         ),
         ([], "dep_fail", "blocked-failed"),
         (["deps_ready"], "dep_fail", "blocked-failed"),
+        # DA round-2 BLOCKER-1 (2026-06-10): blocked-failed had NO outgoing
+        # transition — reload of a fixed spec left the blocked tail dead forever.
+        (["dep_fail"], "reload", "pending"),
+        (["deps_ready", "dep_fail"], "reload", "pending"),
     ],
 )
 def test_legal_failure_and_reset_transitions(db, path, event, expected):
@@ -190,7 +194,9 @@ def test_legal_failure_and_reset_transitions(db, path, event, expected):
         (["deps_ready", "claim", "dispatch", "integrate_start", "integrate_ok"], "claim"),
         (["deps_ready", "claim", "dispatch", "integrate_start", "integrate_ok"], "deps_ready"),
         (["deps_ready", "claim", "dispatch", "exec_fail"], "integrate_ok"),
-        (["dep_fail"], "deps_ready"),  # blocked-failed is terminal in Phase 1
+        # blocked-failed resumes ONLY via 'reload' (DA round-2 BLOCKER-1,
+        # 2026-06-10) — direct promotion stays illegal:
+        (["dep_fail"], "deps_ready"),
     ],
 )
 def test_illegal_transitions_fail_loud(db, path, bad_event):
@@ -298,3 +304,21 @@ def test_mark_completion_on_terminal_node_fails_loud(db):
     g.mark_completion(db, "n1", integrate_ok=True)
     with pytest.raises(ValueError):
         g.mark_completion(db, "n1", integrate_ok=True)
+
+
+# ── reload hygiene (DA round-2, 2026-06-10) ───────────────────────────────────
+
+
+def test_reload_clears_stale_thread_binding(db):
+    """REGRESSION PIN (DA round-2 minor 4, 2026-06-10): 'reload' of a failed
+    node kept the dead thread's id on the node — get_node_by_thread and the
+    [blocked:]/[ready] context tags kept resolving to a closed thread, and a
+    later completion of that zombie thread could re-mark the resurrected node.
+    Reload must clear thread_id."""
+    _mk(db, "n1")
+    g.recompute_ready(db, "INBOX")
+    for ev in ("claim", "dispatch", "exec_fail"):
+        g.node_transition(db, "n1", ev)
+    g.set_node_thread(db, "n1", "dead-thread-uuid")
+    assert g.node_transition(db, "n1", "reload") == "pending"
+    assert g.get_node(db, "n1")["thread_id"] is None

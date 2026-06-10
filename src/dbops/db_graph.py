@@ -14,7 +14,25 @@ they compose with the existing mixin-built DB without widening its surface.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from dbops.schema import _now
+
+
+@contextmanager
+def _cx(db, conn=None):
+    """Yield a write connection. When the caller passes ``conn`` it owns the
+    transaction (no commit here) — multi-node spec loads are all-or-nothing
+    (DA round-2 BLOCKER-1c, 2026-06-10). Otherwise open, commit, close."""
+    if conn is not None:
+        yield conn
+        return
+    c = db._connect()
+    try:
+        yield c
+        c.commit()
+    finally:
+        c.close()
 
 # Node state machine (design 2026-06-10 rev 2):
 # pending → ready → dispatching → running → integrating → verified
@@ -54,6 +72,9 @@ _TRANSITIONS: dict[tuple[str, str], str] = {
     ("failed-exec", "reload"): "pending",
     ("failed-integration", "reload"): "pending",
     ("failed-verify", "reload"): "pending",
+    # DA round-2 BLOCKER-1 (2026-06-10): blocked-failed was a dead end — the
+    # blocked tail of a failed node could never resume after a spec reload.
+    ("blocked-failed", "reload"): "pending",
 }
 
 _EVENTS = frozenset(ev for (_, ev) in _TRANSITIONS)
@@ -72,7 +93,7 @@ TICK_OWNED_STATES = frozenset(
 # ── state machine ──────────────────────────────────────────────────────────────
 
 
-def node_transition(db, node_id: str, event: str) -> str:
+def node_transition(db, node_id: str, event: str, conn=None) -> str:
     """Apply ``event`` to the node's state machine. The ONLY state writer.
 
     Returns the new state. Raises ValueError (fail loud) on an unknown node,
@@ -80,7 +101,7 @@ def node_transition(db, node_id: str, event: str) -> str:
     """
     if event not in _EVENTS:
         raise ValueError(f"graph node event unknown: {event!r}")
-    node = get_node(db, node_id)
+    node = get_node(db, node_id, conn=conn)
     if node is None:
         raise ValueError(f"graph node not found: {node_id!r}")
     key = (node["state"], event)
@@ -91,19 +112,19 @@ def node_transition(db, node_id: str, event: str) -> str:
         )
     new_state = _TRANSITIONS[key]
     now = _now()
-    verified_at = now if new_state == "verified" else None
-    with db._connect() as conn:
-        if verified_at:
-            conn.execute(
-                "UPDATE graph_nodes SET state=?, verified_at=?, updated_at=? WHERE id=?",
-                (new_state, verified_at, now, node_id),
-            )
-        else:
-            conn.execute(
-                "UPDATE graph_nodes SET state=?, updated_at=? WHERE id=?",
-                (new_state, now, node_id),
-            )
-        conn.commit()
+    sets, params = ["state=?", "updated_at=?"], [new_state, now]
+    if new_state == "verified":
+        sets.append("verified_at=?")
+        params.append(now)
+    if event == "reload":
+        # A resurrected node must not keep its dead thread's id (DA round-2
+        # minor 4, 2026-06-10): stale bindings resolved to closed threads.
+        sets.append("thread_id=NULL")
+    with _cx(db, conn) as c:
+        c.execute(
+            f"UPDATE graph_nodes SET {', '.join(sets)} WHERE id=?",
+            (*params, node_id),
+        )
     return new_state
 
 
@@ -111,28 +132,29 @@ def node_transition(db, node_id: str, event: str) -> str:
 
 
 def create_node(
-    db, *, node_id: str, project_id: str, title: str, prompt: str, verify_cmd=None
+    db, *, node_id: str, project_id: str, title: str, prompt: str, verify_cmd=None,
+    conn=None,
 ) -> None:
     """Insert a new node in state 'pending'. Raises on duplicate id."""
     now = _now()
-    with db._connect() as conn:
-        conn.execute(
+    with _cx(db, conn) as c:
+        c.execute(
             "INSERT INTO graph_nodes (id, project_id, title, prompt, verify_cmd, "
             "state, created_at, updated_at) VALUES (?,?,?,?,?, 'pending', ?, ?)",
             (node_id, project_id, title, prompt, verify_cmd, now, now),
         )
-        conn.commit()
 
 
-def update_node_content(db, node_id: str, *, title: str, prompt: str, verify_cmd) -> None:
+def update_node_content(
+    db, node_id: str, *, title: str, prompt: str, verify_cmd, conn=None
+) -> None:
     """Update plan content (title/prompt/verify_cmd). Never touches state."""
-    with db._connect() as conn:
-        conn.execute(
+    with _cx(db, conn) as c:
+        c.execute(
             "UPDATE graph_nodes SET title=?, prompt=?, verify_cmd=?, updated_at=? "
             "WHERE id=?",
             (title, prompt, verify_cmd, _now(), node_id),
         )
-        conn.commit()
 
 
 def set_node_thread(db, node_id: str, thread_id) -> None:
@@ -163,9 +185,9 @@ def set_node_diffstat(db, node_id: str, diffstat: str) -> None:
         conn.commit()
 
 
-def get_node(db, node_id: str) -> dict | None:
-    with db._connect() as conn:
-        row = conn.execute(
+def get_node(db, node_id: str, conn=None) -> dict | None:
+    with _cx(db, conn) as c:
+        row = c.execute(
             "SELECT * FROM graph_nodes WHERE id=?", (node_id,)
         ).fetchone()
         return dict(row) if row else None
@@ -188,15 +210,14 @@ def list_nodes(db, project_id: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def replace_edges(db, node_id: str, dep_ids: list[str]) -> None:
+def replace_edges(db, node_id: str, dep_ids: list[str], conn=None) -> None:
     """Replace the full dependency list of ``node_id``."""
-    with db._connect() as conn:
-        conn.execute("DELETE FROM graph_edges WHERE node_id=?", (node_id,))
-        conn.executemany(
+    with _cx(db, conn) as c:
+        c.execute("DELETE FROM graph_edges WHERE node_id=?", (node_id,))
+        c.executemany(
             "INSERT INTO graph_edges (node_id, depends_on_id) VALUES (?,?)",
             [(node_id, dep) for dep in dep_ids],
         )
-        conn.commit()
 
 
 def get_deps(db, node_id: str) -> list[str]:
@@ -261,4 +282,5 @@ def recompute_ready(db, project_id: str) -> list[str]:
 from dbops.db_graph_marking import (  # noqa: E402,F401
     mark_completion,
     propagate_failure,
+    recompute_blocked,
 )
