@@ -34,6 +34,27 @@ Top-10 src LOC (before):
   precedence) and `tests/test_juggle_smoke.py` (`_make_db` seeds 30 threads past the
   cap). Fixed test-side in bd4b099 before any refactor work; suite fully green since.
 
+## Phase progress
+
+- **Phase 0** done (57b2ca6): loc gate + tests + this baseline doc. Gate green,
+  23 grandfathered entries.
+- **Phase 1** done:
+  - 1.1 (679e2de): `src/daemon_pidfile.py` single source of truth; monitor /
+    watchdog-script / juggle_watchdog shims preserve per-site semantics.
+    Finding: the monitor's old docstring claimed process-group kill, but its
+    code always did single-pid SIGTERM→wait→SIGKILL — both kill paths were
+    already identical; only logging and pidfile-write verification differ.
+  - 1.2 (499fe89): `src/llm_calls.py` (`run_claude_p` + moved `llm_call`),
+    four call sites rewired behavior-preserving. Allowlist shrunk: 23 → 22
+    entries (`juggle_schedule_common.py` now 297 lines; watchdog budget
+    1332→1301, cmd_projects 737→735).
+  - 1.3 (aad7ea0): schedule-common tests unified in
+    `tests/schedule/test_schedule_common.py` — 95 collected (exact union,
+    zero exact duplicates found, nothing dropped); flat file deleted.
+    Total collection 1400 (baseline 1390 + 10 loc-gate tests).
+- Pre-phase: gate-language docs fix (ebcc898) and hermetic-env test fix
+  (bd4b099) — see Baseline notes.
+
 ## Reverts / abandonments
 
 (none yet)
