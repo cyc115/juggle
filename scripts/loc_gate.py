@@ -35,7 +35,6 @@ GRANDFATHERED: dict[str, int] = {
     # juggle_db.py split Phase 2.1: composition root is 144 lines (removed from allowlist).
     # dbops/migrations.py holds all 34 schema migrations as a single ordered sequence;
     # cannot split without losing migration-ordering invariant. Follow-up debt noted in results.
-    "src/dbops/migrations.py": 532,
     "src/juggle_watchdog.py": 964,  # lowered 1332→1301 (Ph1.1) →964 (Ph2.2 inspect+restart split)
     "src/juggle_cockpit.py": 835,  # lowered from 1120 (Ph2.3: layout+profile extracted)
     # juggle_hooks.py Phase 2.5: split into hooks sub-modules (shim now 117 lines, removed).
@@ -46,7 +45,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/schedules/autofix.py": 823,
     "src/juggle_cmd_projects.py": 735,  # lowered from 737 (Phase 1.2 llm consolidation)
     "src/juggle_cmd_threads.py": 673,
-    "src/juggle_context.py": 598,
+    "src/juggle_context.py": 353,
     "src/schedules/reflect.py": 545,
     "src/juggle_cockpit_view.py": 499,
     "src/juggle_scheduler.py": 494,
