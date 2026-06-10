@@ -2,6 +2,8 @@
 
 Python CLI project (Claude Code plugin). Source in `src/`.
 
+Code map, domain layout, pinned entry points, and LOC-gate policy: `docs/ARCHITECTURE.md`.
+
 Required environment variables (no defaults):
 - _JUGGLE_TEST_DB, CLAUDE_PLUGIN_DATA (juggle_cli.py)
 - JUGGLE_MAX_BACKGROUND_AGENTS, JUGGLE_MAX_THREADS (juggle_db.py)

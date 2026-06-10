@@ -1,6 +1,42 @@
 ---
 # Juggle Architecture
 
+## Code map (2026-06-10 refactor)
+
+Flat `src/` with domain subpackages; every entry module bootstraps `sys.path.insert(0, src)`,
+so subpackages import as top-level packages (`from dbops.threads import ...`).
+
+| Domain | Where | What lives there |
+|---|---|---|
+| DB | `src/juggle_db.py` (composition root) + `src/dbops/` | `JuggleDB` assembled from mixins: `schema`, `migrations`, `session`, `threads`, `projects`, `messages`, `notifications`, `selfheal`, `agents`. All callers import `from juggle_db import ...`. |
+| CLI commands | `src/juggle_cmd_*.py` | One module per command domain: threads, projects, context, research, integrate, misc; agents split into `juggle_cmd_agents_{common,worktree,pool,lifecycle,complete,tasks}` (facade: `juggle_cmd_agents.py`). Tests patch `juggle_cmd_agents_common.<sym>` — the single patch surface. |
+| CLI wiring | `src/juggle_cli.py` + `src/juggle_cli_parsers_{threads,agents,misc}.py` | Entry point is parser wiring + env bootstrap only. |
+| Hooks | `src/juggle_hooks.py` (dispatcher) + `src/juggle_hooks_{config,prompt,tooluse,checkpoint}.py` | Handler bodies live in the satellites; constants in `juggle_hooks_config`. |
+| Watchdog | `src/juggle_watchdog.py` (hub) + `juggle_watchdog_{daemon,restart,inspect,health}.py` | `_daemon` owns the poll loop behind `scripts/juggle-agent-watchdog`; hub owns classify/recovery; `_restart` owns hot-restart staleness. |
+| Cockpit | `src/juggle_cockpit.py` (app) + `juggle_cockpit_{view,model,modals,helpers,widgets,layout,profile}.py` | Textual TUI. Run `cockpit --smoke --all-viewports` after layout changes. |
+| Schedules | `src/schedules/{common,autofix,dogfood,reflect}.py` | launchd/cron routines; shared plumbing in `common`. |
+| Core lib | `src/juggle_{settings,context,tmux,harness,hindsight,scheduler,selfheal,smoke}.py`, `src/llm_calls.py`, `src/daemon_pidfile.py`, `src/harnesses/` | Single sources of truth: `daemon_pidfile` (singleton pids), `llm_calls` (`run_claude_p` / `llm_call`). |
+| Scripts | `scripts/` | Thin argv→main() wrappers (`juggle-agent-watchdog`, `juggle-agent-monitor`) or self-contained services (`talkback`) / offline utilities (`consolidate_dbs.py`, `measure_agent_compliance.py`). |
+| Tests | `tests/`, `tests/{watchdog,schedule}/` | Named by topic (`test_cli_*`, `test_db_*`, `test_tmux_*`, `test_cockpit_*`); watchdog suite grouped under `tests/watchdog/`. Regression pins are never weakened — re-target them through new seams instead. |
+
+### Pinned entry points (do not move/rename)
+
+- `src/juggle_cli.py` — PEP-723 `uv run --script`; referenced by 20+ `commands/*.md` and skills.
+- `src/juggle_hooks.py` — invoked by path from `hooks/hooks.json` for every lifecycle hook.
+- `src/juggle_watchdog.py` — mtime-watched by the watchdog daemon for hot-restart; the daemon's
+  stale-source scan (`juggle_watchdog_restart._collect_mtimes`) globs **flat** `src/*.py` only —
+  revisit before moving watchdog/tmux modules into subpackages.
+- `scripts/juggle-agent-watchdog`, `scripts/talkback-stop-hook` — invoked by path
+  (cmd_threads `_start_watchdog`, hooks.json).
+
+### LOC gate
+
+`scripts/loc_gate.py` (run in CI via `tests/test_loc_gate.py`) fails on any `src/**/*.py` or
+python script in `scripts/` over 300 lines, except a grandfathered allowlist pinned at each
+file's current size. **The allowlist may only shrink** — entries are removed/lowered as modules
+are split, never raised. Adding any lines to an at-budget grandfathered file fails the gate:
+split it first.
+
 ## Overview
 
 Juggle is a multi-topic conversation orchestrator for Claude Code. It has no event loop — all state is managed via SQLite and surfaced through Claude Code lifecycle hooks.

@@ -59,7 +59,7 @@ After `/juggle:start`, talk normally. Juggle detects topic shifts and opens new 
 - **Agents** — background workers (researcher / planner / coder) run in tmux panes, up to 20 concurrent. An auto-approver handles permission prompts so agents don't stall while you're focused elsewhere.
 - **Cockpit** — a live dashboard (Topics | Action Items | Agents) updated every second. Textual-based with mouse drag-to-resize between panels (tmux mouse mode required).
 - **Action Items** — persistent follow-ups created by agents or manually. Survive sessions until dismissed from the cockpit.
-- **Hindsight memory** — opt-in long-term memory across sessions. Enable via `hindsight.enabled` in `~/.juggle/config.json`. See [docs/architecture.md](docs/architecture.md).
+- **Hindsight memory** — opt-in long-term memory across sessions. Enable via `hindsight.enabled` in `~/.juggle/config.json`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Slash commands
 
@@ -99,7 +99,7 @@ Data and logs: `$CLAUDE_PLUGIN_DATA/juggle.db` and `juggle.log` — preserved ac
 
 ## Docs
 
-- [Architecture](docs/architecture.md) — data flow, SQLite schema, hook lifecycle
+- [Architecture](docs/ARCHITECTURE.md) — data flow, SQLite schema, hook lifecycle
 - [Topic lifecycle](docs/topic-lifecycle.md) — states, transitions, auto-archive rules
 - [Agent context injection](docs/agent-context-injection.md) — how context reaches dispatched agents
 - [Commands](commands/) — full slash command catalog
