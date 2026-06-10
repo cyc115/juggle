@@ -10,6 +10,10 @@ from juggle_cockpit_sched import (  # noqa: F401 — re-exported model types
     ScheduledTask,
     fetch_scheduled_tasks,
 )
+from juggle_cockpit_graph_dag import (  # noqa: F401 — re-exported for back-compat
+    GraphDag,
+    load_graph_dag as _load_graph_dag,
+)
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,7 @@ class CockpitState:
     fetched_at: float
     projects_by_id: dict = None  # type: ignore  # {id: name}, None → no grouping
     graph_by_project: dict = None  # type: ignore  # {id: node counts}, None → no graph
+    graph_dag: "GraphDag | None" = None  # armed-project DAG, only in graph mode
 
 
 # ---------------------------------------------------------------------------
@@ -151,11 +156,14 @@ def _age_secs(last_active: str | None) -> int:
 _ARCHIVED_DISPLAY_LIMIT = 10  # spec: most-recent N, default 10
 
 
-def snapshot(db) -> CockpitState:
+def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
     """Read DB state into a frozen CockpitState. Only function that touches DB.
 
     Opens a fresh SQLite connection each call so every snapshot sees the latest
     committed writes from any connection (avoids WAL read-transaction pinning).
+
+    load_graph_dag: when True (graph mode active), ALSO load the armed project's
+    DAG (nodes+edges) into ``graph_dag``. Default False → zero extra cost.
     """
     import sqlite3 as _sqlite3
     from datetime import datetime, timezone, timedelta
@@ -391,6 +399,8 @@ def snapshot(db) -> CockpitState:
     except Exception:
         notifications = []
 
+    graph_dag = _load_graph_dag(conn) if load_graph_dag else None
+
     result = CockpitState(
         topics=topics,
         actions=actions,
@@ -400,6 +410,7 @@ def snapshot(db) -> CockpitState:
         fetched_at=time.time(),
         projects_by_id=projects_by_id if projects_by_id else None,
         graph_by_project=graph_by_project,
+        graph_dag=graph_dag,
     )
     conn.close()
     return result
