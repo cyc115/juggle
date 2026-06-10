@@ -236,6 +236,12 @@ def register(subparsers, *, vault_path_default: str) -> None:
         action="store_true",
         help="Output smoke results as JSON",
     )
+    p_cockpit.add_argument(
+        "--smoke-graph",
+        dest="smoke_graph",
+        action="store_true",
+        help="During smoke, toggle the lower-right panel into Graph mode (press g) and validate it",
+    )
     p_cockpit.set_defaults(func=cmd_cockpit)
 
     # juggle project-graph / graph <subcmd> — task-graph plan store + live edits

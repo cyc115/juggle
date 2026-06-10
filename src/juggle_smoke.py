@@ -159,6 +159,7 @@ def run_smoke(
     db_path: str | None = None,
     output_dir: Path | None = None,
     interactive: bool = False,
+    graph_mode: bool = False,
 ) -> list[dict]:
     """Render each viewport profile, run heuristics, dump frames.
 
@@ -178,6 +179,13 @@ def run_smoke(
         try:
             with open_cockpit_pty(profile, db_path=db_path) as handle:
                 grid = capture_body_frame(handle, rows)
+
+                if graph_mode:
+                    # Toggle the lower-right panel into Graph mode and re-capture
+                    # so the heuristics validate the graph panel layout.
+                    handle.send(b"g")
+                    grid = handle.frame(settle=1.5, timeout=8.0)
+                    rec["graph_mode"] = True
 
                 if interactive:
                     # Nav: scroll down

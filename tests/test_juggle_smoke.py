@@ -209,6 +209,52 @@ def test_check_truncation_ellipsis_warns():
 # ── PTY integration tests ──────────────────────────────────────────────────────
 
 
+def _arm_graph(db_path: str) -> None:
+    """Seed an armed project + a small DAG so graph mode renders a real graph."""
+    from datetime import datetime, timezone
+    from juggle_db import JuggleDB
+    from dbops import db_graph as g
+    from juggle_graph_dispatch import ARMED_PROJECT_KEY
+
+    db = JuggleDB(db_path=db_path)
+    now = datetime.now(timezone.utc).isoformat()
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO projects(id,name,status,created_at,last_active) "
+            "VALUES(?,?,?,?,?)", ("GP", "GraphProj", "active", now, now),
+        )
+        conn.commit()
+    for i in range(8):
+        g.create_node(db, node_id=f"g{i}", project_id="GP",
+                      title=f"Task number {i}", prompt=f"do {i}")
+        if i:
+            g.replace_edges(db, f"g{i}", [f"g{i-1}"])
+    db.set_setting(ARMED_PROJECT_KEY, "GP")
+
+
+@_skip_pty
+def test_graph_mode_smoke_2k_third_no_overflow(tmp_path):
+    """Graph mode (press g) at 80x67 (2k_third) renders without overflow.
+
+    Headline gate for the tightest viewport: the graph panel must never exceed
+    the column budget even with an 8-rank chain DAG armed.
+    """
+    from juggle_smoke import load_viewports, open_cockpit_pty, check_overflow
+
+    db_path = _make_db(tmp_path, n_threads=5)
+    _arm_graph(db_path)
+    profile = load_viewports(VIEWPORTS_YAML)["2k_third"]
+
+    with open_cockpit_pty(profile, db_path=db_path) as handle:
+        handle.frame(settle=2.0, timeout=12.0)
+        handle.send(b"g")  # toggle into graph mode
+        grid = handle.frame(settle=1.5, timeout=8.0)
+
+    assert grid, "Expected a non-empty graph-mode grid"
+    result = check_overflow(grid, profile["cols"])
+    assert result["pass"], f"Graph-mode overflow at 2k_third: {result['violations'][:3]}"
+
+
 @_skip_pty
 def test_render_2k_third_no_overflow_and_frame_file_written(tmp_path):
     """Integration: cockpit renders at 80x67 (2k_third), no overflow, frame dumped."""

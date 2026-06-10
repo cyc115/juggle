@@ -45,6 +45,7 @@ def cmd_cockpit(args):
             db_path=getattr(args, "db_path", None),
             output_dir=out_dir,
             interactive=interactive,
+            graph_mode=getattr(args, "smoke_graph", False),
         )
 
         any_fail = any(not r.get("pass") for r in results)
