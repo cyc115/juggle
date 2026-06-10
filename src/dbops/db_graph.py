@@ -3,9 +3,10 @@
 Owns: node/edge CRUD, the node state machine (``node_transition`` is the ONLY
 writer of ``graph_nodes.state``), the ready-set query (all deps
 ``state='verified'``), and completion marking.
-Must not own: dispatching (watchdog, Phase 2), CLI parsing / spec validation
-(juggle_cmd_graph), or any thread-status semantics — the scheduler never
-reads thread status (DA M5).
+Must not own: dispatching (juggle_graph_dispatch — whose atomic ready→
+dispatching claim is the one sanctioned writer besides ``node_transition``),
+CLI parsing / spec validation (juggle_cmd_graph), or any thread-status
+semantics — the scheduler never reads thread status (DA M5).
 
 Module-level functions take a ``JuggleDB`` handle as their first argument so
 they compose with the existing mixin-built DB without widening its surface.
@@ -59,6 +60,13 @@ _EVENTS = frozenset(ev for (_, ev) in _TRANSITIONS)
 
 # Nodes in these states must not be modified by a re-load (guarded upsert).
 PROTECTED_STATES = frozenset({"dispatching", "running", "integrating", "verified"})
+
+# Tick-owned states (DA B5): a thread bound to a node in one of these is
+# dispatched by the watchdog tick — manual send-task must refuse without
+# --force-node. pending/failed-*/blocked-failed remain operator territory.
+TICK_OWNED_STATES = frozenset(
+    {"ready", "dispatching", "running", "integrating", "verified"}
+)
 
 
 # ── state machine ──────────────────────────────────────────────────────────────
@@ -188,6 +196,16 @@ def get_deps(db, node_id: str) -> list[str]:
             (node_id,),
         ).fetchall()
         return [r["depends_on_id"] for r in rows]
+
+
+def get_dependents(db, node_id: str) -> list[str]:
+    """Node ids that depend on ``node_id`` (reverse edges)."""
+    with db._connect() as conn:
+        rows = conn.execute(
+            "SELECT node_id FROM graph_edges WHERE depends_on_id=? ORDER BY node_id",
+            (node_id,),
+        ).fetchall()
+        return [r["node_id"] for r in rows]
 
 
 def unverified_deps(db, node_id: str) -> list[str]:

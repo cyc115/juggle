@@ -68,6 +68,19 @@ class SessionMixin:
             ).fetchone()
         return row["value"] if row else default
 
+    def set_setting(self, key: str, value: str | None) -> None:
+        """Upsert a settings-table value; ``None`` deletes the key."""
+        with self._connect() as conn:
+            if value is None:
+                conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+            else:
+                conn.execute(
+                    "INSERT INTO settings(key, value) VALUES(?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (key, value),
+                )
+            conn.commit()
+
     # ---------------------------------------------------------------
     # Orchestrator session ID + heartbeat
     # ---------------------------------------------------------------
