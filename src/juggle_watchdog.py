@@ -1,4 +1,4 @@
-"""Juggle agent watchdog — pure functions and inspect_agent for the watchdog daemon.
+"""Juggle agent watchdog — agent state classification, recovery, and orchestration.
 
 Design principle
 ----------------
@@ -6,6 +6,10 @@ Design principle
   Use only when auto-recovery is exhausted or impossible.
 - Notification (add_notification_v2) = FYI / status update.
   Use for transient events the system is already handling automatically.
+
+Split modules (re-exported here for backward-compat):
+  juggle_watchdog_restart.py  — hot-restart / stale-source detection
+  juggle_watchdog_inspect.py  — inspect_agent entry point + _handle_crashed
 """
 
 from __future__ import annotations
@@ -18,6 +22,22 @@ import subprocess
 import time as _time
 from pathlib import Path
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Re-exports from split modules (keep all juggle_watchdog.X patch targets alive)
+# ---------------------------------------------------------------------------
+from juggle_watchdog_restart import (  # noqa: E402, F401
+    _HOT_RESTART_GRACE_SECS,
+    _collect_mtimes,
+    _is_source_stale,
+    _maybe_hot_restart,
+    should_hot_restart,
+)
+from juggle_watchdog_inspect import (  # noqa: E402, F401
+    _config_dir,
+    _handle_crashed,
+    inspect_agent,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -60,124 +80,6 @@ _NO_DISPATCH_INFO: object = object()
 # Grace period before a never-tasked agent can be decommissioned.
 # Overridable via juggle_settings key "agent_boot_grace_secs".
 _BOOT_GRACE_SECS: float = 120.0
-
-# ---------------------------------------------------------------------------
-# Stale-code detection (pure helper — used by daemon process)
-# ---------------------------------------------------------------------------
-
-
-def _is_source_stale(recorded_mtime: float, source_path: Path) -> bool:
-    """Return True if source_path has been modified since recorded_mtime."""
-    try:
-        return source_path.stat().st_mtime > recorded_mtime
-    except OSError:
-        return False
-
-
-# ---------------------------------------------------------------------------
-# Hot-restart on source change
-# ---------------------------------------------------------------------------
-
-_HOT_RESTART_GRACE_SECS: float = 300.0  # files must be stable this long before re-exec
-
-
-def should_hot_restart(
-    baseline_mtimes: dict[str, float],
-    current_mtimes: dict[str, float],
-    last_change_at: float | None,
-    now: float,
-    grace_secs: float = _HOT_RESTART_GRACE_SECS,
-) -> tuple[bool, float | None]:
-    """Pure decision function for hot-restart.
-
-    Returns (ready_to_restart, new_last_change_at).
-
-    Stability-window logic: a change must be stable (no further mtime shifts)
-    for >= grace_secs before restart is authorised, preventing restarts on
-    half-written files or edit/save flurries.
-    """
-    changed = current_mtimes != baseline_mtimes
-
-    if not changed:
-        # No change, or files reverted to original baseline — cancel pending restart.
-        return False, None
-
-    if last_change_at is None:
-        # First detection this cycle — record timestamp; not ready yet.
-        return False, now
-
-    if now - last_change_at >= grace_secs:
-        return True, last_change_at
-
-    return False, last_change_at
-
-
-def _collect_mtimes(src_dir: Path, entry_script: Path | None = None) -> dict[str, float]:
-    """Stat all src/*.py files plus the optional entry script; return {str(path): mtime}."""
-    paths: list[Path] = sorted(src_dir.glob("*.py"))
-    if entry_script and entry_script.exists():
-        paths.append(entry_script)
-    result: dict[str, float] = {}
-    for p in paths:
-        try:
-            result[str(p)] = p.stat().st_mtime
-        except OSError:
-            pass
-    return result
-
-
-def _maybe_hot_restart(
-    baseline_mtimes: dict[str, float],
-    state: dict,
-    src_dir: Path,
-    entry_script: Path | None = None,
-) -> None:
-    """Thin wrapper: stat files, call should_hot_restart, and re-exec if ready.
-
-    ``state`` is a mutable dict with keys:
-      - ``last_change_at``: float | None
-      - ``prev_current_mtimes``: dict[str, float]
-
-    The wrapper resets ``last_change_at`` when it detects the current mtimes
-    have shifted since the previous poll (further edit after first detection).
-    """
-    import sys as _sys
-
-    now = _time.time()
-    current = _collect_mtimes(src_dir, entry_script)
-
-    # If mtimes have changed further since the last poll, reset the timer so
-    # the grace period restarts from this moment.
-    prev = state.get("prev_current_mtimes", {})
-    if prev and current != prev and current != baseline_mtimes:
-        state["last_change_at"] = None
-
-    state["prev_current_mtimes"] = current
-
-    ready, new_lca = should_hot_restart(
-        baseline_mtimes, current, state.get("last_change_at"), now
-    )
-    state["last_change_at"] = new_lca
-
-    if not ready:
-        return
-
-    # Crash-guard: verify new code imports cleanly before re-exec'ing.
-    check = subprocess.run(
-        [_sys.executable, "-c", "import juggle_watchdog"],
-        cwd=str(src_dir),
-        capture_output=True,
-    )
-    if check.returncode != 0:
-        _log.warning(
-            "hot-restart deferred: new code fails to import: %s",
-            check.stderr.decode(errors="replace").strip(),
-        )
-        return
-
-    _log.info("hot-restart: source changed, re-exec'ing")
-    os.execv(_sys.executable, [_sys.executable, *_sys.argv])
-
 
 # ---------------------------------------------------------------------------
 # Cold-start cascade dedup state
@@ -1060,242 +962,3 @@ def _kill_existing_watchdog_from_pidfile(pidfile_path: Path) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# inspect_agent — high-level entry point used by active test suite
-# ---------------------------------------------------------------------------
-
-
-def _config_dir() -> Path:
-    from juggle_settings import get_settings
-
-    return Path(get_settings()["paths"]["config_dir"])
-
-
-def inspect_agent(agent_id: str, db: Any, _tmux_session: str) -> dict:
-    """Inspect a single agent's tmux pane and take action based on state.
-
-    Args:
-        agent_id: UUID of the agent to inspect.
-        db: JuggleDB instance (never read CLAUDE_PLUGIN_DATA internally).
-        tmux_session: tmux session name (never hardcoded).
-
-    Returns:
-        {
-            'state': 'working' | 'recoverable_prompt' | 'stalled_silent' | 'crashed' | 'stuck_at_prompt',
-            'actions': list[str],
-            'action_item_id': int | None,
-            'notification_id': int | None,
-        }
-    """
-    from datetime import datetime, timezone
-
-    agent = db.get_agent(agent_id)
-    if agent is None:
-        return {
-            "state": "crashed",
-            "actions": ["agent_missing"],
-            "action_item_id": None,
-            "notification_id": None,
-        }
-
-    pane_id = agent["pane_id"]
-    thread_id = agent.get("assigned_thread")
-    label = _get_thread_label(db, thread_id) if thread_id else agent_id[:8]
-    session_id = get_session_id(db)
-
-    stall_threshold = float(os.environ.get("JUGGLE_WATCHDOG_STALL_SECS", "60"))
-
-    config_dir = _config_dir()
-    snapshot_dir = config_dir / "watchdog" / "snapshots"
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
-
-    # Capture pane content
-    cap = subprocess.run(
-        ["tmux", "capture-pane", "-pt", pane_id],
-        capture_output=True,
-        text=True,
-    )
-    if cap.returncode != 0:
-        raw_content = None
-    else:
-        raw_content = cap.stdout
-
-    result: dict = {
-        "state": "working",
-        "actions": [],
-        "action_item_id": None,
-        "notification_id": None,
-    }
-
-    # Non-interactive (one-shot) agent: skip pane-marker classification entirely.
-    # Use PID-based liveness instead — pane markers (Claude UI) are meaningless.
-    if _agent_is_non_interactive(agent):
-        from juggle_tmux import oneshot_agent_alive as _oneshot_alive
-        if _oneshot_alive(agent):
-            result["state"] = "working"
-            return result
-        # Dead one-shot: reconcile via the same path as crashed.
-        if raw_content is None:
-            return _handle_crashed(
-                db, agent, thread_id, label, session_id, result,
-                pane_content="", snapshot_dir=snapshot_dir,
-            )
-        # Process died but pane still exists — treat as crashed (shell prompt).
-        return _handle_crashed(
-            db, agent, thread_id, label, session_id, result,
-            pane_content=_strip_ansi(raw_content), snapshot_dir=snapshot_dir,
-        )
-
-    if raw_content is None:
-        # Pane gone entirely
-        return _handle_crashed(
-            db,
-            agent,
-            thread_id,
-            label,
-            session_id,
-            result,
-            pane_content="",
-            snapshot_dir=snapshot_dir,
-        )
-
-    content = _strip_ansi(raw_content)
-    _lines = content.splitlines()
-    while _lines and not _lines[-1].strip():
-        _lines.pop()
-    tail = "\n".join(_lines[-15:])
-
-    # 1. Allowlist prompts — check both single-line format and multiline fixture format
-    matched_key: str | None = None
-    for pattern, key in _ALLOWLIST:
-        if pattern in tail:
-            matched_key = key
-            break
-    # Flexible: detect multiline "1. Yes ... 2. Yes ... 3. No" permission dialog
-    if (
-        matched_key is None
-        and re.search(r"1\.\s+Yes", tail)
-        and re.search(r"2\.\s+Yes", tail)
-    ):
-        matched_key = "2"
-
-    if matched_key is not None:
-        result["state"] = "recoverable_prompt"
-        result["actions"].append("sent_key")
-        if matched_key:
-            subprocess.run(
-                ["tmux", "send-keys", "-t", pane_id, matched_key, "Enter"],
-                capture_output=True,
-            )
-        else:
-            subprocess.run(
-                ["tmux", "send-keys", "-t", pane_id, "Enter"], capture_output=True
-            )
-        notif_id = db.add_notification_v2(
-            thread_id=thread_id,
-            message=f"[Watchdog] [{label}] auto-resolved permission prompt (key={matched_key!r})",
-            session_id=session_id,
-        )
-        result["notification_id"] = notif_id
-        return result
-
-    # 2. Shell prompt (crash) — check suffix AND shell-specific indicators
-    last_nonempty = next(
-        (line for line in reversed(content.splitlines()) if line.strip()), ""
-    )
-    is_shell_prompt = any(
-        last_nonempty.endswith(suffix) for suffix in _SHELL_SUFFIXES
-    ) or any(indicator in last_nonempty for indicator in _SHELL_INDICATORS)
-    if is_shell_prompt:
-        return _handle_crashed(
-            db,
-            agent,
-            thread_id,
-            label,
-            session_id,
-            result,
-            pane_content=content,
-            snapshot_dir=snapshot_dir,
-        )
-
-    # 3. ╭─╮ box → stuck_at_prompt (send Enter to unblock)
-    if _has_box_top(content):
-        result["state"] = "stuck_at_prompt"
-        result["actions"].append("sent_enter")
-        subprocess.run(
-            ["tmux", "send-keys", "-t", pane_id, "Enter"], capture_output=True
-        )
-        notif_id = db.add_notification_v2(
-            thread_id=thread_id,
-            message=f"[Watchdog] [{label}] stuck-at-prompt — sent Enter to unblock",
-            session_id=session_id,
-        )
-        result["notification_id"] = notif_id
-        return result
-
-    # 4. Stall detection — compare stall_for against threshold
-    # Guard: orchestrator owns undispatched agents; watchdog must not recover them.
-    if agent.get("last_send_task_at") is None:
-        result["state"] = "awaiting_dispatch"
-        return result
-
-    last_active_str = agent.get("last_active") or agent.get("last_active_at")
-    stall_for = 0.0
-    if last_active_str:
-        try:
-            last_dt = datetime.fromisoformat(last_active_str.replace("Z", "+00:00"))
-            if last_dt.tzinfo is None:
-                last_dt = last_dt.replace(tzinfo=timezone.utc)
-            stall_for = (datetime.now(timezone.utc) - last_dt).total_seconds()
-        except (ValueError, TypeError):
-            stall_for = 0.0
-
-    if stall_for >= stall_threshold and "Thinking" not in tail:
-        result["state"] = "stalled_silent"
-        result["actions"].append("filed_action_item")
-        ts = int(_time.time())
-        snap_path = snapshot_dir / f"{agent_id}-{ts}.txt"
-        snap_path.write_text(content)
-        item_id = db.add_action_item(
-            thread_id=thread_id,
-            message=(
-                f"🚨 [{label}] agent stalled (silent for {int(stall_for)}s) — "
-                f"snapshot at {snap_path}"
-            ),
-            type_="failure",
-            priority="high",
-        )
-        result["action_item_id"] = item_id
-        return result
-
-    # 5. Working
-    result["state"] = "working"
-    return result
-
-
-def _handle_crashed(
-    db: Any,
-    agent: dict,
-    thread_id: str | None,
-    label: str,
-    session_id: str,
-    result: dict,
-    pane_content: str,
-    snapshot_dir: Path,
-) -> dict:
-    result["state"] = "crashed"
-    result["actions"].append("filed_action_item")
-
-    if thread_id:
-        db.update_thread(thread_id, status="failed")
-
-    db.update_agent(agent["id"], status="idle", assigned_thread=None)
-
-    item_id = db.add_action_item(
-        thread_id=thread_id,
-        message=f"🚨 [{label}] agent crashed — pane exited or shell prompt detected",
-        type_="failure",
-        priority="high",
-    )
-    result["action_item_id"] = item_id
-    return result

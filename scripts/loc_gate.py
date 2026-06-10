@@ -36,7 +36,7 @@ GRANDFATHERED: dict[str, int] = {
     # juggle_db_migrations.py holds all 34 schema migrations as a single ordered sequence;
     # cannot split without losing migration-ordering invariant. Follow-up debt noted in results.
     "src/juggle_db_migrations.py": 532,
-    "src/juggle_watchdog.py": 1301,  # lowered from 1332 (Phase 1.1 pidfile extraction)
+    "src/juggle_watchdog.py": 964,  # lowered 1332→1301 (Ph1.1) →964 (Ph2.2 inspect+restart split)
     "src/juggle_cockpit.py": 1120,
     "src/juggle_cmd_agents.py": 1098,
     "src/juggle_hooks.py": 1056,
