@@ -326,3 +326,40 @@ def test_load_upserts_are_atomic_all_or_nothing(db, tmp_path, monkeypatch):
     # NOTHING changed — including the node whose update "succeeded" pre-crash
     assert g.get_node(db, "api")["prompt"] == "Implement the API on top of the schema."
     assert g.get_node(db, "ui")["prompt"] == "Implement the UI."
+
+
+# ── MAJOR-2 (DA round-2, 2026-06-10): PR-mode repos unsupported ────────────────
+
+
+def test_load_refuses_pr_push_mode_repo(db, tmp_path, monkeypatch, capsys):
+    """REGRESSION PIN (DA round-2 MAJOR-2, 2026-06-10): on push_mode='pr'
+    repos _run_integrate returns success after only pushing the branch — the
+    node went 'verified' WITHOUT any merge, and dependents were hydrated with
+    'already integrated into main' (false). Policy: refuse project-graph load
+    for PR-mode repos until autopilot supports them."""
+    import juggle_settings
+
+    monkeypatch.setattr(cg, "_git_root", lambda cwd: "/fake/pr-repo")
+    monkeypatch.setattr(
+        juggle_settings,
+        "get_repo_config",
+        lambda p: {"push_mode": "pr", "test_cmd": ""},
+    )
+    with pytest.raises(SystemExit):
+        cg.cmd_project_graph_load(_args(tmp_path, db))
+    assert g.list_nodes(db, "INBOX") == []  # nothing written
+    err = capsys.readouterr().err
+    assert "push_mode='pr'" in err and "not supported" in err
+
+
+def test_load_allows_direct_and_none_push_modes(db, tmp_path, monkeypatch):
+    import juggle_settings
+
+    monkeypatch.setattr(cg, "_git_root", lambda cwd: "/fake/repo")
+    monkeypatch.setattr(
+        juggle_settings,
+        "get_repo_config",
+        lambda p: {"push_mode": "none", "test_cmd": ""},
+    )
+    cg.cmd_project_graph_load(_args(tmp_path, db))  # no raise
+    assert len(g.list_nodes(db, "INBOX")) == 4

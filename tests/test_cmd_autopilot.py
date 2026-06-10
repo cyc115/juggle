@@ -167,3 +167,57 @@ def test_cli_registers_autopilot_subcommand():
     assert r.returncode == 0
     for sub in ("arm", "disarm", "on", "off", "status"):
         assert sub in r.stdout
+
+
+# ── DA round-2 (2026-06-10): PR-mode refusal + divergence warning ──────────────
+
+
+def test_arm_refuses_pr_push_mode_repo(db_path, db, flag, monkeypatch, capsys):
+    """REGRESSION PIN (DA round-2 MAJOR-2, 2026-06-10): arming autopilot in a
+    push_mode='pr' repo lets integrate mark nodes 'verified' without merging —
+    dependents hydrate against a main that does not contain their deps.
+    `autopilot arm` must refuse with a clear error."""
+    import juggle_cmd_graph as cg
+    import juggle_settings
+
+    monkeypatch.setattr(cg, "_git_root", lambda cwd: "/fake/pr-repo")
+    monkeypatch.setattr(
+        juggle_settings,
+        "get_repo_config",
+        lambda p: {"push_mode": "pr", "test_cmd": ""},
+    )
+    with pytest.raises(SystemExit):
+        ap.cmd_autopilot(_args(db_path, "arm", "INBOX"))
+    assert db.get_setting(ARMED_PROJECT_KEY) is None  # NOT armed
+    assert not flag.exists()
+    err = capsys.readouterr().err
+    assert "push_mode='pr'" in err and "not supported" in err
+
+
+def test_status_warns_when_setting_and_flag_diverge(db_path, db, flag, capsys):
+    """REGRESSION PIN (DA round-2 minor 5, 2026-06-10): a project armed in the
+    settings table while the global flag file is absent means hooks inject
+    nothing while the tick still dispatches — silent split-brain. `autopilot
+    status` must call out the divergence."""
+    db.set_setting(ARMED_PROJECT_KEY, "INBOX")  # armed, but flag file missing
+    ap.cmd_autopilot(_args(db_path, "status"))
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "diverge" in out.lower()
+
+
+def test_status_json_reports_divergence(db_path, db, flag, capsys):
+    import json
+
+    db.set_setting(ARMED_PROJECT_KEY, "INBOX")
+    ap.cmd_autopilot(_args(db_path, "status", json_out=True))
+    data = json.loads(capsys.readouterr().out)
+    assert data["diverged"] is True
+
+
+def test_status_no_warning_when_consistent(db_path, db, flag, capsys):
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.touch()
+    db.set_setting(ARMED_PROJECT_KEY, "INBOX")
+    ap.cmd_autopilot(_args(db_path, "status"))
+    out = capsys.readouterr().out
+    assert "WARNING" not in out

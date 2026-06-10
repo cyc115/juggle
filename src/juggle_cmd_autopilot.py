@@ -43,6 +43,14 @@ def _cmd_arm(db, project_id: str) -> None:
     if not project:
         print(f"Error: project {project_id!r} not found.", file=sys.stderr)
         sys.exit(1)
+    # PR-mode repos: verified would not mean merged (DA round-2 MAJOR-2,
+    # 2026-06-10) — refuse to arm, same policy as project-graph load.
+    from juggle_cmd_graph import pr_mode_refusal
+
+    refusal = pr_mode_refusal()
+    if refusal:
+        print(f"Error: {refusal}", file=sys.stderr)
+        sys.exit(1)
     db.set_setting(ARMED_PROJECT_KEY, project_id)
     _flag_set(True)  # arm while ON keeps ON — no rm-inversion (DA M6)
     spec = graphs_dir() / f"{project_id}-graph.md"
@@ -70,6 +78,10 @@ def _cmd_status(db, json_out: bool) -> None:
     global_on = AUTOPILOT_FLAG.exists()
     armed = (db.get_setting(ARMED_PROJECT_KEY) or "").strip() or None
     counts = graph_counts(db, armed) if armed else None
+    # Divergence (DA round-2 minor 5, 2026-06-10): project armed in settings
+    # while the global flag file is absent → hooks inject nothing but the
+    # tick still dispatches. Split-brain must be called out.
+    diverged = bool(armed) and not global_on
     if json_out:
         print(
             json.dumps(
@@ -77,6 +89,7 @@ def _cmd_status(db, json_out: bool) -> None:
                     "global_on": global_on,
                     "armed_project": armed,
                     "graph": counts,
+                    "diverged": diverged,
                 }
             )
         )
@@ -87,6 +100,14 @@ def _cmd_status(db, json_out: bool) -> None:
         print(f"Graph: {format_progress(counts)}")
     elif armed:
         print("Graph: no graph loaded")
+    if diverged:
+        print(
+            "WARNING: settings key and flag file diverge — project "
+            f"{armed!r} is armed but the global flag "
+            f"({AUTOPILOT_FLAG}) is OFF: hooks inject nothing while the "
+            "tick still dispatches. Run `juggle autopilot arm "
+            f"{armed}` to restore the flag, or `juggle autopilot off`."
+        )
 
 
 def cmd_autopilot(args) -> None:

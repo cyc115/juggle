@@ -161,12 +161,56 @@ def _content_changed(existing: dict, spec_node: dict, spec_deps: list[str], db) 
     )
 
 
+def _git_root(cwd: str) -> str | None:
+    """Toplevel of the git repo containing ``cwd``, or None."""
+    import subprocess
+
+    r = subprocess.run(
+        ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True,
+    )
+    return (r.stdout.strip() or None) if r.returncode == 0 else None
+
+
+def pr_mode_refusal(repo_path: str | None = None) -> str | None:
+    """Refusal message when the target repo is push_mode='pr', else None.
+
+    DA round-2 MAJOR-2 (2026-06-10): on PR-mode repos _run_integrate returns
+    success after only pushing the branch — the node went 'verified' WITHOUT
+    any merge, and dependents were hydrated with "already integrated into
+    main" (false). Policy: autopilot (project-graph load / autopilot arm)
+    refuses PR-mode repos until verified-means-merged holds for them.
+    The target repo is the one the command runs in (worktrees are created
+    from it on dispatch).
+    """
+    import os
+
+    from juggle_settings import get_repo_config
+
+    root = repo_path or _git_root(os.getcwd())
+    if not root or get_repo_config(root)["push_mode"] != "pr":
+        return None
+    return (
+        f"repo {root} is configured push_mode='pr' — integrate only pushes "
+        "the branch for a PR (no merge into main), so autopilot would mark "
+        "nodes 'verified' that are NOT in main and hydrate dependents with a "
+        "false 'already integrated' claim. PR-mode repos are not supported "
+        "by project autopilot: set push_mode to 'direct' or 'none', or drive "
+        "this project without autopilot."
+    )
+
+
 def cmd_project_graph_load(args):
     """Load (or guarded-upsert) a graph spec markdown file into graph_nodes."""
     db = get_db(getattr(args, "db_path", None), init=True)
     project = db.get_project(args.project)
     if not project:
         print(f"Error: project {args.project!r} not found.", file=sys.stderr)
+        sys.exit(1)
+
+    refusal = pr_mode_refusal()
+    if refusal:
+        print(f"Error: {refusal}", file=sys.stderr)
         sys.exit(1)
 
     path = Path(args.file)
