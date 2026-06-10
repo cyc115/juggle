@@ -28,6 +28,12 @@ def cmd_complete_agent(args):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
 
+    # Output contract (DA M4): a graph node with dependents MUST hand off.
+    # Enforced BEFORE any side effects — refusal leaves node + thread untouched.
+    from juggle_cmd_agents_graph import enforce_handoff_contract
+
+    enforce_handoff_contract(db, thread_uuid, getattr(args, "handoff", None))
+
     # Finalize worktree BEFORE closing the thread.
     # Route through _run_integrate (rebase-aware) when worktree fields are present;
     # fall back to bare _finalize_worktree for pre-migration threads.

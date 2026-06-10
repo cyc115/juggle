@@ -251,6 +251,25 @@ def test_tick_dispatches_ready_nodes_and_binds_threads(db):
     assert g.get_node(db, "c")["state"] == "pending"  # dep not verified
 
 
+def test_tick_self_heals_missed_ready_promotion(db):
+    """A completion that crashes between marking 'verified' and ready-recompute
+    would strand eligible dependents in 'pending' forever — the tick promotes
+    them itself (idempotent recompute_ready) before scanning the ready set."""
+    _mk(db, "a")
+    _mk(db, "b", deps=("a",))
+    g.recompute_ready(db, "INBOX")
+    for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
+        g.node_transition(db, "a", ev)  # verified, but NO recompute ran
+    assert g.get_node(db, "b")["state"] == "pending"
+    _arm(db)
+
+    fake = FakeDispatch()
+    stats = gd.graph_tick(db, dispatch_fn=fake)
+
+    assert stats["dispatched"] == ["b"]
+    assert g.get_node(db, "b")["state"] == "running"
+
+
 def test_tick_cap_hit_defers_and_retries_next_tick(db, monkeypatch):
     """MAX_THREADS during lazy create_thread: skip + retry next tick, node
     back to 'ready', daemon never crashes (cap-aware lazy threads)."""

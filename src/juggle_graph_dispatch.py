@@ -179,7 +179,16 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
             )
         )
     except SystemExit as e:
+        # Release the agent so it does not sit 'busy' on an archived thread.
+        db.update_agent(agent["id"], status="idle", assigned_thread=None)
         raise RuntimeError(f"send-task failed for node {node['id']} (exit {e.code})")
+    finally:
+        import os
+
+        try:
+            os.unlink(prompt_file)
+        except OSError:
+            pass
 
 
 # ── the tick ───────────────────────────────────────────────────────────────────
@@ -200,6 +209,9 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
 
     try:
         stats["swept"] = sweep_stale_claims(db, armed)
+        # Self-heal: promote any eligible pending nodes (idempotent) — covers a
+        # completion that crashed between marking and ready-recompute.
+        db_graph.recompute_ready(db, armed)
         ready = [n for n in db_graph.list_nodes(db, armed) if n["state"] == "ready"]
     except Exception:
         _log.exception("graph tick: ready-set scan failed — skipping tick")

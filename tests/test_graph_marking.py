@@ -90,7 +90,8 @@ def test_complete_agent_integrate_failure_marks_failed_never_verified(db, monkey
     monkeypatch.setattr(
         _com.juggle_cmd_integrate, "_run_integrate", lambda thread, db_: (False, "rebase conflict")
     )
-    _complete(tid)
+    # handoff supplied: Phase 2 enforces --handoff for nodes with dependents
+    _complete(tid, handoff="attempted; rebase conflict")
 
     node_a = g.get_node(db, "a")
     assert node_a["state"] == "failed-integration"
@@ -114,7 +115,7 @@ def test_complete_agent_unbound_thread_untouched_by_graph(db):
 def test_complete_agent_twice_on_terminal_node_does_not_crash(db, capsys):
     _mk_graph(db)
     tid = _bind_running_thread(db, "a")
-    _complete(tid)
+    _complete(tid, handoff="a done")  # Phase 2: dependents demand a handoff
     assert g.get_node(db, "a")["state"] == "verified"
     _complete(tid)  # second completion: warn, never crash or change state
     assert g.get_node(db, "a")["state"] == "verified"

@@ -29,6 +29,18 @@ def cmd_send_task(args):
         print(f"Error: Prompt file {args.prompt_file} not found.")
         sys.exit(1)
 
+    # Graph-node guard (DA B5): tick-owned nodes are dispatched ONLY by the
+    # autopilot watchdog tick (which passes force_node). Checked before any
+    # tmux side effects.
+    from juggle_cmd_agents_graph import check_node_guard
+
+    guard_err = check_node_guard(
+        db, agent.get("assigned_thread"), force=getattr(args, "force_node", False)
+    )
+    if guard_err:
+        print(f"Error: {guard_err}")
+        sys.exit(1)
+
     sys.path.insert(0, str(_com.SRC_DIR))
     mgr = _com.JuggleTmuxManager()
 
