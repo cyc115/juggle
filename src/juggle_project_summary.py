@@ -2,22 +2,21 @@
 from __future__ import annotations
 
 import logging
-import subprocess
 
 _log = logging.getLogger(__name__)
 
 
 def _claude_sonnet(prompt: str) -> str:
-    """Call `claude -p <prompt> --model sonnet`. Injectable for tests."""
+    """Call `claude -p <prompt> --model sonnet`. Injectable for tests.
+
+    Thin wrapper over llm_calls.run_claude_p (single source of truth);
+    returns "" on non-zero exit or any exception.
+    """
+    from llm_calls import run_claude_p
+
     try:
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--model", "sonnet"],
-            capture_output=True, text=True, timeout=120,
-        )
-        if result.returncode != 0:
-            _log.warning("_claude_sonnet failed: %s", result.stderr[:200])
-            return ""
-        return result.stdout.strip()
+        out = run_claude_p(prompt, model="sonnet", timeout=120, log=_log)
+        return "" if out is None else out
     except Exception as e:
         _log.warning("_claude_sonnet error: %s", e)
         return ""

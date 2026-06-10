@@ -442,12 +442,10 @@ def cmd_project_close(args):
     sonnet = get_settings().get("title_gen", {}).get("sonnet_model", "claude-sonnet-4-6")
 
     def _llm(prompt: str) -> str:
+        from llm_calls import run_claude_p
+
         try:
-            res = subprocess.run(
-                ["claude", "-p", prompt, "--model", sonnet],
-                capture_output=True, text=True, timeout=120,
-            )
-            return res.stdout.strip() if res.returncode == 0 else ""
+            return run_claude_p(prompt, model=sonnet, timeout=120) or ""
         except Exception:
             return ""
 
@@ -683,9 +681,9 @@ def _run_project_coach(db) -> None:
             for m in conversation
         ) + "\nCoach:"
         try:
-            res = subprocess.run(["claude", "-p", prompt, "--model", sonnet],
-                                 capture_output=True, text=True, timeout=30)
-            response = res.stdout.strip() if res.returncode == 0 else None
+            from llm_calls import run_claude_p
+
+            response = run_claude_p(prompt, model=sonnet, timeout=30)
         except Exception:
             response = None
         if not response:

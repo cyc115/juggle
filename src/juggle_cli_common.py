@@ -3,9 +3,8 @@
 
 import logging
 import os
-import subprocess
+import subprocess  # noqa: F401  — kept: tests patch juggle_cli_common.subprocess.run
 import sys
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +12,10 @@ SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(SRC_DIR))
 from juggle_db import DB_PATH as _DEFAULT_DB_PATH  # noqa: E402
 from juggle_settings import get_settings as _get_settings  # noqa: E402
+# Re-export shim: llm_call lives in llm_calls.py (single `claude -p` source of
+# truth). Kept as a module attribute so patch("juggle_cli_common.llm_call")
+# call sites keep working.
+from llm_calls import llm_call  # noqa: E402,F401
 
 DB_PATH = (
     Path(os.environ["_JUGGLE_TEST_DB"])
@@ -148,55 +151,6 @@ def _extract_decision_prompt(last_assistant: str | None, last_user: str | None) 
         return f'📬 Respond to: "{msg}"'
 
     return "🤔 Waiting for input"
-
-
-def llm_call(prompt: str, profile: str = "cheap", timeout: int = 10) -> str | None:
-    """Profile-based LLM dispatcher.
-
-    Profiles defined in settings.llm_profiles (cheap / normal).
-    Flow: OpenRouter primary -> Claude subprocess fallback -> None.
-    """
-    import json as _json
-    from juggle_settings import get_settings
-    profiles = get_settings().get("llm_profiles", {})
-    if profile not in profiles:
-        raise ValueError(f"Unknown LLM profile: {profile!r}. Valid: {list(profiles)}")
-    cfg = profiles[profile]
-    api_key = os.environ.get("OPENROUTER_KEY", "")
-    if api_key:
-        try:
-            body = _json.dumps({
-                "model": cfg["openrouter_model"],
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 200,
-            }).encode()
-            req = urllib.request.Request(
-                "https://openrouter.ai/api/v1/chat/completions",
-                body,
-                {
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = _json.loads(resp.read())
-            text = (data["choices"][0]["message"].get("content") or "").strip()
-            if text:
-                logging.info("llm_call(%s): openrouter -> %r", profile, text[:60])
-                return text
-        except Exception as e:
-            logging.warning("llm_call(%s): openrouter failed: %s", profile, e)
-    try:
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--model", cfg["fallback_model"]],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            logging.info("llm_call(%s): fallback -> %r", profile, result.stdout.strip()[:60])
-            return result.stdout.strip()
-    except Exception as e:
-        logging.warning("llm_call(%s): fallback failed: %s", profile, e)
-    return None
 
 
 def _cheap_llm_call(prompt: str, timeout: int = 10) -> str | None:

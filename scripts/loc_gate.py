@@ -33,14 +33,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # branch cyc_refactor-tokens). MAY ONLY SHRINK — see module docstring.
 GRANDFATHERED: dict[str, int] = {
     "src/juggle_db.py": 1962,
-    "src/juggle_watchdog.py": 1332,
+    "src/juggle_watchdog.py": 1301,  # lowered from 1332 (Phase 1.1 pidfile extraction)
     "src/juggle_cockpit.py": 1120,
     "src/juggle_cmd_agents.py": 1098,
     "src/juggle_hooks.py": 1056,
     "src/juggle_cli.py": 1006,
     "src/juggle_tmux.py": 839,
     "src/juggle_schedule_autofix.py": 823,
-    "src/juggle_cmd_projects.py": 737,
+    "src/juggle_cmd_projects.py": 735,  # lowered from 737 (Phase 1.2 llm consolidation)
     "src/juggle_cmd_threads.py": 673,
     "src/juggle_context.py": 598,
     "src/juggle_schedule_reflect.py": 545,
@@ -53,7 +53,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_smoke.py": 380,
     "src/juggle_cmd_context.py": 370,
     "src/juggle_cmd_integrate.py": 364,
-    "src/juggle_schedule_common.py": 303,
+    # src/juggle_schedule_common.py removed 2026-06-10: shrank to 297 (Phase 1.2)
     "scripts/talkback": 415,
 }
 

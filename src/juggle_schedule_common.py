@@ -178,28 +178,22 @@ def gh_pr_list_head(head_prefix: str) -> list[dict]:
 def claude_p(prompt: str, model: str = "claude-sonnet-4-6",
              cost_tracker: CostTracker | None = None,
              timeout: int = 120) -> str:
-    """Run `claude -p <prompt>` and return stdout. Updates cost_tracker if provided."""
-    result = subprocess.run(
-        ["claude", "-p", prompt, "--model", model, "--output-format", "json"],
-        capture_output=True, text=True, timeout=timeout
+    """Run `claude -p <prompt>` and return stdout. Updates cost_tracker if provided.
+
+    Thin wrapper over llm_calls.run_claude_p (single source of truth):
+    JSON output mode, cost-tracked, returns "" on non-zero exit.
+    """
+    from llm_calls import run_claude_p
+
+    out = run_claude_p(
+        prompt,
+        model=model,
+        timeout=timeout,
+        output_format="json",
+        cost_tracker=cost_tracker,
+        log=logger,
     )
-    if result.returncode != 0:
-        logger.warning("claude -p failed: %s", result.stderr[:200])
-        return ""
-    try:
-        data = json.loads(result.stdout)
-        if cost_tracker and isinstance(data, dict):
-            usage = data.get("usage", {})
-            in_tok = usage.get("input_tokens", 0)
-            out_tok = usage.get("output_tokens", 0)
-            cost = cost_tracker.estimate_from_tokens(in_tok, out_tok, model)
-            cost_tracker.add(cost)
-        if isinstance(data, dict):
-            return data.get("result", data.get("content", str(data)))
-        return str(data)
-    except Exception:
-        # Fallback: treat as plain text
-        return result.stdout.strip()
+    return "" if out is None else out
 
 
 # ---------------------------------------------------------------------------
