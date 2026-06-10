@@ -7,9 +7,19 @@ from pathlib import Path
 
 from juggle_settings import get_repo_config
 from juggle_integrate_lock import (  # noqa: F401 — re-exported for callers
+    AUTOPILOT_LOCK_TIMEOUT_SECS,
     acquire_repo_lock,
     release_repo_lock,
 )
+
+
+def _graph_node_for_thread(db, thread_uuid: str) -> dict | None:
+    """Graph node bound to this thread, or None (pre-migration DB, Mock db)."""
+    try:
+        from dbops import db_graph
+        return db_graph.get_node_by_thread(db, thread_uuid)
+    except Exception:
+        return None
 
 
 # ── Self-repo daemon restart (juggle_integrate_selfrepo; name kept here so
@@ -44,9 +54,19 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
     push_mode = repo_cfg["push_mode"]
     test_cmd = repo_cfg["test_cmd"]
 
+    # Autopilot context (thread bound to a graph node): fan-in completions
+    # legitimately queue behind a long test_cmd — wait up to 30 min (DA M2).
+    node = _graph_node_for_thread(db, thread_uuid)
+    lock_timeout = AUTOPILOT_LOCK_TIMEOUT_SECS if node else 300.0
     try:
-        lock_path = acquire_repo_lock(main_repo_path)
+        lock_path = acquire_repo_lock(main_repo_path, timeout_secs=lock_timeout)
     except RuntimeError as e:
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"⚠️ integrate lock timeout [{worktree_branch}]: {e}",
+            type_="manual_step",
+            priority="high",
+        )
         return False, f"Lock acquisition failed: {e}"
 
     def _fail(reason: str) -> tuple[bool, str]:

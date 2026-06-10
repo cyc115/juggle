@@ -147,15 +147,111 @@ def test_acquire_lock_times_out_on_alive_pid(tmp_path):
             acquire_repo_lock("/repo", timeout_secs=0.3)
 
 
-def test_acquire_lock_steals_aged_out_alive_pid(tmp_path):
+def test_lock_live_holder_is_never_stolen_pin(tmp_path):
+    """Regression pin (2026-06-10, DA M2): acquire_repo_lock stole LIVE locks
+    aged >300s — under autopilot fan-in, concurrent completions stole the
+    merge-queue lock from a holder still running test_cmd (full pytest exceeds
+    300s) and interleaved rebases on main. Steal is now dead-PID-only: a live
+    holder, however old its lockfile, must NOT be stolen; the waiter times out
+    with RuntimeError and the lockfile stays owned by the live holder."""
+    from juggle_cmd_integrate import acquire_repo_lock
+    from juggle_integrate_lock import _read_lock
+
+    holder = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"]
+    )
+    try:
+        lock_file = tmp_path / "live.lock"
+        # Lock timestamp far older than the waiter's deadline (simulates a
+        # holder mid-test_cmd, aged past any steal threshold).
+        lock_file.write_text(f"{holder.pid}\n{time.time() - 4000}\n")
+        with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
+            with pytest.raises(RuntimeError, match="Cannot acquire lock"):
+                acquire_repo_lock("/repo", timeout_secs=0.3)
+        pid, _ = _read_lock(lock_file)
+        assert pid == holder.pid, "live holder's lock was stolen"
+    finally:
+        holder.kill()
+        holder.wait()
+
+
+def test_lock_holder_heartbeats_lockfile_while_held(tmp_path):
+    """DA M2: the holder refreshes the lockfile timestamp periodically during
+    long operations (e.g. test_cmd), so observers can tell it is live."""
     from juggle_cmd_integrate import acquire_repo_lock, release_repo_lock
-    lock_file = tmp_path / "old.lock"
-    # PID 1 alive but timestamp is 400s ago — older than 300s default
-    lock_file.write_text(f"1\n{time.time() - 400}\n")
+    from juggle_integrate_lock import _read_lock
+
+    lock_file = tmp_path / "hb.lock"
     with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
-        lp = acquire_repo_lock("/repo", timeout_secs=300)
-    assert lp.exists()
-    release_repo_lock(lp)
+        lp = acquire_repo_lock("/repo", timeout_secs=5, heartbeat_interval=0.05)
+    try:
+        _, ts0 = _read_lock(lp)
+        deadline = time.time() + 2.0
+        ts1 = ts0
+        while ts1 <= ts0 and time.time() < deadline:
+            time.sleep(0.05)
+            _, ts1 = _read_lock(lp)
+        assert ts1 > ts0, "lockfile timestamp never heartbeat-refreshed"
+    finally:
+        release_repo_lock(lp)
+    # Heartbeat stops with release: file gone and never recreated.
+    time.sleep(0.2)
+    assert not lp.exists()
+
+
+def test_integrate_node_bound_thread_uses_autopilot_lock_deadline(tmp_path, git_repo):
+    """DA M2: autopilot-context integrations (thread bound to a graph node)
+    wait up to 30 min for the merge-queue lock; lock timeout files a HIGH
+    action item instead of failing silently."""
+    import juggle_cmd_integrate as jci
+    from juggle_db import JuggleDB
+    from dbops import db_graph
+
+    db = JuggleDB(db_path=str(tmp_path / "j.db"))
+    db.init_db()
+    tid = db.create_thread("node thread", session_id="sessL")
+    db_graph.create_node(db, node_id="n1", project_id="INBOX",
+                         title="N1", prompt="do n1")
+    db_graph.set_node_thread(db, "n1", tid)
+
+    wt = _make_worktree(git_repo, str(tmp_path), "NB")
+    thread = {"id": tid, "worktree_path": wt,
+              "worktree_branch": "cyc_NB", "main_repo_path": git_repo}
+
+    seen = {}
+
+    def fake_acquire(repo_path, timeout_secs=300.0):
+        seen["timeout"] = timeout_secs
+        raise RuntimeError(f"Cannot acquire lock for {repo_path}: held by PID 1")
+
+    with patch.object(jci, "acquire_repo_lock", side_effect=fake_acquire):
+        ok, msg = jci._run_integrate(thread, db)
+
+    assert not ok and "Lock acquisition failed" in msg
+    assert seen["timeout"] == jci.AUTOPILOT_LOCK_TIMEOUT_SECS == 1800.0
+    items = db.get_open_action_items()
+    assert any("lock" in i["message"].lower() and i["priority"] == "high"
+               for i in items), "no action item filed on lock timeout"
+
+
+def test_integrate_plain_thread_keeps_default_lock_deadline(tmp_path, git_repo):
+    """Non-autopilot integrations keep the 300s lock wait."""
+    import juggle_cmd_integrate as jci
+
+    wt = _make_worktree(git_repo, str(tmp_path), "PL")
+    thread = {"id": "t-plain", "worktree_path": wt,
+              "worktree_branch": "cyc_PL", "main_repo_path": git_repo}
+    db = _make_db()
+    seen = {}
+
+    def fake_acquire(repo_path, timeout_secs=300.0):
+        seen["timeout"] = timeout_secs
+        raise RuntimeError("Cannot acquire lock: held by PID 1")
+
+    with patch.object(jci, "acquire_repo_lock", side_effect=fake_acquire):
+        ok, _ = jci._run_integrate(thread, db)
+    assert not ok
+    assert seen["timeout"] == 300.0
 
 
 def test_release_lock_noop_when_not_owner(tmp_path):

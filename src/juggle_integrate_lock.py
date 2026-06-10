@@ -12,8 +12,50 @@ mechanical split — the file was at its LOC-gate budget).
 from __future__ import annotations
 
 import os
+import threading
 import time
 from pathlib import Path
+
+# Holder refreshes the lockfile timestamp at this cadence while it works
+# (DA M2: long test_cmd runs must look live to waiters/operators).
+HEARTBEAT_INTERVAL_SECS = 30.0
+
+# Autopilot-context integrations (thread bound to a graph node) wait longer
+# for the merge queue: fan-in completions legitimately queue behind a holder
+# running a full test suite (DA M2).
+AUTOPILOT_LOCK_TIMEOUT_SECS = 1800.0
+
+# Live heartbeat threads for locks held by THIS process, keyed by lock path.
+_heartbeats: dict[str, tuple[threading.Event, threading.Thread]] = {}
+_heartbeats_mutex = threading.Lock()
+
+
+def _start_heartbeat(lock_path: Path, interval: float) -> None:
+    stop = threading.Event()
+
+    def _beat() -> None:
+        payload_pid = os.getpid()
+        while not stop.wait(interval):
+            try:
+                lock_path.write_text(f"{payload_pid}\n{time.time()}\n")
+            except OSError:
+                return
+
+    t = threading.Thread(
+        target=_beat, daemon=True, name=f"repo-lock-heartbeat-{lock_path.name}"
+    )
+    t.start()
+    with _heartbeats_mutex:
+        _heartbeats[str(lock_path)] = (stop, t)
+
+
+def _stop_heartbeat(lock_path: Path) -> None:
+    with _heartbeats_mutex:
+        entry = _heartbeats.pop(str(lock_path), None)
+    if entry:
+        stop, t = entry
+        stop.set()
+        t.join(timeout=2.0)
 
 
 def _get_lock_path(repo_path: str) -> Path:
@@ -46,11 +88,19 @@ def _pid_alive(pid: int) -> bool:
         return True  # EPERM: process exists, we just can't signal it
 
 
-def acquire_repo_lock(repo_path: str, timeout_secs: float = 300.0) -> Path:
+def acquire_repo_lock(
+    repo_path: str,
+    timeout_secs: float = 300.0,
+    heartbeat_interval: float = HEARTBEAT_INTERVAL_SECS,
+) -> Path:
     """Acquire a per-repo file lock. Returns the lock path.
 
-    Steals locks with a dead PID or age > timeout_secs.
-    Raises RuntimeError if a live lock cannot be acquired within timeout_secs.
+    Steals ONLY locks whose holder PID is dead (DA M2 2026-06-10: the old
+    age-based steal took the merge queue from LIVE holders mid-test_cmd and
+    interleaved rebases on main). A live lock is waited on until
+    ``timeout_secs``, then RuntimeError. While held, a daemon heartbeat
+    thread refreshes the lockfile timestamp every ``heartbeat_interval``
+    seconds; ``release_repo_lock`` stops it.
     Uses atomic rename to avoid races between concurrent integrations.
     """
     lock_path = _get_lock_path(repo_path)
@@ -65,10 +115,9 @@ def acquire_repo_lock(repo_path: str, timeout_secs: float = 300.0) -> Path:
             elif time.monotonic() >= deadline:
                 raise RuntimeError(
                     f"Cannot acquire lock for {repo_path}: "
-                    f"held by PID {existing_pid} for {lock_age:.0f}s"
+                    f"held by live PID {existing_pid} for {lock_age:.0f}s "
+                    f"(waited {timeout_secs:.0f}s; live locks are never stolen)"
                 )
-            elif lock_age > timeout_secs:
-                lock_path.unlink(missing_ok=True)  # aged-out alive lock — steal
             else:
                 time.sleep(0.05)
                 continue
@@ -85,12 +134,16 @@ def acquire_repo_lock(repo_path: str, timeout_secs: float = 300.0) -> Path:
         # Verify we won (another writer could have clobbered via rename race)
         pid, _ = _read_lock(lock_path)
         if pid == os.getpid():
+            _start_heartbeat(lock_path, heartbeat_interval)
             return lock_path
 
 
 def release_repo_lock(lock_path: Path) -> None:
     """Remove the lock only if owned by the current process."""
-    if not lock_path or not lock_path.exists():
+    if not lock_path:
+        return
+    _stop_heartbeat(lock_path)
+    if not lock_path.exists():
         return
     pid, _ = _read_lock(lock_path)
     if pid == os.getpid():
