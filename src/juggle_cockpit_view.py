@@ -154,7 +154,11 @@ def render_topics(
     ('3/14 done, 1 failed, 2 ready' — autopilot, DA m2).
     """
     border = _pane_border(active)
-    use_grouping = projects_by_id and len(projects_by_id) > 1
+    # Grouping also kicks in for a single project when graph counts exist —
+    # aggregate row even with zero topics (DA round-2 minor 3, 2026-06-10).
+    use_grouping = projects_by_id and (
+        len(projects_by_id) > 1 or bool(graph_by_project)
+    )
     visible = topics[scroll_offset:]
 
     def _make_table() -> Table:
@@ -180,6 +184,21 @@ def render_topics(
 
     # Grouped render — headers are separate Text renderables to avoid width=3 truncation
     groups = group_threads_by_project(visible, projects_by_id)
+    # Synthesize a header row for graph projects with zero visible topics
+    # (DA round-2 minor 3, 2026-06-10): an armed project whose nodes have no
+    # live threads yet would otherwise vanish from the cockpit entirely.
+    shown = {pid for pid, _, _ in groups}
+    synthesized = [
+        (pid, projects_by_id[pid], [])
+        for pid in (graph_by_project or {})
+        if pid not in shown and pid in projects_by_id
+    ]
+    if synthesized:
+        inbox_at = next(
+            (i for i, (pid, _, _) in enumerate(groups) if pid == "INBOX"),
+            len(groups),
+        )
+        groups[inbox_at:inbox_at] = synthesized  # named projects before INBOX
     content_parts: list = []
     for idx, (project_id, project_name, group_topics) in enumerate(groups):
         if idx > 0:

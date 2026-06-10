@@ -149,3 +149,44 @@ def test_project_header_no_progress_without_graph():
     projects = {"P1": "Alpha", "INBOX": "Inbox"}
     text = _render_text(render_topics(topics, "wide", projects))
     assert "done" not in text  # no aggregate fragment leaks without graph data
+
+
+def test_armed_project_header_visible_with_zero_visible_topics():
+    """REGRESSION PIN (DA round-2 minor 3, 2026-06-10): an armed project whose
+    nodes have no live threads yet (or whose threads all aged out of the TTL
+    window) had NO topics — group_threads_by_project dropped it entirely, so
+    the aggregate '⬢ x/y done' row vanished from the cockpit exactly when the
+    operator most needs it. A header row must be synthesized for any project
+    in graph_by_project."""
+    topics = [_topic(label="B", project_id="INBOX")]  # zero topics in P1
+    projects = {"P1": "Alpha", "INBOX": "Inbox"}
+    graph = {
+        "P1": {
+            "total": 14,
+            "verified": 3,
+            "failed": 1,
+            "blocked": 0,
+            "ready": 2,
+            "running": 0,
+            "pending": 8,
+        }
+    }
+    text = _render_text(
+        render_topics(topics, "wide", projects, graph_by_project=graph)
+    )
+    assert "ALPHA" in text
+    assert "3/14 done, 1 failed, 2 ready" in text
+
+
+def test_graph_project_header_even_when_it_is_the_only_project():
+    """Companion to the minor-3 pin: grouping used to require >1 project —
+    a lone armed project with zero visible topics rendered nothing at all."""
+    topics: list = []
+    projects = {"P1": "Alpha"}
+    graph = {"P1": {"total": 2, "verified": 1, "failed": 0, "blocked": 0,
+                    "ready": 1, "running": 0, "pending": 0}}
+    text = _render_text(
+        render_topics(topics, "wide", projects, graph_by_project=graph)
+    )
+    assert "ALPHA" in text
+    assert "1/2 done" in text
