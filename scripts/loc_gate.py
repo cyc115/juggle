@@ -42,7 +42,6 @@ GRANDFATHERED: dict[str, int] = {
     # Two sub-modules exceed 300 and are grandfathered below their current size:
     "src/juggle_hooks_tooluse.py": 334,   # PreToolUse+PostToolUse handlers; target ≤300
     "src/juggle_hooks_prompt.py": 350,    # UserPromptSubmit+Stop handlers; target ≤300
-    "src/juggle_cli.py": 1006,
     "src/juggle_tmux.py": 839,
     "src/juggle_schedule_autofix.py": 823,
     "src/juggle_cmd_projects.py": 735,  # lowered from 737 (Phase 1.2 llm consolidation)
