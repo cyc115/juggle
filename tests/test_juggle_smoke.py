@@ -433,3 +433,74 @@ def test_smoke_json_all_pass_exits_zero(monkeypatch):
     with pytest.raises(SystemExit) as ei:
         juggle_cmd_misc.cmd_cockpit(args)
     assert ei.value.code == 0
+
+
+class _LateBodyHandle:
+    """Fake CockpitHandle whose body paints only on the 3rd frame() call —
+    models the real cockpit, whose chrome paints <1s but body panes ~4-6s."""
+
+    def __init__(self, cols: int = 80, rows: int = 67, body_at_call: int = 3):
+        self.cols = cols
+        self.rows = rows
+        self.body_at_call = body_at_call
+        self.frame_calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass
+
+    def _grid(self, body: bool) -> list[str]:
+        grid = [" " * self.cols for _ in range(self.rows)]
+        grid[0] = "Juggle Cockpit".ljust(self.cols)
+        grid[-1] = "q Quit".ljust(self.cols)
+        if body:
+            for i in range(1, self.rows - 1):
+                grid[i] = f"row{i:03d} body content".ljust(self.cols)
+        return grid
+
+    def frame(self, settle: float = 1.0, timeout: float = 10.0) -> list[str]:
+        self.frame_calls += 1
+        return self._grid(body=self.frame_calls >= self.body_at_call)
+
+
+def test_smoke_waits_for_body_paint_not_blank_first_frame(monkeypatch, tmp_path):
+    """Regression pin (2026-06-10): `cockpit --smoke --all-viewports` captured a
+    single frame at settle=2.0s, but the cockpit body paints ~4-6s after launch,
+    so all 7 profiles falsely reported blank_pct=94% real-estate failures.
+    run_smoke must keep polling until body content appears (bounded deadline)."""
+    import juggle_smoke
+
+    handle = _LateBodyHandle()
+    monkeypatch.setattr(
+        juggle_smoke, "open_cockpit_pty", lambda profile, db_path=None, env=None: handle
+    )
+    results = juggle_smoke.run_smoke(
+        {"2k_third": {"cols": 80, "rows": 67}}, output_dir=tmp_path
+    )
+    assert len(results) == 1
+    rec = results[0]
+    assert rec.get("error") is None, rec
+    assert rec["real_estate"]["pass"], (
+        f"blank first frame accepted as final capture: {rec['real_estate']}"
+    )
+    assert rec["pass"], rec
+    assert handle.frame_calls >= 3
+
+
+def test_smoke_genuinely_blank_body_still_fails(monkeypatch, tmp_path):
+    """Companion to the 2026-06-10 blank-frame pin: a cockpit whose body NEVER
+    paints must still fail real-estate (poll deadline bounded, last grid kept)."""
+    import juggle_smoke
+
+    handle = _LateBodyHandle(body_at_call=10**9)
+    monkeypatch.setattr(
+        juggle_smoke, "open_cockpit_pty", lambda profile, db_path=None, env=None: handle
+    )
+    monkeypatch.setattr(juggle_smoke, "_BODY_PAINT_DEADLINE", 0.5, raising=False)
+    results = juggle_smoke.run_smoke(
+        {"2k_third": {"cols": 80, "rows": 67}}, output_dir=tmp_path
+    )
+    assert results[0]["pass"] is False
+    assert results[0]["real_estate"]["pass"] is False

@@ -122,6 +122,37 @@ def check_truncation(grid: list[str]) -> dict:
 # Smoke runner
 # ---------------------------------------------------------------------------
 
+# The cockpit's chrome (header/footer) paints within ~1s of launch, but the
+# body panes can take several more seconds (DB load + Textual layout). A
+# single settle-based capture locks onto the blank first paint and falsely
+# fails real-estate (incident 2026-06-10: all 7 profiles blank_pct=94%).
+_BODY_PAINT_DEADLINE = 25.0  # max seconds to wait for body content
+_BODY_BLANK_THRESHOLD = 0.40  # matches check_real_estate pass criterion
+
+
+def capture_body_frame(
+    handle: CockpitHandle,
+    rows: int,
+    max_wait: float | None = None,
+    blank_threshold: float = _BODY_BLANK_THRESHOLD,
+) -> list[str]:
+    """Capture frames until the body has painted or a bounded deadline passes.
+
+    Re-polls handle.frame() while the grid is mostly blank (blank_pct above
+    `blank_threshold`). Returns the last captured grid either way, so a
+    genuinely blank layout still fails check_real_estate downstream.
+    """
+    if max_wait is None:
+        max_wait = _BODY_PAINT_DEADLINE
+    deadline = time.monotonic() + max_wait
+    grid = handle.frame(settle=2.0, timeout=12.0)
+    while (
+        check_real_estate(grid, rows)["blank_pct"] > blank_threshold
+        and time.monotonic() < deadline
+    ):
+        grid = handle.frame(settle=1.0, timeout=4.0)
+    return grid
+
 
 def run_smoke(
     profiles: dict,
@@ -146,7 +177,7 @@ def run_smoke(
         rec: dict = {"profile": name, "cols": cols, "rows": rows}
         try:
             with open_cockpit_pty(profile, db_path=db_path) as handle:
-                grid = handle.frame(settle=2.0, timeout=12.0)
+                grid = capture_body_frame(handle, rows)
 
                 if interactive:
                     # Nav: scroll down
