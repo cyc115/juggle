@@ -2,7 +2,7 @@
 
 ## In Progress
 
-(none)
+🔄 [IN PROGRESS] Project autopilot (task-graph execution) — Phase 1 landed in v1.55.0 (graph_nodes/graph_edges plan store, node state machine, `project-graph load`, complete-agent marking + `--handoff`, [blocked:]/[ready] context tags; notify-only, no dispatch). Phases 2–4 pending (watchdog dispatcher, integrate hardening + verify_cmd, toggle command/gate/cockpit). Plan: vault `plan/2026-06-10-project-autopilot-impl.md`.
 
 ## Backlog
 
@@ -10,6 +10,7 @@
 
 ## Done
 
+- [x] Pre-existing smoke harness fixes: `cockpit --smoke --json` UnboundLocalError (`any_fail`) + viewport smoke false-failures from capturing before the cockpit body paints (poll until body content, bounded 25s). Regression-pinned (2026-06-10). Mechanical split: PTY handle → `src/juggle_smoke_pty.py`. ✅ 2026-06-10
 - [x] Refactor for understanding & token efficiency (Phases 0–5): loc_gate + shrink-only allowlist (23→21), pidfile/llm-call dedup, juggle_db/watchdog/cockpit/cmd_agents/cli splits, schedules/+dbops/ subpackages, daemon loops out of scripts, mega/unfindable test splits + tests/watchdog/ regroup, ARCHITECTURE.md code map. Plan: plan/2026-06-10-refactor-for-understanding-and-tokens.md; results: plan/2026-06-10-refactor-results.md. v1.54.0 ✅ 2026-06-10
 - [x] Watchdog action items now actionable: auto-recoverable events emit notifications; exhausted recovery emits `[RQ]+Decide:+Cause:` action item. Singleton hygiene: `_kill_existing_watchdog` verifies PID is a watchdog before killing; atomic pidfile write; removed duplicate config_dir/watchdog.pid. v1.45.1 ✅ 2026-06-05
 - [x] Self-contained harness adapters + conformance suite: each harness owns its full strategy in one module under `src/harnesses/` (`claude.py` settings-overlay denies via hooks; `codex.py` sandbox/approval-mode restriction + inlined anchor for version-skewed Codex hooks), self-registering with the `juggle_harness` framework. `tests/test_harness_conformance.py` is an auto-discovered executable contract (C1–C9) every present/future harness must pass; `tests/test_harness_codex.py` pins Codex per-role sandbox/audit behaviour. Codex shipped (inactive) in DEFAULTS; selectable via `agent.harness`/`harness_by_role`. Back-compat preserved (lazy `ClaudeCodeAdapter` re-export; legacy configs synthesise claude). Docs in `docs/harness-adapters.md`. ✅ 2026-05-31

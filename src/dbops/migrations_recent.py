@@ -1,4 +1,4 @@
-"""dbops.migrations_recent — schema migrations 20-34.
+"""dbops.migrations_recent — schema migrations 20-35.
 
 Owns: the second half of the incremental migration chain (watchdog columns
 onward), applied by ``dbops.migrations.run_migrations`` after migrations 1-19.
@@ -14,6 +14,8 @@ from dbops.schema import (
     CREATE_AGENT_COMPLETIONS,
     CREATE_AGENT_TOOL_EVENTS,
     CREATE_ERROR_EVENTS,
+    CREATE_GRAPH_EDGES,
+    CREATE_GRAPH_NODES,
     CREATE_PROJECT_CORRECTIONS,
     CREATE_PROJECTS,
     CREATE_WATCHDOG_EVENTS,
@@ -25,7 +27,7 @@ _log = logging.getLogger(__name__)
 
 
 def apply_recent_migrations(conn: sqlite3.Connection) -> None:
-    """Apply incremental schema migrations 20-34 (idempotent)."""
+    """Apply incremental schema migrations 20-35 (idempotent)."""
     # Migration 20: all watchdog columns on agents
     agents_cols = {
         r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()
@@ -268,3 +270,21 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
         _log.info("Migration 34: worktree columns added to threads")
     except sqlite3.OperationalError as e:
         _log.warning("Migration 34 (worktree) skipped: %s", e)
+
+    # Migration 35: graph_nodes + graph_edges plan store for project autopilot
+    # (design 2026-06-10 rev 2 — nodes hold the plan, threads only execute)
+    try:
+        conn.execute(CREATE_GRAPH_NODES)
+        conn.execute(CREATE_GRAPH_EDGES)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_graph_nodes_project_state "
+            "ON graph_nodes(project_id, state)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_graph_nodes_thread "
+            "ON graph_nodes(thread_id) WHERE thread_id IS NOT NULL"
+        )
+        conn.commit()
+        _log.info("Migration 35: graph_nodes + graph_edges tables created")
+    except sqlite3.OperationalError as e:
+        _log.warning("Migration 35 (graph_nodes/graph_edges) skipped: %s", e)

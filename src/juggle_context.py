@@ -60,6 +60,28 @@ def _current_session_id(db) -> str:
     return row["value"] if row else ""
 
 
+def _graph_node_tag(db, thread_id: str) -> str:
+    """`[ready]` / `[blocked:dep1,dep2]` tag for a graph-node-bound thread.
+
+    Empty string for unbound threads or pre-migration DBs without graph tables.
+    """
+    try:
+        from dbops import db_graph
+
+        node = db_graph.get_node_by_thread(db, thread_id)
+        if not node:
+            return ""
+        if node["state"] == "ready":
+            return " [ready]"
+        if node["state"] in ("pending", "blocked-failed"):
+            deps = db_graph.unverified_deps(db, node["id"])
+            if deps:
+                return f" [blocked:{','.join(deps)}]"
+        return ""
+    except Exception:
+        return ""
+
+
 def _render_tier1(t: dict, db) -> list[str]:
     """Full-detail Tier 1 block (active, running)."""
     import json as _json
@@ -68,7 +90,8 @@ def _render_tier1(t: dict, db) -> list[str]:
     state = t.get("status") or "active"
     emoji = _STATE_EMOJI.get(state, "🟢")
     title = t.get("title") or t.get("topic") or "(untitled)"
-    lines = [f"[{label}] {emoji} {state} | {_strip_articles(title)}"]
+    node_tag = _graph_node_tag(db, t["id"])
+    lines = [f"[{label}] {emoji} {state} | {_strip_articles(title)}{node_tag}"]
 
     summary = _strip_articles((t.get("summary") or "").strip())
     if summary:

@@ -36,6 +36,7 @@ from juggle_cmd_projects import (
     cmd_project_open,
     cmd_project_synth,
 )
+from juggle_cmd_graph import cmd_project_graph_load
 from juggle_cmd_research import cmd_research
 
 
@@ -236,6 +237,14 @@ def register(subparsers, *, vault_path_default: str) -> None:
         help="Output smoke results as JSON",
     )
     p_cockpit.set_defaults(func=cmd_cockpit)
+
+    # juggle project-graph <subcmd> (autopilot plan store)
+    p_graph = subparsers.add_parser("project-graph", help="Project task-graph (autopilot plan store)")
+    _gs = p_graph.add_subparsers(dest="graph_command", required=True)
+    _g = _gs.add_parser("load", help="Load/upsert a graph spec markdown file")
+    _g.add_argument("file", help="Path to graph spec markdown")
+    _g.add_argument("--project", required=True, help="Project id the graph belongs to")
+    _g.set_defaults(func=cmd_project_graph_load)
 
     # juggle project <subcmd>
     p_project = subparsers.add_parser("project", help="Manage projects")

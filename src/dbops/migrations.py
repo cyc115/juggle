@@ -1,7 +1,7 @@
 """dbops.migrations — Incremental SQLite schema migration runner.
 
 Owns: ``run_migrations(conn)`` — migrations 1-19 inline, then delegates to
-``dbops.migrations_recent.apply_recent_migrations`` for 20-34. Each migration is idempotent (uses ALTER TABLE IF NOT EXISTS / INSERT
+``dbops.migrations_recent.apply_recent_migrations`` for 20-35. Each migration is idempotent (uses ALTER TABLE IF NOT EXISTS / INSERT
 OR IGNORE patterns). Called by ``JuggleDB.init_db`` after table creation.
 Must not own: any query or business logic — only schema evolution.
 """
@@ -21,7 +21,7 @@ _log = logging.getLogger(__name__)
 
 
 def run_migrations(conn: sqlite3.Connection) -> None:
-    """Apply incremental schema migrations 1-34 (20+ live in migrations_recent)."""
+    """Apply incremental schema migrations 1-35 (20+ live in migrations_recent)."""
     cols = {
         row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
     }

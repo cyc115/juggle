@@ -164,7 +164,17 @@ def cmd_complete_agent(args):
                 priority="normal",
             )
 
-    # 6b. Optional retain text → Hindsight
+    # 6b. Graph-node marking (project autopilot Phase 1): map the integrate
+    # outcome onto the bound node's state machine, store the handoff, and
+    # notify newly-ready dependents. Notify ONLY — dispatch is watchdog-owned
+    # (Phase 2); complete-agent never dispatches (DA B4/M1).
+    from juggle_cmd_agents_graph import mark_graph_node
+
+    mark_graph_node(
+        db, thread_uuid, ft_success, getattr(args, "handoff", None), session_id
+    )
+
+    # 6c. Optional retain text → Hindsight
     retain_text = getattr(args, "retain_text", None)
     if retain_text:
 

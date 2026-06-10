@@ -228,6 +228,29 @@ CREATE TABLE IF NOT EXISTS project_corrections (
 );
 """
 
+# Autopilot plan store (2026-06-10 rev 2): nodes hold the PLAN; done is
+# state='verified' + verified_at, never thread.status; edges reference nodes.
+CREATE_GRAPH_NODES = """
+CREATE TABLE IF NOT EXISTS graph_nodes (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id),
+  title       TEXT NOT NULL,
+  prompt      TEXT NOT NULL,
+  verify_cmd  TEXT,
+  state       TEXT NOT NULL DEFAULT 'pending',
+  thread_id   TEXT,
+  handoff     TEXT,
+  verified_at TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL);
+"""
+CREATE_GRAPH_EDGES = """
+CREATE TABLE IF NOT EXISTS graph_edges (
+  node_id       TEXT NOT NULL REFERENCES graph_nodes(id),
+  depends_on_id TEXT NOT NULL REFERENCES graph_nodes(id),
+  PRIMARY KEY (node_id, depends_on_id));
+"""
+
 # ---------------------------------------------------------------------------
 # Pure helper functions
 # ---------------------------------------------------------------------------

@@ -47,6 +47,14 @@ def register(subparsers) -> None:
         help="JSON array of pending questions from planner",
     )
     p_complete.add_argument(
+        "--handoff",
+        dest="handoff",
+        default=None,
+        metavar="JSON_OR_TEXT",
+        help="Structured output contract for graph-node threads: files touched, "
+        "interfaces added/changed, key decisions, follow-ups (autopilot Phase 1: optional)",
+    )
+    p_complete.add_argument(
         "--role",
         dest="role",
         default=None,
