@@ -1,14 +1,16 @@
-"""dbops.db_graph_marking — completion marking for the autopilot plan store.
+"""dbops.db_graph_marking — completion marking + failure propagation.
 
 Owns: mapping a thread completion's (integrate outcome, verify outcome) onto
-the node state machine (``mark_completion``).
+the node state machine (``mark_completion``) and blocking the transitive
+dependents of a failed node (``propagate_failure`` — design rev 2: no silent
+stall, dependents go 'blocked-failed').
 Must not own: the state machine itself or node CRUD (dbops.db_graph — every
 state write here goes through its ``node_transition``), dispatching
 (juggle_graph_dispatch), or notifications/action items
 (juggle_cmd_agents_graph).
 
-``dbops.db_graph`` re-exports ``mark_completion`` so callers keep a single
-graph-store import seam.
+``dbops.db_graph`` re-exports these so callers keep a single graph-store
+import seam.
 """
 
 from __future__ import annotations
@@ -53,3 +55,32 @@ def mark_completion(
     if not verify_ok:
         return node_transition(db, node_id, "verify_fail")
     return node_transition(db, node_id, "integrate_ok")
+
+
+def propagate_failure(db, node_id: str) -> list[str]:
+    """Block ALL transitive dependents of a failed node. Returns blocked ids.
+
+    Design rev 2 / Phase 3 (2026-06-10): a node in failed-exec |
+    failed-integration | failed-verify must not leave its downstream silently
+    'pending' forever. BFS over the dependents closure; every node still in
+    'pending' or 'ready' transitions via 'dep_fail' → 'blocked-failed'
+    (through the sole state writer). Idempotent: already-blocked/terminal
+    dependents are skipped, so diamond shapes block each node exactly once
+    and re-propagation returns []. Siblings (non-dependents) are untouched.
+    """
+    from dbops.db_graph import get_dependents, get_node, node_transition
+
+    blocked: list[str] = []
+    seen = {node_id}
+    queue = [node_id]
+    while queue:
+        for dep_id in get_dependents(db, queue.pop(0)):
+            if dep_id in seen:
+                continue
+            seen.add(dep_id)
+            node = get_node(db, dep_id)
+            if node and node["state"] in ("pending", "ready"):
+                node_transition(db, dep_id, "dep_fail")
+                blocked.append(dep_id)
+            queue.append(dep_id)
+    return blocked

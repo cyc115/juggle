@@ -256,6 +256,9 @@ def recompute_ready(db, project_id: str) -> list[str]:
     return newly
 
 
-# ── completion marking (extracted seam) ───────────────────────────────────────
+# ── completion marking + failure propagation (extracted seam) ─────────────────
 
-from dbops.db_graph_marking import mark_completion  # noqa: E402,F401
+from dbops.db_graph_marking import (  # noqa: E402,F401
+    mark_completion,
+    propagate_failure,
+)

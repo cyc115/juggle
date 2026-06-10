@@ -97,7 +97,9 @@ def test_complete_agent_integrate_failure_marks_failed_never_verified(db, monkey
     assert node_a["state"] == "failed-integration"
     assert node_a["state"] != "verified"
     assert node_a["verified_at"] is None
-    assert g.get_node(db, "b")["state"] == "pending"  # dependents NOT marched over
+    # dependents NOT marched over (B3); since Phase 3 they are explicitly
+    # blocked-failed (never 'ready'/'verified') — same behavior, new seam.
+    assert g.get_node(db, "b")["state"] == "blocked-failed"
     # thread still closed (existing behavior) — node state is the truth
     assert db.get_thread(tid)["status"] == "closed"
 

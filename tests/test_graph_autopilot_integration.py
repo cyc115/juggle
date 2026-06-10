@@ -3,9 +3,9 @@ cmd_complete_agent calls + directly-invoked graph_tick (autopilot Phase 2).
 
 FakeMgr pattern: tmp DB, fake dispatch_fn, no tmux, no LLM. Asserts the full
 pending→ready→dispatching→running→verified flow with ready-set propagation,
-plus the failed-integration branch (Phase 1 semantics: dependents of a failed
-node stay pending and are never dispatched; blocked-failed propagation is
-Phase 3).
+plus the failed-integration branch (Phase 3 semantics: dependents of a failed
+node go 'blocked-failed', siblings are unaffected, blocked nodes are never
+dispatched, and an action item names them — no silent stall).
 """
 from __future__ import annotations
 
@@ -120,10 +120,12 @@ def test_diamond_happy_path_full_flow(db):
     assert all(db.get_thread(t)["project_id"] == "INBOX" for t in tids)
 
 
-def test_diamond_failed_integration_branch_stalls_dependents_loudly(db, monkeypatch):
-    """b's integrate fails → b = failed-integration (DA B3: never verified),
-    d stays pending and is NEVER dispatched, a HIGH action item flags the
-    failure (no silent stall). Phase 3 owns blocked-failed propagation."""
+def test_diamond_failed_integration_branch_blocks_dependents_loudly(db, monkeypatch):
+    """b's integrate fails mid-diamond → b = failed-integration (DA B3: never
+    verified), downstream d goes 'blocked-failed' and is NEVER dispatched,
+    sibling c is unaffected (still verifies), and a HIGH action item flags the
+    failure naming the blocked node (no silent stall — Phase 3, 2026-06-10;
+    rewritten from the Phase 1/2 pin that asserted d merely stayed pending)."""
     import juggle_cmd_agents_common as _com
 
     _load_diamond(db)
@@ -146,13 +148,16 @@ def test_diamond_failed_integration_branch_stalls_dependents_loudly(db, monkeypa
 
     states = _states(db)
     assert states["b"] == "failed-integration"
-    assert states["c"] == "verified"
-    assert states["d"] == "pending"  # Phase 1 semantics: not marched over b
+    assert states["c"] == "verified", "sibling must be unaffected by b's failure"
+    assert states["d"] == "blocked-failed"  # Phase 3: propagated, not stalled
 
-    # further ticks never dispatch d while b is failed
+    # further ticks never dispatch d while it is blocked-failed
     stats = gd.graph_tick(db, dispatch_fn=fake)
     assert stats["dispatched"] == []
     assert "d" not in fake.prompts
+    assert _states(db)["d"] == "blocked-failed"  # tick must not resurrect it
     items = db.get_open_action_items()
     assert any("failed-integration" in i["message"] and i["priority"] == "high"
                for i in items)
+    assert any("blocked" in i["message"].lower() and "d" in i["message"]
+               for i in items), "action item must name the blocked dependent"

@@ -118,14 +118,24 @@ def mark_graph_node(db, thread_uuid, integrate_ok, handoff, session_id,
             session_id=session_id,
         )
     else:
+        # Phase 3 failure propagation: block ALL transitive dependents
+        # (blocked-failed) so the graph never silently stalls; the tick only
+        # claims 'ready' nodes, so blocked nodes are never dispatched.
+        blocked = db_graph.propagate_failure(db, node["id"])
         db.add_notification_v2(
             thread_id=thread_uuid,
             message=f"⬢ graph node {node['id']} → {state}",
             session_id=session_id,
         )
+        detail = (
+            f"dependents blocked (blocked-failed): {', '.join(blocked)}. "
+            f"Fix the node, then reload the graph spec to resume."
+            if blocked
+            else "fix before dependents can run."
+        )
         db.add_action_item(
             thread_id=thread_uuid,
-            message=f"⚠️ Graph node {node['id']} ended in {state} — fix before dependents can run.",
+            message=f"⚠️ Graph node {node['id']} ended in {state} — {detail}",
             type_="failure",
             priority="high",
         )
