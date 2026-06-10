@@ -53,97 +53,20 @@ from juggle_cockpit_widgets import HSplitter, Splitter
 
 
 # ---------------------------------------------------------------------------
-# Column-width floor constants
+# Column-ratio helpers (re-exported from juggle_cockpit_layout)
 # ---------------------------------------------------------------------------
-
-_MIN_TOPICS_RATIO: float = 0.15   # topics pane minimum fraction of total width
-_MIN_ACTIONS_RATIO: float = 0.15  # actions pane minimum fraction of right width
-_MIN_AGENTS_RATIO: float = 0.10   # agents pane minimum fraction of right width
-_MIN_TOPICS_PCT: int = 15         # apply-site minimum for topics as integer percent
-_MAX_TOPICS_PCT: int = 60         # apply-site maximum for topics as integer percent
-_DEFAULT_COL_RATIOS: list[float] = [0.30, 0.40, 0.30]
-
-
-def _sanitize_col_ratios(ratios: object) -> list[float]:
-    """Validate and floor column_ratios loaded from config.
-
-    Returns ratios unchanged if healthy; falls back to _DEFAULT_COL_RATIOS
-    when the list is wrong length, any column is below its floor, or the
-    sum is far from 1.0.  Self-heals existing corrupted configs on load.
-    """
-    try:
-        lst = list(ratios)
-    except TypeError:
-        return list(_DEFAULT_COL_RATIOS)
-    if len(lst) != 3:
-        return list(_DEFAULT_COL_RATIOS)
-    t, a, ag = (float(x) for x in lst)
-    if not (0.9 <= t + a + ag <= 1.1):
-        return list(_DEFAULT_COL_RATIOS)
-    if t < _MIN_TOPICS_RATIO or a < _MIN_ACTIONS_RATIO or ag < _MIN_AGENTS_RATIO:
-        return list(_DEFAULT_COL_RATIOS)
-    return [t, a, ag]
-
-
-def _clamp_col_pct(pct: int, lo: int = _MIN_TOPICS_PCT, hi: int = _MAX_TOPICS_PCT) -> int:
-    """Clamp an integer percent to [lo, hi].  Prevents 0% or 100% topics."""
-    return max(lo, min(hi, pct))
-
-
-def _compute_ratios(topics_cells: float, actions_cells: float, agents_cells: float) -> list[float]:
-    """Normalize actual rendered cell widths to [topics, actions, agents] ratios summing to 1.0.
-
-    Uses size.width (absolute cells) so the result is correct regardless of whether
-    styles were set as percent (initial mount) or as cell integers (post-drag).
-    Guarantees each column >= its floor: floors are satisfied first, then the
-    remaining space is distributed proportionally among all columns.  Prevents
-    any column from being persisted as 0 even when physically collapsed.
-    """
-    total = topics_cells + actions_cells + agents_cells
-    if total <= 0:
-        return []
-    t = topics_cells / total
-    a = actions_cells / total
-    ag = 1.0 - t - a
-    # Distribute space: each column gets its floor guarantee first, then the
-    # leftover is shared proportionally to how much each column *exceeds* its floor.
-    floors = (_MIN_TOPICS_RATIO, _MIN_ACTIONS_RATIO, _MIN_AGENTS_RATIO)
-    raw = (t, a, ag)
-    above = tuple(max(0.0, r - f) for r, f in zip(raw, floors))
-    above_total = sum(above)
-    remaining = 1.0 - sum(floors)  # space available beyond the guaranteed floors
-    if above_total > 0:
-        result = [f + ab / above_total * remaining for f, ab in zip(floors, above)]
-    else:
-        # All columns collapsed to zero or below floors — normalize floors directly
-        fs = sum(floors)
-        result = [f / fs for f in floors]
-    t, a, ag = result
-    t = round(t, 2)
-    a = round(a, 2)
-    ag = round(1.0 - t - a, 2)
-    return [t, a, ag]
-
-
-def _write_ratios(config_path: Path, ratios: list[float]) -> None:
-    """Atomically write column_ratios to config.json.
-
-    No-op if config file is missing or the cockpit key is absent — avoids
-    corrupting a partially-edited config on first run. Atomic via tmp + os.replace.
-    """
-    if not config_path.exists():
-        return
-    try:
-        cfg = json.loads(config_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return
-    if "cockpit" not in cfg:
-        return
-    cfg["cockpit"]["column_ratios"] = ratios
-    tmp = config_path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(cfg, indent=2))
-    os.replace(tmp, config_path)
-
+from juggle_cockpit_layout import (  # noqa: F401
+    _DEFAULT_COL_RATIOS,
+    _MAX_TOPICS_PCT,
+    _MIN_ACTIONS_RATIO,
+    _MIN_AGENTS_RATIO,
+    _MIN_TOPICS_PCT,
+    _MIN_TOPICS_RATIO,
+    _clamp_col_pct,
+    _compute_ratios,
+    _sanitize_col_ratios,
+    _write_ratios,
+)
 
 _SETTINGS = _get_settings()
 REFRESH_INTERVAL: float = _SETTINGS["cockpit"]["refresh_interval_secs"]
@@ -810,224 +733,16 @@ def run(db_path: str | None = None) -> None:
         raise
 
 
+
+
 # ---------------------------------------------------------------------------
-# Profile harness (--profile mode)
+# Profile harness (re-exported from juggle_cockpit_profile)
 # ---------------------------------------------------------------------------
-
-
-def _parse_psrecord_log(log_text: str) -> dict:
-    """Parse a psrecord log and return summary stats.
-
-    psrecord log format::
-
-        # Elapsed time   CPU (%)     Real (MB)   Virtual (MB)
-        0.000            5.0         100.0       500.0
-        ...
-
-    Returns a dict with keys: avg_cpu, peak_cpu, rss_start, rss_end,
-    rss_growth, peak_rss.  Returns ``{}`` if no data rows are found.
-    """
-    cpu_vals: list[float] = []
-    rss_vals: list[float] = []
-
-    for line in log_text.splitlines():
-        line = line.strip()
-        if line.startswith("#") or not line:
-            continue
-        parts = line.split()
-        if len(parts) >= 3:
-            try:
-                cpu_vals.append(float(parts[1]))
-                rss_vals.append(float(parts[2]))
-            except ValueError:
-                continue
-
-    if not cpu_vals:
-        return {}
-
-    return {
-        "avg_cpu": sum(cpu_vals) / len(cpu_vals),
-        "peak_cpu": max(cpu_vals),
-        "rss_start": rss_vals[0],
-        "rss_end": rss_vals[-1],
-        "rss_growth": rss_vals[-1] - rss_vals[0],
-        "peak_rss": max(rss_vals),
-    }
-
-
-def _profile_worker_loop(
-    duration: int,
-    db_path: str | None = None,
-    _tick_fn=None,
-) -> int:
-    """Run a headless snapshot+render loop for *duration* seconds.
-
-    Each iteration calls ``snapshot(db)`` + ``render_static_from_state`` — the
-    same work as the live 1-second tick — without a TTY or Textual App.
-
-    Parameters
-    ----------
-    duration:
-        How many seconds to run.
-    db_path:
-        Optional path to juggle.db.
-    _tick_fn:
-        Replacement tick callable (injected by tests).  When ``None`` the
-        real snapshot+render cycle is used.
-
-    Returns
-    -------
-    int
-        Number of completed iterations.
-    """
-    if _tick_fn is not None:
-        tick_callable = _tick_fn
-    else:
-        from juggle_cockpit_model import snapshot as _snapshot
-        from juggle_cockpit_view import render_static_from_state
-
-        db = _make_cockpit_db(db_path)
-
-        def _default_tick() -> None:
-            state = _snapshot(db)
-            render_static_from_state(state)
-
-        tick_callable = _default_tick
-
-    end = time.time() + duration
-    iterations = 0
-    while time.time() < end:
-        tick_start = time.time()
-        tick_callable()
-        iterations += 1
-        elapsed = time.time() - tick_start
-        sleep_time = max(0.0, 1.0 - elapsed)
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-    return iterations
-
-
-def run_profile(duration: int = 60, db_path: str | None = None) -> None:
-    """Run the cockpit profiling harness.
-
-    Spawns a headless worker child (``--profile-worker``) that mimics the live
-    1-second cockpit tick for *duration* seconds.  Concurrently, ``psrecord``
-    (via ``uvx``) samples the child's CPU and RSS every 0.5 s.  After both
-    finish the log is parsed and a summary printed to stdout.
-
-    Degrades gracefully if ``uvx``/``psrecord`` are unavailable — exits 0 with
-    a clear message so CI is not broken.
-    """
-    log_path = Path("/tmp/cockpit_profile.log")
-    plot_path = Path("/tmp/cockpit_profile.png")
-
-    # --- spawn worker child ------------------------------------------------
-    cockpit_script = str(Path(__file__).resolve())
-    worker_cmd = [
-        "uv", "run", cockpit_script,
-        "--profile-worker",
-        "--duration", str(duration),
-    ]
-    if db_path:
-        worker_cmd += ["--db", db_path]
-
-    print(f"[profile] Starting headless worker ({duration}s) …", flush=True)
-    try:
-        child = subprocess.Popen(
-            worker_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-    except FileNotFoundError:
-        print("ERROR: 'uv' not found — cannot spawn worker process.", file=sys.stderr)
-        sys.exit(1)
-
-    pid = child.pid
-    print(f"[profile] Worker PID: {pid}", flush=True)
-
-    # --- start psrecord via uvx --------------------------------------------
-    psrecord_cmd = [
-        "uvx", "psrecord", str(pid),
-        "--interval", "0.5",
-        "--duration", str(duration + 2),
-        "--plot", str(plot_path),
-        "--log", str(log_path),
-    ]
-    print(f"[profile] Running: {' '.join(psrecord_cmd)}", flush=True)
-    psrecord_ok = True
-    psrecord_proc: subprocess.Popen | None = None
-    try:
-        psrecord_proc = subprocess.Popen(
-            psrecord_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-    except FileNotFoundError:
-        psrecord_ok = False
-        print("[profile] WARNING: 'uvx' not found — skipping psrecord sampling.", flush=True)
-
-    # --- wait for worker ---------------------------------------------------
-    try:
-        child.wait(timeout=duration + 15)
-    except subprocess.TimeoutExpired:
-        child.kill()
-        child.wait()
-
-    # --- wait for psrecord -------------------------------------------------
-    if psrecord_ok and psrecord_proc is not None:
-        try:
-            psrecord_proc.wait(timeout=duration + 15)
-        except subprocess.TimeoutExpired:
-            psrecord_proc.kill()
-            psrecord_proc.wait()
-
-    # --- print summary -----------------------------------------------------
-    if not psrecord_ok or not log_path.exists():
-        print(
-            "\n[profile] psrecord log not available"
-            " (uvx/psrecord not installed or failed).",
-            flush=True,
-        )
-        print("[profile] Install: pip install psrecord  (no restart needed)", flush=True)
-        print("[profile] Profiling run complete (no metrics collected).", flush=True)
-        return
-
-    try:
-        log_text = log_path.read_text()
-    except OSError as exc:
-        print(f"[profile] ERROR reading log: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    stats = _parse_psrecord_log(log_text)
-    if not stats:
-        print("[profile] WARNING: psrecord log is empty or unparseable.", flush=True)
-        return
-
-    w = 52
-    print(f"\n{'=' * w}")
-    print("  Cockpit Profile Summary")
-    print(f"{'=' * w}")
-    print(f"  CPU avg:    {stats['avg_cpu']:.1f}%")
-    print(f"  CPU peak:   {stats['peak_cpu']:.1f}%")
-    print(f"  RSS start:  {stats['rss_start']:.1f} MB")
-    print(f"  RSS end:    {stats['rss_end']:.1f} MB")
-    print(f"  RSS growth: {stats['rss_growth']:+.1f} MB")
-    print(f"  RSS peak:   {stats['peak_rss']:.1f} MB")
-    print(f"{'=' * w}")
-
-    if stats["rss_growth"] > 20.0:
-        print(
-            f"  ⚠  POSSIBLE LEAK: RSS grew {stats['rss_growth']:.1f} MB"
-            f" (threshold: 20 MB)"
-        )
-    if stats["avg_cpu"] > 15.0:
-        print(
-            f"  ⚠  BATTERY CONCERN: avg CPU {stats['avg_cpu']:.1f}%"
-            f" (threshold: 15%)"
-        )
-
-    print(f"\n  Plot: {plot_path}")
-
+from juggle_cockpit_profile import (  # noqa: F401
+    _parse_psrecord_log,
+    _profile_worker_loop,
+    run_profile,
+)
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))

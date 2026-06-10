@@ -37,7 +37,7 @@ GRANDFATHERED: dict[str, int] = {
     # cannot split without losing migration-ordering invariant. Follow-up debt noted in results.
     "src/juggle_db_migrations.py": 532,
     "src/juggle_watchdog.py": 964,  # lowered 1332→1301 (Ph1.1) →964 (Ph2.2 inspect+restart split)
-    "src/juggle_cockpit.py": 1120,
+    "src/juggle_cockpit.py": 835,  # lowered from 1120 (Ph2.3: layout+profile extracted)
     "src/juggle_cmd_agents.py": 1098,
     "src/juggle_hooks.py": 1056,
     "src/juggle_cli.py": 1006,
