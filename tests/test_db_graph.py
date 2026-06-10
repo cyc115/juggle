@@ -1,8 +1,9 @@
 """Tests for dbops.db_graph — graph_nodes/graph_edges plan store (project autopilot Phase 1).
 
 Covers: schema/migration, CRUD, the node state machine (every legal transition
-plus fail-loud illegal ones), BFS cycle detection, ready-set recompute, and
-completion marking (DA B3: integrate failure must never yield 'verified').
+plus fail-loud illegal ones), ready-set recompute, and completion marking
+(DA B3: integrate failure must never yield 'verified'). Cycle detection moved
+to juggle_cmd_graph (load-time validation) — see test_cmd_graph.py.
 """
 from __future__ import annotations
 
@@ -211,25 +212,6 @@ def test_unknown_event_fails_loud(db):
 def test_transition_missing_node_fails_loud(db):
     with pytest.raises(ValueError):
         g.node_transition(db, "ghost", "deps_ready")
-
-
-# ── cycle detection ────────────────────────────────────────────────────────────
-
-
-def test_find_cycle_none_on_dag():
-    edges = [("b", "a"), ("c", "a"), ("d", "b"), ("d", "c")]
-    assert g.find_cycle(["a", "b", "c", "d"], edges) is None
-
-
-def test_find_cycle_detects_loop():
-    edges = [("a", "b"), ("b", "c"), ("c", "a")]
-    cyc = g.find_cycle(["a", "b", "c"], edges)
-    assert cyc is not None
-    assert set(cyc) == {"a", "b", "c"}
-
-
-def test_find_cycle_detects_self_loop():
-    assert g.find_cycle(["a"], [("a", "a")]) is not None
 
 
 # ── ready set ──────────────────────────────────────────────────────────────────

@@ -52,6 +52,25 @@ def _args(tmp_path, db, spec=SPEC, project="INBOX"):
     return SimpleNamespace(file=str(f), project=project, db_path=str(db.db_path))
 
 
+# ── cycle detection (pure, validation-owned) ───────────────────────────────────
+
+
+def test_find_cycle_none_on_dag():
+    edges = [("b", "a"), ("c", "a"), ("d", "b"), ("d", "c")]
+    assert cg.find_cycle(["a", "b", "c", "d"], edges) is None
+
+
+def test_find_cycle_detects_loop():
+    edges = [("a", "b"), ("b", "c"), ("c", "a")]
+    cyc = cg.find_cycle(["a", "b", "c"], edges)
+    assert cyc is not None
+    assert set(cyc) == {"a", "b", "c"}
+
+
+def test_find_cycle_detects_self_loop():
+    assert cg.find_cycle(["a"], [("a", "a")]) is not None
+
+
 # ── parsing ────────────────────────────────────────────────────────────────────
 
 

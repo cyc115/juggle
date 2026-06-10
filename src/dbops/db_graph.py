@@ -1,10 +1,11 @@
 """dbops.db_graph — graph_nodes/graph_edges plan store for project autopilot.
 
 Owns: node/edge CRUD, the node state machine (``node_transition`` is the ONLY
-writer of ``graph_nodes.state``), BFS cycle detection, the ready-set query
-(all deps ``state='verified'``), and completion marking.
-Must not own: dispatching (watchdog, Phase 2), CLI parsing (juggle_cmd_graph),
-or any thread-status semantics — the scheduler never reads thread status (DA M5).
+writer of ``graph_nodes.state``), the ready-set query (all deps
+``state='verified'``), and completion marking.
+Must not own: dispatching (watchdog, Phase 2), CLI parsing / spec validation
+(juggle_cmd_graph), or any thread-status semantics — the scheduler never
+reads thread status (DA M5).
 
 Module-level functions take a ``JuggleDB`` handle as their first argument so
 they compose with the existing mixin-built DB without widening its surface.
@@ -200,33 +201,6 @@ def unverified_deps(db, node_id: str) -> list[str]:
             (node_id,),
         ).fetchall()
         return [r["depends_on_id"] for r in rows]
-
-
-# ── cycle detection (pure) ─────────────────────────────────────────────────────
-
-
-def find_cycle(node_ids, edges) -> list[str] | None:
-    """Kahn's algorithm over (node_id, depends_on_id) pairs.
-
-    Returns the list of node ids stuck in a cycle, or None for a DAG.
-    """
-    indegree = {n: 0 for n in node_ids}
-    dependents: dict[str, list[str]] = {n: [] for n in node_ids}
-    for node, dep in edges:
-        indegree[node] += 1
-        dependents[dep].append(node)
-    queue = [n for n, d in indegree.items() if d == 0]
-    seen = 0
-    while queue:
-        n = queue.pop()
-        seen += 1
-        for m in dependents[n]:
-            indegree[m] -= 1
-            if indegree[m] == 0:
-                queue.append(m)
-    if seen == len(indegree):
-        return None
-    return sorted(n for n, d in indegree.items() if d > 0)
 
 
 # ── ready set ──────────────────────────────────────────────────────────────────

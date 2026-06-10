@@ -74,6 +74,32 @@ def parse_graph_spec(text: str) -> list[dict]:
     return nodes
 
 
+def find_cycle(node_ids, edges) -> list[str] | None:
+    """Kahn's algorithm over (node_id, depends_on_id) pairs. Pure.
+
+    Returns the list of node ids stuck in a cycle, or None for a DAG.
+    Lives here (load-time validation), not in dbops.db_graph — it never
+    touches the DB.
+    """
+    indegree = {n: 0 for n in node_ids}
+    dependents: dict[str, list[str]] = {n: [] for n in node_ids}
+    for node, dep in edges:
+        indegree[node] += 1
+        dependents[dep].append(node)
+    queue = [n for n, d in indegree.items() if d == 0]
+    seen = 0
+    while queue:
+        n = queue.pop()
+        seen += 1
+        for m in dependents[n]:
+            indegree[m] -= 1
+            if indegree[m] == 0:
+                queue.append(m)
+    if seen == len(indegree):
+        return None
+    return sorted(n for n, d in indegree.items() if d > 0)
+
+
 def lint_verify_cmd(cmd: str) -> str | None:
     """Return an error string if ``cmd`` fails the lint, else None."""
     for ch in _FORBIDDEN_CHARS:
@@ -120,7 +146,7 @@ def validate_graph(nodes: list[dict]) -> list[str]:
             if err:
                 errors.append(f"node {n['id']!r}: {err}")
     if not errors:
-        cyc = db_graph.find_cycle(ids, edges)
+        cyc = find_cycle(ids, edges)
         if cyc:
             errors.append(f"dependency cycle involving nodes: {', '.join(cyc)}")
     return errors
