@@ -39,15 +39,8 @@ def _cx(db, conn=None):
 # dependents of a failed node: blocked-failed (terminal in Phase 1)
 VALID_STATES = frozenset(
     {
-        "pending",
-        "ready",
-        "dispatching",
-        "running",
-        "integrating",
-        "verified",
-        "failed-exec",
-        "failed-integration",
-        "failed-verify",
+        "pending", "ready", "dispatching", "running", "integrating",
+        "verified", "failed-exec", "failed-integration", "failed-verify",
         "blocked-failed",
     }
 )
@@ -60,6 +53,7 @@ _TRANSITIONS: dict[tuple[str, str], str] = {
     ("ready", "claim"): "dispatching",
     ("ready", "dep_fail"): "blocked-failed",
     ("ready", "reload"): "pending",
+    ("ready", "unready"): "pending",  # add-node --required-by demotes ready node
     ("dispatching", "dispatch"): "running",
     ("dispatching", "stale_reset"): "ready",
     ("running", "integrate_start"): "integrating",
