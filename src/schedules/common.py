@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Shared helpers for /schedule:* routines."""
+"""Shared plumbing for /schedule:* routines: state persistence, CostTracker
+budget guard, gh CLI wrappers, cost-tracked claude_p (via llm_calls), DB/report/
+git helpers. Routine-specific logic lives in schedules/{autofix,dogfood,reflect}.
+"""
 
 import json
 import logging
