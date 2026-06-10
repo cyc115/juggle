@@ -161,3 +161,42 @@ def test_diamond_failed_integration_branch_blocks_dependents_loudly(db, monkeypa
                for i in items)
     assert any("blocked" in i["message"].lower() and "d" in i["message"]
                for i in items), "action item must name the blocked dependent"
+
+
+def test_add_node_mid_execution_does_not_touch_running_node(db):
+    """FEATURE PIN (graph add-node, 2026-06-10): injecting a node while another
+    node is RUNNING must leave the running node untouched and execute the new
+    node in dependency order via the tick (no manual dispatch)."""
+    from types import SimpleNamespace
+    import juggle_cmd_graph as cg
+
+    _load_diamond(db)
+    fake = FakeDispatch()
+
+    # Tick 1: root a dispatched → running
+    gd.graph_tick(db, dispatch_fn=fake)
+    assert _states(db)["a"] == "running"
+    a_node_before = g.get_node(db, "a")
+
+    # Inject a new leaf 'x' depending on the still-running 'a', via the CLI.
+    cg.cmd_graph_add_node(SimpleNamespace(
+        project="INBOX", id="x", title="X", prompt="run after a",
+        deps="a", required_by=None, verify_cmd=None, json_out=False,
+        db_path=str(db.db_path),
+    ))
+    # running node a is byte-identical (state, thread, content)
+    a_after = g.get_node(db, "a")
+    assert a_after["state"] == "running"
+    assert a_after["thread_id"] == a_node_before["thread_id"]
+    assert a_after["prompt"] == a_node_before["prompt"]
+    # x waits on a (a not verified yet) → pending, NOT dispatched this tick
+    assert _states(db)["x"] == "pending"
+    assert gd.graph_tick(db, dispatch_fn=fake)["dispatched"] == []
+    assert "x" not in fake.prompts
+
+    # complete a → x (and b, c) become ready; tick dispatches them
+    _complete_node(db, "a", handoff="a done")
+    assert _states(db)["x"] == "ready"
+    dispatched = gd.graph_tick(db, dispatch_fn=fake)["dispatched"]
+    assert "x" in dispatched
+    assert _states(db)["x"] == "running"
