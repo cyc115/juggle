@@ -77,6 +77,57 @@ def check_node_guard(db, thread_uuid, *, force: bool) -> str | None:
     )
 
 
+def _notify_failure(db, node, state, thread_uuid, session_id, reason=None):
+    """Failure aftermath shared by completion marking and agent death:
+    Phase 3 propagation blocks ALL transitive dependents (blocked-failed) so
+    the graph never silently stalls — the tick only claims 'ready' nodes, so
+    blocked nodes are never dispatched — plus notification + HIGH action item.
+    """
+    from dbops import db_graph
+
+    blocked = db_graph.propagate_failure(db, node["id"])
+    db.add_notification_v2(
+        thread_id=thread_uuid,
+        message=f"⬢ graph node {node['id']} → {state}",
+        session_id=session_id,
+    )
+    detail = (
+        f"dependents blocked (blocked-failed): {', '.join(blocked)}. "
+        f"Fix the node, then reload the graph spec to resume."
+        if blocked
+        else "fix before dependents can run."
+    )
+    cause = f" Cause: {reason}." if reason else ""
+    db.add_action_item(
+        thread_id=thread_uuid,
+        message=f"⚠️ Graph node {node['id']} ended in {state} — {detail}{cause}",
+        type_="failure",
+        priority="high",
+    )
+
+
+def fail_graph_node(db, thread_uuid, session_id, reason=None):
+    """Agent death → graph (DA round-2 MAJOR-1, 2026-06-10).
+
+    cmd_fail_agent (unrecoverable) and the watchdog give-up path set thread
+    status but never touched the bound node: it stayed 'running' (a PROTECTED
+    state even reload refuses) and dependents stalled silently. Marks the node
+    failed-exec via the legal walk, blocks dependents, raises the action item.
+    No-op for unbound threads / terminal nodes (double-failure stays warn-only).
+    """
+    from dbops import db_graph
+
+    node = _node_for_thread(db, thread_uuid)
+    if not node or node["state"] not in _ENFORCEABLE_STATES:
+        return
+    try:
+        state = db_graph.mark_exec_failed(db, node["id"])
+    except ValueError as e:
+        print(f"Warning: graph node {node['id']} not marked failed — {e}")
+        return
+    _notify_failure(db, node, state, thread_uuid, session_id, reason=reason)
+
+
 def mark_graph_node(db, thread_uuid, integrate_ok, handoff, session_id,
                     *, verify_failed=False):
     """If the thread is bound to a graph node, record the completion outcome.
@@ -118,27 +169,7 @@ def mark_graph_node(db, thread_uuid, integrate_ok, handoff, session_id,
             session_id=session_id,
         )
     else:
-        # Phase 3 failure propagation: block ALL transitive dependents
-        # (blocked-failed) so the graph never silently stalls; the tick only
-        # claims 'ready' nodes, so blocked nodes are never dispatched.
-        blocked = db_graph.propagate_failure(db, node["id"])
-        db.add_notification_v2(
-            thread_id=thread_uuid,
-            message=f"⬢ graph node {node['id']} → {state}",
-            session_id=session_id,
-        )
-        detail = (
-            f"dependents blocked (blocked-failed): {', '.join(blocked)}. "
-            f"Fix the node, then reload the graph spec to resume."
-            if blocked
-            else "fix before dependents can run."
-        )
-        db.add_action_item(
-            thread_id=thread_uuid,
-            message=f"⚠️ Graph node {node['id']} ended in {state} — {detail}",
-            type_="failure",
-            priority="high",
-        )
+        _notify_failure(db, node, state, thread_uuid, session_id)
 
     for ready_id in db_graph.recompute_ready(db, node["project_id"]):
         ready_node = db_graph.get_node(db, ready_id)

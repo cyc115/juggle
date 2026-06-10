@@ -283,6 +283,14 @@ def cmd_fail_agent(args):
             session_id=session_id,
         )
         db.set_thread_status(thread_uuid, "closed")
+        # Agent death must reach the graph (DA round-2 MAJOR-1, 2026-06-10):
+        # bound node → failed-exec + dependents blocked + HIGH action item.
+        from juggle_cmd_agents_graph import fail_graph_node
+
+        fail_graph_node(
+            db, thread_uuid, session_id,
+            reason=f"unrecoverable agent failure: {args.error}",
+        )
         print(
             f"Unrecoverable failure on Topic {label}; HIGH action item created, thread → closed."
         )

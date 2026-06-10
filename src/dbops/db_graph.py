@@ -281,6 +281,7 @@ def recompute_ready(db, project_id: str) -> list[str]:
 
 from dbops.db_graph_marking import (  # noqa: E402,F401
     mark_completion,
+    mark_exec_failed,
     propagate_failure,
     recompute_blocked,
 )

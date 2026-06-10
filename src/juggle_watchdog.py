@@ -602,6 +602,21 @@ def execute_recovery(
                 type_="failure",
                 priority="high",
             )
+        if thread_id:
+            # Agent death must reach the graph (DA round-2 MAJOR-1,
+            # 2026-06-10): bound node → failed-exec + dependents blocked.
+            try:
+                from juggle_cmd_agents_graph import fail_graph_node
+
+                fail_graph_node(
+                    db, thread_id, session_id,
+                    reason="watchdog auto-recovery exhausted (failed 2x)",
+                )
+            except Exception:
+                _log.exception(
+                    "Watchdog: graph fail-marking failed for thread %s",
+                    thread_id[:8],
+                )
         db.add_watchdog_event(
             agent_id=agent_id,
             thread_id=thread_id,

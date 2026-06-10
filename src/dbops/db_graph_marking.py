@@ -57,6 +57,38 @@ def mark_completion(
     return node_transition(db, node_id, "integrate_ok")
 
 
+_ADVANCE_TO_RUNNING = {
+    "pending": ("deps_ready", "claim", "dispatch"),
+    "ready": ("claim", "dispatch"),
+    "dispatching": ("dispatch",),
+    "running": (),
+}
+
+
+def mark_exec_failed(db, node_id: str) -> str:
+    """Walk the node legally to 'running', then apply 'exec_fail'.
+
+    DA round-2 MAJOR-1 (2026-06-10): agent death (cmd_fail_agent / watchdog
+    give-up) never reached the graph — the node stayed 'running' and its
+    dependents stalled silently. Also serves the dispatch retry cap
+    (dispatching → failed-exec). Raises ValueError on terminal / integrating
+    nodes (fail loud, no silent remap).
+    """
+    from dbops.db_graph import get_node, node_transition
+
+    node = get_node(db, node_id)
+    if node is None:
+        raise ValueError(f"graph node not found: {node_id!r}")
+    state = node["state"]
+    if state not in _ADVANCE_TO_RUNNING:
+        raise ValueError(
+            f"cannot mark exec failure: node {node_id!r} in state {state!r}"
+        )
+    for event in _ADVANCE_TO_RUNNING[state]:
+        node_transition(db, node_id, event)
+    return node_transition(db, node_id, "exec_fail")
+
+
 _BLOCKING_STATES = frozenset(
     {"failed-exec", "failed-integration", "failed-verify", "blocked-failed"}
 )
