@@ -2,7 +2,7 @@
 
 ## In Progress
 
-🔄 [IN PROGRESS] Project autopilot (task-graph execution) — Phase 1 landed in v1.55.0 (graph_nodes/graph_edges plan store, node state machine, `project-graph load`, complete-agent marking + `--handoff`, [blocked:]/[ready] context tags; notify-only, no dispatch). Phases 2–4 pending (watchdog dispatcher, integrate hardening + verify_cmd, toggle command/gate/cockpit). Plan: vault `plan/2026-06-10-project-autopilot-impl.md`.
+🔄 [IN PROGRESS] Project autopilot (task-graph execution) — Phase 1 landed in v1.55.0 (graph_nodes/graph_edges plan store, node state machine, `project-graph load`, complete-agent marking + `--handoff`, [blocked:]/[ready] context tags; notify-only, no dispatch). Phase 2 landed in v1.56.0 (watchdog claim-dispatch tick via juggle_graph_dispatch: atomic claims + stale-claim sweep, cap-aware lazy threads, handoff hydration, `--handoff` enforcement, send-task `--force-node` guard, diamond integration test). Phases 3–4 pending (integrate hardening + verify_cmd, toggle command/gate/cockpit). Plan: vault `plan/2026-06-10-project-autopilot-impl.md`.
 
 ## Backlog
 
