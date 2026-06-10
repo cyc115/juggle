@@ -1,4 +1,4 @@
-"""juggle_db_selfheal — Self-heal error_events mixin for JuggleDB.
+"""dbops.selfheal — Self-heal error_events mixin for JuggleDB.
 
 Owns: dedup_or_insert_error, set_error_event_status, get_open_error_events,
 get_pending_selfheal_count.

@@ -1,4 +1,4 @@
-"""juggle_db_session — Session-key helpers mixin for JuggleDB.
+"""dbops.session — Session-key helpers mixin for JuggleDB.
 
 Owns: reading/writing the key-value `session` table, active flag, current
 thread, orchestrator session ID + heartbeat, and the settings table reader.

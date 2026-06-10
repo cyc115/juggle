@@ -1,4 +1,4 @@
-"""juggle_db_agents — Agent pool and watchdog-events mixin for JuggleDB.
+"""dbops.agents — Agent pool and watchdog-events mixin for JuggleDB.
 
 Owns: create/get/update/delete agents, agent scoring/ranking, completion
 tracking, tool-usage telemetry, watchdog event log.
@@ -12,7 +12,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 
-from juggle_db_schema import CREATE_AGENT_TOOL_EVENTS
+from dbops.schema import CREATE_AGENT_TOOL_EVENTS
 
 
 class AgentsMixin:

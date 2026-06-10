@@ -1,4 +1,4 @@
-"""juggle_db_schema — DDL constants, module-level helpers, and shared config.
+"""dbops.schema — DDL constants, module-level helpers, and shared config.
 
 Owns: all CREATE TABLE/INDEX strings, the INBOX sentinel, message-truncation
 constants, and pure helper functions that the mixin layer depends on.

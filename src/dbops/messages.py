@@ -1,4 +1,4 @@
-"""juggle_db_messages — Message storage and context-window query mixin.
+"""dbops.messages — Message storage and context-window query mixin.
 
 Owns: add_message, get_messages (token-budget windowing), get_message_count,
 get_last_exchange, get_recent_exchanges.
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from juggle_db_schema import _get_settings, _is_junk_message
+from dbops.schema import _get_settings, _is_junk_message
 
 
 class MessagesMixin:

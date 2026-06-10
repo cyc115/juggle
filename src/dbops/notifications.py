@@ -1,4 +1,4 @@
-"""juggle_db_notifications — Notifications v2 and action-items mixin.
+"""dbops.notifications — Notifications v2 and action-items mixin.
 
 Owns: add/query/watermark notifications_v2 (session-scoped), add/dismiss
 action_items, message-truncation helper.
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from juggle_db_schema import MAX_ACTION_NOTIF_LENGTH, _POINTER_SUFFIX
+from dbops.schema import MAX_ACTION_NOTIF_LENGTH, _POINTER_SUFFIX
 
 
 class NotificationsMixin:

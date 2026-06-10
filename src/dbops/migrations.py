@@ -1,4 +1,4 @@
-"""juggle_db_migrations — Incremental SQLite schema migration runner.
+"""dbops.migrations — Incremental SQLite schema migration runner.
 
 Owns: the single ``run_migrations(conn)`` function that applies migrations 1-34
 in order. Each migration is idempotent (uses ALTER TABLE IF NOT EXISTS / INSERT
@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 
-from juggle_db_schema import (
+from dbops.schema import (
     CREATE_AGENT_COMPLETIONS,
     CREATE_AGENT_TOOL_EVENTS,
     CREATE_AGENTS,

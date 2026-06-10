@@ -6,15 +6,15 @@ all public names so every existing ``from juggle_db import X`` continues to
 work without caller changes.
 
 Domain modules (each ≤300 lines):
-  juggle_db_schema.py        — DDL, module constants, pure helpers
-  juggle_db_migrations.py    — incremental schema migration runner (run_migrations)
-  juggle_db_session.py       — SessionMixin  (session KV, active flag, settings)
-  juggle_db_threads.py       — ThreadsMixin  (thread CRUD, state machine, archive)
-  juggle_db_projects.py      — ProjectsMixin (project CRUD, match-profile, corrections)
-  juggle_db_messages.py      — MessagesMixin (message storage, context-window queries)
-  juggle_db_notifications.py — NotificationsMixin (notif_v2, action_items)
-  juggle_db_selfheal.py      — SelfhealMixin (error_events)
-  juggle_db_agents.py        — AgentsMixin   (agent pool, tool telemetry, watchdog events)
+  dbops/schema.py        — DDL, module constants, pure helpers
+  dbops/migrations.py    — incremental schema migration runner (run_migrations)
+  dbops/session.py       — SessionMixin  (session KV, active flag, settings)
+  dbops/threads.py       — ThreadsMixin  (thread CRUD, state machine, archive)
+  dbops/projects.py      — ProjectsMixin (project CRUD, match-profile, corrections)
+  dbops/messages.py      — MessagesMixin (message storage, context-window queries)
+  dbops/notifications.py — NotificationsMixin (notif_v2, action_items)
+  dbops/selfheal.py      — SelfhealMixin (error_events)
+  dbops/agents.py        — AgentsMixin   (agent pool, tool telemetry, watchdog events)
 """
 
 import logging
@@ -26,7 +26,7 @@ _log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Re-export public names from sub-modules so callers don't need to change.
 # ---------------------------------------------------------------------------
-from juggle_db_schema import (  # noqa: E402, F401
+from dbops.schema import (  # noqa: E402, F401
     CREATE_ACTION_ITEMS,
     CREATE_AGENT_COMPLETIONS,
     CREATE_AGENT_TOOL_EVENTS,
@@ -53,14 +53,14 @@ from juggle_db_schema import (  # noqa: E402, F401
     _now,
     _thread_age_seconds,
 )
-from juggle_db_agents import AgentsMixin  # noqa: E402, F401
-from juggle_db_messages import MessagesMixin  # noqa: E402, F401
-from juggle_db_migrations import run_migrations  # noqa: E402, F401
-from juggle_db_notifications import NotificationsMixin  # noqa: E402, F401
-from juggle_db_projects import ProjectsMixin  # noqa: E402, F401
-from juggle_db_selfheal import SelfhealMixin  # noqa: E402, F401
-from juggle_db_session import SessionMixin  # noqa: E402, F401
-from juggle_db_threads import ThreadsMixin  # noqa: E402, F401
+from dbops.agents import AgentsMixin  # noqa: E402, F401
+from dbops.messages import MessagesMixin  # noqa: E402, F401
+from dbops.migrations import run_migrations  # noqa: E402, F401
+from dbops.notifications import NotificationsMixin  # noqa: E402, F401
+from dbops.projects import ProjectsMixin  # noqa: E402, F401
+from dbops.selfheal import SelfhealMixin  # noqa: E402, F401
+from dbops.session import SessionMixin  # noqa: E402, F401
+from dbops.threads import ThreadsMixin  # noqa: E402, F401
 
 # ---------------------------------------------------------------------------
 # Composed JuggleDB class
@@ -140,5 +140,5 @@ class JuggleDB(
 
     # _migrate kept as a shim for any callers that patched it in tests
     def _migrate(self, conn: sqlite3.Connection) -> None:
-        """Shim: delegates to juggle_db_migrations.run_migrations."""
+        """Shim: delegates to dbops.migrations.run_migrations."""
         run_migrations(conn)

@@ -1,4 +1,4 @@
-"""juggle_db_threads — Thread CRUD, state machine, archive, and stale-query mixin.
+"""dbops.threads — Thread CRUD, state machine, archive, and stale-query mixin.
 
 Owns: create/get/update/list threads, thread status transitions, archive/
 unarchive, stale-thread detection, and archive-candidate selection.
@@ -10,16 +10,16 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-import juggle_db_schema as _schema
-from juggle_db_schema import (
+import dbops.schema as _schema
+from dbops.schema import (
     _get_settings,
     _is_junk_message,
     _next_excel_label,
     _thread_age_seconds,
 )
 
-# Read MAX_THREADS via module reference so tests can patch juggle_db_threads.MAX_THREADS
-# (or juggle_db_schema.MAX_THREADS) to bypass the cap in seeding fixtures.
+# Read MAX_THREADS via module reference so tests can patch dbops.threads.MAX_THREADS
+# (or dbops.schema.MAX_THREADS) to bypass the cap in seeding fixtures.
 MAX_THREADS = _schema.MAX_THREADS
 
 

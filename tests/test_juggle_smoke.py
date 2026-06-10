@@ -47,8 +47,8 @@ def _make_db(tmp_path: Path, n_threads: int = 30) -> str:
     Temporarily raise the module-level cap while seeding.
     """
     import juggle_db
-    import juggle_db_schema
-    import juggle_db_threads
+    import dbops.schema as juggle_db_schema
+    import dbops.threads as juggle_db_threads
     from juggle_db import JuggleDB
 
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))

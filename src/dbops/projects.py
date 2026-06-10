@@ -1,4 +1,4 @@
-"""juggle_db_projects — Project CRUD and project-thread relationship mixin.
+"""dbops.projects — Project CRUD and project-thread relationship mixin.
 
 Owns: create/get/list/close/open/update projects, match-profile management,
 project-correction log, project-thread counting/querying.
@@ -7,7 +7,7 @@ Must not own: thread internals, agent pool, notifications, session state.
 
 from __future__ import annotations
 
-from juggle_db_schema import INBOX_PROJECT_ID, _now
+from dbops.schema import INBOX_PROJECT_ID, _now
 
 
 class ProjectsMixin:
