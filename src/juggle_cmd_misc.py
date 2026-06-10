@@ -47,14 +47,12 @@ def cmd_cockpit(args):
             interactive=interactive,
         )
 
+        any_fail = any(not r.get("pass") for r in results)
         if getattr(args, "json_out", False):
             print(_json.dumps(results, indent=2))
         else:
-            any_fail = False
             for r in results:
                 status = "PASS" if r.get("pass") else "FAIL"
-                if not r.get("pass"):
-                    any_fail = True
                 dims = f"{r['cols']}x{r['rows']}"
                 err = r.get("error", "")
                 trunc = r.get("truncation", {}).get("count", 0)

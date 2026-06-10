@@ -383,3 +383,53 @@ def test_topics_nonzero_with_corrupted_config_out(tmp_path):
     # The output should not contain "0%" for topics (sanitize-on-load applied)
     # Primarily: no crash and some output rendered
     assert "Traceback" not in output, f"Cockpit crashed with incident config:\n{output[:500]}"
+
+
+# ── regression pins (2026-06-10) ──────────────────────────────────────────────
+
+
+def test_smoke_json_single_viewport_exits_cleanly(monkeypatch):
+    """Regression pin (2026-06-10): `cockpit --smoke --viewport X --json` crashed
+    with UnboundLocalError — `cannot access local variable 'any_fail'` — because
+    the exit-code flag was only computed in the non-JSON print branch.
+    Must SystemExit(1) on a failing result, never UnboundLocalError.
+    """
+    from types import SimpleNamespace
+
+    import juggle_cmd_misc
+    import juggle_smoke
+
+    fake_results = [{"profile": "2k_third", "cols": 80, "rows": 67, "pass": False}]
+    monkeypatch.setattr(juggle_smoke, "run_smoke", lambda *a, **k: fake_results)
+    args = SimpleNamespace(
+        smoke=True,
+        viewport_name="2k_third",
+        json_out=True,
+        interactive=False,
+        db_path=None,
+    )
+    with pytest.raises(SystemExit) as ei:
+        juggle_cmd_misc.cmd_cockpit(args)
+    assert ei.value.code == 1
+
+
+def test_smoke_json_all_pass_exits_zero(monkeypatch):
+    """Companion to the 2026-06-10 any_fail pin: --json with all-pass results
+    must exit 0."""
+    from types import SimpleNamespace
+
+    import juggle_cmd_misc
+    import juggle_smoke
+
+    fake_results = [{"profile": "2k_third", "cols": 80, "rows": 67, "pass": True}]
+    monkeypatch.setattr(juggle_smoke, "run_smoke", lambda *a, **k: fake_results)
+    args = SimpleNamespace(
+        smoke=True,
+        viewport_name="2k_third",
+        json_out=True,
+        interactive=False,
+        db_path=None,
+    )
+    with pytest.raises(SystemExit) as ei:
+        juggle_cmd_misc.cmd_cockpit(args)
+    assert ei.value.code == 0
