@@ -1,0 +1,238 @@
+"""Watchdog daemon loop — library logic behind scripts/juggle-agent-watchdog.
+
+Owns the 30s polling tick (`_poll_once`: heartbeat → classify each busy agent's
+pane → prompt-handling / stuck-Enter retries / recovery escalation → orphan
+check → stale-agent reap), the singleton-pidfile bootstrap, signal handling,
+and the hot-restart staleness exit. It must not own classification or recovery
+policy itself — those live in juggle_watchdog / juggle_watchdog_restart /
+juggle_watchdog_inspect. Entry point: ``main()``, invoked by the thin
+``scripts/juggle-agent-watchdog`` wrapper.
+"""
+from __future__ import annotations
+
+import atexit
+import logging
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+import daemon_pidfile
+from juggle_db import JuggleDB, DB_PATH
+from juggle_settings import get_settings
+from juggle_tmux import JuggleTmuxManager
+from juggle_watchdog_health import write_heartbeat
+from juggle_watchdog import (
+    _classify_agent_state,
+    _is_source_stale,
+    _kill_existing_watchdog_from_pidfile,
+    check_orphaned_threads,
+    classify_pane_state,
+    execute_recovery,
+    get_session_id,
+    get_threshold_seconds,
+    handle_prompt,
+    nudge_and_notify,
+    read_snapshot,
+    write_snapshot,
+)
+
+_WATCHDOG_SRC = Path(__file__).parent / "juggle_watchdog.py"
+
+_POLL_INTERVAL = int(os.environ.get("JUGGLE_WATCHDOG_INTERVAL", "30"))
+
+# Single authoritative pidfile — no more duplicate config_dir/watchdog.pid
+SINGLETON_PID_FILE = Path.home() / ".juggle" / "watchdog.pid"
+
+
+def _write_singleton_pid():
+    # Atomic write + race verification (exits 1 if another start claimed the file)
+    daemon_pidfile.write_singleton_pid(SINGLETON_PID_FILE, verify=True, name="watchdog")
+
+
+def _cleanup_singleton_pid():
+    daemon_pidfile.cleanup_singleton_pid(SINGLETON_PID_FILE)
+
+
+_log = logging.getLogger("juggle-watchdog")
+
+
+def _setup_logging() -> None:
+    """Configure root logging (file + stdout). Called from main() so importing
+    this module has no filesystem side effects."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=[
+            logging.FileHandler(
+                Path(get_settings()["paths"]["config_dir"]) / "watchdog.log"
+            ),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+
+
+_running = True
+# In-memory Enter retry count; resets on restart (stalled-silent is fallback)
+_enter_sent: dict[str, int] = {}
+
+
+def _handle_sigterm(signum, frame):
+    global _running
+    _log.info("Watchdog: SIGTERM received, shutting down")
+    _running = False
+
+
+def _get_dirs() -> tuple[Path, Path]:
+    config_dir = Path(get_settings()["paths"]["config_dir"])
+    return (
+        config_dir / "watchdog" / "snapshots",
+        config_dir / "watchdog" / "recovery",
+    )
+
+
+def _capture_pane(mgr: JuggleTmuxManager, pane_id: str, lines: int = 80) -> str | None:
+    if not mgr.verify_pane(pane_id):
+        return None
+    result = mgr._run_tmux("capture-pane", "-pt", pane_id, "-S", f"-{lines}")
+    if result.returncode != 0:
+        return None
+    return result.stdout or ""
+
+
+def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
+    write_heartbeat()
+    snapshot_dir, recovery_dir = _get_dirs()
+    now_ts = time.time()
+    session_id = get_session_id(db)
+    agents = [a for a in db.get_all_agents() if a["status"] == "busy"]
+
+    for agent in agents:
+        agent_id = agent["id"]
+        pane_id = agent["pane_id"]
+
+        prev = read_snapshot(agent_id, snapshot_dir)
+        content = _capture_pane(mgr, pane_id)
+
+        # Compute stalled_for from last_activity_at in DB (survives restarts)
+        last_activity_at_str = agent.get("last_activity_at")
+        if last_activity_at_str:
+            try:
+                from datetime import datetime, timezone
+                last_dt = datetime.fromisoformat(last_activity_at_str)
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                stalled_for = now_ts - last_dt.timestamp()
+            except (ValueError, TypeError):
+                stalled_for = 0.0
+        else:
+            stalled_for = 0.0  # first observation — treat as just changed
+
+        threshold = get_threshold_seconds(db, agent)
+
+        state, key = classify_pane_state(
+            content=content,
+            prev_content=prev,
+            stalled_for=stalled_for,
+            threshold=threshold,
+            last_send_task_pane_hash=agent.get("last_send_task_pane_hash"),
+            last_send_task_at=agent.get("last_send_task_at"),
+        )
+
+        if state == "working":
+            write_snapshot(agent_id, content, snapshot_dir)
+            from datetime import datetime, timezone
+            db.update_agent(agent_id, last_activity_at=datetime.now(timezone.utc).isoformat())
+            _enter_sent.pop(agent_id, None)
+
+        elif state == "prompt":
+            handle_prompt(db, mgr, agent, pane_id, key or "")
+            write_snapshot(agent_id, content, snapshot_dir)
+            from datetime import datetime, timezone
+            db.update_agent(agent_id, last_activity_at=datetime.now(timezone.utc).isoformat())
+            _enter_sent.pop(agent_id, None)
+
+        elif state == "stuck":
+            enter_count = _enter_sent.get(agent_id, 0)
+            if enter_count < 2:
+                mgr._run_tmux("send-keys", "-t", pane_id, "Enter")
+                _enter_sent[agent_id] = enter_count + 1
+                db.add_notification_v2(
+                    thread_id=agent.get("assigned_thread"),
+                    message=(f"[Watchdog] agent {agent_id[:8]} stuck-at-prompt — "
+                             f"sent Enter (attempt {enter_count + 1}/2)"),
+                    session_id=session_id,
+                )
+                _log.info("Watchdog: stuck-at-prompt Enter #%d sent to %s",
+                          enter_count + 1, agent_id[:8])
+            else:
+                _log.warning("Watchdog: agent %s stuck after 2 Enters — escalating to recovery",
+                             agent_id[:8])
+                execute_recovery(db, mgr, agent, content or "",
+                                 recovery_dir=recovery_dir, session_id=session_id)
+                _enter_sent.pop(agent_id, None)
+
+        elif state in ("stalled", "crashed"):
+            _log.warning("Watchdog: agent %s is %s (stalled_for=%.0fs threshold=%.0fs)",
+                         agent_id[:8], state, stalled_for, threshold)
+            execute_recovery(db, mgr, agent, content or "",
+                             recovery_dir=recovery_dir, session_id=session_id)
+
+        elif state == "awaiting_dispatch":
+            _log.info("Watchdog: agent %s awaiting first dispatch — skipping recovery",
+                      agent_id[:8])
+
+        # "quiet" — no action
+
+    # Loop 2: orphaned thread detection
+    _orphan_threshold = float(os.environ.get("JUGGLE_ORPHAN_THRESHOLD", "300"))
+    check_orphaned_threads(db, orphan_threshold=_orphan_threshold)
+
+    # Generic stale-agent reap (pass 1: idle TTL / dead panes; pass 2: orphan panes)
+    from juggle_tmux import reap_stale_agents
+    try:
+        reap_stale_agents(db, mgr)
+    except Exception:
+        pass
+
+
+def main() -> None:
+    _setup_logging()
+
+    _kill_existing_watchdog_from_pidfile(SINGLETON_PID_FILE)
+    _write_singleton_pid()
+    atexit.register(_cleanup_singleton_pid)
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+    signal.signal(signal.SIGINT, _handle_sigterm)
+
+    try:
+        db = JuggleDB(str(DB_PATH))
+        db.init_db()
+        db.cleanup_watchdog_events()
+
+        mgr = JuggleTmuxManager()
+        _log.info("Watchdog started (PID=%d, interval=%ds)", os.getpid(), _POLL_INTERVAL)
+
+        _src_mtime = _WATCHDOG_SRC.stat().st_mtime if _WATCHDOG_SRC.exists() else 0.0
+
+        while _running:
+            if _is_source_stale(_src_mtime, _WATCHDOG_SRC):
+                _log.warning(
+                    "Watchdog: juggle_watchdog.py updated — exiting for supervisor restart"
+                )
+                sys.exit(0)
+            try:
+                _poll_once(db, mgr)
+            except Exception as exc:
+                _log.exception("Watchdog: unhandled error in poll — continuing")
+                try:
+                    from juggle_selfheal import record_error
+                    record_error(exc, "juggle_watchdog.poll")
+                except Exception:
+                    pass
+            time.sleep(_POLL_INTERVAL)
+    finally:
+        _cleanup_singleton_pid()
+        _log.info("Watchdog stopped.")

@@ -13,14 +13,19 @@ _SRC_DIR = Path(__file__).parent.parent / "src"
 
 
 def _load_watchdog_module():
-    """Load juggle-agent-watchdog as a module (no .py ext requires explicit loader)."""
+    """Load the watchdog daemon-loop module fresh with its deps mocked.
+
+    Daemon logic moved from scripts/juggle-agent-watchdog to
+    src/juggle_watchdog_daemon.py in the 2026-06-10 refactor; same assertions
+    through the new seam (the script is now a thin wrapper).
+    """
     import importlib.machinery
     import importlib.util
     import tempfile, logging
 
     loader = importlib.machinery.SourceFileLoader(
         "juggle_agent_watchdog",
-        str(_SCRIPTS_DIR / "juggle-agent-watchdog"),
+        str(_SRC_DIR / "juggle_watchdog_daemon.py"),
     )
     spec = importlib.util.spec_from_loader("juggle_agent_watchdog", loader)
     mod = importlib.util.module_from_spec(spec)

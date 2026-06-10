@@ -7,123 +7,15 @@
 
 Each line printed is one completed agent: [LABEL] role: title
 Role is 'researcher' when a review action item exists; 'coder' otherwise.
-"""
 
-import atexit
-import os
-import sqlite3
+Thin argv→main() wrapper; all polling logic lives in src/juggle_monitor_daemon.py.
+"""
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-import daemon_pidfile
-from juggle_settings import get_settings
 
-SINGLETON_PID_FILE = Path.home() / ".juggle" / "monitor.pid"
-
-
-def _db_path() -> Path:
-    return Path(get_settings()["paths"]["data_dir"]) / "juggle.db"
-
-
-def _is_monitor_process(pid: int) -> bool:
-    """Return True if the process with given PID is a juggle-agent-monitor."""
-    return daemon_pidfile.is_process(pid, "juggle-agent-monitor")
-
-
-def _kill_existing_monitor_from_pidfile(pidfile_path: Path) -> None:
-    """Kill the monitor recorded in pidfile_path — only if it really is a monitor.
-
-    Thin shim over daemon_pidfile.kill_existing_from_pidfile (single source of
-    truth): SIGTERM, wait up to 2s, escalate to SIGKILL — silent (no logging).
-    Predicate resolved via module globals at call time so tests monkeypatching
-    _is_monitor_process keep working.
-    """
-    daemon_pidfile.kill_existing_from_pidfile(
-        pidfile_path,
-        lambda pid: _is_monitor_process(pid),
-    )
-
-
-def _write_singleton_pid() -> None:
-    daemon_pidfile.write_singleton_pid(SINGLETON_PID_FILE)
-
-
-def _cleanup_singleton_pid() -> None:
-    daemon_pidfile.cleanup_singleton_pid(SINGLETON_PID_FILE)
-
-
-def _role_for_thread(conn: sqlite3.Connection, thread_id: str) -> str:
-    row = conn.execute(
-        "SELECT id FROM action_items WHERE thread_id = ? AND type = 'review' "
-        "ORDER BY id DESC LIMIT 1",
-        (thread_id,),
-    ).fetchone()
-    return "researcher" if row else "coder"
-
-
-def _poll_once(
-    conn: sqlite3.Connection, last_seen_id: int
-) -> tuple[list[tuple[str, str]], int]:
-    """Query new completions. Returns ([(thread_id, output_line)], new_last_seen_id)."""
-    rows = conn.execute(
-        """
-        SELECT n.id, n.thread_id, t.user_label, t.title
-        FROM notifications_v2 n
-        JOIN threads t ON n.thread_id = t.id
-        WHERE n.id > ? AND t.status = 'closed'
-        ORDER BY n.id
-        """,
-        (last_seen_id,),
-    ).fetchall()
-
-    results = []
-    for row in rows:
-        role = _role_for_thread(conn, row["thread_id"])
-        label = row["user_label"] or "?"
-        title = row["title"] or "?"
-        results.append((row["thread_id"], f"[{label}] {role}: {title}"))
-        last_seen_id = row["id"]
-    return results, last_seen_id
-
-
-def _init_cursor(db_path: Path) -> int:
-    """Return current max notifications_v2 id so we don't replay history."""
-    try:
-        conn = sqlite3.connect(str(db_path))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT MAX(id) AS m FROM notifications_v2").fetchone()
-        conn.close()
-        return row["m"] if row and row["m"] is not None else 0
-    except sqlite3.OperationalError:
-        return 0
-
-
-def main() -> None:
-    _kill_existing_monitor_from_pidfile(SINGLETON_PID_FILE)
-    _write_singleton_pid()
-    atexit.register(_cleanup_singleton_pid)
-
-    db_path = _db_path()
-    last_seen_id = _init_cursor(db_path)
-    emitted: set[str] = set()  # deduplicate by thread_id
-
-    while True:
-        try:
-            conn = sqlite3.connect(str(db_path))
-            conn.row_factory = sqlite3.Row
-            results, last_seen_id = _poll_once(conn, last_seen_id)
-            conn.close()
-            for thread_id, line in results:
-                if thread_id not in emitted:
-                    emitted.add(thread_id)
-                    print(line, flush=True)
-        except sqlite3.OperationalError:
-            pass  # DB locked — retry next tick
-
-        time.sleep(1)
-
+from juggle_monitor_daemon import main
 
 if __name__ == "__main__":
     main()

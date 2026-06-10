@@ -1,4 +1,8 @@
-"""Tests for scripts/juggle-agent-monitor polling logic and singleton hygiene."""
+"""Tests for the agent-monitor polling logic and singleton hygiene.
+
+Logic moved from scripts/juggle-agent-monitor to src/juggle_monitor_daemon.py
+in the 2026-06-10 refactor; same assertions through the new seam (the script
+is now a thin wrapper)."""
 
 import importlib.util
 import os
@@ -13,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from juggle_db import JuggleDB
 
-_SCRIPT = Path(__file__).parent.parent / "scripts" / "juggle-agent-monitor"
+_SCRIPT = Path(__file__).parent.parent / "src" / "juggle_monitor_daemon.py"
 
 
 def _load_monitor():
