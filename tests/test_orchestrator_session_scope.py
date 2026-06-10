@@ -44,7 +44,10 @@ def _reload_hooks(monkeypatch, db: JuggleDB):
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(db.db_path.parent))
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     import juggle_hooks
+    import juggle_hooks_config
     importlib.reload(juggle_hooks)
+    # Patch juggle_hooks_config — sub-modules read DB_PATH via _cfg.DB_PATH at call time.
+    monkeypatch.setattr(juggle_hooks_config, "DB_PATH", db.db_path)
     monkeypatch.setattr(juggle_hooks, "DB_PATH", db.db_path)
     return juggle_hooks
 

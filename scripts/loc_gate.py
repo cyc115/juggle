@@ -39,7 +39,10 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_watchdog.py": 964,  # lowered 1332→1301 (Ph1.1) →964 (Ph2.2 inspect+restart split)
     "src/juggle_cockpit.py": 835,  # lowered from 1120 (Ph2.3: layout+profile extracted)
     "src/juggle_cmd_agents.py": 1098,
-    "src/juggle_hooks.py": 1056,
+    # juggle_hooks.py Phase 2.5: split into hooks sub-modules (shim now 117 lines, removed).
+    # Two sub-modules exceed 300 and are grandfathered below their current size:
+    "src/juggle_hooks_tooluse.py": 334,   # PreToolUse+PostToolUse handlers; target ≤300
+    "src/juggle_hooks_prompt.py": 350,    # UserPromptSubmit+Stop handlers; target ≤300
     "src/juggle_cli.py": 1006,
     "src/juggle_tmux.py": 839,
     "src/juggle_schedule_autofix.py": 823,

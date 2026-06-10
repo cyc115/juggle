@@ -92,8 +92,10 @@ def test_tool_input_sample_picks_telling_field():
 
 def test_log_agent_tool_use_writes_normal(tmp_path, monkeypatch):
     import juggle_hooks as h
+    import juggle_hooks_config as cfg
 
-    monkeypatch.setattr(h, "DB_PATH", tmp_path / "h.db")
+    # Patch juggle_hooks_config.DB_PATH — _log_agent_tool_use reads _cfg.DB_PATH at call time.
+    monkeypatch.setattr(cfg, "DB_PATH", tmp_path / "h.db")
     monkeypatch.setenv("JUGGLE_AGENT_ROLE", "planner")
     monkeypatch.delenv("JUGGLE_AGENT_AUDIT", raising=False)
     h._log_agent_tool_use({"tool_name": "Read", "tool_input": {"file_path": "/a/b"}})
@@ -105,8 +107,9 @@ def test_log_agent_tool_use_writes_normal(tmp_path, monkeypatch):
 
 def test_log_agent_tool_use_tags_audit(tmp_path, monkeypatch):
     import juggle_hooks as h
+    import juggle_hooks_config as cfg
 
-    monkeypatch.setattr(h, "DB_PATH", tmp_path / "h2.db")
+    monkeypatch.setattr(cfg, "DB_PATH", tmp_path / "h2.db")
     monkeypatch.setenv("JUGGLE_AGENT_ROLE", "coder")
     monkeypatch.setenv("JUGGLE_AGENT_AUDIT", "1")
     h._log_agent_tool_use({"tool_name": "Edit", "tool_input": {}})
@@ -115,8 +118,9 @@ def test_log_agent_tool_use_tags_audit(tmp_path, monkeypatch):
 
 def test_log_agent_tool_use_never_raises(tmp_path, monkeypatch):
     import juggle_hooks as h
+    import juggle_hooks_config as cfg
 
-    monkeypatch.setattr(h, "DB_PATH", tmp_path / "x.db")
+    monkeypatch.setattr(cfg, "DB_PATH", tmp_path / "x.db")
     monkeypatch.setenv("JUGGLE_AGENT_ROLE", "coder")
 
     def boom(*a, **k):
@@ -129,8 +133,9 @@ def test_log_agent_tool_use_never_raises(tmp_path, monkeypatch):
 
 def test_log_agent_tool_use_skips_when_no_tool_name(tmp_path, monkeypatch):
     import juggle_hooks as h
+    import juggle_hooks_config as cfg
 
-    monkeypatch.setattr(h, "DB_PATH", tmp_path / "none.db")
+    monkeypatch.setattr(cfg, "DB_PATH", tmp_path / "none.db")
     h._log_agent_tool_use({})  # no-op, no row
     assert JuggleDB(str(tmp_path / "none.db")).get_agent_tool_usage() == []
 

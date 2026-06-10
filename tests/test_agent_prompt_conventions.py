@@ -18,8 +18,14 @@ def test_no_warning_prefix_in_prompt_text():
 
 
 def test_prompt_templates_mention_three_commands():
-    # At least one prompt-carrying module should mention all three commands.
-    combined = "".join(p.read_text() for p in SRC.glob("*prompt*.py"))
+    # Agent dispatch prompts live in juggle_cmd_agents.py (the canonical location).
+    # juggle_hooks_prompt.py is a hooks handler module — it doesn't contain dispatch
+    # templates, so exclude hooks sub-modules from this check.
+    prompt_files = [
+        p for p in SRC.glob("*prompt*.py")
+        if "hooks" not in p.name  # hooks_prompt is not an agent dispatch template
+    ]
+    combined = "".join(p.read_text() for p in prompt_files)
     if not combined:
         # Fallback: cmd_agents contains dispatch prompts
         combined = (SRC / "juggle_cmd_agents.py").read_text()

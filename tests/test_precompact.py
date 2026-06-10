@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from juggle_db import JuggleDB
 import juggle_hooks
+import juggle_hooks_config
 
 
 @pytest.fixture
@@ -19,6 +20,11 @@ def tmp_db(tmp_path, monkeypatch):
     db_path = tmp_path / "juggle.db"
     db = JuggleDB(str(db_path))
     db.init_db()
+    # Patch juggle_hooks_config — that's where the sub-modules read these at call time.
+    monkeypatch.setattr(juggle_hooks_config, "DB_PATH", db_path)
+    monkeypatch.setattr(juggle_hooks_config, "_CHECKPOINT_PATH", tmp_path / "checkpoint.json")
+    monkeypatch.setattr(juggle_hooks_config, "get_db", lambda db_path=None, init=False: db)
+    # Also keep juggle_hooks attributes in sync for any test that reads them directly.
     monkeypatch.setattr(juggle_hooks, "DB_PATH", db_path)
     monkeypatch.setattr(juggle_hooks, "_CHECKPOINT_PATH", tmp_path / "checkpoint.json")
     monkeypatch.setattr(juggle_hooks, "get_db", lambda db_path=None, init=False: db)
@@ -140,7 +146,7 @@ class TestStaleReaper:
 
         # Simulate what handle_session_start does for the reaper block
         import importlib
-        with patch.object(juggle_hooks, "_CHECKPOINT_PATH", cp_path):
+        with patch.object(juggle_hooks_config, "_CHECKPOINT_PATH", cp_path):
             if cp_path.exists():
                 try:
                     cp = json.loads(cp_path.read_text())
@@ -158,7 +164,7 @@ class TestHandlePreCompact:
         _seed_state(db)
         monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
 
-        with patch.object(juggle_hooks, "is_active", return_value=True):
+        with patch.object(juggle_hooks_config, "is_active", return_value=True):
             with pytest.raises(SystemExit) as exc:
                 juggle_hooks.handle_pre_compact({})
 

@@ -28,8 +28,8 @@ def test_askuser_creates_action_item(tmp_path, monkeypatch):
     data = _make_pre_data("tuid-abc", ["Option A?", "Option B?"])
 
     with (
-        patch("juggle_hooks.is_active", return_value=True),
-        patch("juggle_hooks.get_db", return_value=db),
+        patch("juggle_hooks_config.is_active", return_value=True),
+        patch("juggle_hooks_config.get_db", return_value=db),
     ):
         from juggle_hooks import handle_pre_tool_use
 
@@ -72,8 +72,8 @@ def test_askuser_dismisses_action_item_on_answer(tmp_path, monkeypatch):
     }
 
     with (
-        patch("juggle_hooks.is_active", return_value=True),
-        patch("juggle_hooks.get_db", return_value=db),
+        patch("juggle_hooks_config.is_active", return_value=True),
+        patch("juggle_hooks_config.get_db", return_value=db),
     ):
         from juggle_hooks import handle_post_tool_use
 

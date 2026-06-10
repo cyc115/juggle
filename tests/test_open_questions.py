@@ -19,6 +19,7 @@ if SRC_DIR not in sys.path:
 
 from juggle_db import JuggleDB
 import juggle_hooks
+import juggle_hooks_config
 
 
 def _open_questions(thread) -> list:
@@ -35,8 +36,8 @@ def hooked_db(tmp_path, monkeypatch):
     """
     db = JuggleDB(str(tmp_path / "juggle.db"))
     db.init_db()
-    monkeypatch.setattr(juggle_hooks, "is_active", lambda: True)
-    monkeypatch.setattr(juggle_hooks, "get_db", lambda: db)
+    monkeypatch.setattr(juggle_hooks_config, "is_active", lambda: True)
+    monkeypatch.setattr(juggle_hooks_config, "get_db", lambda: db)
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     return db
 
