@@ -1,131 +1,21 @@
 #!/usr/bin/env python3
 """Juggle — integrate command: rebase-aware atomic worktree finalization."""
 
-import os
-import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 from juggle_settings import get_repo_config
+from juggle_integrate_lock import (  # noqa: F401 — re-exported for callers
+    acquire_repo_lock,
+    release_repo_lock,
+)
 
 
-# ── Lock helpers ──────────────────────────────────────────────────────────────
+# ── Self-repo daemon restart (juggle_integrate_selfrepo; name kept here so
+# tests patching juggle_cmd_integrate._restart_juggle_daemons keep working) ──
 
-def _get_lock_path(repo_path: str) -> Path:
-    from juggle_settings import get_settings
-    config_dir = Path(get_settings()["paths"]["config_dir"]).expanduser()
-    locks_dir = config_dir / "locks"
-    locks_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = Path(repo_path).name.replace(" ", "_")
-    return locks_dir / f"{safe_name}.lock"
-
-
-def _read_lock(lock_path: Path) -> tuple[int, float]:
-    """Return (pid, timestamp) from lock file; (0, 0.0) on any parse error."""
-    try:
-        parts = lock_path.read_text().strip().splitlines()
-        return int(parts[0]), float(parts[1])
-    except (OSError, ValueError, IndexError):
-        return 0, 0.0
-
-
-def _pid_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True  # EPERM: process exists, we just can't signal it
-
-
-def acquire_repo_lock(repo_path: str, timeout_secs: float = 300.0) -> Path:
-    """Acquire a per-repo file lock. Returns the lock path.
-
-    Steals locks with a dead PID or age > timeout_secs.
-    Raises RuntimeError if a live lock cannot be acquired within timeout_secs.
-    Uses atomic rename to avoid races between concurrent integrations.
-    """
-    lock_path = _get_lock_path(repo_path)
-    deadline = time.monotonic() + timeout_secs
-
-    while True:
-        if lock_path.exists():
-            existing_pid, lock_ts = _read_lock(lock_path)
-            lock_age = time.time() - lock_ts
-            if not _pid_alive(existing_pid):
-                lock_path.unlink(missing_ok=True)  # dead PID — steal
-            elif time.monotonic() >= deadline:
-                raise RuntimeError(
-                    f"Cannot acquire lock for {repo_path}: "
-                    f"held by PID {existing_pid} for {lock_age:.0f}s"
-                )
-            elif lock_age > timeout_secs:
-                lock_path.unlink(missing_ok=True)  # aged-out alive lock — steal
-            else:
-                time.sleep(0.05)
-                continue
-
-        # Atomic write: write temp then rename
-        tmp = lock_path.with_suffix(".lock.tmp")
-        tmp.write_text(f"{os.getpid()}\n{time.time()}\n")
-        try:
-            tmp.rename(lock_path)
-        except OSError:
-            tmp.unlink(missing_ok=True)
-            continue  # Race lost — retry
-
-        # Verify we won (another writer could have clobbered via rename race)
-        pid, _ = _read_lock(lock_path)
-        if pid == os.getpid():
-            return lock_path
-
-
-def release_repo_lock(lock_path: Path) -> None:
-    """Remove the lock only if owned by the current process."""
-    if not lock_path or not lock_path.exists():
-        return
-    pid, _ = _read_lock(lock_path)
-    if pid == os.getpid():
-        lock_path.unlink(missing_ok=True)
-
-
-# ── Self-repo daemon restart ───────────────────────────────────────────────────
-
-def _restart_juggle_daemons() -> None:
-    """Restart watchdog + talkback after a ff-merge of juggle's own repo.
-
-    Also kills the stale monitor process (VZ singleton fix) — next /juggle:start
-    re-spawns it via Claude Code's Monitor tool.
-    """
-    try:
-        from juggle_cmd_threads import _start_watchdog, _maybe_start_talkback
-        _start_watchdog()
-        _maybe_start_talkback()
-    except Exception as e:
-        print(
-            f"[juggle] WARNING: watchdog restart after self-integrate failed: {e}",
-            file=sys.stderr,
-        )
-    # Kill stale monitor (VZ singleton hygiene) — next /juggle:start re-spawns it
-    try:
-        monitor_pidfile = Path.home() / ".juggle" / "monitor.pid"
-        if monitor_pidfile.exists():
-            parts = monitor_pidfile.read_text().strip().splitlines()
-            if parts:
-                old_pid = int(parts[0])
-                if old_pid != os.getpid():
-                    try:
-                        os.kill(old_pid, 0)  # alive check
-                        os.kill(old_pid, signal.SIGTERM)
-                    except (ProcessLookupError, PermissionError):
-                        pass
-    except Exception:
-        pass
+from juggle_integrate_selfrepo import _restart_juggle_daemons  # noqa: E402,F401
 
 
 # ── Core integration pipeline ─────────────────────────────────────────────────

@@ -54,7 +54,6 @@ GRANDFATHERED: dict[str, int] = {
     "src/schedules/dogfood.py": 406,
     "src/juggle_cmd_research.py": 392,
     "src/juggle_cmd_context.py": 370,
-    "src/juggle_cmd_integrate.py": 364,
     # src/schedules/common.py (ex juggle_schedule_common) removed 2026-06-10: shrank to 297 (Phase 1.2)
     "scripts/talkback": 415,
 }

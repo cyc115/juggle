@@ -117,7 +117,7 @@ def test_get_repo_config_partial_override_falls_back():
 
 def test_acquire_lock_creates_pidfile_owned_by_current_process(tmp_path):
     from juggle_cmd_integrate import acquire_repo_lock, release_repo_lock
-    with patch("juggle_cmd_integrate._get_lock_path", return_value=tmp_path / "t.lock"):
+    with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
         lp = acquire_repo_lock("/repo", timeout_secs=5)
     assert lp.exists()
     pid = int(lp.read_text().strip().splitlines()[0])
@@ -130,7 +130,7 @@ def test_acquire_lock_steals_dead_pid(tmp_path):
     from juggle_cmd_integrate import acquire_repo_lock, release_repo_lock
     lock_file = tmp_path / "dead.lock"
     lock_file.write_text("99999999\n0.0\n")  # nonexistent PID, epoch timestamp
-    with patch("juggle_cmd_integrate._get_lock_path", return_value=lock_file):
+    with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
         lp = acquire_repo_lock("/repo", timeout_secs=5)
     pid = int(lp.read_text().strip().splitlines()[0])
     assert pid == os.getpid()
@@ -142,7 +142,7 @@ def test_acquire_lock_times_out_on_alive_pid(tmp_path):
     lock_file = tmp_path / "alive.lock"
     # PID 1 (init/launchd) is always alive; recent timestamp so not aged-out
     lock_file.write_text(f"1\n{time.time()}\n")
-    with patch("juggle_cmd_integrate._get_lock_path", return_value=lock_file):
+    with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
         with pytest.raises(RuntimeError, match="Cannot acquire lock"):
             acquire_repo_lock("/repo", timeout_secs=0.3)
 
@@ -152,7 +152,7 @@ def test_acquire_lock_steals_aged_out_alive_pid(tmp_path):
     lock_file = tmp_path / "old.lock"
     # PID 1 alive but timestamp is 400s ago — older than 300s default
     lock_file.write_text(f"1\n{time.time() - 400}\n")
-    with patch("juggle_cmd_integrate._get_lock_path", return_value=lock_file):
+    with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
         lp = acquire_repo_lock("/repo", timeout_secs=300)
     assert lp.exists()
     release_repo_lock(lp)
@@ -180,7 +180,7 @@ def test_integrate_happy_path_none_mode(git_repo, tmp_path):
     db = _make_db()
 
     with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "none", "test_cmd": ""}):
-        with patch("juggle_cmd_integrate._get_lock_path", return_value=tmp_path / "t.lock"):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
             with patch("juggle_cmd_integrate._restart_juggle_daemons"):
                 ok, msg = _run_integrate(thread, db)
 
@@ -207,7 +207,7 @@ def test_integrate_happy_path_direct_mode(git_repo_with_remote, tmp_path):
     db = _make_db()
 
     with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "direct", "test_cmd": ""}):
-        with patch("juggle_cmd_integrate._get_lock_path", return_value=tmp_path / "t.lock"):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
             with patch("juggle_cmd_integrate._restart_juggle_daemons"):
                 ok, msg = _run_integrate(thread, db)
 
@@ -237,7 +237,7 @@ def test_integrate_happy_path_pr_mode(git_repo_with_remote, tmp_path):
     db = _make_db()
 
     with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "pr", "test_cmd": ""}):
-        with patch("juggle_cmd_integrate._get_lock_path", return_value=tmp_path / "t.lock"):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
             with patch("juggle_cmd_integrate._restart_juggle_daemons"):
                 ok, msg = _run_integrate(thread, db)
 
@@ -269,7 +269,7 @@ def test_integrate_rebase_conflict_aborts_files_action_item(git_repo, tmp_path):
     db = _make_db()
 
     with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "none", "test_cmd": ""}):
-        with patch("juggle_cmd_integrate._get_lock_path", return_value=tmp_path / "t.lock"):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
             ok, msg = _run_integrate(thread, db)
 
     assert not ok
@@ -296,7 +296,7 @@ def test_integrate_red_tests_prevents_merge(git_repo, tmp_path):
     db = _make_db()
 
     with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "direct", "test_cmd": "exit 1"}):
-        with patch("juggle_cmd_integrate._get_lock_path", return_value=tmp_path / "t.lock"):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
             ok, msg = _run_integrate(thread, db)
 
     assert not ok
@@ -316,7 +316,7 @@ def test_integrate_already_merged_skips_straight_to_cleanup(git_repo, tmp_path):
     db = _make_db()
 
     with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "none", "test_cmd": ""}):
-        with patch("juggle_cmd_integrate._get_lock_path", return_value=tmp_path / "t.lock"):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
             with patch("juggle_cmd_integrate._restart_juggle_daemons"):
                 ok, msg = _run_integrate(thread, db)
 
@@ -335,7 +335,7 @@ def test_integrate_idempotent_missing_worktree_returns_error(git_repo, tmp_path)
                "main_repo_path": git_repo}
     db = _make_db()
 
-    with patch("juggle_cmd_integrate._get_lock_path", return_value=tmp_path / "t.lock"):
+    with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
         ok, msg = _run_integrate(thread, db)
 
     assert not ok
@@ -433,7 +433,7 @@ def test_cmd_integrate_invokes_run_integrate_on_success(git_repo, tmp_path):
         with patch("juggle_cmd_integrate._resolve_thread", return_value="thread-uuid-1"):
             with patch("juggle_cmd_integrate.get_repo_config",
                        return_value={"push_mode": "none", "test_cmd": ""}):
-                with patch("juggle_cmd_integrate._get_lock_path",
+                with patch("juggle_integrate_lock._get_lock_path",
                            return_value=tmp_path / "t.lock"):
                     with patch("juggle_cmd_integrate._restart_juggle_daemons"):
                         cmd_integrate(args)  # should not raise SystemExit
@@ -456,7 +456,7 @@ def test_cmd_integrate_exits_nonzero_on_failure(tmp_path):
 
     with patch("juggle_cmd_integrate.get_db", return_value=db):
         with patch("juggle_cmd_integrate._resolve_thread", return_value="thread-uuid-1"):
-            with patch("juggle_cmd_integrate._get_lock_path",
+            with patch("juggle_integrate_lock._get_lock_path",
                        return_value=tmp_path / "t.lock"):
                 with pytest.raises(SystemExit) as exc:
                     cmd_integrate(args)
