@@ -7,7 +7,7 @@
 
 **Parallel conversation threads for Claude Code.**
 
-[![Version](https://img.shields.io/badge/version-1.28.2-2563eb.svg)](.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.58.1-2563eb.svg)](.claude-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/python-3.12+-f59e0b.svg)](https://www.python.org/)
 [![tmux](https://img.shields.io/badge/tmux-3.0+-22c55e.svg)](https://github.com/tmux/tmux)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-94a3b8.svg)](#prerequisites)
@@ -61,6 +61,81 @@ After `/juggle:start`, talk normally. Juggle detects topic shifts and opens new 
 - **Action Items** — persistent follow-ups created by agents or manually. Survive sessions until dismissed from the cockpit.
 - **Hindsight memory** — opt-in long-term memory across sessions. Enable via `hindsight.enabled` in `~/.juggle/config.json`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Project Autopilot
+
+Arm a project and Juggle delivers it end-to-end. The objective is decomposed into a **task graph** persisted in the DB — `graph_nodes` (the plan store) and `graph_edges` (dependencies between nodes) — and the watchdog tick drives every node to a verified state without you dispatching anything by hand.
+
+```bash
+/juggle:toggle-autopilot <project> [--auto-approve]   # arm a project for task-graph autopilot
+/juggle:toggle-autopilot off                          # disarm
+/juggle:toggle-autopilot                              # no arg → toggle global autonomous mode
+```
+
+**The flow** when you arm a project:
+
+1. **Decompose** — the orchestrator breaks the objective into a task-graph spec written to `<data_dir>/graphs/<project>-graph.md`. One `## <node-id>: <Title>` section per node, with optional `deps:` and `verify_cmd:` lines and the dispatch prompt as the body.
+2. **One approval gate** — the spec (nodes, deps, verify_cmds) is surfaced in chat; you reply to approve. `--auto-approve` skips this gate.
+3. **Load** — `juggle project-graph load <file> --project <id>` validates the graph (cycle check, unknown/duplicate node ids, empty prompts, verify_cmd lint).
+4. **Tick-driven execution** — the watchdog is the sole dispatcher. Each ~30s tick it atomically claims every `ready` node (deps all verified), lazily creates a thread, dispatches a coder agent with a prompt hydrated from upstream nodes' structured handoffs + integrated diffstat, then on completion runs the node's `verify_cmd` **inside the worktree, pre-merge** — nothing merges to main unverified. Verified nodes unblock dependents; a failed node blocks its transitive dependents (`blocked-failed`) and files a HIGH action item.
+
+Node state machine: `pending → ready → dispatching → running → integrating → verified`, with failure exits `failed-exec | failed-integration | failed-verify`, plus `blocked-failed` for downstream nodes. Nodes are **tick-owned** — the orchestrator never dispatches them manually, it only monitors and reports.
+
+### Example: "Add OAuth login to a web app"
+
+Decomposes into four nodes with a diamond shape — a schema migration fans out to the backend route and the frontend button, which join at an end-to-end test:
+
+```
+        migrate
+        /      \
+    backend   frontend
+        \      /
+         e2e
+```
+
+Arm it:
+
+```bash
+/juggle:toggle-autopilot oauth-login
+```
+
+Excerpt from the generated spec (`<data_dir>/graphs/oauth-login-graph.md`):
+
+```markdown
+## migrate: Add oauth_accounts table
+verify_cmd: uv run pytest tests/test_migrations.py -q
+Create the oauth_accounts migration linking provider+subject to a user id.
+
+## backend: OAuth callback route
+deps: migrate
+verify_cmd: uv run pytest tests/test_oauth_routes.py -q
+Add /auth/oauth/callback exchanging the code for a token and upserting oauth_accounts.
+
+## e2e: End-to-end login flow
+deps: backend, frontend
+verify_cmd: uv run pytest tests/test_e2e_oauth.py -q
+Drive the full login round-trip against a stub provider and assert a session cookie.
+```
+
+Approve when prompted, then load:
+
+```bash
+juggle project-graph load <data_dir>/graphs/oauth-login-graph.md --project oauth-login
+```
+
+While it runs, monitor with `juggle autopilot status` (`--json` for machine-readable):
+
+```
+project oauth-login   2/4 done · 1 running · 1 ready
+  ✓ migrate     verified
+  ⟳ backend     running     (thread BJ)
+  ● frontend    ready
+  ○ e2e         pending     deps: backend, frontend
+```
+
+The cockpit shows an aggregate project row with per-node glyphs sourced from node state, e.g. `oauth-login  2/4 done, 0 failed, 1 ready`.
+
+**Failure & resume:** a `failed-verify` node blocks its dependents; fix that node's section in the spec and re-load — `project-graph load` is a guarded upsert that refuses to touch nodes already dispatching/running/integrating/verified and only updates pending/ready/failed nodes. Blocked nodes resume automatically once their failed ancestor reloads.
+
 ## Slash commands
 
 | Command | Description |
@@ -69,6 +144,7 @@ After `/juggle:start`, talk normally. Juggle detects topic shifts and opens new 
 | `/juggle:delegate` | Wizard: pick role, write prompt, dispatch agent |
 | `/juggle:resume-topic <id>` | Switch to a topic, restoring full context |
 | `/juggle:remember <text>` | Explicitly save something to Hindsight memory |
+| `/juggle:toggle-autopilot [project]` | Autonomous mode; with a project arg, executes its task graph end-to-end |
 | `/juggle:toggle-talkback` | Toggle TTS voice notifications (macOS) |
 
 Full catalog: [`commands/`](commands/)
