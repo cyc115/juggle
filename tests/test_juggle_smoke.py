@@ -47,18 +47,25 @@ def _make_db(tmp_path: Path, n_threads: int = 30) -> str:
     Temporarily raise the module-level cap while seeding.
     """
     import juggle_db
+    import juggle_db_schema
+    import juggle_db_threads
     from juggle_db import JuggleDB
 
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db.init_db()
     db.set_active(True)
     old_max = juggle_db.MAX_THREADS
-    juggle_db.MAX_THREADS = max(old_max, n_threads)
+    new_max = max(old_max, n_threads)
+    juggle_db.MAX_THREADS = new_max
+    juggle_db_schema.MAX_THREADS = new_max
+    juggle_db_threads.MAX_THREADS = new_max
     try:
         for i in range(n_threads):
             db.create_thread(f"smoke-topic-{i:02d}", session_id="s0")
     finally:
         juggle_db.MAX_THREADS = old_max
+        juggle_db_schema.MAX_THREADS = old_max
+        juggle_db_threads.MAX_THREADS = old_max
     return str(tmp_path / "juggle.db")
 
 
