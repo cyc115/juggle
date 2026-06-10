@@ -35,6 +35,9 @@ def save_screenshot(path: str, db_path: str | None, *, graph_mode: bool = False)
     finally:
         conn.close()
 
+    from juggle_cockpit_title import _get_version
+    svg_title = f"Juggle Cockpit \u00b7 v{_get_version()}"
+
     con = Console(record=True, force_terminal=True, width=220, color_system="truecolor")
     con.print(render_topics(
         state.topics, "wide", state.projects_by_id,
@@ -56,11 +59,11 @@ def save_screenshot(path: str, db_path: str | None, *, graph_mode: bool = False)
 
     ext = path.rsplit(".", 1)[-1].lower() if "." in path else "png"
     if ext == "svg":
-        con.save_svg(path, title="Juggle Cockpit")
+        con.save_svg(path, title=svg_title)
         return path
 
     svg_path = path.rsplit(".", 1)[0] + ".svg"
-    con.save_svg(svg_path, title="Juggle Cockpit")
+    con.save_svg(svg_path, title=svg_title)
     try:
         result = subprocess.run(
             ["uv", "run", "--with", "cairosvg", "python3", "-c",

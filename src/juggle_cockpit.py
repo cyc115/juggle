@@ -57,6 +57,7 @@ from juggle_cockpit_modals import (
 )
 from juggle_cockpit_widgets import HSplitter, Splitter
 from juggle_cockpit_graph_mode import GraphModeMixin
+from juggle_cockpit_title import _cockpit_subtitle, _get_version
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +233,7 @@ class CockpitApp(GraphModeMixin, App):
 
     def on_mount(self) -> None:
         self.title = "Juggle"
-        self.sub_title = "Cockpit v2"
+        self.sub_title = _cockpit_subtitle(_get_version(), width=self.size.width)
 
         if not self._db.is_active():
             self.notify("Juggle inactive. Run /juggle:start first.", severity="error")
