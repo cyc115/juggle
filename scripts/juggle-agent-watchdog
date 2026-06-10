@@ -17,6 +17,7 @@ from pathlib import Path
 SRC_DIR = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(SRC_DIR))
 
+import daemon_pidfile
 from juggle_db import JuggleDB, DB_PATH
 from juggle_settings import get_settings
 from juggle_tmux import JuggleTmuxManager
@@ -45,28 +46,12 @@ SINGLETON_PID_FILE = Path.home() / ".juggle" / "watchdog.pid"
 
 
 def _write_singleton_pid():
-    SINGLETON_PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic write via rename so concurrent readers never see a partial file
-    tmp = SINGLETON_PID_FILE.with_suffix(".pid.tmp")
-    tmp.write_text(str(os.getpid()))
-    tmp.replace(SINGLETON_PID_FILE)
-    # Re-read and verify we own the file (guard against race with another start)
-    try:
-        claimed = int(SINGLETON_PID_FILE.read_text().strip())
-        if claimed != os.getpid():
-            logging.warning("watchdog: pidfile claimed by PID %d after write — exiting", claimed)
-            sys.exit(1)
-    except (ValueError, OSError):
-        pass
+    # Atomic write + race verification (exits 1 if another start claimed the file)
+    daemon_pidfile.write_singleton_pid(SINGLETON_PID_FILE, verify=True, name="watchdog")
 
 
 def _cleanup_singleton_pid():
-    try:
-        if SINGLETON_PID_FILE.exists():
-            if int(SINGLETON_PID_FILE.read_text().strip()) == os.getpid():
-                SINGLETON_PID_FILE.unlink()
-    except Exception:
-        pass
+    daemon_pidfile.cleanup_singleton_pid(SINGLETON_PID_FILE)
 
 logging.basicConfig(
     level=logging.INFO,

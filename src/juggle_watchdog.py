@@ -1038,57 +1038,26 @@ def check_orphaned_threads(
 
 def _is_watchdog_process(pid: int) -> bool:
     """Return True if the process with given PID is a juggle watchdog."""
-    try:
-        result = subprocess.run(
-            ["ps", "-p", str(pid), "-o", "command="],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return "watchdog" in result.stdout.lower()
-    except Exception:
-        return False
+    import daemon_pidfile
+
+    return daemon_pidfile.is_process(pid, "watchdog", case_insensitive=True)
 
 
 def _kill_existing_watchdog_from_pidfile(pidfile_path: Path) -> None:
     """Kill the watchdog recorded in pidfile_path — only if it really is a watchdog.
 
-    Verifies cmdline before sending SIGTERM so stale PID files pointing at
-    unrelated processes are never acted upon.
+    Thin shim over daemon_pidfile.kill_existing_from_pidfile (single source of
+    truth). The predicate is looked up via module globals at call time so tests
+    monkeypatching juggle_watchdog._is_watchdog_process keep working.
     """
-    import signal as _signal
+    import daemon_pidfile
 
-    if not pidfile_path.exists():
-        return
-    try:
-        old_pid = int(pidfile_path.read_text().strip())
-    except (ValueError, OSError):
-        return
-    if old_pid == os.getpid():
-        return
-    try:
-        os.kill(old_pid, 0)  # existence probe
-    except (ProcessLookupError, PermissionError):
-        return  # stale pidfile — process gone
-    if not _is_watchdog_process(old_pid):
-        _log.warning(
-            "watchdog: PID %d in %s is not a watchdog — skipping kill",
-            old_pid, pidfile_path,
-        )
-        return
-    try:
-        os.kill(old_pid, _signal.SIGTERM)
-        for _ in range(20):
-            _time.sleep(0.1)
-            try:
-                os.kill(old_pid, 0)
-            except ProcessLookupError:
-                break
-        else:
-            os.kill(old_pid, _signal.SIGKILL)
-        _log.info("watchdog: killed previous instance (PID %d)", old_pid)
-    except (ProcessLookupError, PermissionError):
-        pass
+    daemon_pidfile.kill_existing_from_pidfile(
+        pidfile_path,
+        lambda pid: _is_watchdog_process(pid),
+        log=_log,
+        name="watchdog",
+    )
 
 
 # ---------------------------------------------------------------------------
