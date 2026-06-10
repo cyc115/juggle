@@ -6,7 +6,7 @@ branch cyc_refactor-tokens after the hermetic test fix bd4b099).
 
 ## Before / After
 
-| Metric | Before (2026-06-10) | After (Phase 2 complete) |
+| Metric | Before (2026-06-10) | After (Phase 2; see Phase 3 section for current) |
 |---|---|---|
 | Total Python LOC (git-tracked `*.py`) | 43,664 across 143 files | ~46,200 across 157 files (+14 new split modules) |
 | `src/` modules >300 lines | 22 | 17 (juggle_db.py removed; migrations+new modules added) |
@@ -97,6 +97,88 @@ juggle_db.py (1962 lines) no longer appears — split into 9 modules (largest: j
   - 2.6 (deferred): `juggle_cli.py` main() is 628 lines of pure argparse wiring;
     the non-main functions (329 lines) could move to `juggle_cmd_misc.py`, but that
     still leaves juggle_cli.py at ~700 lines due to argparse volume. Grandfathered.
+
+## Phase 3 (2026-06-10, second session)
+
+Commits (all green: 1382 passed, 18 skipped, 9 warnings at every commit;
+`doctor --dry-run` vs tmp DB + loc_gate after each):
+
+- **Crash recovery / salvage** (2fc0456): predecessor session crashed mid-Phase-3.
+  Salvaged its WIP: uncommitted test edits for the hooks split (tests now patch
+  `juggle_hooks_config.DB_PATH`/`AUTOPILOT_FLAG` alongside `juggle_hooks.*`) —
+  committed as the completion of 6831f1d. Untracked WIP modules
+  `juggle_cmd_agents_common.py`/`_lifecycle.py` verified faithful and reused.
+- **A2 — cmd_agents split done** (0437d95): `juggle_cmd_agents.py` 1098→203.
+  Six modules: `_common` (141, shared symbols + pure classifiers — the SINGLE
+  test patch surface; sub-modules read `_com.<symbol>` at call time),
+  `_worktree` (93), `_pool` (104), `_lifecycle` (226), `_complete` (264),
+  `_tasks` (218). Facade keeps action-item + watchdog-ctl commands and
+  re-exports everything. The Phase 2.4 blocker (test patch targets) resolved by
+  re-pointing `patch("juggle_cmd_agents.<sym>")` → `juggle_cmd_agents_common`
+  across 10 test files; the `_com` indirection means future moves between
+  sub-modules can never break patches again. Reaper AST pin re-targeted to the
+  lifecycle module (same assertion, new seam). Allowlist 23→22.
+- **A3 — juggle_cli split done** (281a708): `juggle_cli.py` 1006→192 (pinned
+  path + PEP-723 header intact). Parser registration extracted to
+  `juggle_cli_parsers_{threads,agents,misc}.py` (123/275/290); cockpit,
+  agent-tools, and selfheal handlers moved to `juggle_cmd_misc.py` (201).
+  Vault + open-in-editor helpers stay in juggle_cli.py — tests patch
+  `juggle_cli.get_settings`/`NVIM_SOCKET`/`subprocess` there. No grandfather
+  needed (the "still >300 after extraction" prediction didn't materialize).
+  Allowlist 22→21.
+- **B — schedules/ subpackage** (abd9c33): `juggle_schedule_*` →
+  `src/schedules/{common,autofix,dogfood,reflect}.py` + `__init__.py`.
+  Deprecated shims kept at old flat paths. Path-depth fixes (`JUGGLE_REPO`,
+  `SRC_DIR` bootstrap now `.parent.parent`). CLI dispatch via
+  `__import__("schedules.<name>", fromlist=["run"])`. 5 test files re-targeted.
+- **B — dbops/ subpackage** (bbb2143): 9 `juggle_db_*` modules →
+  `src/dbops/{schema,migrations,session,threads,projects,messages,
+  notifications,selfheal,agents}.py` (git rename-detected, 97-99%).
+  `src/juggle_db.py` remains the public composition root — zero caller churn
+  (`from juggle_db import X` everywhere). Only test_juggle_smoke's MAX_THREADS
+  fixture re-targeted. No shims needed (submodule names were 1 day old).
+
+### Phase 3 deferrals (with root causes)
+
+- **cockpit/ subpackage — BLOCKED**: `src/juggle_cockpit_modals.py`,
+  `src/juggle_cockpit_view.py`, `tests/test_cockpit_keys.py` carry the user's
+  unrelated uncommitted edits; `git mv`/rewiring would entangle or clobber
+  them. Do this domain when that work has landed. Planned:
+  `cockpit/{app,view,model,modals,helpers,widgets,layout,profile}.py`.
+- **cmds/ subpackage — deferred (churn ≫ value)**: 147 live test patch sites
+  (`juggle_cmd_agents_common.` 44, `juggle_cmd_projects.` 35,
+  `juggle_cmd_integrate.` 29, `juggle_cmd_threads.` 21, `juggle_cmd_context.`
+  17, `juggle_cmd_research.` 1) across 23+ test files would all need string
+  renames — re-churning the patch surfaces updated TODAY in A2/A3, with typo
+  regression risk and zero structural gain: the `juggle_cmd_*`/
+  `juggle_cli_parsers_*` prefix already groups the domain lexically.
+- **watchdog/ subpackage — deferred (would be half-grouped + behavior edit)**:
+  the 964-line hub `juggle_watchdog.py` is path-pinned (mtime-watched by
+  `scripts/juggle-agent-watchdog`), so only the 3 satellites
+  (`_restart`/`_inspect`/`_health`) could move — leaving the hub outside its
+  own package, the exact half-finished-decomposition anti-pattern. Also
+  requires the `_collect_mtimes` flat-`glob("*.py")` → recursive change
+  (hot-restart staleness would otherwise silently stop watching moved files) —
+  a behavior change needing its own pin. Do it when the hub is shimmed.
+- `_collect_mtimes` recursive scan: not needed yet — neither `schedules/` nor
+  `dbops/` contains watchdog-daemon code (the daemon imports `juggle_db.py`
+  shim, `juggle_watchdog*.py`, `juggle_tmux.py`, all still flat in src/ and
+  still watched). MUST be revisited before moving watchdog/ or tmux.
+
+### Top src LOC (after Phase 3)
+
+```
+964 src/juggle_watchdog.py     839 src/juggle_tmux.py
+835 src/juggle_cockpit.py      823 src/schedules/autofix.py
+735 src/juggle_cmd_projects.py 673 src/juggle_cmd_threads.py
+598 src/juggle_context.py      545 src/schedules/reflect.py
+532 src/dbops/migrations.py    499 src/juggle_cockpit_view.py
+```
+
+juggle_cmd_agents.py (1098) and juggle_cli.py (1006) no longer appear.
+loc_gate: 23 → 21 grandfathered entries this session (removed
+juggle_cmd_agents.py and juggle_cli.py; schedule/db entries renamed to their
+new package paths). 85 files checked, 0 offenders, 0 stale.
 
 ## loc_gate allowlist after Phase 2
 
