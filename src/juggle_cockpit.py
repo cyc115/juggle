@@ -48,8 +48,15 @@ from juggle_cockpit_helpers import (
     _tmux_capture_pane,
     _tmux_focus_pane,
 )
-from juggle_cockpit_modals import _ConfirmModal, _HelpModal, _PromptModal, _TailModal
+from juggle_cockpit_modals import (
+    _ConfirmModal,
+    _GraphNodeModal,
+    _HelpModal,
+    _PromptModal,
+    _TailModal,
+)
 from juggle_cockpit_widgets import HSplitter, Splitter
+from juggle_cockpit_graph_mode import GraphModeMixin
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +102,7 @@ def _make_cockpit_db(db_path: str | None = None) -> JuggleDB:
 # ---------------------------------------------------------------------------
 
 
-class CockpitApp(App):
+class CockpitApp(GraphModeMixin, App):
     """Juggle Cockpit v2."""
 
     BINDINGS = [
@@ -117,6 +124,7 @@ class CockpitApp(App):
         Binding("slash",        "filter",        "Filter"),
         Binding("f",            "focus_pane",    "Focus"),
         Binding("t",            "tail_toggle",   "Tail"),
+        Binding("g",            "toggle_graph",  "Graph"),
     ]
 
     CSS = """
@@ -171,6 +179,8 @@ class CockpitApp(App):
             self._cockpit_mgr = JuggleTmuxManager()
         except Exception:
             pass
+        # Graph-mode view state (lower-right panel swaps Notifications ⇄ Graph).
+        self._graph_state_init()
 
     def exit(self, result=None, return_code: int = 0, message=None) -> None:
         """Persist column widths before handing off to Textual's exit machinery.
@@ -278,7 +288,10 @@ class CockpitApp(App):
         )
 
         try:
-            state = _snapshot(self._db)
+            state = _snapshot(self._db, load_graph_dag=self._graph_mode)
+
+            # Unread-badge accounting while graph mode hides Notifications.
+            self._graph_update_unread(state)
 
             # --- Bell / desktop notification diff (skip first tick; prev is empty) ---
             if self._prev_action_ids or self._prev_agent_statuses:
@@ -341,7 +354,8 @@ class CockpitApp(App):
                 )
             )
             self.query_one("#notifications").update(
-                render_notifications(
+                self._render_graph_panel(state) if self._graph_mode
+                else render_notifications(
                     filtered_notifs, off["notifications"], active == "notifications",
                     filter_label=self._filter.get("notifications", ""),
                 )
@@ -638,6 +652,12 @@ class CockpitApp(App):
 
     def on_key(self, event: events.Key) -> None:
         """Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape."""
+        # Graph mode captures navigation keys so they don't leak to global
+        # scroll/cycle. Only when no modal is open. (Logic in GraphModeMixin.)
+        if self._graph_mode and len(self.screen_stack) <= 1:
+            if self._graph_handle_key(event):
+                return
+
         # Tab / Shift+Tab — must intercept here with prevent_default() so Textual's
         # built-in focus-traversal doesn't consume the key before our binding fires.
         if event.key in ("tab", "shift+tab", "backtab"):
@@ -772,55 +792,14 @@ if __name__ == "__main__":
         help=argparse.SUPPRESS,  # internal: child process spawned by run_profile
     )
     parser.add_argument("--screenshot", metavar="PATH", default=None, help="Save PNG/JPG/SVG screenshot to PATH")
+    parser.add_argument("--graph", action="store_true", help="Render the lower-right panel in graph mode (screenshot)")
     args = parser.parse_args()
     if args.screenshot:
-        import os
-        from rich.console import Console as _Console
-        from juggle_cockpit_static import render_static_from_state as _render
-        from juggle_cockpit_model import snapshot as _snapshot
-        import sqlite3 as _sqlite3
-        from juggle_db import JuggleDB
-        _db = JuggleDB(db_path=args.db_path)
-        _db.init_db()
-        _conn = _sqlite3.connect(str(_db.db_path))
-        _conn.row_factory = _sqlite3.Row
-        _db._connect = lambda: _conn  # noqa: E731
-        try:
-            _state = _snapshot(_db)
-        finally:
-            _conn.close()
-        _con = _Console(record=True, force_terminal=True, width=220, color_system="truecolor")
-        from juggle_cockpit_view import (
-            render_topics as _rt, render_actions as _ra,
-            render_agents as _rag, render_notifications as _rn,
+        from juggle_cockpit_screenshot import save_screenshot
+        out = save_screenshot(
+            args.screenshot, args.db_path, graph_mode=getattr(args, "graph", False)
         )
-        _con.print(_rt(_state.topics, "wide", _state.projects_by_id, graph_by_project=getattr(_state, "graph_by_project", None)))
-        _con.print(_ra(_state.actions))
-        _con.print(_rag(_state.agents, _state.scheduled))
-        _con.print(_rn(_state.notifications))
-        path = args.screenshot
-        ext = path.rsplit(".", 1)[-1].lower() if "." in path else "png"
-        if ext == "svg":
-            _con.save_svg(path, title="Juggle Cockpit")
-            print(path)
-        else:
-            svg_path = path.rsplit(".", 1)[0] + ".svg"
-            _con.save_svg(svg_path, title="Juggle Cockpit")
-            try:
-                result = subprocess.run(
-                    ["uv", "run", "--with", "cairosvg", "python3", "-c",
-                     f"import cairosvg; cairosvg.svg2png(url='file://{os.path.abspath(svg_path)}', write_to='{path}', scale=2)"],
-                    capture_output=True, text=True, timeout=30
-                )
-                if result.returncode == 0:
-                    os.unlink(svg_path)
-                else:
-                    print(f"PNG conversion failed, SVG saved to {svg_path}", file=sys.stderr)
-                    path = svg_path
-            except Exception as e:
-                print(f"PNG conversion error: {e}, SVG at {svg_path}", file=sys.stderr)
-                path = svg_path
-            print(path)
+        print(out)
         sys.exit(0)
     if args.out:
         from juggle_cockpit_static import render_static

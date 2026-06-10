@@ -127,6 +127,65 @@ class _HelpModal(ModalScreen):
         yield Static("\n".join(lines))
 
 
+class _GraphNodeModal(ModalScreen):
+    """Read-only detail overlay for a task-graph node.
+
+    Pops when the operator presses Enter on a selected node in graph mode.
+    Shows id, title, state, deps, verify_cmd, and prompt/handoff excerpts.
+    Dismisses on 'q' or Escape. Live agent-log tailing is out of scope (v1.1).
+    """
+
+    from textual.binding import Binding
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+        Binding("q", "dismiss", "Close", show=False),
+    ]
+
+    DEFAULT_CSS = """
+    _GraphNodeModal {
+        align: center middle;
+    }
+    _GraphNodeModal > VerticalScroll {
+        width: 70%;
+        height: 70%;
+        border: round $accent;
+        padding: 1 2;
+    }
+    """
+
+    _EXCERPT = 400
+
+    def __init__(self, node: dict, deps: list[str]) -> None:
+        super().__init__()
+        self._node = node
+        self._deps = deps
+
+    def _lines(self) -> list[str]:
+        n = self._node
+        out = [
+            f"Node {n.get('id', '?')}",
+            "─" * 40,
+            f"title    {n.get('title', '')}",
+            f"state    {n.get('state', '')}",
+            f"deps     {', '.join(self._deps) if self._deps else '(none)'}",
+            f"thread   {n.get('thread_id') or '(unbound)'}",
+            f"verify   {n.get('verify_cmd') or '(none)'}",
+        ]
+        prompt = (n.get("prompt") or "").strip()
+        if prompt:
+            out += ["", "prompt:", prompt[: self._EXCERPT]]
+        handoff = (n.get("handoff") or "").strip()
+        if handoff:
+            out += ["", "handoff:", handoff[: self._EXCERPT]]
+        out += ["", "Esc / q — close"]
+        return out
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll():
+            yield Static("\n".join(self._lines()), markup=False)
+
+
 class _TailModal(ModalScreen):
     """Live tail overlay for a tmux pane.
 
