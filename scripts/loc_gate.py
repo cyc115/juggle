@@ -46,7 +46,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cmd_projects.py": 735,  # lowered from 737 (Phase 1.2 llm consolidation)
     "src/juggle_cmd_threads.py": 673,
     "src/juggle_context.py": 353,
-    "src/schedules/reflect.py": 545,
+    "src/schedules/reflect.py": 582,  # 545→582: per-section cost-cap enforcement (COST_CAP $1.00 / SECTION_CAP $0.35) merged from origin/main 80780d4 during rebase
     "src/juggle_cockpit_view.py": 460,  # lowered 499→460 (Ph4: static renders → juggle_cockpit_static; headroom for graph glyph rows)
     "src/juggle_scheduler.py": 494,
     "src/juggle_cockpit_model.py": 440,  # lowered 467→440 (Ph4: sched discovery → juggle_cockpit_sched; headroom for graph counts)
