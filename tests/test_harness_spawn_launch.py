@@ -179,9 +179,9 @@ def test_cmd_send_task_resolves_adapter_from_agent_harness(tmp_path):
     args.main_repo_path = None
     args.no_template = True
 
-    with patch("juggle_cmd_agents.get_db", return_value=db), \
-         patch("juggle_cmd_agents.JuggleTmuxManager") as mock_cls, \
-         patch("juggle_cmd_agents._get_settings", return_value={"agent": cfg}):
+    with patch("juggle_cmd_agents_common.get_db", return_value=db), \
+         patch("juggle_cmd_agents_common.JuggleTmuxManager") as mock_cls, \
+         patch("juggle_cmd_agents_common._get_settings", return_value={"agent": cfg}):
         mock_mgr = mock_cls.return_value
         mock_mgr.verify_pane.return_value = True
         mock_mgr.run_task_oneshot.return_value = ("hash", 1234)

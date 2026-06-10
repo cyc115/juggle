@@ -99,11 +99,13 @@ def test_cli_main_does_not_call_reap_stale_agents():
 
 def test_cmd_get_agent_does_not_call_reap_stale_agents():
     """cmd_get_agent must not call reap_stale_agents — watchdog owns periodic reap."""
-    source = (_SRC_DIR / "juggle_cmd_agents.py").read_text()
+    # cmd_get_agent moved to juggle_cmd_agents_lifecycle.py in the 2026-06-10
+    # cmd_agents split; same behavior pinned through the new seam.
+    source = (_SRC_DIR / "juggle_cmd_agents_lifecycle.py").read_text()
     tree = ast.parse(source)
 
     func = _find_func(tree, "cmd_get_agent")
-    assert func is not None, "cmd_get_agent() not found in juggle_cmd_agents.py"
+    assert func is not None, "cmd_get_agent() not found in juggle_cmd_agents_lifecycle.py"
 
     calls = _reap_calls_in(func)
     assert len(calls) == 0, (

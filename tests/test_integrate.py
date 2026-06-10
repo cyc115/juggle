@@ -402,7 +402,7 @@ def test_complete_agent_routes_through_run_integrate(git_repo, tmp_path):
 
     with patch("juggle_cli_common.get_db", return_value=db):
         with patch("juggle_cli_common._resolve_thread", return_value="thread-uuid-1"):
-            with patch("juggle_cmd_agents.juggle_cmd_integrate") as mock_mod:
+            with patch("juggle_cmd_agents_common.juggle_cmd_integrate") as mock_mod:
                 mock_mod._run_integrate.side_effect = fake_run_integrate
                 cmd_complete_agent(args)
 

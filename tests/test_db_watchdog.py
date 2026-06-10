@@ -246,12 +246,12 @@ def test_release_agent_copies_dispatch_payload(tmp_path):
     d.init_db()
 
     import juggle_cli_common as common
-    import juggle_cmd_agents
+    import juggle_cmd_agents_common
 
     original_get_db_common = common.get_db
-    original_get_db_agents = juggle_cmd_agents.get_db
+    original_get_db_agents = juggle_cmd_agents_common.get_db
     common.get_db = lambda: d
-    juggle_cmd_agents.get_db = lambda: d
+    juggle_cmd_agents_common.get_db = lambda: d
 
     thread_id = d.create_thread("payload test", session_id="")
     d.update_thread(thread_id, status="background")
@@ -275,7 +275,7 @@ def test_release_agent_copies_dispatch_payload(tmp_path):
     assert thread["last_dispatched_model"] == "claude-sonnet-4-6"
 
     common.get_db = original_get_db_common
-    juggle_cmd_agents.get_db = original_get_db_agents
+    juggle_cmd_agents_common.get_db = original_get_db_agents
 
 
 # --- Task 7 tests: set-watchdog CLI ---

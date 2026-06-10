@@ -123,26 +123,26 @@ def _run_send_task(args, agent, thread, create_worktree_result=None, git_repo_pa
     """Drive cmd_send_task with mocked DB and tmux/adapter."""
     import juggle_cmd_agents as _mod
 
-    with patch("juggle_cmd_agents.get_db") as mock_get_db:
+    with patch("juggle_cmd_agents_common.get_db") as mock_get_db:
         db = Mock()
         db.get_agent.return_value = agent
         db.get_thread.return_value = thread
         db.update_thread = Mock()
         db.update_agent = Mock()
         mock_get_db.return_value = db
-        with patch("juggle_cmd_agents.JuggleTmuxManager") as MockMgr:
+        with patch("juggle_cmd_agents_common.JuggleTmuxManager") as MockMgr:
             MockMgr.return_value.verify_pane.return_value = True
             MockMgr.return_value.send_task.return_value = "hash123"
-            with patch("juggle_cmd_agents.get_adapter") as mock_adapter:
+            with patch("juggle_cmd_agents_common.get_adapter") as mock_adapter:
                 mock_adapter.return_value.is_interactive = True
                 mock_adapter.return_value.decorate_task = lambda role, p: p
                 mock_adapter.return_value._cfg = {}
-                with patch("juggle_cmd_agents._get_settings", return_value={
+                with patch("juggle_cmd_agents_common._get_settings", return_value={
                     "agent": {"quality_gate_skill": ""},
                     "task_templates": {},
                 }):
                     if create_worktree_result is not None:
-                        with patch("juggle_cmd_agents._create_worktree",
+                        with patch("juggle_cmd_agents_common._create_worktree",
                                    return_value=create_worktree_result):
                             _mod.cmd_send_task(args)
                     else:
@@ -176,22 +176,22 @@ def test_auto_create_not_triggered_for_researcher(git_repo, tmp_path):
     agent = _minimal_agent("researcher", git_repo)
     thread = _minimal_thread()
 
-    with patch("juggle_cmd_agents.get_db") as mock_get_db:
+    with patch("juggle_cmd_agents_common.get_db") as mock_get_db:
         db = Mock()
         db.get_agent.return_value = _minimal_agent("researcher", git_repo)
         db.get_thread.return_value = _minimal_thread()
         db.update_thread = Mock()
         db.update_agent = Mock()
         mock_get_db.return_value = db
-        with patch("juggle_cmd_agents._create_worktree") as mock_create:
-            with patch("juggle_cmd_agents.JuggleTmuxManager") as MockMgr:
+        with patch("juggle_cmd_agents_common._create_worktree") as mock_create:
+            with patch("juggle_cmd_agents_common.JuggleTmuxManager") as MockMgr:
                 MockMgr.return_value.verify_pane.return_value = True
                 MockMgr.return_value.send_task.return_value = "hash"
-                with patch("juggle_cmd_agents.get_adapter") as mock_adapter:
+                with patch("juggle_cmd_agents_common.get_adapter") as mock_adapter:
                     mock_adapter.return_value.is_interactive = True
                     mock_adapter.return_value.decorate_task = lambda r, p: p
                     mock_adapter.return_value._cfg = {}
-                    with patch("juggle_cmd_agents._get_settings", return_value={
+                    with patch("juggle_cmd_agents_common._get_settings", return_value={
                         "agent": {"quality_gate_skill": ""},
                         "task_templates": {},
                     }):
@@ -239,27 +239,27 @@ def test_worktree_preamble_injected_into_prompt(tmp_path):
 
     sent_prompts = []
 
-    with patch("juggle_cmd_agents.get_db") as mock_get_db:
+    with patch("juggle_cmd_agents_common.get_db") as mock_get_db:
         db = Mock()
         db.get_agent.return_value = agent
         db.get_thread.return_value = thread
         db.update_thread = Mock()
         db.update_agent = Mock()
         mock_get_db.return_value = db
-        with patch("juggle_cmd_agents.JuggleTmuxManager") as MockMgr:
+        with patch("juggle_cmd_agents_common.JuggleTmuxManager") as MockMgr:
             MockMgr.return_value.verify_pane.return_value = True
             MockMgr.return_value.send_task.side_effect = lambda pane, prompt, **kw: (
                 sent_prompts.append(prompt) or "hash"
             )
-            with patch("juggle_cmd_agents.get_adapter") as mock_adapter:
+            with patch("juggle_cmd_agents_common.get_adapter") as mock_adapter:
                 mock_adapter.return_value.is_interactive = True
                 mock_adapter.return_value.decorate_task = lambda r, p: p
                 mock_adapter.return_value._cfg = {}
-                with patch("juggle_cmd_agents._get_settings", return_value={
+                with patch("juggle_cmd_agents_common._get_settings", return_value={
                     "agent": {"quality_gate_skill": ""},
                     "task_templates": {},
                 }):
-                    with patch("juggle_cmd_agents._create_worktree",
+                    with patch("juggle_cmd_agents_common._create_worktree",
                                return_value=(True, wt_path, "cyc_AB", "exists")):
                         from juggle_cmd_agents import cmd_send_task
                         cmd_send_task(args)

@@ -80,10 +80,10 @@ def test_get_agent_repo_flag_persists_repo_path(tmp_path):
     mock_mgr = mock_cls.return_value
     mock_mgr.spawn_agent.return_value = spawned
 
-    with patch("juggle_cmd_agents.get_db", return_value=db), \
+    with patch("juggle_cmd_agents_common.get_db", return_value=db), \
          patch("juggle_tmux.JuggleTmuxManager", mock_cls), \
-         patch("juggle_cmd_agents._resolve_thread", return_value="t-uuid"), \
-         patch("juggle_cmd_agents._get_settings", return_value=_settings()):
+         patch("juggle_cmd_agents_common._resolve_thread", return_value="t-uuid"), \
+         patch("juggle_cmd_agents_common._get_settings", return_value=_settings()):
         cmd_get_agent(_get_args(repo=repo_path))
 
     update_kwargs = db.update_agent.call_args[1]
@@ -136,10 +136,10 @@ def test_send_task_auto_create_uses_agent_repo_not_cwd(tmp_path):
     os.chdir(str(vault_dir))
 
     try:
-        with patch("juggle_cmd_agents.get_db", return_value=db), \
-             patch("juggle_cmd_agents.JuggleTmuxManager") as mock_tmux, \
-             patch("juggle_cmd_agents.get_adapter") as mock_adapter_fn, \
-             patch("juggle_cmd_agents._create_worktree", side_effect=fake_create):
+        with patch("juggle_cmd_agents_common.get_db", return_value=db), \
+             patch("juggle_cmd_agents_common.JuggleTmuxManager") as mock_tmux, \
+             patch("juggle_cmd_agents_common.get_adapter") as mock_adapter_fn, \
+             patch("juggle_cmd_agents_common._create_worktree", side_effect=fake_create):
             mock_tmux.return_value.verify_pane.return_value = True
             mock_adapter = MagicMock()
             mock_adapter.is_interactive = True
@@ -170,10 +170,10 @@ def test_get_agent_reuses_matching_harness_agent():
     mock_mgr = mock_cls.return_value
     mock_mgr.wait_for_ready_to_paste.return_value = True
 
-    with patch("juggle_cmd_agents.get_db", return_value=db), \
+    with patch("juggle_cmd_agents_common.get_db", return_value=db), \
          patch("juggle_tmux.JuggleTmuxManager", mock_cls), \
-         patch("juggle_cmd_agents._resolve_thread", return_value="t-uuid"), \
-         patch("juggle_cmd_agents._get_settings", return_value=_settings("claude")):
+         patch("juggle_cmd_agents_common._resolve_thread", return_value="t-uuid"), \
+         patch("juggle_cmd_agents_common._get_settings", return_value=_settings("claude")):
         cmd_get_agent(_get_args(repo="/repo", harness=None))
 
     mock_mgr.spawn_agent.assert_not_called()
@@ -193,10 +193,10 @@ def test_get_agent_skips_mismatched_harness_spawns_fresh():
     mock_mgr.wait_for_ready_to_paste.return_value = True
     mock_mgr.spawn_agent.return_value = spawned
 
-    with patch("juggle_cmd_agents.get_db", return_value=db), \
+    with patch("juggle_cmd_agents_common.get_db", return_value=db), \
          patch("juggle_tmux.JuggleTmuxManager", mock_cls), \
-         patch("juggle_cmd_agents._resolve_thread", return_value="t-uuid"), \
-         patch("juggle_cmd_agents._get_settings", return_value=_settings("claude")):
+         patch("juggle_cmd_agents_common._resolve_thread", return_value="t-uuid"), \
+         patch("juggle_cmd_agents_common._get_settings", return_value=_settings("claude")):
         cmd_get_agent(_get_args(repo="/repo", harness=None))
 
     mock_mgr.spawn_agent.assert_called_once()
@@ -215,10 +215,10 @@ def test_get_agent_fresh_flag_skips_reuse():
     mock_mgr.wait_for_ready_to_paste.return_value = True
     mock_mgr.spawn_agent.return_value = spawned
 
-    with patch("juggle_cmd_agents.get_db", return_value=db), \
+    with patch("juggle_cmd_agents_common.get_db", return_value=db), \
          patch("juggle_tmux.JuggleTmuxManager", mock_cls), \
-         patch("juggle_cmd_agents._resolve_thread", return_value="t-uuid"), \
-         patch("juggle_cmd_agents._get_settings", return_value=_settings("claude")):
+         patch("juggle_cmd_agents_common._resolve_thread", return_value="t-uuid"), \
+         patch("juggle_cmd_agents_common._get_settings", return_value=_settings("claude")):
         cmd_get_agent(_get_args(repo="/repo", fresh=True))
 
     mock_mgr.spawn_agent.assert_called_once()
@@ -237,10 +237,10 @@ def test_get_agent_harness_flag_selects_reasonix_agent():
     mock_mgr = mock_cls.return_value
     mock_mgr.wait_for_ready_to_paste.return_value = True
 
-    with patch("juggle_cmd_agents.get_db", return_value=db), \
+    with patch("juggle_cmd_agents_common.get_db", return_value=db), \
          patch("juggle_tmux.JuggleTmuxManager", mock_cls), \
-         patch("juggle_cmd_agents._resolve_thread", return_value="t-uuid"), \
-         patch("juggle_cmd_agents._get_settings", return_value=_settings("claude")):
+         patch("juggle_cmd_agents_common._resolve_thread", return_value="t-uuid"), \
+         patch("juggle_cmd_agents_common._get_settings", return_value=_settings("claude")):
         cmd_get_agent(_get_args(repo="/repo", harness="reasonix"))
 
     mock_mgr.spawn_agent.assert_not_called()
@@ -258,10 +258,10 @@ def test_get_agent_reuse_resets_pane_cwd():
     mock_mgr = mock_cls.return_value
     mock_mgr.wait_for_ready_to_paste.return_value = True
 
-    with patch("juggle_cmd_agents.get_db", return_value=db), \
+    with patch("juggle_cmd_agents_common.get_db", return_value=db), \
          patch("juggle_tmux.JuggleTmuxManager", mock_cls), \
-         patch("juggle_cmd_agents._resolve_thread", return_value="t-uuid"), \
-         patch("juggle_cmd_agents._get_settings", return_value=_settings("claude")):
+         patch("juggle_cmd_agents_common._resolve_thread", return_value="t-uuid"), \
+         patch("juggle_cmd_agents_common._get_settings", return_value=_settings("claude")):
         cmd_get_agent(_get_args(repo="/some/repo"))
 
     # A cd command must be sent to reset the pane's cwd

@@ -16,10 +16,10 @@ def db(tmp_path, monkeypatch):
     d = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     d.init_db()
     import juggle_cli_common as common
-    import juggle_cmd_agents
+    import juggle_cmd_agents_common
 
     monkeypatch.setattr(common, "get_db", lambda: d)
-    monkeypatch.setattr(juggle_cmd_agents, "get_db", lambda: d)
+    monkeypatch.setattr(juggle_cmd_agents_common, "get_db", lambda: d)
     return d
 
 

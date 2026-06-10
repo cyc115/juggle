@@ -102,7 +102,7 @@ def test_send_task_updates_harness_and_model(db):
                     busy_since="2025-01-01T00:00:00+00:00")
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        with patch("juggle_cmd_agents.get_db", return_value=db):
+        with patch("juggle_cmd_agents_common.get_db", return_value=db):
             with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
                 f.write("Do the thing.")
                 prompt_path = f.name
@@ -136,8 +136,8 @@ def test_send_task_oneshot_stores_harness_and_model(db):
     mock_adapter.decorate_task = lambda role, prompt: prompt
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        with patch("juggle_cmd_agents.get_adapter", return_value=mock_adapter):
-            with patch("juggle_cmd_agents.get_db", return_value=db):
+        with patch("juggle_cmd_agents_common.get_adapter", return_value=mock_adapter):
+            with patch("juggle_cmd_agents_common.get_db", return_value=db):
                 with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
                     f.write("Do the thing.")
                     prompt_path = f.name

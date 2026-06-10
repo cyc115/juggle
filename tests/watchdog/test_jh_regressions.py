@@ -149,7 +149,7 @@ def test_release_agent_clears_task_state(tmp_path):
     args.force = False
 
     # Patch get_db to return our test db
-    import juggle_cmd_agents as _cmd_mod
+    import juggle_cmd_agents_common as _cmd_mod
     original_get_db = _cmd_mod.get_db
     _cmd_mod.get_db = lambda: db
     try:

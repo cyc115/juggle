@@ -1,0 +1,93 @@
+"""
+juggle_cmd_agents_worktree — Git worktree helpers for agent dispatch/completion.
+
+Owns: _create_worktree (isolated worktree per thread, used by send-task) and
+      _finalize_worktree (ff-merge → remove → branch-delete, used by complete-agent).
+Must not own: command handler logic or DB access.
+"""
+
+import subprocess
+from pathlib import Path
+
+
+def _finalize_worktree(thread: dict) -> tuple:
+    """Finalize a worktree: ff-merge → remove → branch-delete.
+
+    Returns (success: bool, message: str). Never destroys unmerged commits.
+    """
+    worktree_path = (thread.get("worktree_path") or "").strip()
+    worktree_branch = (thread.get("worktree_branch") or "").strip()
+    main_repo_path = (thread.get("main_repo_path") or "").strip()
+
+    if not worktree_path or not worktree_branch or not main_repo_path:
+        return True, ""  # No worktree to finalize
+
+    if not Path(worktree_path).exists():
+        return True, f"Worktree already removed: {worktree_path}"
+
+    if not Path(main_repo_path).exists():
+        return False, f"Main repo not found: {main_repo_path}"
+
+    # 1. Try ff-only merge from worktree branch
+    result = subprocess.run(
+        ["git", "-C", main_repo_path, "merge", "--ff-only", worktree_branch],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return False, (
+            f"Cannot ff-merge {worktree_branch} into main. "
+            f"Worktree left at {worktree_path}. Manual resolution required."
+        )
+
+    # 2. Remove worktree
+    result = subprocess.run(
+        ["git", "-C", main_repo_path, "worktree", "remove", worktree_path],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return False, f"Worktree remove failed: {result.stderr.strip()}"
+
+    # 3. Delete branch
+    result = subprocess.run(
+        ["git", "-C", main_repo_path, "branch", "-d", worktree_branch],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return True, f"Merged + worktree removed, but branch delete failed: {result.stderr.strip()}"
+
+    return True, f"Worktree {worktree_path} finalized (merged {worktree_branch})."
+
+
+def _create_worktree(
+    repo_path: str, thread_label: str, worktree_root: str = "/tmp"
+) -> tuple[bool, str, str, str]:
+    """Create an isolated git worktree for a thread.
+
+    Returns (success, worktree_path, branch, message).
+    worktree_path and branch are empty strings on failure.
+    Idempotent: if worktree_path already exists, returns (True, path, branch, "already exists").
+    """
+    basename = Path(repo_path).name
+    worktree_path = str(Path(worktree_root) / f"juggle-{basename}-{thread_label}")
+    branch = f"cyc_{thread_label}"
+
+    if Path(worktree_path).exists():
+        return True, worktree_path, branch, f"Worktree already exists: {worktree_path}"
+
+    result = subprocess.run(
+        ["git", "-C", repo_path, "worktree", "add", "-b", branch, worktree_path],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return False, "", "", f"git worktree add failed: {result.stderr.strip()}"
+
+    # Symlink .venv for immediate test runs — skip silently when absent
+    main_venv = Path(repo_path) / ".venv"
+    worktree_venv = Path(worktree_path) / ".venv"
+    if main_venv.exists() and not worktree_venv.exists():
+        try:
+            worktree_venv.symlink_to(main_venv)
+        except OSError:
+            pass
+
+    return True, worktree_path, branch, f"Worktree created: {worktree_path} on branch {branch}"
