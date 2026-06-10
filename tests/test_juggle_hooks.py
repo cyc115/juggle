@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from juggle_db import JuggleDB
 from juggle_hooks import get_classification_candidates, _bash_write_pattern
+import juggle_hooks_config
 
 
 @pytest.mark.parametrize(
@@ -65,8 +66,10 @@ def test_stop_handler_captures_assistant_message(active_db, monkeypatch):
     # Import after env is set so DB_PATH resolves correctly
     import importlib
     import juggle_hooks
+    import juggle_hooks_config
 
     importlib.reload(juggle_hooks)
+    monkeypatch.setattr(juggle_hooks_config, "DB_PATH", active_db.db_path)
     monkeypatch.setattr(juggle_hooks, "DB_PATH", active_db.db_path)
 
     data = {"last_assistant_message": "Here is my analysis of the auth flow."}
@@ -119,8 +122,11 @@ def _reload_hooks(monkeypatch, active_db):
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
     import importlib
     import juggle_hooks
+    import juggle_hooks_config
 
     importlib.reload(juggle_hooks)
+    # Patch on the config module so all sub-modules reading _cfg.DB_PATH / _db_path() see it.
+    monkeypatch.setattr(juggle_hooks_config, "DB_PATH", active_db.db_path)
     monkeypatch.setattr(juggle_hooks, "DB_PATH", active_db.db_path)
     return juggle_hooks
 
@@ -173,8 +179,10 @@ def test_pre_tool_use_allows_when_juggle_inactive(tmp_path, monkeypatch):
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     import importlib
     import juggle_hooks
+    import juggle_hooks_config
 
     importlib.reload(juggle_hooks)
+    monkeypatch.setattr(juggle_hooks_config, "DB_PATH", db.db_path)
     monkeypatch.setattr(juggle_hooks, "DB_PATH", db.db_path)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -360,14 +368,18 @@ def test_post_tool_use_no_agent_task_id_tracking(active_db, monkeypatch):
 
 def test_autopilot_context_empty_when_flag_absent(active_db, monkeypatch, tmp_path):
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    import juggle_hooks_config
+    monkeypatch.setattr(juggle_hooks_config, "AUTOPILOT_FLAG", tmp_path / "autopilot")
     monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", tmp_path / "autopilot")
     assert juggle_hooks._autopilot_context() == ""
 
 
 def test_autopilot_context_present_when_flag_set(active_db, monkeypatch, tmp_path):
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    import juggle_hooks_config
     flag = tmp_path / "autopilot"
     flag.touch()
+    monkeypatch.setattr(juggle_hooks_config, "AUTOPILOT_FLAG", flag)
     monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", flag)
     assert "AUTOPILOT MODE: ON" in juggle_hooks._autopilot_context()
 
@@ -376,9 +388,11 @@ def test_user_prompt_submit_injects_autopilot_when_active(
     active_db, monkeypatch, tmp_path, capsys
 ):
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    import juggle_hooks_config
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     flag = tmp_path / "autopilot"
     flag.touch()
+    monkeypatch.setattr(juggle_hooks_config, "AUTOPILOT_FLAG", flag)
     monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", flag)
 
     with pytest.raises(SystemExit):
@@ -393,9 +407,11 @@ def test_user_prompt_submit_injects_autopilot_when_inactive(
 ):
     active_db.set_active(False)
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    import juggle_hooks_config
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     flag = tmp_path / "autopilot"
     flag.touch()
+    monkeypatch.setattr(juggle_hooks_config, "AUTOPILOT_FLAG", flag)
     monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", flag)
 
     with pytest.raises(SystemExit):
@@ -410,8 +426,11 @@ def test_user_prompt_submit_no_autopilot_when_inactive_and_flag_absent(
 ):
     active_db.set_active(False)
     juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    import juggle_hooks_config
+    monkeypatch.setattr(juggle_hooks_config, "AUTOPILOT_FLAG", tmp_path / "autopilot")
     monkeypatch.setattr(juggle_hooks, "AUTOPILOT_FLAG", tmp_path / "autopilot")
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+    monkeypatch.setattr(juggle_hooks_config, "DB_PATH", active_db.db_path)
     monkeypatch.setattr(juggle_hooks, "DB_PATH", active_db.db_path)
 
     with pytest.raises(SystemExit):
