@@ -2,7 +2,7 @@
 
 ## In Progress
 
-🔄 [IN PROGRESS] Project autopilot (task-graph execution) — Phase 1 landed in v1.55.0 (graph_nodes/graph_edges plan store, node state machine, `project-graph load`, complete-agent marking + `--handoff`, [blocked:]/[ready] context tags; notify-only, no dispatch). Phase 2 landed in v1.56.0 (watchdog claim-dispatch tick via juggle_graph_dispatch: atomic claims + stale-claim sweep, cap-aware lazy threads, handoff hydration, `--handoff` enforcement, send-task `--force-node` guard, diamond integration test). Phases 3–4 pending (integrate hardening + verify_cmd, toggle command/gate/cockpit). Plan: vault `plan/2026-06-10-project-autopilot-impl.md`.
+🔄 [IN PROGRESS] Project autopilot (task-graph execution) — Phase 1 landed in v1.55.0 (graph_nodes/graph_edges plan store, node state machine, `project-graph load`, complete-agent marking + `--handoff`, [blocked:]/[ready] context tags; notify-only, no dispatch). Phase 2 landed in v1.56.0 (watchdog claim-dispatch tick via juggle_graph_dispatch: atomic claims + stale-claim sweep, cap-aware lazy threads, handoff hydration, `--handoff` enforcement, send-task `--force-node` guard, diamond integration test). Phase 3 landed in v1.57.0 (merge-queue hardening: dead-PID-only lock steal + heartbeat + autopilot 30-min deadline; verify_cmd pre-merge in `_run_integrate` w/ 600s timeout + one retry and failed-verify channel; pre-merge diffstat hydration; failure propagation — failed nodes block all transitive dependents as blocked-failed + action item, tick never dispatches them). Phase 4 pending (toggle command/gate/cockpit/injection). Plan: vault `plan/2026-06-10-project-autopilot-impl.md`.
 
 ## Backlog
 
