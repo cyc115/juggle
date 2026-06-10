@@ -295,8 +295,8 @@ def render_agents(
                 Text(glyph),
                 Text(f"[{agent.topic_id}]", style=st),
                 Text(f"(A) {agent.role}", style=st),
-                Text(format_age(agent.age_secs), style=st),
-                Text(hmodel, style=Style(dim=True)),
+                Text(f" {format_age(agent.age_secs)}", style=st),
+                Text(f" {hmodel}", style=Style(dim=True)),
             )
         parts.append(t_active)
 
@@ -305,27 +305,25 @@ def render_agents(
         if active_agents:
             parts.append(Text("─" * 22, style=Style(dim=True)))
         parts.append(Text("Pool", style=Style(dim=True)))
-        t_pool = Table.grid(padding=(0, 0))
-        t_pool.add_column(no_wrap=True)  # #N
-        t_pool.add_column(no_wrap=True)  # glyph
-        t_pool.add_column(no_wrap=True)  # name
-        t_pool.add_column(no_wrap=True)  # duration
-        t_pool.add_column(no_wrap=True)  # harness
-
-        for agent in pool_agents:
-            i = sorted_agents.index(agent) + 1
-            glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
-            st = _row_style(agent.status)
-            hmodel = agent.harness or ""
-            if agent.model:
-                hmodel = f"{hmodel}/{agent.model}" if hmodel else agent.model
-            t_pool.add_row(
-                Text(f"#{i}", style=Style(dim=True)),
-                Text(glyph),
-                Text(f"(A) {agent.role}", style=st),
-                Text(format_age(agent.age_secs), style=st),
-                Text(hmodel, style=Style(dim=True)),
-            )
+        if pool_agents:
+            t_agents = Table.grid(padding=(0, 0))
+            t_agents.add_column(no_wrap=True)  # glyph
+            t_agents.add_column(no_wrap=True)  # role
+            t_agents.add_column(no_wrap=True)  # age
+            t_agents.add_column(no_wrap=True)  # harness
+            for agent in pool_agents:
+                glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
+                st = _row_style(agent.status)
+                hmodel = agent.harness or ""
+                if agent.model:
+                    hmodel = f"{hmodel}/{agent.model}" if hmodel else agent.model
+                t_agents.add_row(
+                    Text(glyph),
+                    Text(f"(A) {agent.role}", style=st),
+                    Text(f" {format_age(agent.age_secs)}", style=st),
+                    Text(f" {hmodel}", style=Style(dim=True)),
+                )
+            parts.append(t_agents)
 
         if scheduled:
 
@@ -340,6 +338,10 @@ def render_agents(
             def _trunc(s: str, n: int = 20) -> str:
                 return s if len(s) <= n else s[: n - 1] + "…"
 
+            t_sched = Table.grid(padding=(0, 0))
+            t_sched.add_column(no_wrap=True)  # glyph
+            t_sched.add_column(no_wrap=True)  # label
+            t_sched.add_column(no_wrap=True)  # schedule
             for task in scheduled:
                 glyph = SCHED_STATUS_GLYPHS.get(task.status, "⏰")
                 label_style = (
@@ -348,13 +350,12 @@ def render_agents(
                     else Style(dim=True)
                 )
                 sched_str = _fmt_schedule(task.schedule)
-                t_pool.add_row(
+                t_sched.add_row(
                     Text(glyph),
                     Text(f"(L) {_trunc(task.label)}", style=label_style),
                     Text(sched_str, style=Style(dim=True)),
                 )
-
-        parts.append(t_pool)
+            parts.append(t_sched)
 
     title = _scroll_title("Agents", scroll_offset)
     if filter_label:

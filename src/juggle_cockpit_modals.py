@@ -168,7 +168,7 @@ class _TailModal(ModalScreen):
                 markup=False,
             )
             with VerticalScroll(id="tail-scroll"):
-                yield Static("", id="tail-modal-body")
+                yield Static("", id="tail-modal-body", markup=False)
 
     def on_mount(self) -> None:
         self.query_one("#tail-scroll", VerticalScroll).focus()
@@ -180,8 +180,11 @@ class _TailModal(ModalScreen):
         # Follow the tail only when the user is already pinned to the bottom;
         # if they've scrolled up to read history, leave their position alone.
         at_bottom = scroll.scroll_offset.y >= scroll.max_scroll_y
+        from rich.text import Text as RichText
+
         text = self._capture_fn(self.pane_id, lines=self.TAIL_LINES)
-        self.query_one("#tail-modal-body", Static).update(text or "[dim](no output)[/]")
+        body: str | RichText = RichText(text) if text else RichText("(no output)", style="dim")
+        self.query_one("#tail-modal-body", Static).update(body)
         if at_bottom:
             scroll.scroll_end(animate=False)
 

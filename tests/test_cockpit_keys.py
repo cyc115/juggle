@@ -677,7 +677,11 @@ def test_tail_modal_refresh_calls_capture_fn():
         modal._refresh_tail()
 
     assert calls == [("%99", 100)], f"Expected [('%99', 100)], got {calls}"
-    mock_body.update.assert_called_once_with("line1\nline2")
+    from rich.text import Text as RichText
+
+    mock_body.update.assert_called_once()
+    arg = mock_body.update.call_args[0][0]
+    assert isinstance(arg, RichText) and str(arg) == "line1\nline2"
     mock_scroll.scroll_end.assert_called_once()  # followed the tail (was at bottom)
 
 
