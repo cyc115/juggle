@@ -334,3 +334,145 @@ def test_tick_stops_claiming_when_disarmed_mid_batch(db):
     assert len(stats["dispatched"]) == 1  # second node never claimed
     states = {nid: g.get_node(db, nid)["state"] for nid in ("a", "b")}
     assert sorted(states.values()) == ["ready", "running"]
+
+
+# ── DA round-2 (2026-06-10): dispatch window, retry cap, error hygiene ─────────
+
+
+def test_node_thread_bound_before_dispatch_call(db):
+    """REGRESSION PIN (DA round-2 MAJOR-4, 2026-06-10): the tick dispatched
+    BEFORE binding thread_id; a crash in that window left a 'dispatching' node
+    with thread_id NULL — the stale sweep reclaimed it and the task was
+    double-dispatched. thread_id must be bound before send-task fires."""
+    _mk(db, "a")
+    g.recompute_ready(db, "INBOX")
+    _arm(db)
+    seen = {}
+
+    def spy(db_, thread_id, prompt, node):
+        seen["bound"] = g.get_node(db_, node["id"])["thread_id"]
+        seen["thread"] = thread_id
+
+    gd.graph_tick(db, dispatch_fn=spy)
+    assert seen["thread"] is not None
+    assert seen["bound"] == seen["thread"]
+
+
+def test_crash_in_dispatch_window_not_reclaimed_by_sweep(db):
+    """REGRESSION PIN (DA round-2 MAJOR-4, 2026-06-10): simulate a hard crash
+    after send-task fired but before the node went 'running'. The node stays
+    thread-bound 'dispatching', so the stale sweep must NOT reclaim it — the
+    old order yielded a second dispatch of already-running work."""
+
+    class HardCrash(BaseException):
+        """Process death — bypasses the tick's belt-and-braces Exception nets."""
+
+    def crashing(db_, thread_id, prompt, node):
+        raise HardCrash()
+
+    _mk(db, "a")
+    g.recompute_ready(db, "INBOX")
+    _arm(db)
+    with pytest.raises(HardCrash):
+        gd.graph_tick(db, dispatch_fn=crashing)
+
+    node = g.get_node(db, "a")
+    assert node["state"] == "dispatching"
+    assert node["thread_id"]  # bound → sweep-immune
+    _age_claim(db, "a", gd.STALE_CLAIM_SECS + 60)
+    assert gd.sweep_stale_claims(db, "INBOX") == []  # no reclaim, no redispatch
+
+
+def test_capacity_defer_clears_thread_binding(db):
+    """Guard for the MAJOR-4 reorder: defer/failure paths must clear the
+    binding they now set before dispatch, or the released node would carry a
+    stale archived thread."""
+    _mk(db, "a")
+    g.recompute_ready(db, "INBOX")
+    _arm(db)
+    gd.graph_tick(db, dispatch_fn=FakeDispatch(exc=gd.CapacityError("pool full")))
+    node = g.get_node(db, "a")
+    assert node["state"] == "ready"
+    assert node["thread_id"] is None
+
+
+def test_dispatch_retry_cap_marks_failed_exec_and_stops_flood(db):
+    """REGRESSION PIN (DA round-2 minor 1, 2026-06-10): a permanently broken
+    dispatch path reset the node to 'ready' every tick — one HIGH action item
+    per tick forever (action-item flood) and an infinite retry loop. After
+    MAX_DISPATCH_FAILS consecutive failures the node must go failed-exec and
+    propagate to dependents instead."""
+    _mk(db, "a")
+    _mk(db, "b", deps=("a",))
+    g.recompute_ready(db, "INBOX")
+    _arm(db)
+    failing = FakeDispatch(exc=RuntimeError("broken adapter"))
+
+    for _ in range(gd.MAX_DISPATCH_FAILS):
+        gd.graph_tick(db, dispatch_fn=failing)
+
+    assert g.get_node(db, "a")["state"] == "failed-exec"
+    assert g.get_node(db, "b")["state"] == "blocked-failed"
+    items = db.get_open_action_items()
+    assert any("gave up" in i["message"] and "a" in i["message"] for i in items)
+
+    # the flood stops: further ticks neither retry nor file new items
+    n_items = len(db.get_open_action_items())
+    stats = gd.graph_tick(db, dispatch_fn=failing)
+    assert stats["dispatched"] == [] and stats["errors"] == []
+    assert len(db.get_open_action_items()) == n_items
+
+
+def test_dispatch_success_resets_failure_count(db):
+    """One-off dispatch hiccups must not accumulate toward the give-up cap."""
+    gd._dispatch_fails.clear()  # module-level counter — isolate from other tests
+    _mk(db, "a")
+    g.recompute_ready(db, "INBOX")
+    _arm(db)
+    gd.graph_tick(db, dispatch_fn=FakeDispatch(exc=RuntimeError("hiccup")))
+    assert g.get_node(db, "a")["state"] == "ready"
+    gd.graph_tick(db, dispatch_fn=FakeDispatch())  # succeeds
+    assert g.get_node(db, "a")["state"] == "running"
+    assert gd._dispatch_fails == {}
+
+
+def test_unrelated_valueerror_in_create_thread_is_error_not_defer(db, monkeypatch):
+    """REGRESSION PIN (DA round-2 minor 6, 2026-06-10): EVERY ValueError from
+    create_thread was treated as the MAX_THREADS cap and silently deferred —
+    an unrelated bug could starve the graph forever with zero signal."""
+    _mk(db, "a")
+    g.recompute_ready(db, "INBOX")
+    _arm(db)
+
+    def buggy_create_thread(*a, **kw):
+        raise ValueError("totally unrelated bug")
+
+    monkeypatch.setattr(db, "create_thread", buggy_create_thread)
+    stats = gd.graph_tick(db, dispatch_fn=FakeDispatch())
+
+    assert stats["errors"] == ["a"]
+    assert stats["deferred"] == []
+    assert g.get_node(db, "a")["state"] == "ready"  # released for the operator
+    items = db.get_open_action_items()
+    assert any("thread creation failed" in i["message"] for i in items)
+
+
+def test_dispatch_via_pool_releases_agent_on_any_exception(db, monkeypatch):
+    """REGRESSION PIN (DA round-2 minor 2, 2026-06-10): _dispatch_via_pool
+    released the agent only on SystemExit from send-task — any other exception
+    leaked the agent 'busy' on an archived thread forever."""
+    import juggle_cmd_agents as jca
+
+    tid = db.create_thread("t", session_id="s")
+    agent_id = db.create_agent(role="coder", pane_id="%1")
+    db.update_agent(agent_id, status="busy", assigned_thread=tid)
+    monkeypatch.setattr(jca, "cmd_get_agent", lambda ns: None)
+
+    def boom(ns):
+        raise RuntimeError("tmux exploded mid-send")
+
+    monkeypatch.setattr(jca, "cmd_send_task", boom)
+    with pytest.raises(RuntimeError):
+        gd._dispatch_via_pool(db, tid, "prompt", {"id": "a"})
+    assert db.get_agent(agent_id)["status"] == "idle"
+    assert db.get_agent(agent_id)["assigned_thread"] is None

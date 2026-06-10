@@ -322,3 +322,68 @@ def test_reload_clears_stale_thread_binding(db):
     g.set_node_thread(db, "n1", "dead-thread-uuid")
     assert g.node_transition(db, "n1", "reload") == "pending"
     assert g.get_node(db, "n1")["thread_id"] is None
+
+
+# ── fan-in race (DA round-2 MAJOR-3, 2026-06-10) ──────────────────────────────
+
+
+def _verify(db, node_id):
+    for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
+        g.node_transition(db, node_id, ev)
+
+
+def test_recompute_ready_lost_race_is_noop(db, monkeypatch):
+    """REGRESSION PIN (DA round-2 MAJOR-3, 2026-06-10): diamond fan-in — two
+    completions recomputed the ready set concurrently; both saw 'd' eligible,
+    and the loser's read-then-write node_transition raised ValueError out of
+    cmd_complete_agent AFTER the thread had closed (partial side effects).
+    The pending→ready promotion must be a CAS; a lost race is a silent no-op."""
+    _mk(db, "b")
+    _mk(db, "c")
+    _mk(db, "d", deps=["b", "c"])
+    g.recompute_ready(db, "INBOX")
+    _verify(db, "b")
+    _verify(db, "c")
+    # The loser computed its eligible set BEFORE the winner promoted d:
+    monkeypatch.setattr(g, "ready_eligible", lambda *a, **k: ["d"])
+    g.node_transition(db, "d", "deps_ready")  # winner promotes first
+    assert g.recompute_ready(db, "INBOX") == []  # pre-fix: ValueError
+    assert g.get_node(db, "d")["state"] == "ready"
+
+
+def test_concurrent_recompute_ready_exactly_one_promotes(db, tmp_path):
+    """REGRESSION PIN (DA round-2 MAJOR-3, 2026-06-10): two-connection
+    concurrent fan-in recompute (claim-race pin pattern) — no crash, node
+    promoted exactly once."""
+    import threading
+
+    _mk(db, "b")
+    _mk(db, "c")
+    _mk(db, "d", deps=["b", "c"])
+    g.recompute_ready(db, "INBOX")
+    _verify(db, "b")
+    _verify(db, "c")
+
+    db2 = JuggleDB(db_path=str(tmp_path / "graph.db"))  # separate connection
+    barrier = threading.Barrier(2)
+    results: list = []
+    lock = threading.Lock()
+
+    def _recompute(handle):
+        barrier.wait()
+        try:
+            newly = g.recompute_ready(handle, "INBOX")
+        except Exception as e:  # pre-fix: loser raised ValueError
+            newly = e
+        with lock:
+            results.append(newly)
+
+    threads = [threading.Thread(target=_recompute, args=(h,)) for h in (db, db2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not any(isinstance(r, Exception) for r in results), results
+    assert sum(r.count("d") for r in results) == 1  # promoted exactly once
+    assert g.get_node(db, "d")["state"] == "ready"

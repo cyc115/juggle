@@ -27,6 +27,11 @@ from dbops.schema import _now
 ARMED_PROJECT_KEY = "autopilot_armed_project"
 STALE_CLAIM_SECS = 600  # dispatching >10 min with no thread → back to ready
 NODE_ROLE = "coder"
+# Retry cap (DA round-2 minor 1, 2026-06-10): a permanently broken dispatch
+# path reset the node to ready every tick — one HIGH action item per tick
+# forever. After this many consecutive failures the node goes failed-exec.
+MAX_DISPATCH_FAILS = 3
+_dispatch_fails: dict[tuple[str, str], int] = {}  # (db_path, node_id) → count
 
 _log = logging.getLogger("juggle-graph-dispatch")
 
@@ -137,10 +142,16 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
                 force_node=True,  # the tick IS the sanctioned dispatcher
             )
         )
-    except SystemExit as e:
-        # Release the agent so it does not sit 'busy' on an archived thread.
+    except BaseException as e:
+        # Release the agent on ANY failure (DA round-2 minor 2, 2026-06-10:
+        # only SystemExit released it — other exceptions leaked the agent
+        # 'busy' on an archived thread forever).
         db.update_agent(agent["id"], status="idle", assigned_thread=None)
-        raise RuntimeError(f"send-task failed for node {node['id']} (exit {e.code})")
+        if isinstance(e, SystemExit):
+            raise RuntimeError(
+                f"send-task failed for node {node['id']} (exit {e.code})"
+            )
+        raise
     finally:
         import os
 
@@ -148,6 +159,28 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
             os.unlink(prompt_file)
         except OSError:
             pass
+
+
+def _give_up_dispatch(db, node_id: str, err: Exception) -> None:
+    """Retry cap reached: node → failed-exec + propagation + ONE final item
+    (DA round-2 minor 1, 2026-06-10 — no more per-tick action-item flood)."""
+    db_graph.mark_exec_failed(db, node_id)
+    blocked = db_graph.propagate_failure(db, node_id)
+    detail = f" Dependents blocked: {', '.join(blocked)}." if blocked else ""
+    db.add_action_item(
+        thread_id=None,
+        message=(
+            f"⚠️ Autopilot gave up on graph node {node_id} after "
+            f"{MAX_DISPATCH_FAILS} consecutive dispatch failures: {err}.{detail} "
+            f"Fix the dispatch path, then reload the graph spec to resume."
+        ),
+        type_="failure",
+        priority="high",
+    )
+    _log.error(
+        "graph tick: node %s failed-exec after %d dispatch failures",
+        node_id, MAX_DISPATCH_FAILS,
+    )
 
 
 # ── the tick ───────────────────────────────────────────────────────────────────
@@ -187,32 +220,62 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
                 thread_id = db.create_thread(
                     f"[{node_id}] {node['title']}"[:80], session_id=_session_id(db)
                 )
-            except ValueError:
-                # MAX_THREADS cap — release the claim, retry next tick.
+            except ValueError as e:
                 db_graph.node_transition(db, node_id, "stale_reset")
+                if "Maximum of" not in str(e):
+                    # NOT the MAX_THREADS cap (DA round-2 minor 6, 2026-06-10:
+                    # unrelated ValueErrors were silently deferred forever).
+                    stats["errors"].append(node_id)
+                    db.add_action_item(
+                        thread_id=None,
+                        message=(
+                            f"⚠️ Autopilot thread creation failed for graph "
+                            f"node {node_id}: {e}"
+                        ),
+                        type_="failure",
+                        priority="high",
+                    )
+                    continue
+                # MAX_THREADS cap — claim released, retry next tick.
                 stats["deferred"].append(node_id)
                 _log.info("graph tick: thread cap hit — node %s deferred", node_id)
                 break  # cap is global; later nodes would hit it too
             db.update_thread(thread_id, project_id=armed)
+            # Bind BEFORE send-task (DA round-2 MAJOR-4, 2026-06-10): a crash
+            # in the dispatch window must leave the node thread-bound so the
+            # stale sweep cannot reclaim it and double-dispatch the work.
+            db_graph.set_node_thread(db, node_id, thread_id)
+            fail_key = (str(db.db_path), node_id)
             try:
                 dispatch(db, thread_id, _hydrate_for_node(db, armed, node), node)
             except CapacityError:
                 db.archive_thread(thread_id)
+                db_graph.set_node_thread(db, node_id, None)
                 db_graph.node_transition(db, node_id, "stale_reset")
                 stats["deferred"].append(node_id)
                 break
             except Exception as e:
                 db.archive_thread(thread_id)
-                db_graph.node_transition(db, node_id, "stale_reset")
+                db_graph.set_node_thread(db, node_id, None)
                 stats["errors"].append(node_id)
-                db.add_action_item(
-                    thread_id=None,
-                    message=f"⚠️ Autopilot dispatch failed for graph node {node_id}: {e}",
-                    type_="failure",
-                    priority="high",
-                )
+                fails = _dispatch_fails.get(fail_key, 0) + 1
+                _dispatch_fails[fail_key] = fails
+                if fails >= MAX_DISPATCH_FAILS:
+                    _dispatch_fails.pop(fail_key, None)
+                    _give_up_dispatch(db, node_id, e)
+                else:
+                    db_graph.node_transition(db, node_id, "stale_reset")
+                    db.add_action_item(
+                        thread_id=None,
+                        message=(
+                            f"⚠️ Autopilot dispatch failed for graph node "
+                            f"{node_id} (attempt {fails}/{MAX_DISPATCH_FAILS}): {e}"
+                        ),
+                        type_="failure",
+                        priority="high",
+                    )
                 continue
-            db_graph.set_node_thread(db, node_id, thread_id)
+            _dispatch_fails.pop(fail_key, None)
             db_graph.node_transition(db, node_id, "dispatch")  # → running
             db.add_notification_v2(
                 thread_id=thread_id,

@@ -21,9 +21,8 @@ from dbops.schema import _now
 
 @contextmanager
 def _cx(db, conn=None):
-    """Yield a write connection. When the caller passes ``conn`` it owns the
-    transaction (no commit here) — multi-node spec loads are all-or-nothing
-    (DA round-2 BLOCKER-1c, 2026-06-10). Otherwise open, commit, close."""
+    """Yield a write connection. A caller-passed ``conn`` owns the transaction
+    (no commit — all-or-nothing loads, BLOCKER-1c); else open, commit, close."""
     if conn is not None:
         yield conn
         return
@@ -72,8 +71,8 @@ _TRANSITIONS: dict[tuple[str, str], str] = {
     ("failed-exec", "reload"): "pending",
     ("failed-integration", "reload"): "pending",
     ("failed-verify", "reload"): "pending",
-    # DA round-2 BLOCKER-1 (2026-06-10): blocked-failed was a dead end — the
-    # blocked tail of a failed node could never resume after a spec reload.
+    # DA round-2 BLOCKER-1 (2026-06-10): without this, blocked-failed was a
+    # dead end — the blocked tail could never resume after a spec reload.
     ("blocked-failed", "reload"): "pending",
 }
 
@@ -198,7 +197,7 @@ def get_node_by_thread(db, thread_id: str) -> dict | None:
         row = conn.execute(
             "SELECT * FROM graph_nodes WHERE thread_id=?", (thread_id,)
         ).fetchone()
-        return dict(row) if row else None
+    return dict(row) if row else None
 
 
 def list_nodes(db, project_id: str) -> list[dict]:
@@ -270,10 +269,24 @@ def ready_eligible(db, project_id: str) -> list[str]:
 
 
 def recompute_ready(db, project_id: str) -> list[str]:
-    """Promote every eligible pending node to 'ready'. Returns newly-ready ids."""
-    newly = ready_eligible(db, project_id)
-    for node_id in newly:
-        node_transition(db, node_id, "deps_ready")
+    """Promote every eligible pending node to 'ready'. Returns newly-ready ids.
+
+    The promotion is a CAS (DA round-2 MAJOR-3, 2026-06-10): concurrent
+    diamond fan-in completions both saw the join node eligible; the loser's
+    read-then-write transition raised ValueError out of cmd_complete_agent.
+    The conditional UPDATE makes a lost race a silent no-op (sanctioned
+    writer #3 besides node_transition and the dispatcher's claim).
+    """
+    newly = []
+    for node_id in ready_eligible(db, project_id):
+        with _cx(db) as conn:
+            cur = conn.execute(
+                "UPDATE graph_nodes SET state='ready', updated_at=? "
+                "WHERE id=? AND state='pending'",
+                (_now(), node_id),
+            )
+        if cur.rowcount == 1:
+            newly.append(node_id)
     return newly
 
 
