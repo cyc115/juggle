@@ -160,7 +160,7 @@ def register(subparsers, *, vault_path_default: str) -> None:
     p_dogfood.add_argument("--dry-run", action="store_true")
     p_dogfood.set_defaults(
         func=lambda a: (
-            __import__("juggle_schedule_dogfood").run(dry_run=a.dry_run) or None
+            __import__("schedules.dogfood", fromlist=["run"]).run(dry_run=a.dry_run) or None
         )
     )
 
@@ -171,7 +171,7 @@ def register(subparsers, *, vault_path_default: str) -> None:
     p_autofix.add_argument("--dry-run", action="store_true")
     p_autofix.set_defaults(
         func=lambda a: (
-            __import__("juggle_schedule_autofix").run(dry_run=a.dry_run) or None
+            __import__("schedules.autofix", fromlist=["run"]).run(dry_run=a.dry_run) or None
         )
     )
 
@@ -182,7 +182,7 @@ def register(subparsers, *, vault_path_default: str) -> None:
     p_reflect.add_argument("--dry-run", action="store_true")
     p_reflect.set_defaults(
         func=lambda a: (
-            __import__("juggle_schedule_reflect").run(dry_run=a.dry_run) or None
+            __import__("schedules.reflect", fromlist=["run"]).run(dry_run=a.dry_run) or None
         )
     )
 

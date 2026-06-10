@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import juggle_schedule_common as jsc
+import schedules.common as jsc
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ class TestGitCommitPaths:
 class TestDogfoodBusyAgentGate:
     def test_run_returns_1_when_busy_agents(self):
         """dogfood run() exits early (rc=1) when agents are busy"""
-        import juggle_schedule_dogfood as dogfood
+        import schedules.dogfood as dogfood
         mock_db = MagicMock()
         with patch.object(dogfood, "get_db", return_value=mock_db), \
              patch.object(dogfood, "has_busy_agents", return_value=True), \
@@ -112,7 +112,7 @@ class TestDogfoodBusyAgentGate:
 
     def test_run_proceeds_when_no_busy_agents(self):
         """dogfood run() does NOT exit early when no busy agents"""
-        import juggle_schedule_dogfood as dogfood
+        import schedules.dogfood as dogfood
         mock_db = MagicMock()
         # Gate passes; mock the rest of run() to prevent actual execution
         with patch.object(dogfood, "get_db", return_value=mock_db), \
@@ -135,7 +135,7 @@ class TestDogfoodBusyAgentGate:
 class TestReflectBusyAgentGate:
     def test_run_returns_1_when_busy_agents(self):
         """reflect run() exits early (rc=1) when agents are busy"""
-        import juggle_schedule_reflect as reflect
+        import schedules.reflect as reflect
         mock_db = MagicMock()
         with patch.object(reflect, "get_db", return_value=mock_db), \
              patch.object(reflect, "has_busy_agents", return_value=True):
@@ -144,7 +144,7 @@ class TestReflectBusyAgentGate:
 
     def test_run_proceeds_when_no_busy_agents(self):
         """reflect run() does NOT exit early when no busy agents"""
-        import juggle_schedule_reflect as reflect
+        import schedules.reflect as reflect
         mock_db = MagicMock()
         with patch.object(reflect, "get_db", return_value=mock_db), \
              patch.object(reflect, "has_busy_agents", return_value=False), \
@@ -169,7 +169,7 @@ class TestReflectBusyAgentGate:
 class TestAutofixBusyAgentGate:
     def test_run_returns_1_when_busy_agents(self):
         """autofix run() exits early (rc=1) when agents are busy"""
-        import juggle_schedule_autofix as autofix
+        import schedules.autofix as autofix
         mock_db = MagicMock()
         with patch.object(autofix, "get_db", return_value=mock_db), \
              patch.object(autofix, "has_busy_agents", return_value=True):
@@ -178,7 +178,7 @@ class TestAutofixBusyAgentGate:
 
     def test_run_proceeds_when_no_busy_agents(self):
         """autofix run() does NOT exit early when no busy agents"""
-        import juggle_schedule_autofix as autofix
+        import schedules.autofix as autofix
         mock_db = MagicMock()
         with patch.object(autofix, "get_db", return_value=mock_db), \
              patch.object(autofix, "has_busy_agents", return_value=False), \
@@ -211,7 +211,7 @@ class TestAutofixBusyAgentGate:
 class TestDogfoodPassesExplicitPaths:
     def test_git_commit_called_with_report_path(self):
         """dogfood passes the report file path to git_commit"""
-        import juggle_schedule_dogfood as dogfood
+        import schedules.dogfood as dogfood
         mock_db = MagicMock()
         captured_calls = []
 
@@ -243,7 +243,7 @@ class TestDogfoodPassesExplicitPaths:
 class TestReflectPassesExplicitPaths:
     def test_git_commit_called_with_report_path(self):
         """reflect passes the report file path to git_commit"""
-        import juggle_schedule_reflect as reflect
+        import schedules.reflect as reflect
         mock_db = MagicMock()
         captured_calls = []
 

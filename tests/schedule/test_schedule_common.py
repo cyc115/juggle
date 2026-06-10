@@ -12,8 +12,8 @@ import pytest
 # Ensure src is on path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-import juggle_schedule_common as common
-import juggle_schedule_common as jsc  # alias used by the merged class-based suite
+import schedules.common as common
+import schedules.common as jsc  # alias used by the merged class-based suite
 
 
 # ---------------------------------------------------------------------------
@@ -94,14 +94,14 @@ def test_cost_tracker_estimate_haiku():
 # ---------------------------------------------------------------------------
 
 def test_gh_issue_exists_false_on_subprocess_error():
-    with patch("juggle_schedule_common.gh_run", side_effect=Exception("network error")):
+    with patch("schedules.common.gh_run", side_effect=Exception("network error")):
         assert common.gh_issue_exists("some title") is False
 
 
 def test_gh_issue_exists_false_when_no_match():
     mock_result = MagicMock()
     mock_result.stdout = json.dumps([{"title": "other title", "createdAt": "2026-05-18T00:00:00Z"}])
-    with patch("juggle_schedule_common.gh_run", return_value=mock_result):
+    with patch("schedules.common.gh_run", return_value=mock_result):
         assert common.gh_issue_exists("some title") is False
 
 
@@ -110,7 +110,7 @@ def test_gh_issue_exists_true_when_match_within_window():
     mock_result.stdout = json.dumps([
         {"title": "exact match", "createdAt": datetime.now(timezone.utc).isoformat()}
     ])
-    with patch("juggle_schedule_common.gh_run", return_value=mock_result):
+    with patch("schedules.common.gh_run", return_value=mock_result):
         assert common.gh_issue_exists("exact match", days=30) is True
 
 
@@ -203,7 +203,7 @@ def test_gh_create_issue_dry_run_returns_none():
 def test_gh_create_issue_success():
     mock_result = MagicMock()
     mock_result.stdout = "https://github.com/owner/repo/issues/42"
-    with patch("juggle_schedule_common.gh_run", return_value=mock_result):
+    with patch("schedules.common.gh_run", return_value=mock_result):
         result = common.gh_create_issue("test issue", "test body")
         assert result == "https://github.com/owner/repo/issues/42"
 
@@ -212,14 +212,14 @@ def test_gh_create_issue_success():
 def test_gh_create_issue_with_labels():
     mock_result = MagicMock()
     mock_result.stdout = "https://github.com/owner/repo/issues/42"
-    with patch("juggle_schedule_common.gh_run", return_value=mock_result), \
-         patch("juggle_schedule_common._ensure_gh_label"):
+    with patch("schedules.common.gh_run", return_value=mock_result), \
+         patch("schedules.common._ensure_gh_label"):
         result = common.gh_create_issue("issue", "body", labels=["bug", "urgent"])
         assert result == "https://github.com/owner/repo/issues/42"
 
 
 def test_gh_create_issue_handles_error():
-    with patch("juggle_schedule_common.gh_run", side_effect=Exception("gh error")):
+    with patch("schedules.common.gh_run", side_effect=Exception("gh error")):
         result = common.gh_create_issue("title", "body")
         assert result is None
 
@@ -227,7 +227,7 @@ def test_gh_create_issue_handles_error():
 def test_gh_create_issue_strips_output():
     mock_result = MagicMock()
     mock_result.stdout = "  https://github.com/owner/repo/issues/42  \n"
-    with patch("juggle_schedule_common.gh_run", return_value=mock_result):
+    with patch("schedules.common.gh_run", return_value=mock_result):
         result = common.gh_create_issue("title", "body")
         assert result == "https://github.com/owner/repo/issues/42"
 
@@ -241,7 +241,7 @@ def test_gh_pr_list_head_success():
     mock_result.stdout = json.dumps([
         {"number": 42, "title": "fix bug", "state": "OPEN", "headRefName": "cyc_fix"}
     ])
-    with patch("juggle_schedule_common.gh_run", return_value=mock_result):
+    with patch("schedules.common.gh_run", return_value=mock_result):
         result = common.gh_pr_list_head("cyc_fix")
         assert len(result) == 1
         assert result[0]["number"] == 42
@@ -250,13 +250,13 @@ def test_gh_pr_list_head_success():
 def test_gh_pr_list_head_empty():
     mock_result = MagicMock()
     mock_result.stdout = "[]"
-    with patch("juggle_schedule_common.gh_run", return_value=mock_result):
+    with patch("schedules.common.gh_run", return_value=mock_result):
         result = common.gh_pr_list_head("nonexistent")
         assert result == []
 
 
 def test_gh_pr_list_head_handles_error():
-    with patch("juggle_schedule_common.gh_run", side_effect=Exception("gh error")):
+    with patch("schedules.common.gh_run", side_effect=Exception("gh error")):
         result = common.gh_pr_list_head("cyc_fix")
         assert result == []
 
@@ -264,7 +264,7 @@ def test_gh_pr_list_head_handles_error():
 def test_gh_pr_list_head_empty_stdout():
     mock_result = MagicMock()
     mock_result.stdout = None
-    with patch("juggle_schedule_common.gh_run", return_value=mock_result):
+    with patch("schedules.common.gh_run", return_value=mock_result):
         result = common.gh_pr_list_head("cyc_fix")
         assert result == []
 

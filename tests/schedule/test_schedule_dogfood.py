@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-import juggle_schedule_common as common
-import juggle_schedule_dogfood as dogfood
+import schedules.common as common
+import schedules.dogfood as dogfood
 
 
 # ---------------------------------------------------------------------------
@@ -40,8 +40,8 @@ def test_dry_run_writes_report(tmp_path):
          patch.object(dogfood, "_check_active_session", return_value=False), \
          patch.object(dogfood, "_tmux_session_exists", return_value=False), \
          patch.object(dogfood, "REPORTS_DIR", tmp_path), \
-         patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
-         patch("juggle_schedule_common.JUGGLE_DIR", tmp_path):
+         patch("schedules.common.STATE_FILE", tmp_path / "state.json"), \
+         patch("schedules.common.JUGGLE_DIR", tmp_path):
         result = dogfood.run(dry_run=True)
 
     assert result == 0
@@ -66,8 +66,8 @@ def test_action_item_filed_once_on_dry_run(tmp_path):
          patch.object(dogfood, "_check_active_session", return_value=False), \
          patch.object(dogfood, "_tmux_session_exists", return_value=False), \
          patch.object(dogfood, "REPORTS_DIR", tmp_path), \
-         patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
-         patch("juggle_schedule_common.JUGGLE_DIR", tmp_path):
+         patch("schedules.common.STATE_FILE", tmp_path / "state.json"), \
+         patch("schedules.common.JUGGLE_DIR", tmp_path):
         # dry_run=True skips action item filing
         dogfood.run(dry_run=True)
         dogfood.run(dry_run=True)
@@ -95,8 +95,8 @@ def test_cost_cap_aborts_and_writes_partial(tmp_path):
          patch.object(dogfood, "_run_headless_research", fake_headless), \
          patch.object(dogfood, "REPORTS_DIR", tmp_path), \
          patch.object(dogfood, "JUGGLE_REPO", tmp_path), \
-         patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
-         patch("juggle_schedule_common.JUGGLE_DIR", tmp_path):
+         patch("schedules.common.STATE_FILE", tmp_path / "state.json"), \
+         patch("schedules.common.JUGGLE_DIR", tmp_path):
         result = dogfood.run(dry_run=False)
 
     assert result == 1
@@ -120,8 +120,8 @@ def test_active_session_defers_once(tmp_path):
          patch.object(dogfood, "_check_active_session", fake_active_session), \
          patch("time.sleep", return_value=None), \
          patch.object(dogfood, "REPORTS_DIR", tmp_path), \
-         patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
-         patch("juggle_schedule_common.JUGGLE_DIR", tmp_path):
+         patch("schedules.common.STATE_FILE", tmp_path / "state.json"), \
+         patch("schedules.common.JUGGLE_DIR", tmp_path):
         result = dogfood.run(dry_run=False)
 
     assert result == 1

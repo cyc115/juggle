@@ -43,21 +43,21 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_hooks_tooluse.py": 334,   # PreToolUse+PostToolUse handlers; target ≤300
     "src/juggle_hooks_prompt.py": 350,    # UserPromptSubmit+Stop handlers; target ≤300
     "src/juggle_tmux.py": 839,
-    "src/juggle_schedule_autofix.py": 823,
+    "src/schedules/autofix.py": 823,
     "src/juggle_cmd_projects.py": 735,  # lowered from 737 (Phase 1.2 llm consolidation)
     "src/juggle_cmd_threads.py": 673,
     "src/juggle_context.py": 598,
-    "src/juggle_schedule_reflect.py": 545,
+    "src/schedules/reflect.py": 545,
     "src/juggle_cockpit_view.py": 499,
     "src/juggle_scheduler.py": 494,
     "src/juggle_cockpit_model.py": 467,
     "src/juggle_settings.py": 460,
-    "src/juggle_schedule_dogfood.py": 406,
+    "src/schedules/dogfood.py": 406,
     "src/juggle_cmd_research.py": 392,
     "src/juggle_smoke.py": 380,
     "src/juggle_cmd_context.py": 370,
     "src/juggle_cmd_integrate.py": 364,
-    # src/juggle_schedule_common.py removed 2026-06-10: shrank to 297 (Phase 1.2)
+    # src/schedules/common.py (ex juggle_schedule_common) removed 2026-06-10: shrank to 297 (Phase 1.2)
     "scripts/talkback": 415,
 }
 

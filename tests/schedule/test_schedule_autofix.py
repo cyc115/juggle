@@ -8,8 +8,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-import juggle_schedule_common as common
-import juggle_schedule_autofix as autofix
+import schedules.common as common
+import schedules.autofix as autofix
 
 
 # ---------------------------------------------------------------------------
@@ -23,11 +23,11 @@ def test_existing_pr_blocks_run(tmp_path):
     mock_db.add_action_item = MagicMock()
     mock_thread = [{"id": "abc123"}]
 
-    with patch("juggle_schedule_autofix.gh_pr_list_head", return_value=existing_prs), \
+    with patch("schedules.autofix.gh_pr_list_head", return_value=existing_prs), \
          patch.object(autofix, "get_db", return_value=mock_db), \
          patch.object(autofix, "db_query", return_value=mock_thread), \
-         patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
-         patch("juggle_schedule_common.JUGGLE_DIR", tmp_path):
+         patch("schedules.common.STATE_FILE", tmp_path / "state.json"), \
+         patch("schedules.common.JUGGLE_DIR", tmp_path):
         result = autofix.run(dry_run=False)
 
     assert result == 1
@@ -38,7 +38,7 @@ def test_existing_pr_blocks_run(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_dry_run_writes_pr_description(tmp_path):
-    with patch("juggle_schedule_autofix.gh_pr_list_head", return_value=[]), \
+    with patch("schedules.autofix.gh_pr_list_head", return_value=[]), \
          patch.object(autofix, "get_db", return_value=MagicMock()), \
          patch.object(autofix, "db_query", return_value=[]), \
          patch.object(autofix, "fx1_ruff", lambda *a, **kw: None), \
@@ -51,8 +51,8 @@ def test_dry_run_writes_pr_description(tmp_path):
          patch.object(autofix, "is1_bandit", lambda *a: None), \
          patch.object(autofix, "is2_skill_audit", lambda *a: None), \
          patch.object(autofix, "_read_dogfood_snippet", return_value=""), \
-         patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
-         patch("juggle_schedule_common.JUGGLE_DIR", tmp_path):
+         patch("schedules.common.STATE_FILE", tmp_path / "state.json"), \
+         patch("schedules.common.JUGGLE_DIR", tmp_path):
         result = autofix.run(dry_run=True)
 
     assert result == 0

@@ -8,8 +8,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-import juggle_schedule_common as common
-import juggle_schedule_reflect as reflect
+import schedules.common as common
+import schedules.reflect as reflect
 
 
 # ---------------------------------------------------------------------------
@@ -31,8 +31,8 @@ def test_dry_run_writes_digest(tmp_path):
          patch.object(reflect, "rf7_skill_drift", lambda db, ct, s: s.update({"RF-7": "## Skill Drift\n\nOK\n"})), \
          patch.object(reflect, "rf8_dogfood_pulse", lambda s: s.update({"RF-8": "## Dogfood Pulse\n\nOK\n"})), \
          patch.object(reflect, "REPORTS_DIR", tmp_path), \
-         patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
-         patch("juggle_schedule_common.JUGGLE_DIR", tmp_path):
+         patch("schedules.common.STATE_FILE", tmp_path / "state.json"), \
+         patch("schedules.common.JUGGLE_DIR", tmp_path):
         result = reflect.run(dry_run=True)
 
     assert result == 0
@@ -136,10 +136,10 @@ def test_cost_cap_in_rf1_continues_with_remaining(tmp_path):
          patch.object(reflect, "rf8_dogfood_pulse", fake_rf8), \
          patch.object(reflect, "_file_reflect_issues", return_value=[]), \
          patch.object(reflect, "REPORTS_DIR", tmp_path), \
-         patch("juggle_schedule_common.STATE_FILE", tmp_path / "state.json"), \
-         patch("juggle_schedule_common.JUGGLE_DIR", tmp_path), \
-         patch("juggle_schedule_common.git_commit", return_value=False), \
-         patch("juggle_schedule_common.git_push", return_value=True):
+         patch("schedules.common.STATE_FILE", tmp_path / "state.json"), \
+         patch("schedules.common.JUGGLE_DIR", tmp_path), \
+         patch("schedules.common.git_commit", return_value=False), \
+         patch("schedules.common.git_push", return_value=True):
         result = reflect.run(dry_run=True)
 
     # RF-8 should have run even though RF-1 raised CostCapExceeded
