@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 def test_get_settings_reads_defaults_when_no_config(tmp_path, monkeypatch):
+    monkeypatch.delenv("JUGGLE_MAX_THREADS", raising=False)
     monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(tmp_path / "nonexistent.json"))
     from juggle_settings import get_settings, DEFAULTS
 
@@ -18,6 +19,7 @@ def test_get_settings_reads_defaults_when_no_config(tmp_path, monkeypatch):
 def test_get_settings_loads_config_file(tmp_path, monkeypatch):
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"max_threads": 7}))
+    monkeypatch.delenv("JUGGLE_MAX_THREADS", raising=False)
     monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(config))
     from juggle_settings import get_settings
 
@@ -28,6 +30,7 @@ def test_get_settings_reads_fresh_on_each_call(tmp_path, monkeypatch):
     """Regression: without lru_cache, config changes are picked up immediately."""
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"max_threads": 5}))
+    monkeypatch.delenv("JUGGLE_MAX_THREADS", raising=False)
     monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(config))
     from juggle_settings import get_settings
 
@@ -52,6 +55,7 @@ def test_get_settings_nested_merge(tmp_path, monkeypatch):
 def test_get_settings_survives_corrupt_config(tmp_path, monkeypatch):
     config = tmp_path / "config.json"
     config.write_text("not valid json{{{")
+    monkeypatch.delenv("JUGGLE_MAX_THREADS", raising=False)
     monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(config))
     from juggle_settings import get_settings, DEFAULTS
 

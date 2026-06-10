@@ -40,14 +40,25 @@ def _make_grid(rows: int, cols: int, fill: str = "") -> list[str]:
 
 
 def _make_db(tmp_path: Path, n_threads: int = 30) -> str:
-    """Minimal juggle.db seeded with n_threads topics."""
+    """Minimal juggle.db seeded with n_threads topics.
+
+    Hermetic w.r.t. JUGGLE_MAX_THREADS: the documented test env exports
+    JUGGLE_MAX_THREADS=10, which would cap thread creation below n_threads.
+    Temporarily raise the module-level cap while seeding.
+    """
+    import juggle_db
     from juggle_db import JuggleDB
 
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db.init_db()
     db.set_active(True)
-    for i in range(n_threads):
-        db.create_thread(f"smoke-topic-{i:02d}", session_id="s0")
+    old_max = juggle_db.MAX_THREADS
+    juggle_db.MAX_THREADS = max(old_max, n_threads)
+    try:
+        for i in range(n_threads):
+            db.create_thread(f"smoke-topic-{i:02d}", session_id="s0")
+    finally:
+        juggle_db.MAX_THREADS = old_max
     return str(tmp_path / "juggle.db")
 
 
