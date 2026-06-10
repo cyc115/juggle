@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 
 @pytest.fixture(autouse=True)
@@ -137,7 +137,7 @@ def test_nudge_backoff_suppresses_repeat(tmp_path):
     """Second call within backoff window is suppressed; call after window fires."""
     import sys
     from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
     from juggle_db import JuggleDB
     from juggle_watchdog import nudge_and_notify
 

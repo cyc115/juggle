@@ -4,12 +4,12 @@ import sys
 from pathlib import Path
 from unittest import mock
 
-SRC_DIR = str(Path(__file__).parent.parent / "src")
+SRC_DIR = str(Path(__file__).parent.parent.parent / "src")
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-_SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
-_SRC_DIR = Path(__file__).parent.parent / "src"
+_SCRIPTS_DIR = Path(__file__).parent.parent.parent / "scripts"
+_SRC_DIR = Path(__file__).parent.parent.parent / "src"
 
 
 def _load_watchdog_module():

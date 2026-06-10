@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 from juggle_db import JuggleDB
 
 
@@ -154,7 +154,7 @@ def test_get_agent_sets_busy_since(tmp_path):
             "--model",
             "claude-sonnet-4-6",
         ],
-        cwd=str(Path(__file__).parent.parent),
+        cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,
         env={
@@ -187,7 +187,7 @@ def test_send_task_stores_last_task_and_pane_hash(tmp_path):
 
     subprocess.run(
         [sys.executable, "src/juggle_cli.py", "send-task", agent_id, str(task_file)],
-        cwd=str(Path(__file__).parent.parent),
+        cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,
         env={
@@ -226,7 +226,7 @@ def test_complete_agent_inserts_completion(tmp_path):
             thread_id,
             "Done. All good.",
         ],
-        cwd=str(Path(__file__).parent.parent),
+        cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,
         env={**os.environ, "_JUGGLE_TEST_DB": str(db_path)},
@@ -291,7 +291,7 @@ def test_set_watchdog_minutes(tmp_path):
 
     result = subprocess.run(
         [sys.executable, "src/juggle_cli.py", "set-watchdog", agent_id, "15"],
-        cwd=str(Path(__file__).parent.parent),
+        cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,
         env={**os.environ, "_JUGGLE_TEST_DB": str(db_path)},
@@ -310,7 +310,7 @@ def test_set_watchdog_off(tmp_path):
 
     subprocess.run(
         [sys.executable, "src/juggle_cli.py", "set-watchdog", agent_id, "off"],
-        cwd=str(Path(__file__).parent.parent),
+        cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,
         env={**os.environ, "_JUGGLE_TEST_DB": str(db_path)},

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from unittest import mock
 
-SRC_DIR = str(Path(__file__).parent.parent / "src")
+SRC_DIR = str(Path(__file__).parent.parent.parent / "src")
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
@@ -74,7 +74,7 @@ def test_cli_warns_when_watchdog_dead():
     """CLI main must print a stderr warning when watchdog heartbeat is stale."""
     # We test this by checking the AST — the warning must be in main()
     # and must depend on is_watchdog_alive().
-    source = (Path(__file__).parent.parent / "src" / "juggle_cli.py").read_text()
+    source = (Path(__file__).parent.parent.parent / "src" / "juggle_cli.py").read_text()
     tree = ast.parse(source)
 
     main_func = next(

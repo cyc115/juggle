@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 
 # Ensure src/ on path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from juggle_watchdog import classify_pane_state, execute_recovery
 from juggle_db import JuggleDB
