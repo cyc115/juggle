@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""LOC gate — enforce the repo architecture gate of <=300 lines per module.
+
+Walks git-tracked Python files under src/ plus Python scripts in scripts/
+(uv/python shebang). Any file over LIMIT lines fails the gate (exit 1) unless
+it appears in GRANDFATHERED at a budget >= its current size. A grandfathered
+file that GROWS past its recorded budget also fails.
+
+THE ALLOWLIST MAY ONLY SHRINK. Entries are removed (or budgets lowered) as the
+2026-06-10 refactor plan decomposes each module — never added or raised.
+tests/test_loc_gate.py enforces that every entry still exceeds LIMIT (stale
+entries fail the suite, forcing removal).
+
+CLI:
+    loc_gate.py                  human-readable report, exit 1 on offenders
+    loc_gate.py --json           machine-readable report
+    loc_gate.py --update-baseline  print (never write) a fresh allowlist dict
+
+Stdlib-only; safe to run with any python3.
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+LIMIT = 300
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Grandfathered offenders at their line counts as of 2026-06-10 (plan baseline,
+# branch cyc_refactor-tokens). MAY ONLY SHRINK — see module docstring.
+GRANDFATHERED: dict[str, int] = {
+    "src/juggle_db.py": 1962,
+    "src/juggle_watchdog.py": 1332,
+    "src/juggle_cockpit.py": 1120,
+    "src/juggle_cmd_agents.py": 1098,
+    "src/juggle_hooks.py": 1056,
+    "src/juggle_cli.py": 1006,
+    "src/juggle_tmux.py": 839,
+    "src/juggle_schedule_autofix.py": 823,
+    "src/juggle_cmd_projects.py": 737,
+    "src/juggle_cmd_threads.py": 673,
+    "src/juggle_context.py": 598,
+    "src/juggle_schedule_reflect.py": 545,
+    "src/juggle_cockpit_view.py": 499,
+    "src/juggle_scheduler.py": 494,
+    "src/juggle_cockpit_model.py": 467,
+    "src/juggle_settings.py": 460,
+    "src/juggle_schedule_dogfood.py": 406,
+    "src/juggle_cmd_research.py": 392,
+    "src/juggle_smoke.py": 380,
+    "src/juggle_cmd_context.py": 370,
+    "src/juggle_cmd_integrate.py": 364,
+    "src/juggle_schedule_common.py": 303,
+    "scripts/talkback": 415,
+}
+
+
+def count_lines(path: Path) -> int:
+    """Line count matching `wc -l` semantics (newline count, trailing partial line counts)."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if not text:
+        return 0
+    n = text.count("\n")
+    if not text.endswith("\n"):
+        n += 1
+    return n
+
+
+def _is_python_script(path: Path) -> bool:
+    try:
+        first = path.open("r", encoding="utf-8", errors="replace").readline()
+    except OSError:
+        return False
+    return first.startswith("#!") and ("python" in first or "uv run" in first)
+
+
+def collect_files(repo_root: Path = REPO_ROOT) -> dict[str, int]:
+    """Return {repo-relative path: line count} for all gated files."""
+    out = subprocess.run(
+        ["git", "ls-files", "--", "src", "scripts"],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root),
+        check=True,
+    ).stdout.splitlines()
+    counts: dict[str, int] = {}
+    for rel in out:
+        p = repo_root / rel
+        if not p.is_file():
+            continue  # tracked but deleted in worktree
+        if rel.startswith("src/"):
+            if not rel.endswith(".py"):
+                continue
+        elif rel.startswith("scripts/"):
+            if not (rel.endswith(".py") or _is_python_script(p)):
+                continue
+        counts[rel] = count_lines(p)
+    return counts
+
+
+def evaluate(
+    counts: dict[str, int],
+    allowlist: dict[str, int],
+    limit: int = LIMIT,
+) -> dict:
+    """Pure gate logic. Returns {offenders: [...], stale: [...], files_checked: n}."""
+    offenders: list[dict] = []
+    stale: list[str] = []
+    for path in sorted(counts):
+        n = counts[path]
+        budget = allowlist.get(path)
+        if n > limit:
+            if budget is None or n > budget:
+                offenders.append({"path": path, "lines": n, "budget": budget or limit})
+        elif budget is not None:
+            stale.append(path)
+    return {"offenders": offenders, "stale": stale, "files_checked": len(counts)}
+
+
+def main(argv: list[str]) -> int:
+    counts = collect_files()
+    result = evaluate(counts, GRANDFATHERED, LIMIT)
+
+    if "--update-baseline" in argv:
+        print("# Fresh GRANDFATHERED baseline (paste into scripts/loc_gate.py).")
+        print("# Reminder: the allowlist MAY ONLY SHRINK relative to the committed one.")
+        print("GRANDFATHERED: dict[str, int] = {")
+        for path, n in sorted(counts.items(), key=lambda kv: -kv[1]):
+            if n > LIMIT:
+                print(f'    "{path}": {n},')
+        print("}")
+        return 0
+
+    if "--json" in argv:
+        print(
+            json.dumps(
+                {
+                    "limit": LIMIT,
+                    "files_checked": result["files_checked"],
+                    "offenders": result["offenders"],
+                    "stale": result["stale"],
+                    "allowlist": GRANDFATHERED,
+                },
+                indent=2,
+            )
+        )
+        return 1 if result["offenders"] else 0
+
+    if result["stale"]:
+        for path in result["stale"]:
+            print(
+                f"loc_gate: STALE allowlist entry {path} "
+                f"(now <= {LIMIT} lines) — remove it from GRANDFATHERED"
+            )
+    if result["offenders"]:
+        print(f"loc_gate: FAIL — modules over {LIMIT} lines (or past grandfathered budget):")
+        for o in result["offenders"]:
+            print(f"  {o['lines']:>6}  {o['path']}  (budget {o['budget']})")
+        return 1
+    print(
+        f"loc_gate: OK — {result['files_checked']} files checked, "
+        f"{len(GRANDFATHERED)} grandfathered (allowlist may only shrink)"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
