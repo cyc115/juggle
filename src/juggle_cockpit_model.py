@@ -22,6 +22,7 @@ class Topic:
     title: str = ""  # display title
     project_id: str = "INBOX"
     project_name: str = "Inbox"
+    node_state: str | None = None  # bound graph node's state (autopilot), or None
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,7 @@ class CockpitState:
     scheduled: list[ScheduledTask]
     fetched_at: float
     projects_by_id: dict = None  # type: ignore  # {id: name}, None → no grouping
+    graph_by_project: dict = None  # type: ignore  # {id: node counts}, None → no graph
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +198,30 @@ def snapshot(db) -> CockpitState:
     except Exception:
         projects_by_id = {}
 
+    # Graph-node visibility (autopilot, DA m2): aggregate counts per project +
+    # node state per bound thread — sourced from graph_nodes.state, never from
+    # thread status/TTL. Pre-migration DBs degrade gracefully.
+    graph_by_project: dict | None = None
+    node_state_by_thread: dict[str, str] = {}
+    try:
+        from juggle_graph_status import counts_from_states
+
+        g_rows = conn.execute(
+            "SELECT project_id, state, thread_id FROM graph_nodes"
+        ).fetchall()
+        states_by_proj: dict[str, list[str]] = {}
+        for r in g_rows:
+            states_by_proj.setdefault(r["project_id"], []).append(r["state"])
+            if r["thread_id"]:
+                node_state_by_thread[r["thread_id"]] = r["state"]
+        if states_by_proj:
+            graph_by_project = {
+                pid: counts_from_states(states)
+                for pid, states in states_by_proj.items()
+            }
+    except Exception:
+        pass
+
     topics: list[Topic] = []
 
     def _make_topic(r) -> Topic:
@@ -222,6 +248,7 @@ def snapshot(db) -> CockpitState:
             title=title,
             project_id=pid,
             project_name=pname,
+            node_state=node_state_by_thread.get(tid),
         )
 
     # 1. Active
@@ -372,6 +399,7 @@ def snapshot(db) -> CockpitState:
         scheduled=fetch_scheduled_tasks(),
         fetched_at=time.time(),
         projects_by_id=projects_by_id if projects_by_id else None,
+        graph_by_project=graph_by_project,
     )
     conn.close()
     return result

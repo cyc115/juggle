@@ -57,6 +57,22 @@ SCHED_STATUS_GLYPHS: dict[str, str] = {
     "unknown": "⏸️",
 }
 
+# Node-bound topics get their glyph from graph_nodes.state (autopilot, DA m2)
+# — never from thread status/TTL, so done/failed nodes stay legible even after
+# their threads close or archive.
+NODE_STATE_GLYPHS: dict[str, str] = {
+    "pending": "⬡",
+    "ready": "◇",
+    "dispatching": "◌",
+    "running": "🏃",
+    "integrating": "🔀",
+    "verified": "✅",
+    "failed-exec": "❌",
+    "failed-integration": "❌",
+    "failed-verify": "❌",
+    "blocked-failed": "🚫",
+}
+
 NOTIF_KIND_GLYPHS: dict[str, str] = {
     "complete": "⚡",
     "info": "ℹ️",
@@ -87,7 +103,11 @@ def pick_breakpoint(size_or_width) -> str:
 
 
 def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
-    glyph = TOPIC_STATUS_GLYPHS.get(t.status, "•")
+    node_state = getattr(t, "node_state", None)
+    if node_state:
+        glyph = NODE_STATE_GLYPHS.get(node_state, "⬢")
+    else:
+        glyph = TOPIC_STATUS_GLYPHS.get(t.status, "•")
     label_str = f"[{t.label}]"
     if t.is_current:
         style = Style(bold=True, color="white")
@@ -123,12 +143,15 @@ def render_topics(
     projects_by_id: dict | None = None,
     scroll_offset: int = 0,
     active: bool = False,
+    graph_by_project: dict | None = None,
 ) -> Panel:
     """Render topics panel.
 
     Wide: one row per topic with glyph + [label] + title.
     Medium/narrow: compressed strip.
-    When projects_by_id has >1 project, renders section headers per project.
+    When projects_by_id has >1 project, renders section headers per project;
+    a project with graph nodes shows aggregate progress in its header
+    ('3/14 done, 1 failed, 2 ready' — autopilot, DA m2).
     """
     border = _pane_border(active)
     use_grouping = projects_by_id and len(projects_by_id) > 1
@@ -164,6 +187,11 @@ def render_topics(
         hdr = Text()
         hdr.append(f" ▸ {project_name.upper()} ", style=Style(color="bright_white", bgcolor="grey23", bold=True))
         hdr.append(f" {len(group_topics)} ", style=Style(color="bright_white", bgcolor="grey23", dim=True))
+        counts = (graph_by_project or {}).get(project_id)
+        if counts:
+            from juggle_graph_status import format_progress
+
+            hdr.append(f" ⬢ {format_progress(counts)} ", style=Style(color="cyan", bgcolor="grey23"))
         content_parts.append(hdr)
         section_table = _make_table()
         for t in group_topics:

@@ -43,7 +43,13 @@ def render_static_from_state(state: CockpitState, width: int = 120) -> str:
     half_right = right_w // 2
 
     left_lines = _render(
-        render_topics(state.topics, "wide", state.projects_by_id), left_w
+        render_topics(
+            state.topics,
+            "wide",
+            state.projects_by_id,
+            graph_by_project=getattr(state, "graph_by_project", None),
+        ),
+        left_w,
     )
     actions_lines = _render(render_actions(state.actions), half_right)
     agents_lines = _render(

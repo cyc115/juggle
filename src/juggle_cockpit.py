@@ -326,7 +326,7 @@ class CockpitApp(App):
             active = self._active_pane
 
             self.query_one("#topics").update(
-                render_topics(state.topics, bp, state.projects_by_id, off["topics"], active == "topics")
+                render_topics(state.topics, bp, state.projects_by_id, off["topics"], active == "topics", graph_by_project=getattr(state, "graph_by_project", None))
             )
             self.query_one("#actions").update(
                 render_actions(
@@ -794,7 +794,7 @@ if __name__ == "__main__":
             render_topics as _rt, render_actions as _ra,
             render_agents as _rag, render_notifications as _rn,
         )
-        _con.print(_rt(_state.topics, "wide", _state.projects_by_id))
+        _con.print(_rt(_state.topics, "wide", _state.projects_by_id, graph_by_project=getattr(_state, "graph_by_project", None)))
         _con.print(_ra(_state.actions))
         _con.print(_rag(_state.agents, _state.scheduled))
         _con.print(_rn(_state.notifications))
