@@ -1,6 +1,6 @@
 """TDD tests for cockpit static render (--out mode).
 
-render_static_from_state and render_static live in juggle_cockpit_view so they
+render_static_from_state and render_static live in juggle_cockpit_static so they
 can be imported without textual in the standard pytest env.
 """
 import os
@@ -20,7 +20,7 @@ from juggle_cockpit_model import (
     Notification,
     Topic,
 )
-from juggle_cockpit_view import render_static_from_state
+from juggle_cockpit_static import render_static_from_state
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ def test_render_static_from_state_width_param():
 
 def test_render_static_with_real_db(tmp_path):
     """render_static() seeds a real db and returns text with pane headers."""
-    from juggle_cockpit_view import render_static
+    from juggle_cockpit_static import render_static
     from juggle_db import JuggleDB
 
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))

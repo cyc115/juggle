@@ -84,7 +84,7 @@ def _profile_worker_loop(
         tick_callable = _tick_fn
     else:
         from juggle_cockpit_model import snapshot as _snapshot
-        from juggle_cockpit_view import render_static_from_state
+        from juggle_cockpit_static import render_static_from_state
         from juggle_cockpit import _make_cockpit_db
 
         db = _make_cockpit_db(db_path)

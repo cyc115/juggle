@@ -776,7 +776,7 @@ if __name__ == "__main__":
     if args.screenshot:
         import os
         from rich.console import Console as _Console
-        from juggle_cockpit_view import render_static_from_state as _render
+        from juggle_cockpit_static import render_static_from_state as _render
         from juggle_cockpit_model import snapshot as _snapshot
         import sqlite3 as _sqlite3
         from juggle_db import JuggleDB
@@ -823,7 +823,7 @@ if __name__ == "__main__":
             print(path)
         sys.exit(0)
     if args.out:
-        from juggle_cockpit_view import render_static
+        from juggle_cockpit_static import render_static
         sys.stdout.write(render_static(db_path=args.db_path))
         sys.exit(0)
     if args.profile_worker:

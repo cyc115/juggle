@@ -2,8 +2,9 @@
 juggle_hooks_prompt — UserPromptSubmit and Stop hook handlers.
 
 Owns: handle_user_prompt_submit, handle_stop, auto_approve_blocked_agents,
-      Hindsight retention helpers, autopilot directive injection.
-Must not own: checkpoint logic, tool-use blocking, DB path constants.
+      Hindsight retention helpers.
+Must not own: checkpoint logic, tool-use blocking, DB path constants, or the
+autopilot directive (juggle_hooks_autopilot).
 """
 
 import json
@@ -13,9 +14,7 @@ import re
 import subprocess
 import sys
 import threading
-from pathlib import Path
 
-import juggle_hooks_config as _cfg
 from juggle_hooks_config import (
     _record_error_safe,
     _get_session_id,
@@ -23,33 +22,10 @@ from juggle_hooks_config import (
     get_db,
 )
 from juggle_context import build_context_string
-
-
-# Concise re-assertion of the /juggle:toggle-autopilot loop.
-_AUTOPILOT_DIRECTIVE = (
-    "--- AUTOPILOT MODE: ON ---\n"
-    "Autopilot is engaged (~/.juggle/autopilot present). Drive every requested "
-    "feature to completion autonomously — do NOT pause for approval:\n"
-    "1. Per feature: brainstorm/spec → devil's-advocate critique → resolve open "
-    "questions yourself at staff level (decide, note why, proceed).\n"
-    "2. Implement on a feature branch via dispatched agents (TDD); verify each "
-    "feature with a harness before starting the next.\n"
-    "3. Self-unblock: on a blocker or stalled agent, diagnose → recover → continue.\n"
-    "4. Escalate ONLY for: missing credentials, an irreversible/destructive "
-    "external action, or a product-direction fork with no defensible default.\n"
-    "Toggle off with /juggle:toggle-autopilot. See commands/toggle-autopilot.md "
-    "for the full loop."
+from juggle_hooks_autopilot import (  # noqa: F401 — re-exported for juggle_hooks
+    _AUTOPILOT_DIRECTIVE,
+    autopilot_context as _autopilot_context,
 )
-
-
-def _autopilot_context() -> str:
-    """Return the autopilot directive if the flag file is set, else ''."""
-    try:
-        if _cfg.AUTOPILOT_FLAG.exists():
-            return _AUTOPILOT_DIRECTIVE
-    except Exception as exc:
-        logging.warning("autopilot flag check failed: %s", exc)
-    return ""
 
 
 # Patterns that are always safe to approve (send "1" = proceed).

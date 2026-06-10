@@ -40,16 +40,16 @@ GRANDFATHERED: dict[str, int] = {
     # juggle_hooks.py Phase 2.5: split into hooks sub-modules (shim now 117 lines, removed).
     # Two sub-modules exceed 300 and are grandfathered below their current size:
     "src/juggle_hooks_tooluse.py": 334,   # PreToolUse+PostToolUse handlers; target ≤300
-    "src/juggle_hooks_prompt.py": 350,    # UserPromptSubmit+Stop handlers; target ≤300
+    "src/juggle_hooks_prompt.py": 326,    # lowered 350→326 (Ph4: autopilot directive → juggle_hooks_autopilot)
     "src/juggle_tmux.py": 839,
     "src/schedules/autofix.py": 823,
     "src/juggle_cmd_projects.py": 735,  # lowered from 737 (Phase 1.2 llm consolidation)
     "src/juggle_cmd_threads.py": 673,
     "src/juggle_context.py": 353,
     "src/schedules/reflect.py": 545,
-    "src/juggle_cockpit_view.py": 499,
+    "src/juggle_cockpit_view.py": 460,  # lowered 499→460 (Ph4: static renders → juggle_cockpit_static; headroom for graph glyph rows)
     "src/juggle_scheduler.py": 494,
-    "src/juggle_cockpit_model.py": 467,
+    "src/juggle_cockpit_model.py": 440,  # lowered 467→440 (Ph4: sched discovery → juggle_cockpit_sched; headroom for graph counts)
     "src/juggle_settings.py": 460,
     "src/schedules/dogfood.py": 406,
     "src/juggle_cmd_research.py": 392,
