@@ -31,12 +31,47 @@ _AUTOPILOT_DIRECTIVE = (
     "for the full loop."
 )
 
+# LLM directive carve-out (DA B5): re-asserted every turn while a project is
+# armed, alongside the code-level send-task node guard (belt and braces).
+_ARMED_CARVEOUT = (
+    "ARMED PROJECT {project}: nodes of the armed project are tick-owned — "
+    "NEVER dispatch them manually; report status only. The watchdog tick "
+    "claims, dispatches, and completes graph nodes; manual send-task to "
+    "node-bound threads is refused without --force-node."
+)
+
+
+def _armed_graph_context() -> str:
+    """Carve-out + budgeted graph status when a project is armed, else ''.
+
+    Authority is the ``autopilot_armed_project`` settings key (DA M6).
+    Degrades to '' on any DB error — the base directive must survive.
+    """
+    try:
+        from juggle_graph_dispatch import get_armed_project
+        from juggle_graph_status import build_graph_injection
+
+        db = _cfg.get_db()
+        armed = get_armed_project(db)
+        if not armed:
+            return ""
+        return (
+            _ARMED_CARVEOUT.format(project=armed)
+            + "\n"
+            + build_graph_injection(db, armed)
+        )
+    except Exception as exc:
+        logging.warning("armed-project graph context failed: %s", exc)
+        return ""
+
 
 def autopilot_context() -> str:
-    """Return the autopilot directive if the flag file is set, else ''."""
+    """Return the autopilot directive (+ armed-project context) if the flag
+    file is set, else ''."""
     try:
         if _cfg.AUTOPILOT_FLAG.exists():
-            return _AUTOPILOT_DIRECTIVE
+            armed = _armed_graph_context()
+            return _AUTOPILOT_DIRECTIVE + (f"\n{armed}" if armed else "")
     except Exception as exc:
         logging.warning("autopilot flag check failed: %s", exc)
     return ""

@@ -94,6 +94,7 @@ from juggle_cmd_misc import (  # noqa: F401 — re-export (handlers moved 2026-0
 import juggle_cli_parsers_agents
 import juggle_cli_parsers_misc
 import juggle_cli_parsers_threads
+import juggle_cmd_autopilot
 
 
 def _obsidian_fallback(abs_file: str) -> None:
@@ -152,6 +153,7 @@ def main():
     juggle_cli_parsers_misc.register(
         subparsers, vault_path_default=str(_get_vault_root())
     )
+    juggle_cmd_autopilot.register(subparsers)
 
     # open-in-editor (handler stays in this module — patch surface for tests)
     p_open = subparsers.add_parser("open-in-editor", help="Open file in nvim server")
