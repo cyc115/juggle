@@ -240,9 +240,9 @@ CREATE TABLE IF NOT EXISTS graph_nodes (
   state       TEXT NOT NULL DEFAULT 'pending',
   thread_id   TEXT,
   handoff     TEXT,
+  diffstat    TEXT,
   verified_at TEXT,
-  created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL);
+  created_at  TEXT NOT NULL, updated_at TEXT NOT NULL);
 """
 CREATE_GRAPH_EDGES = """
 CREATE TABLE IF NOT EXISTS graph_edges (

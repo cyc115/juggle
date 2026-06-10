@@ -172,6 +172,15 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
                     f"stdout tail: {result.stdout[-300:].strip()}"
                 )
 
+        # ── 5b. Graph-node gate: pre-merge diffstat + verify_cmd (DA M3) ──────
+        # Runs in the worktree, post-rebase, BEFORE any merge/push — alongside
+        # test_cmd (both must pass if both set). A verify failure aborts here:
+        # main untouched, worktree + branch preserved, node → failed-verify.
+        from juggle_integrate_verify import verify_node_premerge
+        v_ok, v_reason = verify_node_premerge(db, node, worktree_path, rebase_onto)
+        if not v_ok:
+            return _fail(v_reason)
+
         # ── 6. Resolve local main branch name ────────────────────────────────
         local_main = subprocess.run(
             ["git", "-C", main_repo_path, "symbolic-ref", "--short", "HEAD"],

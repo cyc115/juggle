@@ -42,6 +42,13 @@ def cmd_complete_agent(args):
     else:
         ft_success, ft_msg = _com._finalize_worktree(thread)
 
+    # DA M3 channel: a VERIFY_FAIL_PREFIX'd failure means rebase + repo tests
+    # were fine but the node's verify_cmd was red → node maps to
+    # 'failed-verify' (not 'failed-integration'); main was left untouched.
+    from juggle_integrate_verify import VERIFY_FAIL_PREFIX
+
+    verify_failed = (not ft_success) and str(ft_msg).startswith(VERIFY_FAIL_PREFIX)
+
     if not ft_success:
         db.add_action_item(
             thread_id=thread_uuid,
@@ -177,7 +184,8 @@ def cmd_complete_agent(args):
     from juggle_cmd_agents_graph import mark_graph_node
 
     mark_graph_node(
-        db, thread_uuid, ft_success, getattr(args, "handoff", None), session_id
+        db, thread_uuid, ft_success, getattr(args, "handoff", None), session_id,
+        verify_failed=verify_failed,
     )
 
     # 6c. Optional retain text → Hindsight

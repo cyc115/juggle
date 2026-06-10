@@ -89,10 +89,9 @@ def build_hydration(objective: str, node: dict, deps: list[dict]) -> str:
     """Build a dispatch prompt for ``node`` from its plan + upstream handoffs.
 
     Pure function. Inputs: project ``objective``, the node row, and dep rows
-    ({id,title,handoff}). Uses ONLY dep handoffs + objective + the node's
+    ({id,title,handoff,diffstat}). Uses ONLY dep handoffs + the pre-merge
+    diffstat integrate captured (autopilot Phase 3) + objective + the node's
     planned prompt — never thread.summary (80-char truncated junk, DA M4).
-    Integrated-branch diffstat is intentionally absent: integrate deletes the
-    branch + worktree on success, so it is not cheaply available.
     """
     parts = [f"# Graph node {node['id']}: {node['title']}"]
     if (objective or "").strip():
@@ -101,6 +100,9 @@ def build_hydration(objective: str, node: dict, deps: list[dict]) -> str:
         chunks = []
         for d in deps:
             handoff = (d.get("handoff") or "").strip() or "(no handoff recorded)"
+            diffstat = (d.get("diffstat") or "").strip()
+            if diffstat:
+                handoff += f"\nIntegrated diffstat:\n{diffstat}"
             chunks.append(f"### {d['id']} — {d['title']}\n{handoff}")
         parts.append(
             "## Upstream handoffs (verified dependencies, already integrated "

@@ -1,4 +1,4 @@
-"""dbops.migrations_recent — schema migrations 20-35.
+"""dbops.migrations_recent — schema migrations 20-36.
 
 Owns: the second half of the incremental migration chain (watchdog columns
 onward), applied by ``dbops.migrations.run_migrations`` after migrations 1-19.
@@ -27,7 +27,7 @@ _log = logging.getLogger(__name__)
 
 
 def apply_recent_migrations(conn: sqlite3.Connection) -> None:
-    """Apply incremental schema migrations 20-35 (idempotent)."""
+    """Apply incremental schema migrations 20-36 (idempotent)."""
     # Migration 20: all watchdog columns on agents
     agents_cols = {
         r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()
@@ -288,3 +288,13 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
         _log.info("Migration 35: graph_nodes + graph_edges tables created")
     except sqlite3.OperationalError as e:
         _log.warning("Migration 35 (graph_nodes/graph_edges) skipped: %s", e)
+
+    # Migration 36: graph_nodes.diffstat — pre-merge diffstat captured inside
+    # _run_integrate for dependent-node hydration (autopilot Phase 3, DA M4;
+    # the branch+worktree are deleted on merge, so capture must be pre-merge)
+    try:
+        conn.execute("ALTER TABLE graph_nodes ADD COLUMN diffstat TEXT")
+        conn.commit()
+        _log.info("Migration 36: graph_nodes.diffstat column added")
+    except sqlite3.OperationalError as e:
+        _log.warning("Migration 36 (graph_nodes.diffstat) skipped: %s", e)

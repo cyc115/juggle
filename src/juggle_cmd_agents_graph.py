@@ -77,13 +77,16 @@ def check_node_guard(db, thread_uuid, *, force: bool) -> str | None:
     )
 
 
-def mark_graph_node(db, thread_uuid, integrate_ok, handoff, session_id):
+def mark_graph_node(db, thread_uuid, integrate_ok, handoff, session_id,
+                    *, verify_failed=False):
     """If the thread is bound to a graph node, record the completion outcome.
 
-    Maps (integrate outcome) → node event via dbops.db_graph.mark_completion:
-    success → 'verified' (stored verified_at), failure → 'failed-integration'
-    (DA B3: never 'verified'). Recomputes the ready set and emits a
-    notification + action item per newly-ready node. NEVER dispatches.
+    Maps (integrate outcome, verify outcome) → node event via
+    dbops.db_graph.mark_completion: success → 'verified' (stored verified_at),
+    verify_cmd failure → 'failed-verify' (DA M3: main untouched), any other
+    integrate failure → 'failed-integration' (DA B3: never 'verified').
+    Recomputes the ready set and emits a notification + action item per
+    newly-ready node. NEVER dispatches.
     """
     from dbops import db_graph
 
@@ -96,7 +99,13 @@ def mark_graph_node(db, thread_uuid, integrate_ok, handoff, session_id):
 
     try:
         state = db_graph.mark_completion(
-            db, node["id"], integrate_ok=integrate_ok, handoff=handoff
+            db,
+            node["id"],
+            # A verify failure is not an integrate failure: rebase + repo
+            # tests were fine, the node's own predicate was red.
+            integrate_ok=integrate_ok or verify_failed,
+            verify_ok=not verify_failed,
+            handoff=handoff,
         )
     except ValueError as e:
         print(f"Warning: graph node {node['id']} not marked — {e}")

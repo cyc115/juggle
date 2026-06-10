@@ -153,6 +153,16 @@ def set_node_handoff(db, node_id: str, handoff: str) -> None:
         conn.commit()
 
 
+def set_node_diffstat(db, node_id: str, diffstat: str) -> None:
+    """Pre-merge diffstat captured by integrate (hydration enrichment)."""
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE graph_nodes SET diffstat=?, updated_at=? WHERE id=?",
+            (diffstat, _now(), node_id),
+        )
+        conn.commit()
+
+
 def get_node(db, node_id: str) -> dict | None:
     with db._connect() as conn:
         row = conn.execute(
