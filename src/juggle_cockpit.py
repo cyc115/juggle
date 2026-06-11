@@ -107,7 +107,6 @@ class CockpitApp(GraphModeMixin, App):
     """Juggle Cockpit v2."""
 
     BINDINGS = [
-        Binding("q",            "quit",          "Quit"),
         Binding("ctrl+c",       "quit",          "Quit",    show=False),
         Binding("question_mark","help",          "Help"),
         Binding("j",            "scroll_down",   "↓",       show=False),

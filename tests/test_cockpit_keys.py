@@ -112,7 +112,7 @@ def test_resolve_actions_by_thread_label_label_not_found():
 
 
 def test_bindings_has_expected_keys():
-    """BINDINGS must include ?, s, a, j, k, q. No 'r' (manual refresh removed)."""
+    """BINDINGS must include ?, s, a, j, k. No 'r' (manual refresh removed). No 'q' (ctrl+c quits)."""
     from juggle_cockpit import CockpitApp
 
     keys = {b.key for b in CockpitApp.BINDINGS}
@@ -121,10 +121,21 @@ def test_bindings_has_expected_keys():
     assert "a" in keys, "a ack key missing"
     assert "j" in keys, "j scroll key missing"
     assert "k" in keys, "k scroll key missing"
-    assert "q" in keys, "q quit key missing"
     assert "pagedown" in keys, "pagedown key missing"
     assert "pageup" in keys, "pageup key missing"
     assert "r" not in keys, "'r' key must not be present (manual refresh removed)"
+
+
+def test_q_key_not_in_quit_bindings():
+    """'q' must NOT be a quit hotkey — ctrl+c is the only quit key.
+
+    Regression pin: 2026-06-10 — 'q' quit interfered with thread-label input.
+    """
+    from juggle_cockpit import CockpitApp
+
+    quit_keys = {b.key for b in CockpitApp.BINDINGS if b.action == "quit"}
+    assert "q" not in quit_keys, "'q' must not quit — users type 'q' in thread labels"
+    assert "ctrl+c" in quit_keys, "ctrl+c must still be the quit key"
 
 
 # ---------------------------------------------------------------------------

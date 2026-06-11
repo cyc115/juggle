@@ -156,6 +156,34 @@ def test_render_topics_narrow_shows_title():
     assert "refactor xunit" in text
 
 
+def test_render_topics_narrow_icon_always_visible():
+    """At narrow width, the status glyph and [label] must never be truncated away.
+
+    Regression pin: 2026-06-10 — narrow pane was wrapping (fold) instead of
+    right-truncating, which let the icon survive but produced multi-line rows.
+    The fix: no_wrap=True + overflow=ellipsis right-truncates the title only.
+    """
+    topic = Topic(
+        id="t1",
+        label="K",
+        status="current",
+        age_secs=60,
+        is_current=True,
+        title="this is a very very long title that should be truncated at narrow",
+    )
+    panel = render_topics([topic], "narrow")
+    c = Console(record=True, width=20, highlight=False)
+    with c:
+        c.print(panel)
+    text = c.export_text()
+    assert "👉" in text, f"Status glyph missing in narrow render: {text!r}"
+    assert "[K]" in text, f"Label missing in narrow render: {text!r}"
+    # Title must be right-truncated with ellipsis, not wrapped to multiple lines
+    assert "…" in text, (
+        f"No ellipsis in narrow render — title should be right-truncated. Got: {text!r}"
+    )
+
+
 def test_render_topics_medium_one_topic_per_line():
     """Each topic must occupy its own line — not merged into one horizontal bar."""
     topics = [

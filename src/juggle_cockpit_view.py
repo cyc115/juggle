@@ -169,7 +169,7 @@ def render_topics(
             t.add_column("label", no_wrap=True)
             t.add_column("title", no_wrap=True, overflow="ellipsis")
         elif bp == "narrow":
-            t.add_column("combined", no_wrap=False, overflow="fold")
+            t.add_column("combined", no_wrap=True, overflow="ellipsis")
         else:
             t.add_column("glyph", no_wrap=True)
             t.add_column("label", no_wrap=True)
