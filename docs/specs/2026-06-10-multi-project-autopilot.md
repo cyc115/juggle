@@ -1,190 +1,333 @@
-# Spec — Multi-Project Parallel Autopilot
+# Spec — Multi-Project Parallel Autopilot (3-Tier: Project → Topic → Task)
 
-**Date:** 2026-06-10 · **Thread:** WM · **Status:** ready for planning
-**Inputs:** `2026-06-10-multi-project-autopilot-BRIEF.md` (requirements R1–R7),
+**Date:** 2026-06-10 · rev 2026-06-11 (thread WQ folds in R9) · **Threads:** WM, WQ
+**Status:** ready for planning
+**Inputs:** `2026-06-10-multi-project-autopilot-BRIEF.md` (R1–R9; R9 = canonical
+3-tier hierarchy + user-decided hybrid execution model),
 `2026-06-10-multi-project-autopilot-BRAINSTORM.md` (option analysis, all code
 claims verified against source).
 **Assumes:** thread WL's dispatch cross-connection-visibility fix is merged.
 
 ## 1. Overview
 
-Allow a SET of projects to be armed for autopilot simultaneously. The single
-watchdog tick drives ready nodes across ALL armed graphs each cycle under the
-existing global agent budget, with a fair cross-project scheduling policy.
-Disarming one project leaves the rest running. Cockpit graph mode shows every
-armed graph; hooks inject the full set. Single-project behavior is unchanged
-(a 1-element set behaves byte-for-byte like today's scalar). While a project
-is armed, ad-hoc `send-task` to its threads is code-refused and routed to
-`juggle graph add-node` (R8, §2.8).
+Two changes, layered:
+
+1. **Multi-project arming (R1–R8):** a SET of projects armed simultaneously; the
+   single watchdog tick drives all armed graphs each cycle under the global
+   agent budget with a fair cross-project policy; disarming one project leaves
+   the rest running; cockpit and hooks reflect the set; ad-hoc `send-task` to an
+   armed project is code-refused (R8).
+2. **3-tier hierarchy (R9, user-decided):** **Project → Topic → Task.** Today the
+   graph is flat — each `graph_nodes` row creates its OWN top-level topic via
+   `create_thread`, so task ≡ topic. After this change a **Topic** owns a task-DAG;
+   execution is **hybrid topic-agent / task-commits**: ONE long-lived agent + ONE
+   worktree per Topic; each Task is a discrete TDD unit with its own commit +
+   `verify_cmd`; `juggle integrate` runs ONCE per Topic after all its tasks pass.
+   Only TOPICS count toward the concurrency budget (`MAX_THREADS`, ~10
+   non-archived); tasks are sub-units, never top-level topics.
+
+The integrate-once-per-topic property is not incidental: it directly bounds the
+integrate/lock contention class we hit in production (commit `5fc261b`,
+"FULL fsync-per-commit caused integrate lock-hold storms" — N per-task
+integrates serialized on the repo lock). With topics, a 10-task topic produces
+ONE rebase+merge instead of ten.
 
 Non-goals: per-project budget config, weighted priorities, parallel/threaded
-ticks, any new daemon. The watchdog tick remains the sole dispatcher (DA B4/M1);
-the settings table remains the sole arming authority (DA M6).
+ticks, per-task concurrency inside a topic (tasks are sequential by design —
+one agent), any new daemon. The watchdog tick remains the sole dispatcher
+(DA B4/M1); the settings table remains the sole arming authority (DA M6).
+
+**Reuse constraint (user directive):** existing constructs are reused maximally —
+`graph_tick`, `_dispatch_via_pool` → `cmd_get_agent`/`cmd_send_task`, the
+claim CAS, `dbops.db_graph` state machine, `mark_completion`, per-thread
+integrate, hooks, cockpit graph panel. New modules only for genuinely new
+concerns (topic store, scheduler).
 
 ## 2. Design
 
-### 2.1 Armed-set storage (R1, R6)
+### 2.1 Armed-set storage (R1, R6) — unchanged from rev 1
 
-The existing settings key `autopilot_armed_project` now holds a **comma-separated
+The existing settings key `autopilot_armed_project` holds a **comma-separated
 ordered list** of project ids. A single-element value is identical to today's
-scalar, so existing DBs need **no migration** and `doctor` needs no change.
+scalar, so existing DBs need **no migration** for arming.
 
-New module **`src/juggle_autopilot_state.py`** (extraction — `juggle_graph_dispatch.py`
-is at 296 lines, at the LOC gate) owns the accessor API:
+New module **`src/juggle_autopilot_state.py`** (extraction —
+`juggle_graph_dispatch.py` is at the 300-line LOC gate) owns the accessor API:
 
 ```python
 ARMED_PROJECT_KEY = "autopilot_armed_project"   # moved here; re-exported from dispatch
 
 def get_armed_projects(db) -> list[str]   # CSV parse, strip, drop empties, dedupe (keep first), [] on any error
 def set_armed_projects(db, pids: list[str]) -> None   # join; None/"" when empty
-def arm_project(db, pid) -> list[str]     # append if absent; rejects pid with ',' or whitespace (ValueError); returns new set
+def arm_project(db, pid) -> list[str]     # append if absent; rejects pid with ',' or whitespace (ValueError)
 def disarm_project(db, pid) -> list[str]  # remove if present; returns new set
 def get_armed_project(db) -> str | None   # COMPAT SHIM: first armed or None
 ```
 
 `juggle_graph_dispatch` re-exports `ARMED_PROJECT_KEY` and `get_armed_project`
-so existing imports (`juggle_cmd_autopilot`, `juggle_hooks_autopilot`, tests)
-keep working.
+so existing imports keep working.
 
-### 2.2 CLI surface (R1)
+### 2.2 Data model (R9) — `graph_topics` + `graph_nodes.topic_id`
+
+**Ground truth today:** `graph_nodes(id PK, project_id, title, prompt,
+verify_cmd, state, thread_id, handoff, diffstat, verified_at, …)` with
+`graph_edges(node_id, depends_on_id)`; `node_transition` is the only state
+writer; the dispatcher's CAS claim and `recompute_ready`'s CAS are the two
+sanctioned exceptions. A juggle "topic" IS a `threads` row (`threads.topic`
+label; `MAX_THREADS` caps non-archived threads).
+
+**New table (migration 37):**
+
+```sql
+CREATE TABLE IF NOT EXISTS graph_topics (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id),
+  title       TEXT NOT NULL,
+  objective   TEXT NOT NULL DEFAULT '',
+  state       TEXT NOT NULL DEFAULT 'pending',
+  thread_id   TEXT,
+  handoff     TEXT,
+  diffstat    TEXT,
+  verified_at TEXT,
+  created_at  TEXT NOT NULL, updated_at TEXT NOT NULL);
+-- plus: ALTER TABLE graph_nodes ADD COLUMN topic_id TEXT REFERENCES graph_topics(id);
+-- indexes: graph_topics(project_id, state); graph_nodes(topic_id)
+```
+
+- **Topics reuse the node state machine verbatim** — same `VALID_STATES`, same
+  `_TRANSITIONS` (pending → ready → dispatching → running → integrating →
+  verified; failed-exec/-integration/-verify; blocked-failed). The transition
+  map and TICK_OWNED/PROTECTED sets move to shared constants; a thin
+  `dbops/db_topics.py` provides `topic_transition` / CRUD / ready-set over
+  `graph_topics` with the same CAS discipline (`claim` CAS in the dispatcher,
+  `recompute_topic_ready` CAS). No second state-machine invention.
+- **Tasks** are `graph_nodes` rows with `topic_id` set. Task rows keep
+  `prompt`/`verify_cmd`/`state`/`handoff`. A task's `thread_id` stays NULL in
+  3-tier execution (the TOPIC owns the thread); it remains populated only on
+  legacy synthetic topics (below).
+- **Edges stay task-level** (`graph_edges` unchanged). Intra-topic edges order
+  the agent's sequential execution (topological, `created_at,id` tie-break).
+  **Topic-level deps are derived:** topic A depends on topic B iff any task of
+  A has an edge to a task of B (A≠B). A topic is ready-eligible when every
+  derived dep topic is `verified`. One SQL join, no new edge table.
+
+**Migration 37 backfill (flat → 3-tier):** every existing `graph_nodes` row
+with `topic_id IS NULL` gets a **synthetic single-task topic**
+`id = 'T-' || node.id` that ADOPTS the node's `state`, `thread_id`, `handoff`,
+`diffstat`, `verified_at`, `title`, and project; the node's `topic_id` is set
+to it. Properties:
+
+- task ≡ topic is preserved exactly — a 1-task topic behaves byte-for-byte like
+  today's flat node (same states, same thread binding, same integrate path), so
+  existing single-node usage needs **zero behavioral migration**.
+- **In-flight flat graphs keep running:** a node mid-`running` yields a synthetic
+  topic mid-`running` bound to the same thread; the (now topic-level) sweep,
+  completion marking, and stale-claim logic continue on the adopted state. No
+  drain-the-world flag day.
+- Idempotent and re-runnable (`topic_id IS NULL` guard), consistent with the
+  migration 34–36 try/skip pattern in `dbops/migrations_recent.py`.
+
+### 2.3 Execution model (R9) — hybrid topic-agent / task-commits
+
+Per dispatched topic (user decision 2026-06-10):
+
+1. The tick claims a READY topic (CAS), creates **one thread** (`create_thread`
+   with the topic title — this is what counts against `MAX_THREADS`), binds
+   `graph_topics.thread_id`, and dispatches **one agent** via the existing
+   `_dispatch_via_pool` → `cmd_get_agent`/`cmd_send_task` path with
+   `force_node=True`. One worktree per topic — exactly the existing per-thread
+   worktree machinery, untouched.
+2. The hydrated topic prompt contains: project objective, dep-TOPIC handoffs +
+   diffstats (existing `build_hydration` shape, fed topic rows), and the
+   topic's ordered task list (each task: id, title, prompt, `verify_cmd`), plus
+   the contract: per task do TDD → run `verify_cmd` → **commit** → mark via
+   `juggle graph mark-task <task-id> --handoff '…'` (or `--fail`). Tasks are
+   sequential; the agent never opens threads or worktrees of its own.
+3. `mark-task` maps onto the EXISTING node machine via `mark_completion(db,
+   task_id, integrate_ok=True, verify_ok=…)`: a task's `verified` means
+   "committed in the topic worktree + its verify_cmd green" — **NOT merged**.
+   `verified-means-merged` is hereby a **TOPIC-level invariant**: only
+   `graph_topics.state='verified'` implies code in main. (Task-level hydration
+   across topics is therefore forbidden; cross-topic hydration uses topic
+   handoffs, written at integrate time.)
+4. The agent finishes with the normal `complete-agent <topic-thread>` →
+   the existing per-thread `juggle integrate` runs **once for the whole topic**
+   (free: integrate is already per-thread, and the topic owns the thread) →
+   `mark_graph_topic` (the topic twin of today's `mark_graph_node`) maps
+   (integrate_ok, verify_ok) onto the topic machine. **Completion gate:**
+   complete-agent on a topic thread REFUSES (fail loud, nothing marked) unless
+   every task of the topic is terminal (`verified` or `failed-*`); topic
+   verify_ok = all tasks `verified`.
+5. Topic failure semantics: any task left `failed-*` → topic `failed-verify`
+   (main untouched — integrate is skipped per existing DA M3 path); dependents
+   block via the existing `propagate_failure`, now applied at topic level.
+
+### 2.4 Graph spec format + loading
+
+`project-graph load` gains a topic tier; `juggle_graph_upsert.parse_graph_spec`
+extends:
+
+```markdown
+## topic <topic-id>: <Title>
+<objective lines>                 (optional)
+
+### <task-id>: <Title>
+deps: <task-id>, <task-id>        (optional; intra- or cross-topic)
+verify_cmd: pytest tests -q       (optional; same lint allowlist)
+<remaining lines = task prompt>
+```
+
+**Legacy fallback (R6):** a spec with old flat `## <node-id>: <Title>` sections
+(no `## topic` headers) loads exactly as before, wrapped in one synthetic
+single-task topic per node (same shape migration 37 produces). Existing spec
+files keep working unmodified. Mixing both forms in one file is rejected
+(fail loud).
+
+`juggle graph add-node` gains `--topic <topic-id>` (required when the project
+has any real topic; defaults to a fresh synthetic topic otherwise — preserving
+today's call signature for flat projects). Guarded upsert / PROTECTED_STATES /
+cycle validation apply at both tiers (topic cycle = cycle in derived topic deps).
+
+### 2.5 CLI surface (R1)
 
 - `autopilot arm P` — **adds** P to the set (idempotent; PR-mode refusal and
-  project-exists check unchanged, per project). Global flag set ON, as today.
-- `autopilot disarm [P]` — with P: remove just P (error to stderr + exit 1 if P
-  not armed — fail loud). Without: clear the whole set. Global flag untouched
-  (today's contract).
+  project-exists check unchanged, per project). Global flag ON, as today.
+- `autopilot disarm [P]` — with P: remove just P (unknown P → stderr + exit 1).
+  Without: clear the set. Global flag untouched.
 - `autopilot off [P]` — with P: remove just P; clear the global flag **only if
-  the set becomes empty**. Without: clear set + flag (today's contract).
-- `autopilot status [--json]` — text lists each armed project with its own
-  progress line:
+  the set becomes empty**. Without: clear set + flag.
+- `autopilot status [--json]`:
 
   ```
   Autopilot global: ON
   Armed projects (2): juggle, lifeos
-    juggle: 3/14 done, 2 ready
+    juggle: topics 2/5 done (1 running), tasks 7/23
     lifeos: no graph loaded
   ```
 
-  JSON: `{"global_on": bool, "armed_projects": [pid…], "graphs": {pid: counts|null},
-  "diverged": bool, "armed_project": <first|null>, "graph": <counts of first|null>}`.
-  The last two are deprecated compat fields (one release), documented in the
-  command help. `diverged` = set non-empty while flag file absent (unchanged
-  semantics, now set-based).
+  JSON: `{"global_on", "armed_projects": [pid…], "graphs": {pid: {topics:
+  counts, tasks: counts} | null}, "diverged", "armed_project": <first|null>,
+  "graph": <first graphs value|null>}` — the last two deprecated one release.
 
-### 2.3 Tick (R2, R3, R4)
+### 2.6 Tick (R2, R4) — claims TOPICS
 
-`graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict` keeps its signature and
-its never-raises contract. New shape:
+`graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict` keeps signature and
+never-raises contract. Shape:
 
-1. `armed = get_armed_projects(db)`; empty → return (notify-only, unchanged).
-2. **Per project** (isolation, R4): `sweep_stale_claims(db, pid)` +
-   `recompute_ready(db, pid)` + collect ready nodes. Both functions are already
-   `project_id`-parameterized — pure loop. A per-project exception logs and
-   skips THAT project only (today it skips the whole tick; with N projects the
-   blast radius must shrink to one graph).
-3. Build ONE cross-project dispatch order via the scheduler (2.4).
-4. Run the existing claim → create-thread → bind → dispatch → running body over
-   that ordered list, with two changes:
-   - disarm-mid-batch guard becomes per-node: skip the node if its project is no
-     longer in `get_armed_projects(db)` (other projects' nodes keep going — R4).
-   - `db.update_thread(thread_id, project_id=node_project)` uses the node's own
-     project (carried with each entry), not a single `armed` variable.
-   - Capacity (`MAX_THREADS` ValueError, `CapacityError`) still **breaks the
-     whole pass** — the cap is global; remaining nodes are deferred to next tick
-     with their claims released, exactly as today.
+1. `armed = get_armed_projects(db)`; empty → return.
+2. **Per project** (isolation, R4): topic-level stale-claim sweep
+   (`dispatching` >10 min, `thread_id IS NULL` → ready, same SQL on
+   `graph_topics`) + `recompute_topic_ready` + collect ready TOPICS. A
+   per-project exception logs and skips THAT project only.
+3. ONE cross-project dispatch order via the scheduler (2.7) over topics.
+4. Existing claim → create-thread → bind → hydrate → dispatch → running body,
+   transplanted from nodes to topics:
+   - CAS claim on `graph_topics` (same single conditional UPDATE pattern).
+   - `db.update_thread(thread_id, project_id=pid)` uses the topic's project
+     (carried as `(pid, topic)` pairs — no loop-variable capture).
+   - per-topic disarm guard: skip the topic if its project left the armed set
+     mid-batch; other projects' topics keep going.
+   - Capacity (`MAX_THREADS` ValueError "Maximum of", pool `CapacityError`)
+     **breaks the whole pass** — the cap is global; unvisited topics were never
+     claimed. `MAX_THREADS` now bounds exactly what R9 demands: concurrent
+     TOPICS (each topic = 1 thread = 1 agent); tasks consume no budget.
+   - Retry cap (`MAX_DISPATCH_FAILS`, `_give_up_dispatch`) keyed by topic id.
 
-Stats dict unchanged in shape (`dispatched/swept/deferred/errors` flat lists of
-node ids) — consumers (watchdog, tests) don't break; node ids are globally unique.
+Stats dict keeps its flat shape (`dispatched/swept/deferred/errors`), now
+containing **topic ids** — consumers (watchdog, tests) treat them opaquely.
 
-### 2.4 Fair scheduler (R3) — new module `src/juggle_graph_scheduler.py`
+### 2.7 Fair scheduler (R3) — topic-level, module `src/juggle_graph_scheduler.py`
 
-Pure function, no DB:
+The pure function is tier-agnostic (it orders opaque dicts); R9 changes WHAT it
+is fed, not the policy:
 
 ```python
-def interleave_ready(ready_by_project: dict[str, list[dict]],
-                     in_flight: dict[str, int],
+def interleave_ready(ready_by_project: dict[str, list[dict]],   # ready TOPICS
+                     in_flight: dict[str, int],                 # in-flight TOPIC count
                      armed_order: list[str]) -> list[tuple[str, dict]]
 ```
 
-**Policy: least-loaded-first round-robin.** Sort armed projects by current
-in-flight node count ascending (states `dispatching|running|integrating`),
-tie-break by arm order; then emit ready nodes one-per-project-per-round until
-all ready lists are exhausted. Within a project, ready order stays
-`created_at, id` (existing `list_nodes` order).
+**Policy: least-loaded-first round-robin over TOPICS.** Sort armed projects by
+in-flight topic count ascending (`dispatching|running|integrating`), tie-break
+arm order; emit ready topics one-per-project-per-round. Within a project, ready
+order stays `created_at, id`. Tasks inside a topic are sequential (one agent)
+and never enter the scheduler — there is no per-task concurrency budget by
+construction.
 
-Justification (failure-mode analysis):
+Justification (failure-mode analysis, unchanged in substance from rev 1 but now
+counted in topics — the topic is the cost unit, which makes fairness MORE
+accurate, since a 50-task topic and a 2-task topic each consume exactly one
+agent slot):
 
-- **50-vs-2 ready, budget 5:** interleave yields P1:3, P2:2 — the small graph
-  drains completely. A naive sequential tick gives P1:5, P2:0 forever.
-- **Budget admits 1 dispatch/tick:** plain arm-order round-robin redispatches
-  the first project every tick (no memory of who went last). Least-loaded is
-  self-correcting without persisted state: the project that won last tick now
-  has in-flight ≥1 and sorts after an idle project.
-- **One project hogging all slots while others are empty:** that is utilization,
-  not starvation; the moment another project gains a ready node, it has 0
-  in-flight and sorts first as slots free.
-- Stateless + deterministic → directly unit-testable as a pure function, and no
-  cursor key to migrate or corrupt.
+- **Project with 50 ready topics vs project with 2, budget 5:** interleave
+  yields 3+2 — the small project drains fully; sequential per-project ticking
+  gives 5+0 forever.
+- **Budget admits 1 dispatch/tick:** least-loaded is self-correcting without
+  persisted state — last tick's winner carries in-flight ≥1 and sorts after an
+  idle project. Plain arm-order round-robin starves without a cursor.
+- **One project holding all slots while others have nothing ready:**
+  utilization, not starvation; a newly-ready topic elsewhere has 0 in-flight
+  and sorts first as slots free.
+- Stateless + deterministic → pure-function unit tests; no cursor key.
 
-Rejected: per-project hard caps (waste slack, then re-distribute = round-robin
-with extra steps), weighted config (YAGNI, no requirement).
+Rejected: per-project hard caps (waste slack, then re-distribute ≡ round-robin
+with extra steps); weighted config (YAGNI); per-task scheduling (defeats R9's
+budget model and resurrects integrate-per-task lock storms).
 
-`MAX_THREADS` / `MAX_BACKGROUND_AGENTS` stay **global-only** (resolved brief
-question 3).
+`MAX_THREADS` / `MAX_BACKGROUND_AGENTS` stay **global-only**.
 
-### 2.5 Hooks (R7) — `juggle_hooks_autopilot.py`
+### 2.8 Hooks (R7)
 
-- `_ARMED_CARVEOUT` formats the comma-joined set: `ARMED PROJECTS p1, p2: …`
-  (wording otherwise unchanged — nodes of ANY armed project are tick-owned).
+- `_ARMED_CARVEOUT` names the comma-joined set and the 3-tier rule: topics are
+  tick-owned; NEW work for an armed project enters as a task via
+  `juggle graph add-node … --topic <t>`, never ad-hoc send-task.
 - Graph injection: one `build_graph_injection(db, pid, budget=per)` line per
-  armed project, where `per = max(160, 500 // len(armed))` — total stays
-  bounded near the existing 500-char discipline regardless of N.
+  armed project, `per = max(160, 500 // len(armed))`; the injection now counts
+  topics ("topics 2/5, tasks 7/23; running: T-auth (task 3/6)") — topic-level
+  granularity fits the budget where 23 task titles would not.
 - Degrade-to-empty-string on error preserved.
 
-### 2.6 Cockpit (R5) — `juggle_cockpit_graph_dag.py` + graph panel
+### 2.9 Cockpit (R5) — project → topic → task tree
 
-- `load_graph_dags(conn) -> list[GraphDag]`: parse the CSV key, one `GraphDag`
-  per armed project that has nodes (projects without nodes are skipped, as the
-  single-project loader does today). `load_graph_dag(conn)` stays as a
-  first-or-None compat shim.
-- `CockpitState.graph_dag` is joined by `graph_dags: list[GraphDag]` (shim field
-  keeps old readers alive one release).
-- Graph mode renders DAGs **stacked**, each under a `─ project: <pid> (progress)`
-  title rule, reusing the existing per-DAG layout/keys; node selection iterates
-  the concatenated node list. No new keybindings.
+- Loader: `load_graph_dags(conn) -> list[GraphDag]`, one per armed project with
+  topics; **DAG nodes are TOPICS** (the derived topic-dep edges are the DAG
+  edges). Each topic cell renders `⬢ <topic-id> 3/6` (tasks verified/total) —
+  the existing rank layout, glyphs, fold/pan machinery apply unchanged because
+  the panel just receives fewer, coarser nodes.
+- The task tier appears in the node detail modal (`_GraphNodeModal`): selecting
+  a topic lists its tasks with per-task state glyphs — tree depth lives in the
+  modal, not the rank layout (no new layout engine).
+- Multi-project: DAGs render **stacked**, each under a project-titled rule;
+  selection iterates the concatenated topic list. `load_graph_dag` stays as a
+  first-or-None compat shim; `CockpitState.graph_dag` joined by `graph_dags`.
 - Gate: `cockpit --smoke --all-viewports` green with 0, 1, and 3 armed graphs.
 
-### 2.7 Backward compatibility (R6)
+### 2.10 Backward compatibility (R6)
 
-- 1-element CSV ≡ today's scalar: no migration, no doctor change.
-- `get_armed_project` shim + `ARMED_PROJECT_KEY` re-export keep every existing
-  import working.
-- Status JSON keeps `armed_project`/`graph` (deprecated) one release.
-- Single-armed tick behavior is pinned by the existing `test_graph_dispatch.py`
-  suite, which must pass unmodified except where assertions touch the JSON
-  compat fields.
+- 1-element CSV ≡ legacy scalar arming: no migration.
+- Migration 37 synthetic topics ≡ flat nodes: 1-task topics behave identically,
+  including in-flight ones (state + thread adopted).
+- Legacy flat spec files load unchanged (2.4 fallback).
+- `get_armed_project` shim, `ARMED_PROJECT_KEY` re-export, status-JSON
+  deprecated fields (`armed_project`, `graph`), `load_graph_dag` shim — all one
+  release.
+- Existing dispatch/contract test suites are the safety net: they must pass
+  with assertions updated ONLY where they touch renamed surfaces (node→topic in
+  tick stats, status JSON shape); regression pins may not be weakened.
 
-### 2.8 Armed-project dispatch guard (R8)
+### 2.11 Armed-project dispatch guard (R8) — adapted to 3-tier
 
-When a project's graph is armed, ALL new work for that project must enter the
-graph as nodes (tick-owned) — never ad-hoc `send-task` (CLAUDE.md: code over
-prompts; the hook carve-out in 2.5 is the prompt half, this is the code half).
-Implemented by extending the existing DA B5 guard
-`juggle_cmd_agents_graph.check_node_guard` with a second clause:
+Extends `juggle_cmd_agents_graph.check_node_guard`:
 
-- Thread **node-bound** → existing semantics, untouched (tick-owned states
-  refuse; operator-territory states like `failed-exec` stay manually
-  redispatchable — R8 must not tighten DA B5).
-- Thread **not node-bound** but `thread.project_id` is in the armed set →
-  refuse, pointing to `juggle graph add-node … --project <pid>` and naming
-  `--force-node` as the override.
-- `--force-node` remains the single escape hatch (the tick already passes it).
-  R8's narrow exceptions — fixes to the graph/dispatch machinery itself, and
-  pure planning/spec/research whose output IS the nodes — are operator
-  judgment calls exercised via the flag, NOT encoded as content heuristics
-  (any such heuristic would be a bypassable false-negative generator).
-- The check reads the live armed set, so disarming a project lifts the guard
-  instantly; threads of unarmed projects are never affected.
+- Thread bound to a TOPIC in a tick-owned state → refuse (the tick dispatches
+  it); operator-territory states (`failed-*`, `pending`) stay manually
+  redispatchable — DA B5 semantics, lifted from node to topic.
+- Thread **unbound** but `thread.project_id` in the armed set → refuse, pointing
+  to `juggle graph add-node … --topic <t> --project <pid>`; `--force-node`
+  remains the single override (the tick passes it). R8's narrow exceptions
+  (graph-machinery fixes; planning whose output IS the nodes) are operator
+  judgment via the flag, never content heuristics.
+- Disarming lifts the guard instantly; unarmed projects unaffected.
 
 ## 3. Devil's Advocate
 
@@ -192,70 +335,119 @@ Implemented by extending the existing DA B5 guard
 
 | # | Assumption | What if wrong? | Mitigation |
 |---|---|---|---|
-| A1 | Project ids never contain commas/whitespace | CSV split corrupts the armed set silently | `arm_project` rejects such ids with ValueError (fail loud); ids are slugs today — this is belt-and-braces |
-| A2 | All readers of the settings key are in-repo and updated together | A missed raw reader treats `"a,b"` as one project id | Grep gate in the plan: every literal `autopilot_armed_project` outside `juggle_autopilot_state.py` + the cockpit loader must go through the accessor; pinned test asserts the cockpit raw-SQL path parses CSV |
-| A3 | WL's cross-connection-visibility fix is merged | Multi-project dispatch multiplies an existing race's frequency | Plan Task 0 verifies the fix is present on the base before building; if absent, the coder fails the task loudly rather than building on sand |
-| A4 | In-flight count is a good fairness proxy | A project with long-running nodes is deprioritized even when it has urgent ready work | Acceptable by design: in-flight work IS budget consumption; "urgency" is not a concept the graph has. Weighted policy can layer on later without storage changes |
-| A5 | Capacity break-out-of-whole-pass stays correct | If a future cap became per-project, breaking globally would under-dispatch | Cap is global today (`dbops/threads.py` MAX_THREADS, agent pool); scheduler already ordered fairly at break time, so the partial prefix is fair. Documented in module docstring |
-| A6 | Stats dict can stay flat (node-id lists) | A consumer wanting per-project stats has to re-query | Node ids are unique and `list_nodes` recovers the project; extending stats later is additive, not breaking |
-| A7 | Old binary + new multi-value DB (rollback) degrades safely | Old code reads `"a,b"` as one id → `get_project` misses → status "no graph loaded", tick dispatches nothing | Degradation is silent-but-safe (notify-only), never corrupting; called out in spec. Accepted: we do not engineer for binary rollback |
-| A8 | `--force-node` is a sufficient escape hatch for R8's narrow exceptions | Legitimate machinery-fix dispatches hit an annoying refusal | Refusal message names the flag and the exceptions; heuristic carve-outs would create silent bypasses, which is worse than one extra flag |
+| A1 | Project ids never contain commas/whitespace | CSV split corrupts the armed set | `arm_project` rejects with ValueError; ids are slugs — belt-and-braces |
+| A2 | All readers of the armed key are in-repo and updated together | A missed raw reader treats `"a,b"` as one id | Plan grep gate: every literal `autopilot_armed_project` outside the accessor + cockpit loader is a failure |
+| A3 | WL's visibility fix is merged | Multi-topic dispatch multiplies an existing race | Plan Task 0 verifies presence on base; absence is reported, not built on silently |
+| A4 | In-flight TOPIC count is a fair load proxy | A project running one 50-task topic is "loaded 1" while another running five 1-task topics is "loaded 5" | Correct by design: the budgeted resource is agents/threads, and each topic holds exactly one — the proxy now EQUALS the resource. Task-weighted fairness would re-couple budget to tasks, which R9 explicitly rejects |
+| A5 | Global capacity break-out-of-pass stays correct | A future per-project cap would under-dispatch | Cap is global today (`dbops/threads.py` MAX_THREADS, agent pool); fair prefix at break time; documented |
+| A6 | The node state machine fits topics unchanged | A topic-only state appears later (e.g. 'paused') | `_TRANSITIONS` is shared data, not duplicated code — extending it is additive |
+| A7 | Old binary + new DB (rollback) degrades safely | Old code ignores `graph_topics`, reads flat nodes whose states migration 37 left INTACT on the node rows | Reads degrade to the flat view; synthetic topics go stale but never corrupt. We do not engineer beyond this for binary rollback |
+| A8 | `--force-node` suffices for R8 exceptions | Legit machinery-fix dispatch gets an annoying refusal | Refusal names the flag + exceptions; heuristics would create silent bypasses |
+| A9 | One agent reliably finishes a multi-task topic | Agent dies at task 3/6: topic worktree holds 3 commits, 3 tasks unmarked | Existing agent-death path (`test_graph_agent_death` machinery) maps to topic `failed-exec`; tasks keep their per-task states, so the RESUME story is a spec reload → topic `pending` with verified tasks skipped by the agent prompt ("tasks already verified: skip"). Pinned in plan |
+| A10 | Completion gate (all tasks terminal) is enforceable | Agent calls complete-agent early → half-done topic integrates | Gate is CODE in cmd_complete_agent (refuse + exit 1, nothing marked), not prompt; pinned test |
 
-### Weakest item + failure mode
+### Weakest item: the schema migration (37) — challenged hard
 
-**The tick refactor (2.3) is the weakest item.** It rewrites the one loop whose
-bugs double-dispatch real agents or strand claims. Specific failure mode: the
-per-node disarm guard or the per-node `project_id` thread-binding regresses
-under refactor, and a node from project B gets a thread tagged project A —
-hydration then pulls the wrong objective and the agent does wrong-repo work.
-Mitigation: the scheduler emits `(project_id, node)` pairs so the project
-travels WITH the node (no loop-variable capture); a pinned test dispatches a
-2-project graph and asserts each created thread's `project_id` matches its
-node's; the existing single-project pins must pass unmodified.
+**Claim:** backfilling synthetic topics over live data is the weakest link in
+this design. Failure modes examined:
 
-### Simpler alternative considered (and why rejected)
+1. **In-flight adoption races the tick.** A node is `dispatching` while
+   migration 37 runs; the tick (new code) immediately sweeps the synthetic
+   topic as a stale claim because `graph_topics.updated_at` is fresh but
+   `thread_id` was adopted… — actually safe: sweep requires `thread_id IS
+   NULL`; adopted bindings carry the thread. The dangerous window is a node
+   `dispatching` with `thread_id` still NULL (claim-to-bind window): the
+   synthetic topic inherits that and is swept to `ready` after 10 min — which
+   is EXACTLY the recovery the flat system would have performed. Verdict: the
+   state adoption must copy `updated_at` from the node (not `now()`) so sweep
+   timing is preserved; pinned in the plan.
+2. **Half-applied migration** (topics created, `topic_id` backfill crashes):
+   re-run is idempotent (`topic_id IS NULL` guard creates only missing topics;
+   `INSERT OR IGNORE` on `'T-'||id`). The migration runs in one transaction
+   per the migrations_recent pattern.
+3. **Old completion path writes node state after migration:**
+   `mark_graph_node` (by thread) would mark the NODE while the new tick watches
+   the TOPIC. Mitigation: completion marking migrates in the same plan task as
+   the tick (single release); `get_node_by_thread` lookups are replaced by
+   topic-by-thread lookups with a node fallback for synthetic topics. The plan
+   sequences schema → topic store → tick/completion BEFORE any release point.
+4. **`'T-'||id` collides with an existing node id** (a node literally named
+   `T-x` while node `x` exists): collision check in the migration; on collision
+   use `'T#'||id` — deterministic, logged. (Cosmetic, but silent PK violation
+   would abort the migration transaction.)
 
-"Just call the existing `graph_tick` once per armed project, sequentially."
-~10 lines, zero scheduler. Rejected because it fails R3 by construction:
-project 1 fills the entire global budget before project 2 is examined, which
-is exactly the 50-vs-2 starvation the brief names. Fairness requires a merged
-dispatch order, and once you have that, the per-project-tick simplification
-buys nothing.
+**Simpler alternative considered:** no new table — encode topics as
+`graph_nodes` rows with `kind='topic'` and parent edges. Rejected: every
+existing query (`ready_eligible`, sweep, counts, cockpit loader) would need a
+`kind` filter to stay correct — a missed filter silently dispatches a topic
+header as a task. A separate table makes the old queries wrong-by-type instead
+of wrong-by-silence, and the topic store is ~100 lines of thin reuse.
+
+**Flat→3-tier back-compat verdict:** the synthetic-topic device means there is
+no "compat mode" branching in the execution path — after migration, EVERYTHING
+is 3-tier; flat is just the 1-task degenerate case. That is the property that
+keeps the tick/completion code single-pathed.
+
+### Topic-vs-task scheduling fairness — challenged
+
+Could topic-level fairness starve a project whose topics are huge? Project A:
+one 50-task topic; project B: fifty 1-task topics. A gets 1 agent, B gets up to
+budget−1. Is that unfair to A? No — A *cannot use* more than one agent (its 50
+tasks are sequential inside one topic by the user's execution model); giving A
+more slots would idle them. The budget unit, the thread unit, and the scheduling
+unit are now the same object, which eliminates rev 1's proxy mismatch (A4).
+The real cost: total wall-clock for a huge topic. That is a spec-authoring
+concern (decompose into more topics), surfaced by cockpit progress (`3/50`),
+not a scheduler defect.
+
+### What happens to in-flight flat graphs — explicit answer
+
+Migration 37 adopts their exact state + thread binding into synthetic topics
+(including `updated_at`, see weakest-item #1). Running agents complete via
+complete-agent → topic-by-thread lookup finds the synthetic topic → existing
+integrate-once + `mark_completion` semantics apply (a 1-task topic's gate is
+trivially satisfied: its single task adopted `verified`-or-terminal state — for
+a synthetic topic the task row mirrors the topic, and the completion gate
+treats synthetic single-task topics as gated by the topic's own lifecycle).
+Nothing is drained, cancelled, or re-dispatched.
 
 ### Edge cases hunted
 
-- **50 ready vs 2 ready (starvation):** solved by interleave — pinned fairness
-  test with a capacity-limited FakeDispatch asserts both projects dispatch.
-- **Scalar → set migration:** none needed (CSV superset); pinned test arms via
-  the OLD code path (`set_setting(KEY, "pid")`) and asserts the new accessor
-  returns `["pid"]`.
-- **MAX_THREADS global vs per-project:** global-only, resolved (2.4); test
-  asserts a cap hit defers nodes from BOTH projects and releases claims.
-- **Disarm-one-keep-rest:** pinned test disarms P1 mid-batch via `dispatch_fn`
-  side-effect; P1's remaining nodes are skipped, P2's still dispatch.
-- **Arm a project with no graph:** tick must skip it without error while still
-  dispatching others (empty ready set, no exception).
-- **Same node id in two projects:** impossible — `graph_nodes.id` is the PK;
-  noted so reviewers don't "fix" it.
-- **Per-project recompute crash (R4):** exception in one project's
-  sweep/recompute skips only that project — pinned test with a poisoned
-  project asserts the healthy one still dispatches.
-- **Injection bloat:** budget split (2.5); test asserts total injected graph
-  text stays ≤ ~520 chars with 3 armed projects.
-- **R8 guard scope:** unbound thread of an armed project → refused; same thread after disarm → allowed; node-bound thread in an operator-territory state (e.g. `failed-exec`) → allowed even while armed (DA B5 unchanged). All three pinned.
-- **Cockpit small viewport with 3 DAGs:** viewport smoke matrix is the gate;
-  stacked layout clips per existing panel rules.
-- **`status` divergence warning:** now fires when set non-empty + flag absent;
-  message names all armed projects.
+- **Agent dies mid-topic (A9):** topic `failed-exec`, per-task states preserved,
+  reload-resume pinned.
+- **Premature complete-agent (A10):** code-refused, nothing marked.
+- **Empty topic (0 tasks) in a spec:** rejected at load (fail loud) — a topic
+  with no tasks can never satisfy its completion gate.
+- **Cross-topic dep on an unverified task:** impossible to hydrate — hydration
+  only reads TOPIC handoffs of verified (= merged) topics; the derived-dep
+  readiness rule keeps the dependent topic un-ready until then.
+- **Intra-topic dep cycle / cross-topic cycle:** load-time validation at both
+  tiers (existing `find_cycle` on tasks; same algorithm on derived topic deps).
+- **Disarm-one-keep-rest:** per-topic guard; pinned.
+- **Poisoned project scan (R4):** per-project isolation; pinned.
+- **50-vs-2 ready topics:** interleave; pinned with capacity-limited FakeDispatch.
+- **MAX_THREADS cap:** defers topics of ALL projects fairly, claims released; pinned.
+- **R8 guard:** unbound armed-project thread refused; disarm lifts; topic-bound
+  operator-state allowed; pinned.
+- **Status divergence warning:** set non-empty + flag absent; names all projects.
+- **Cockpit small viewport, 3 stacked topic-DAGs:** viewport smoke matrix gates;
+  topics-as-nodes makes DAGs SMALLER than rev 1's task-DAGs.
+- **`legacy + topic` mixed spec file:** rejected (2.4).
 
 ## 4. Open questions
 
-None — all brief questions resolved above (brainstorm doc, "Resolved brief open
-questions"). No `--open-questions` batch needed.
+None requiring a user decision — R9's genuinely contentious fork (execution
+model) was decided by the user (hybrid). Remaining choices (synthetic-topic id
+scheme, modal-based task tier, topic objective optional) are resolved above
+with rationale; all are cheap to revisit post-implementation.
 
 ## 5. Verification gates (agent-runnable)
 
-- `uv run pytest -q` green (incl. new pins; pre-existing failures documented).
+- `uv run pytest -q` green (incl. new pins; pre-existing failures documented
+  with proof they exist on base).
+- Migration: scripted flat DB (3 nodes, one `running` with thread) →
+  `init-db`/doctor path applies 37 → `sqlite3` asserts synthetic topics adopt
+  state/thread/updated_at and `topic_id` backfilled.
 - `uv run src/juggle_cli.py autopilot status --json` over a scripted 2-project
   arm/disarm sequence yields deterministic JSON (exact assertions in plan).
 - `uv run src/juggle_cli.py cockpit --smoke --all-viewports` green.
