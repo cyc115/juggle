@@ -23,6 +23,8 @@ MAX_NODES = 50
 
 _HEADING_RE = re.compile(r"^##\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
 _FIELD_RE = re.compile(r"^[-*\s]*\b(deps|verify_cmd)\s*:\s*(.*)$")
+_TOPIC_HEADING_RE = re.compile(r"^##\s+topic\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
+_TASK_HEADING_RE = re.compile(r"^###\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
 
 # verify_cmd lint: allowlisted executables only; shells are forbidden because
 # the column is LLM-populated and later executed (design DA M3).
@@ -144,6 +146,106 @@ def validate_graph(nodes: list[dict]) -> list[str]:
         cyc = find_cycle(ids, edges)
         if cyc:
             errors.append(f"dependency cycle involving nodes: {', '.join(cyc)}")
+    return errors
+
+
+def parse_topics_spec(text: str) -> list[dict]:
+    """Parse a 3-tier spec: [{'id','title','objective','tasks':[node dicts]}].
+
+    LEGACY FALLBACK (R6): a spec with no `## topic` headings parses via
+    parse_graph_spec and wraps each flat node in a synthetic 1-task topic
+    'T-<id>' — the exact shape migration 37 produces. A spec mixing both
+    heading forms gets a '_mixed' marker for validate_topics to reject
+    (parse never raises; validation reports).
+    """
+    if not any(_TOPIC_HEADING_RE.match(line) for line in text.splitlines()):
+        return [
+            {"id": f"T-{n['id']}", "title": n["title"], "objective": "",
+             "tasks": [n]}
+            for n in parse_graph_spec(text)
+        ]
+    topics: list[dict] = []
+    current_topic: dict | None = None
+    current_task: dict | None = None
+    body: list[str] = []
+    obj: list[str] = []
+
+    def _flush_task():
+        nonlocal current_task
+        if current_task is not None:
+            current_task["prompt"] = "\n".join(body).strip()
+            current_topic["tasks"].append(current_task)
+            current_task = None
+
+    def _flush_topic():
+        nonlocal current_topic
+        if current_topic is not None:
+            _flush_task()
+            current_topic["objective"] = "\n".join(obj).strip()
+            topics.append(current_topic)
+            current_topic = None
+
+    for line in text.splitlines():
+        tm = _TOPIC_HEADING_RE.match(line)
+        if tm:
+            _flush_topic()
+            current_topic = {"id": tm.group(1), "title": tm.group(2), "tasks": []}
+            obj, body = [], []
+            continue
+        if current_topic is None:
+            continue  # preamble
+        if _HEADING_RE.match(line):
+            # flat `## x:` heading inside a topic spec — mixed form, reject later
+            current_topic["_mixed"] = True
+            continue
+        km = _TASK_HEADING_RE.match(line)
+        if km:
+            _flush_task()
+            current_task = {"id": km.group(1), "title": km.group(2),
+                            "deps": [], "verify_cmd": None}
+            body = []
+            continue
+        fm = _FIELD_RE.match(line)
+        if fm and current_task is not None:
+            field, value = fm.group(1), fm.group(2).strip()
+            if field == "deps":
+                current_task["deps"] = [d.strip() for d in value.split(",") if d.strip()]
+            else:
+                current_task["verify_cmd"] = value or None
+            continue
+        (body if current_task is not None else obj).append(line)
+    _flush_topic()
+    return topics
+
+
+def validate_topics(topics: list[dict]) -> list[str]:
+    """Validation across both tiers. Reuses validate_graph for the task tier,
+    then: mixed form, empty topics, duplicate topic ids, and a cycle in the
+    DERIVED topic deps."""
+    errors: list[str] = []
+    if any(t.get("_mixed") for t in topics):
+        errors.append("spec mixes `## topic` and flat `## node` headings — pick one form")
+    tids = [t["id"] for t in topics]
+    seen: set[str] = set()
+    for tid in tids:
+        if tid in seen:
+            errors.append(f"duplicate topic id: {tid!r}")
+        seen.add(tid)
+    for t in topics:
+        if not t["tasks"]:
+            errors.append(f"topic {t['id']!r} has no tasks — it can never complete")
+    all_tasks = [n for t in topics for n in t["tasks"]]
+    errors += validate_graph(all_tasks) if all_tasks else ["spec has no tasks"]
+    owner = {n["id"]: t["id"] for t in topics for n in t["tasks"]}
+    tedges = sorted({
+        (owner[n["id"]], owner[d])
+        for t in topics for n in t["tasks"] for d in n["deps"]
+        if d in owner and owner[d] != owner[n["id"]]
+    })
+    if not errors:
+        cyc = find_cycle(tids, tedges)
+        if cyc:
+            errors.append(f"topic dependency cycle involving: {', '.join(cyc)}")
     return errors
 
 

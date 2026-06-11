@@ -17,10 +17,11 @@ Spec format (markdown), one `##` section per node:
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 from juggle_cli_common import get_db
-from dbops import db_graph
+# db_graph re-exported (used by add-node + the atomicity regression pin, which
+# monkeypatches cg.db_graph — the same module object juggle_graph_load uses).
+from dbops import db_graph, db_topics  # noqa: F401
 
 # Re-exported for backward compatibility (tests + callers import these from here).
 from juggle_graph_upsert import (  # noqa: F401
@@ -29,9 +30,23 @@ from juggle_graph_upsert import (  # noqa: F401
     find_cycle,
     lint_verify_cmd,
     parse_graph_spec,
+    parse_topics_spec,
     validate_graph,
+    validate_topics,
 )
 from juggle_graph_upsert import content_changed as _content_changed  # noqa: F401
+
+# The load handler lives in juggle_graph_load (extracted 2026-06-11 for the LOC
+# gate); re-exported so `juggle_cmd_graph.cmd_project_graph_load` stays valid for
+# the parser registration and existing callers/tests.
+from juggle_graph_load import cmd_project_graph_load  # noqa: F401
+
+
+def _is_synthetic_topic(topic_id: str) -> bool:
+    """Synthetic single-task topics (migration-37 / flat-spec fallback) are
+    named 'T-<node-id>' or 'T#<node-id>'. A project with ONLY synthetic topics
+    is treated as a flat graph for add-node (topic optional)."""
+    return topic_id.startswith("T-") or topic_id.startswith("T#")
 
 
 def _git_root(cwd: str) -> str | None:
@@ -73,104 +88,6 @@ def pr_mode_refusal(repo_path: str | None = None) -> str | None:
     )
 
 
-def cmd_project_graph_load(args):
-    """Load (or guarded-upsert) a graph spec markdown file into graph_nodes."""
-    db = get_db(getattr(args, "db_path", None), init=True)
-    project = db.get_project(args.project)
-    if not project:
-        print(f"Error: project {args.project!r} not found.", file=sys.stderr)
-        sys.exit(1)
-
-    refusal = pr_mode_refusal()
-    if refusal:
-        print(f"Error: {refusal}", file=sys.stderr)
-        sys.exit(1)
-
-    path = Path(args.file)
-    if not path.exists():
-        print(f"Error: spec file not found: {path}", file=sys.stderr)
-        sys.exit(1)
-
-    nodes = parse_graph_spec(path.read_text(encoding="utf-8"))
-    errors = validate_graph(nodes)
-    if errors:
-        print(f"Graph spec invalid ({len(errors)} error(s)):", file=sys.stderr)
-        for e in errors:
-            print(f"  - {e}", file=sys.stderr)
-        sys.exit(1)
-
-    # Guarded upsert: REFUSE the whole load if any protected node would change.
-    existing = {n["id"]: n for n in db_graph.list_nodes(db, args.project)}
-    refused = [
-        n["id"]
-        for n in nodes
-        if n["id"] in existing
-        and existing[n["id"]]["state"] in db_graph.PROTECTED_STATES
-        and _content_changed(existing[n["id"]], n, n["deps"], db)
-    ]
-    if refused:
-        print(
-            "Re-load REFUSED — these nodes are dispatching/running/integrating/"
-            f"verified and may not change: {', '.join(refused)}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Single transaction (DA round-2 BLOCKER-1c, 2026-06-10): per-node commits
-    # left a half-applied spec when a later upsert raised. All-or-nothing.
-    created = updated = unchanged = 0
-    conn = db._connect()
-    try:
-        for n in nodes:
-            prev = existing.get(n["id"])
-            if prev is None:
-                db_graph.create_node(
-                    db,
-                    node_id=n["id"],
-                    project_id=args.project,
-                    title=n["title"],
-                    prompt=n["prompt"],
-                    verify_cmd=n["verify_cmd"],
-                    conn=conn,
-                )
-                db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
-                created += 1
-            elif prev["state"] in db_graph.PROTECTED_STATES or not _content_changed(
-                prev, n, n["deps"], db
-            ):
-                unchanged += 1
-            else:
-                db_graph.update_node_content(
-                    db, n["id"], title=n["title"], prompt=n["prompt"],
-                    verify_cmd=n["verify_cmd"], conn=conn,
-                )
-                db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
-                if prev["state"] != "pending":
-                    db_graph.node_transition(db, n["id"], "reload", conn=conn)
-                updated += 1
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-        print(
-            f"Graph load FAILED — rolled back, no nodes changed: {e}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    finally:
-        conn.close()
-
-    # Resume the blocked tail of any node the reload just fixed (BLOCKER-1b):
-    # blocked-failed ⇄ pending re-derived from current dep states.
-    unblocked, _reblocked = db_graph.recompute_blocked(db, args.project)
-    ready = db_graph.recompute_ready(db, args.project)
-    resumed = f" resumed: {', '.join(unblocked)}." if unblocked else ""
-    print(
-        f"Graph loaded for project {args.project}: {len(nodes)} node(s) "
-        f"({created} new, {updated} updated, {unchanged} unchanged). "
-        f"ready: {', '.join(ready) if ready else '(none new)'}.{resumed}"
-    )
-
-
 def register_graph_parsers(subparsers) -> None:
     """Register the `project-graph` (plan store) and `graph` (live edits) groups.
 
@@ -205,6 +122,11 @@ def register_graph_parsers(subparsers) -> None:
     _an.add_argument(
         "--required-by", dest="required_by", default=None,
         help="Comma-separated EXISTING node ids that gain a dep on this node",
+    )
+    _an.add_argument(
+        "--topic", default=None,
+        help="Owning topic id (REQUIRED when the project has real topics; "
+        "omit on a flat project to auto-create a synthetic 'T-<node-id>' topic)",
     )
     _an.add_argument(
         "--verify-cmd", dest="verify_cmd", default=None,
@@ -251,6 +173,28 @@ def cmd_graph_add_node(args):
         prompt = sys.stdin.read()
     prompt = (prompt or "").strip()
 
+    # Resolve the owning topic BEFORE any graph mutation (so a missing --topic
+    # exits without touching the graph). On a project with real (non-synthetic)
+    # topics --topic is REQUIRED; on a flat project it auto-creates 'T-<node-id>'.
+    topic = getattr(args, "topic", None)
+    project_topics = db_topics.list_topics(db, args.project)
+    has_real_topic = any(not _is_synthetic_topic(t["id"]) for t in project_topics)
+    auto_topic = False
+    if topic:
+        if db_topics.get_topic(db, topic) is None:
+            print(f"add-node REFUSED — unknown topic {topic!r}.", file=sys.stderr)
+            sys.exit(1)
+    elif has_real_topic:
+        print(
+            "add-node REFUSED — this project has topics; --topic <id> is "
+            "required.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    else:
+        topic = f"T-{args.id}"
+        auto_topic = True
+
     try:
         result = add_node(
             db, args.project,
@@ -264,6 +208,18 @@ def cmd_graph_add_node(args):
         else:
             print(f"add-node REFUSED — graph unchanged: {e}", file=sys.stderr)
         sys.exit(1)
+
+    # Assign the topic: auto-create the synthetic topic if needed, then point
+    # the new node at it (topic_id FK).
+    if auto_topic and db_topics.get_topic(db, topic) is None:
+        db_topics.create_topic(
+            db, topic_id=topic, project_id=args.project, title=args.title,
+        )
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE graph_nodes SET topic_id=? WHERE id=?", (topic, args.id)
+        )
+        conn.commit()
 
     if getattr(args, "json_out", False):
         print(json.dumps({"ok": True, **result}))
