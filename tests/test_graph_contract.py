@@ -306,3 +306,52 @@ def test_topic_with_failed_task_completes_as_failed_verify(db, monkeypatch):
 
     assert tp.get_topic(db, "A")["state"] == "failed-verify"
     assert tp.get_topic(db, "B")["state"] == "blocked-failed"
+
+
+# ── armed-project dispatch guard (R8, adapted to topics 2026-06-11) ───────────
+
+
+def test_guard_refuses_unbound_thread_of_armed_project(db):
+    """REGRESSION PIN (2026-06-10 R8): ad-hoc send-task to an armed project's
+    threads bypassed the graph — new work must route through add-node."""
+    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_autopilot_state import arm_project
+
+    arm_project(db, "INBOX")
+    tid = db.create_thread("adhoc", session_id="s")
+    db.update_thread(tid, project_id="INBOX")
+    err = check_node_guard(db, tid, force=False)
+    assert err and "add-node" in err and "force-node" in err
+    assert check_node_guard(db, tid, force=True) is None
+
+
+def test_guard_lifts_on_disarm_and_ignores_unarmed(db):
+    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_autopilot_state import arm_project, disarm_project
+
+    p2 = db.create_project(name="Other", objective="o")
+    arm_project(db, p2)
+    tid = db.create_thread("adhoc", session_id="s")
+    db.update_thread(tid, project_id="INBOX")
+    assert check_node_guard(db, tid, force=False) is None  # unarmed project
+    arm_project(db, "INBOX")
+    assert check_node_guard(db, tid, force=False) is not None
+    disarm_project(db, "INBOX")
+    assert check_node_guard(db, tid, force=False) is None
+
+
+def test_guard_topic_bound_operator_state_allowed(db):
+    """R8 must not tighten DA B5: a TOPIC-bound thread in operator territory
+    (failed-exec) stays manually redispatchable even while armed."""
+    from dbops import db_topics as tp_
+    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_autopilot_state import arm_project
+
+    arm_project(db, "INBOX")
+    tp_.create_topic(db, topic_id="T1", project_id="INBOX", title="t")
+    tid = db.create_thread("t", session_id="s")
+    tp_.set_topic_thread(db, "T1", tid)
+    with db._connect() as conn:
+        conn.execute("UPDATE graph_topics SET state='failed-exec' WHERE id='T1'")
+        conn.commit()
+    assert check_node_guard(db, tid, force=False) is None

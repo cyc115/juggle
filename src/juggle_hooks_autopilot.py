@@ -31,39 +31,40 @@ _AUTOPILOT_DIRECTIVE = (
     "for the full loop."
 )
 
-# LLM directive carve-out (DA B5): re-asserted every turn while a project is
-# armed, alongside the code-level send-task node guard (belt and braces).
+# LLM directive carve-out (DA B5 / R7): re-asserted every turn while projects
+# are armed, alongside the code-level send-task node guard (belt and braces).
 _ARMED_CARVEOUT = (
-    "ARMED PROJECT {project}: nodes of the armed project are tick-owned — "
-    "NEVER dispatch them manually; report status only. The watchdog tick "
-    "claims, dispatches, and completes graph nodes; manual send-task to "
-    "node-bound threads is refused without --force-node."
+    "ARMED PROJECTS {projects}: topics of any armed project are tick-owned — "
+    "NEVER dispatch them manually; report status only. NEW work for an armed "
+    "project goes in as a task: `juggle graph add-node … --topic <t>` "
+    "(code-enforced — manual send-task is refused without --force-node). "
+    "The watchdog tick claims, dispatches, and completes topics; integrate "
+    "runs once per topic."
 )
 
 
 def _armed_graph_context() -> str:
-    """Carve-out + budgeted graph status when a project is armed, else ''.
+    """Carve-out + budgeted topic status for EVERY armed project, else \'\'.
 
-    Authority is the ``autopilot_armed_project`` settings key (DA M6).
-    Degrades to '' on any DB error — the base directive must survive.
+    Authority is the armed-set settings key (DA M6). The per-project injection
+    budget is the 500-char discipline split across the set (floor 160) so
+    total stays bounded for any N. Degrades to \'\' on any DB error.
     """
     try:
-        from juggle_graph_dispatch import get_armed_project
-        from juggle_graph_status import build_graph_injection
+        from juggle_autopilot_state import get_armed_projects
+        from juggle_graph_status import INJECTION_BUDGET, build_graph_injection
 
         db = _cfg.get_db()
-        armed = get_armed_project(db)
+        armed = get_armed_projects(db)
         if not armed:
             return ""
-        return (
-            _ARMED_CARVEOUT.format(project=armed)
-            + "\n"
-            + build_graph_injection(db, armed)
-        )
+        per = max(160, INJECTION_BUDGET // len(armed))
+        lines = [_ARMED_CARVEOUT.format(projects=", ".join(armed))]
+        lines += [build_graph_injection(db, pid, budget=per) for pid in armed]
+        return "\n".join(lines)
     except Exception as exc:
         logging.warning("armed-project graph context failed: %s", exc)
         return ""
-
 
 def autopilot_context() -> str:
     """Return the autopilot directive (+ armed-project context) if the flag

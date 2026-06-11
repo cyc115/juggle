@@ -58,23 +58,44 @@ def enforce_handoff_contract(db, thread_uuid, handoff) -> None:
 
 
 def check_node_guard(db, thread_uuid, *, force: bool) -> str | None:
-    """DA B5: manual send-task to a tick-owned node is a double-dispatch race.
+    """DA B5 + R8 (3-tier): manual dispatch that fights the tick is refused.
 
-    Returns a refusal message, or None when dispatch may proceed (unbound
-    thread, operator-territory node state, or --force-node).
+    TOPIC-bound thread in a tick-owned state → double-dispatch race (DA B5,
+    lifted node→topic; legacy node bindings still checked). Unbound thread of
+    an ARMED project → new work must enter the graph as a task (R8, spec
+    §2.11). None = dispatch may proceed.
     """
-    from dbops import db_graph
+    from dbops import db_graph, db_topics
 
     if force or not thread_uuid:
         return None
-    node = _node_for_thread(db, thread_uuid)
-    if not node or node["state"] not in db_graph.TICK_OWNED_STATES:
-        return None
-    return (
-        f"thread is bound to graph node {node['id']} in tick-owned state "
-        f"{node['state']!r} — the autopilot watchdog tick dispatches it. "
-        f"Use --force-node to override (bypasses the single-dispatcher claim)."
-    )
+    try:
+        topic = db_topics.get_topic_by_thread(db, thread_uuid)
+    except Exception:
+        topic = None  # pre-migration DB
+    bound = topic or _node_for_thread(db, thread_uuid)  # legacy node fallback
+    if bound:
+        if bound["state"] not in db_graph.TICK_OWNED_STATES:
+            return None  # operator territory — DA B5 unchanged
+        kind = "topic" if topic else "node"
+        return (
+            f"thread is bound to graph {kind} {bound['id']} in tick-owned "
+            f"state {bound['state']!r} — the autopilot watchdog tick "
+            f"dispatches it. Use --force-node to override."
+        )
+    from juggle_autopilot_state import get_armed_projects
+
+    thread = db.get_thread(thread_uuid) or {}
+    pid = thread.get("project_id")
+    if pid and pid in get_armed_projects(db):
+        return (
+            f"thread belongs to ARMED project {pid} — new work must enter its "
+            f"graph: `juggle graph add-node … --topic <t> --project {pid}` "
+            "(the tick dispatches it). Narrow exceptions (graph-machinery "
+            "fixes; planning whose output IS the nodes): re-run with "
+            "--force-node."
+        )
+    return None
 
 
 def _notify_failure(db, node, state, thread_uuid, session_id, reason=None):

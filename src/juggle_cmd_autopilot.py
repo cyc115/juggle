@@ -16,7 +16,13 @@ import sys
 from pathlib import Path
 
 from juggle_cli_common import get_db
-from juggle_graph_dispatch import ARMED_PROJECT_KEY
+from juggle_autopilot_state import (
+    ARMED_PROJECT_KEY,
+    arm_project,
+    disarm_project,
+    get_armed_projects,
+    set_armed_projects,
+)
 
 AUTOPILOT_FLAG = Path.home() / ".juggle" / "autopilot"
 
@@ -51,7 +57,11 @@ def _cmd_arm(db, project_id: str) -> None:
     if refusal:
         print(f"Error: {refusal}", file=sys.stderr)
         sys.exit(1)
-    db.set_setting(ARMED_PROJECT_KEY, project_id)
+    try:
+        armed = arm_project(db, project_id)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
     _flag_set(True)  # arm while ON keeps ON — no rm-inversion (DA M6)
     spec = graphs_dir() / f"{project_id}-graph.md"
     try:
@@ -59,7 +69,8 @@ def _cmd_arm(db, project_id: str) -> None:
     except OSError:
         pass
     counts = graph_counts(db, project_id)
-    print(f"AUTOPILOT ON — project {project_id} ({project['name']}) armed.")
+    suffix = f" Armed set: {', '.join(armed)}." if len(armed) > 1 else ""
+    print(f"AUTOPILOT ON — project {project_id} ({project['name']}) armed.{suffix}")
     if counts:
         print(f"Graph: {counts['total']} node(s) loaded — {format_progress(counts)}.")
         print(f"Spec: {spec}")
@@ -72,41 +83,67 @@ def _cmd_arm(db, project_id: str) -> None:
         )
 
 
+def _cmd_remove(db, project_id: str | None, *, clear_flag_when_empty: bool) -> None:
+    """disarm/off: remove one project (or all), set-aware flag handling."""
+    if project_id:
+        if project_id not in get_armed_projects(db):
+            print(f"Error: project {project_id!r} is not armed.", file=sys.stderr)
+            sys.exit(1)
+        remaining = disarm_project(db, project_id)
+    else:
+        set_armed_projects(db, [])
+        remaining = []
+    if clear_flag_when_empty and not remaining:
+        _flag_set(False)
+    rest = f" Still armed: {', '.join(remaining)}." if remaining else ""
+    what = f"Project {project_id} disarmed." if project_id else "All projects disarmed."
+    print(f"{what}{rest} Global autopilot: "
+          f"{'ON' if AUTOPILOT_FLAG.exists() else 'OFF'}.")
+
+
 def _cmd_status(db, json_out: bool) -> None:
+    from dbops.db_topics import topic_counts
     from juggle_graph_status import format_progress, graph_counts
 
     global_on = AUTOPILOT_FLAG.exists()
-    armed = (db.get_setting(ARMED_PROJECT_KEY) or "").strip() or None
-    counts = graph_counts(db, armed) if armed else None
-    # Divergence (DA round-2 minor 5, 2026-06-10): project armed in settings
-    # while the global flag file is absent → hooks inject nothing but the
-    # tick still dispatches. Split-brain must be called out.
+    armed = get_armed_projects(db)
+    graphs = {}
+    for pid in armed:
+        tc, nc = topic_counts(db, pid), graph_counts(db, pid)
+        graphs[pid] = {"topics": tc, "tasks": nc} if (tc or nc) else None
     diverged = bool(armed) and not global_on
     if json_out:
-        print(
-            json.dumps(
-                {
-                    "global_on": global_on,
-                    "armed_project": armed,
-                    "graph": counts,
-                    "diverged": diverged,
-                }
-            )
-        )
+        first = armed[0] if armed else None
+        print(json.dumps({
+            "global_on": global_on,
+            "armed_projects": armed,
+            "graphs": graphs,
+            "diverged": diverged,
+            "armed_project": first,                         # deprecated (1 release)
+            "graph": graphs.get(first) if first else None,  # deprecated
+        }))
         return
     print(f"Autopilot global: {'ON' if global_on else 'OFF'}")
-    print(f"Armed project: {armed or '(none)'}")
-    if armed and counts:
-        print(f"Graph: {format_progress(counts)}")
-    elif armed:
-        print("Graph: no graph loaded")
+    if not armed:
+        print("Armed projects: (none)")
+    else:
+        print(f"Armed projects ({len(armed)}): {', '.join(armed)}")
+        for pid in armed:
+            info = graphs[pid]
+            if not info:
+                print(f"  {pid}: no graph loaded")
+                continue
+            seg = []
+            if info["topics"]:
+                seg.append("topics " + format_progress(info["topics"]))
+            if info["tasks"]:
+                seg.append("tasks " + format_progress(info["tasks"]))
+            print(f"  {pid}: " + "; ".join(seg))
     if diverged:
         print(
-            "WARNING: settings key and flag file diverge — project "
-            f"{armed!r} is armed but the global flag "
-            f"({AUTOPILOT_FLAG}) is OFF: hooks inject nothing while the "
-            "tick still dispatches. Run `juggle autopilot arm "
-            f"{armed}` to restore the flag, or `juggle autopilot off`."
+            "WARNING: settings key and flag file diverge — project(s) "
+            f"{', '.join(armed)} armed but the global flag ({AUTOPILOT_FLAG}) "
+            "is OFF: hooks inject nothing while the tick still dispatches."
         )
 
 
@@ -117,19 +154,12 @@ def cmd_autopilot(args) -> None:
     if cmd == "arm":
         _cmd_arm(db, args.project)
     elif cmd == "disarm":
-        db.set_setting(ARMED_PROJECT_KEY, None)
-        print(
-            "Project disarmed (tick falls back to notify-only). "
-            f"Global autopilot: {'ON' if AUTOPILOT_FLAG.exists() else 'OFF'}."
-        )
+        _cmd_remove(db, getattr(args, "project", None), clear_flag_when_empty=False)
     elif cmd == "on":
         _flag_set(True)
         print("AUTOPILOT ON (global). No project armed — use: juggle autopilot arm <project>")
     elif cmd == "off":
-        db.set_setting(ARMED_PROJECT_KEY, None)
-        _flag_set(False)
-        print("AUTOPILOT OFF — project disarmed, global flag cleared. "
-              "Running agents finish their current node; tick is notify-only.")
+        _cmd_remove(db, getattr(args, "project", None), clear_flag_when_empty=True)
     else:
         _cmd_status(db, getattr(args, "json_out", False))
 
@@ -144,12 +174,13 @@ def register(subparsers) -> None:
     p_arm.add_argument("project", help="Project id to arm")
     p_arm.set_defaults(func=cmd_autopilot)
     for name, hlp in (
-        ("disarm", "Disarm the armed project (global flag unchanged)"),
+        ("disarm", "Disarm a project from the armed set (global flag unchanged)"),
         ("on", "Global autopilot ON (flag cache only)"),
-        ("off", "Disarm everything: clear armed project + global flag"),
+        ("off", "Disarm one or all projects + clear global flag when empty"),
     ):
         sp = sub.add_parser(name, help=hlp)
-        sp.set_defaults(func=cmd_autopilot, project=None)
-    p_st = sub.add_parser("status", help="Show global flag + armed project + graph")
+        sp.add_argument("project", nargs="?", default=None, help="Project id (optional)")
+        sp.set_defaults(func=cmd_autopilot)
+    p_st = sub.add_parser("status", help="Show global flag + armed projects + graphs")
     p_st.add_argument("--json", dest="json_out", action="store_true")
     p_st.set_defaults(func=cmd_autopilot, project=None)

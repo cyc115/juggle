@@ -221,3 +221,57 @@ def test_status_no_warning_when_consistent(db_path, db, flag, capsys):
     ap.cmd_autopilot(_args(db_path, "status"))
     out = capsys.readouterr().out
     assert "WARNING" not in out
+
+
+# ── multi-project arming + topic status (2026-06-11) ─────────────────────────
+
+
+def test_arm_second_project_adds_not_replaces(db_path, db, flag, capsys):
+    """REGRESSION PIN (2026-06-10): arming a second project silently REPLACED
+    the first (scalar overwrite) — arm must ADD."""
+    p2 = db.create_project(name="P2", objective="p2 obj")
+    ap.cmd_autopilot(_args(db_path, "arm", "INBOX"))
+    ap.cmd_autopilot(_args(db_path, "arm", p2))
+    assert db.get_setting(ARMED_PROJECT_KEY) == f"INBOX,{p2}"
+
+
+def test_disarm_one_keeps_rest_flag_untouched(db_path, db, flag, capsys):
+    p2 = db.create_project(name="P2", objective="p2 obj")
+    ap.cmd_autopilot(_args(db_path, "arm", "INBOX"))
+    ap.cmd_autopilot(_args(db_path, "arm", p2))
+    ap.cmd_autopilot(_args(db_path, "disarm", "INBOX"))
+    assert db.get_setting(ARMED_PROJECT_KEY) == p2
+    assert flag.exists()
+
+
+def test_disarm_unknown_project_fails_loud(db_path, db, flag, capsys):
+    ap.cmd_autopilot(_args(db_path, "arm", "INBOX"))
+    with pytest.raises(SystemExit):
+        ap.cmd_autopilot(_args(db_path, "disarm", "nope"))
+    assert db.get_setting(ARMED_PROJECT_KEY) == "INBOX"
+
+
+def test_off_one_project_clears_flag_only_when_set_empties(db_path, db, flag, capsys):
+    p2 = db.create_project(name="P2", objective="p2 obj")
+    ap.cmd_autopilot(_args(db_path, "arm", "INBOX"))
+    ap.cmd_autopilot(_args(db_path, "arm", p2))
+    ap.cmd_autopilot(_args(db_path, "off", "INBOX"))
+    assert flag.exists(), "flag clears only when the set empties"
+    ap.cmd_autopilot(_args(db_path, "off", p2))
+    assert db.get_setting(ARMED_PROJECT_KEY) is None and not flag.exists()
+
+
+def test_status_lists_topic_and_task_counts_per_project(db_path, db, flag, capsys):
+    import json as _json
+    from dbops import db_topics as tp
+    p2 = db.create_project(name="P2", objective="p2 obj")
+    tp.create_topic(db, topic_id="T1", project_id="INBOX", title="T1")
+    ap.cmd_autopilot(_args(db_path, "arm", "INBOX"))
+    ap.cmd_autopilot(_args(db_path, "arm", p2))
+    capsys.readouterr()
+    ap.cmd_autopilot(_args(db_path, "status", json_out=True))
+    payload = _json.loads(capsys.readouterr().out)
+    assert payload["armed_projects"] == ["INBOX", p2]
+    assert payload["graphs"]["INBOX"]["topics"]["total"] == 1
+    assert payload["graphs"][p2] is None
+    assert payload["armed_project"] == "INBOX"  # deprecated, one release
