@@ -457,6 +457,60 @@ def test_unrelated_valueerror_in_create_thread_is_error_not_defer(db, monkeypatc
     assert any("thread creation failed" in i["message"] for i in items)
 
 
+def test_cross_connection_thread_visibility(tmp_path):
+    """REGRESSION PIN (2026-06-10): create_thread on db1 must be visible via
+    get_thread on a separate JuggleDB instance (db2) pointing at the same file.
+    WAL + synchronous=FULL on every connect (f7187b4) should ensure this.
+    If this test is RED the WAL hardening is broken; if GREEN the visibility
+    issue is already solved and the remaining gap is db_path mismatch."""
+    db1 = JuggleDB(db_path=str(tmp_path / "juggle.db"))
+    db1.init_db()
+
+    thread_id = db1.create_thread("node thread", session_id="s")
+
+    db2 = JuggleDB(db_path=str(tmp_path / "juggle.db"))
+    db2.init_db()
+
+    t = db2.get_thread(thread_id)
+    assert t is not None, (
+        f"thread {thread_id} not visible on separate JuggleDB after create_thread commit"
+    )
+    assert t["id"] == thread_id
+
+
+def test_dispatch_via_pool_passes_db_path_to_cmd_get_agent(tmp_path, monkeypatch):
+    """REGRESSION PIN (2026-06-10): _dispatch_via_pool must pass db.db_path to
+    cmd_get_agent so it opens the same database the tick wrote to.
+    Without this, cmd_get_agent calls _com.get_db() which uses
+    juggle_cli_common.DB_PATH (the global default). When that diverges from
+    the tick db's path — e.g. _JUGGLE_TEST_DB set in the watchdog env at
+    first-import time — the freshly-created thread is invisible and
+    cmd_get_agent prints 'no thread with id' + sys.exit(1)."""
+    import juggle_cmd_agents as jca
+
+    db_local = JuggleDB(db_path=str(tmp_path / "juggle.db"))
+    db_local.init_db()
+    thread_id = db_local.create_thread("node-thread", session_id="s")
+
+    captured = {}
+
+    def spy_get_agent(ns):
+        captured["db_path"] = getattr(ns, "db_path", "NOT_PRESENT")
+
+    monkeypatch.setattr(jca, "cmd_get_agent", spy_get_agent)
+    monkeypatch.setattr(jca, "cmd_send_task", lambda ns: None)
+
+    try:
+        gd._dispatch_via_pool(db_local, thread_id, "prompt", {"id": "n1"})
+    except RuntimeError:
+        pass  # expected — spy_get_agent doesn't bind an agent
+
+    assert captured.get("db_path") == str(tmp_path / "juggle.db"), (
+        f"cmd_get_agent Namespace must carry db_path from tick db; "
+        f"got {captured.get('db_path')!r}"
+    )
+
+
 def test_dispatch_via_pool_releases_agent_on_any_exception(db, monkeypatch):
     """REGRESSION PIN (DA round-2 minor 2, 2026-06-10): _dispatch_via_pool
     released the agent only on SystemExit from send-task — any other exception

@@ -116,6 +116,7 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
                 Namespace(
                     thread_id=thread_id, role=NODE_ROLE, model=None,
                     repo=None, harness=None, fresh=False,
+                    db_path=str(db.db_path),
                 )
             )
     except SystemExit:

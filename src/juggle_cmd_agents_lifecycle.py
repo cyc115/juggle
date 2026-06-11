@@ -19,7 +19,8 @@ import juggle_cmd_agents_common as _com
 
 
 def cmd_get_agent(args):
-    db = _com.get_db()
+    _db_path = getattr(args, "db_path", None)
+    db = _com.get_db(db_path=_db_path) if isinstance(_db_path, str) else _com.get_db()
     db.init_db()
     sys.path.insert(0, str(_com.SRC_DIR))
     from juggle_tmux import JuggleTmuxManager
