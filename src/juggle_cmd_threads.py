@@ -26,8 +26,26 @@ from juggle_settings import get_settings as _get_settings
 MIN_REFLECT_MSG_DELTA = 5  # min new messages since last reflect before re-firing
 
 
+def _main_repo_root() -> _Path:
+    """The MAIN worktree root, even when this module is imported from a linked
+    worktree.
+
+    `juggle integrate` runs inside an agent's worktree, so __file__ points into
+    that worktree; launching the watchdog from there leaves it running with a
+    path that vanishes once the worktree is GC'd post-integrate — every later
+    tick dispatch then fails with `No module named juggle_cmd_agents`. Resolve
+    to the primary worktree so the daemon always runs from a stable checkout.
+    """
+    here = _Path(__file__).resolve().parent.parent
+    try:
+        from juggle_cmd_agents_worktree import _main_worktree_root
+        return _Path(_main_worktree_root(str(here)))
+    except Exception:
+        return here
+
+
 def _watchdog_script() -> _Path:
-    return _Path(__file__).parent.parent / "scripts" / "juggle-agent-watchdog"
+    return _main_repo_root() / "scripts" / "juggle-agent-watchdog"
 
 
 def _watchdog_pid_file() -> _Path:
@@ -110,6 +128,7 @@ def _start_watchdog() -> None:
             stdout=log_fh,
             stderr=log_fh,
             start_new_session=True,
+            cwd=str(_main_repo_root()),
         )
     # Persist the new PID so _stop_watchdog / the next _start_watchdog can find it.
     pid_file.write_text(str(proc.pid))
