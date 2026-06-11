@@ -13,7 +13,9 @@ watchdog tick drives ready nodes across ALL armed graphs each cycle under the
 existing global agent budget, with a fair cross-project scheduling policy.
 Disarming one project leaves the rest running. Cockpit graph mode shows every
 armed graph; hooks inject the full set. Single-project behavior is unchanged
-(a 1-element set behaves byte-for-byte like today's scalar).
+(a 1-element set behaves byte-for-byte like today's scalar). While a project
+is armed, ad-hoc `send-task` to its threads is code-refused and routed to
+`juggle graph add-node` (R8, §2.8).
 
 Non-goals: per-project budget config, weighted priorities, parallel/threaded
 ticks, any new daemon. The watchdog tick remains the sole dispatcher (DA B4/M1);
@@ -162,6 +164,28 @@ question 3).
   suite, which must pass unmodified except where assertions touch the JSON
   compat fields.
 
+### 2.8 Armed-project dispatch guard (R8)
+
+When a project's graph is armed, ALL new work for that project must enter the
+graph as nodes (tick-owned) — never ad-hoc `send-task` (CLAUDE.md: code over
+prompts; the hook carve-out in 2.5 is the prompt half, this is the code half).
+Implemented by extending the existing DA B5 guard
+`juggle_cmd_agents_graph.check_node_guard` with a second clause:
+
+- Thread **node-bound** → existing semantics, untouched (tick-owned states
+  refuse; operator-territory states like `failed-exec` stay manually
+  redispatchable — R8 must not tighten DA B5).
+- Thread **not node-bound** but `thread.project_id` is in the armed set →
+  refuse, pointing to `juggle graph add-node … --project <pid>` and naming
+  `--force-node` as the override.
+- `--force-node` remains the single escape hatch (the tick already passes it).
+  R8's narrow exceptions — fixes to the graph/dispatch machinery itself, and
+  pure planning/spec/research whose output IS the nodes — are operator
+  judgment calls exercised via the flag, NOT encoded as content heuristics
+  (any such heuristic would be a bypassable false-negative generator).
+- The check reads the live armed set, so disarming a project lifts the guard
+  instantly; threads of unarmed projects are never affected.
+
 ## 3. Devil's Advocate
 
 ### Assumption-by-assumption challenge
@@ -175,6 +199,7 @@ question 3).
 | A5 | Capacity break-out-of-whole-pass stays correct | If a future cap became per-project, breaking globally would under-dispatch | Cap is global today (`dbops/threads.py` MAX_THREADS, agent pool); scheduler already ordered fairly at break time, so the partial prefix is fair. Documented in module docstring |
 | A6 | Stats dict can stay flat (node-id lists) | A consumer wanting per-project stats has to re-query | Node ids are unique and `list_nodes` recovers the project; extending stats later is additive, not breaking |
 | A7 | Old binary + new multi-value DB (rollback) degrades safely | Old code reads `"a,b"` as one id → `get_project` misses → status "no graph loaded", tick dispatches nothing | Degradation is silent-but-safe (notify-only), never corrupting; called out in spec. Accepted: we do not engineer for binary rollback |
+| A8 | `--force-node` is a sufficient escape hatch for R8's narrow exceptions | Legitimate machinery-fix dispatches hit an annoying refusal | Refusal message names the flag and the exceptions; heuristic carve-outs would create silent bypasses, which is worse than one extra flag |
 
 ### Weakest item + failure mode
 
@@ -217,6 +242,7 @@ buys nothing.
   project asserts the healthy one still dispatches.
 - **Injection bloat:** budget split (2.5); test asserts total injected graph
   text stays ≤ ~520 chars with 3 armed projects.
+- **R8 guard scope:** unbound thread of an armed project → refused; same thread after disarm → allowed; node-bound thread in an operator-territory state (e.g. `failed-exec`) → allowed even while armed (DA B5 unchanged). All three pinned.
 - **Cockpit small viewport with 3 DAGs:** viewport smoke matrix is the gate;
   stacked layout clips per existing panel rules.
 - **`status` divergence warning:** now fires when set non-empty + flag absent;

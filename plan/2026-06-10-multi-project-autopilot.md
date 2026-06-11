@@ -1050,6 +1050,160 @@ git commit -m "feat: hooks inject full armed set with split graph-status budget 
 
 ---
 
+### Task 5b: R8 — armed-project send-task guard
+
+**Files:**
+- Modify: `src/juggle_cmd_agents_graph.py` (`check_node_guard`)
+- Modify: `src/juggle_hooks_autopilot.py` (`_ARMED_CARVEOUT` wording, one line)
+- Test: `tests/test_graph_contract.py` (append)
+
+When a project's graph is armed, NEW work for it must become a graph node —
+ad-hoc `send-task` to its threads is refused (spec §2.8). The hook in Task 5
+is the prompt half; this is the code-enforced half.
+
+- [ ] **Step 1: Write the failing tests** (append to `tests/test_graph_contract.py`; reuse its `db` fixture and `g` import)
+
+```python
+# ── armed-project dispatch guard (R8, 2026-06-10) ─────────────────────────────
+
+
+def test_guard_refuses_unbound_thread_of_armed_project(db):
+    """REGRESSION PIN (2026-06-10 R8): with a project's graph armed, ad-hoc
+    send-task to that project's threads bypassed the graph entirely — new
+    project work must route through `juggle graph add-node`."""
+    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_autopilot_state import arm_project
+
+    arm_project(db, "INBOX")
+    tid = db.create_thread("adhoc", session_id="s")
+    db.update_thread(tid, project_id="INBOX")
+    err = check_node_guard(db, tid, force=False)
+    assert err and "add-node" in err and "force-node" in err
+    assert check_node_guard(db, tid, force=True) is None
+
+
+def test_guard_ignores_unarmed_project_threads(db):
+    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_autopilot_state import arm_project
+
+    arm_project(db, "OTHER")
+    tid = db.create_thread("adhoc", session_id="s")
+    db.update_thread(tid, project_id="INBOX")
+    assert check_node_guard(db, tid, force=False) is None
+
+
+def test_guard_lifts_on_disarm(db):
+    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_autopilot_state import arm_project, disarm_project
+
+    arm_project(db, "INBOX")
+    tid = db.create_thread("adhoc", session_id="s")
+    db.update_thread(tid, project_id="INBOX")
+    assert check_node_guard(db, tid, force=False) is not None
+    disarm_project(db, "INBOX")
+    assert check_node_guard(db, tid, force=False) is None
+
+
+def test_guard_node_bound_thread_keeps_existing_semantics(db):
+    """R8 must not tighten DA B5: a node-bound thread in operator-territory
+    state (failed-exec) stays manually redispatchable even while armed."""
+    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_autopilot_state import arm_project
+
+    arm_project(db, "INBOX")
+    g.create_node(db, node_id="n8", project_id="INBOX", title="N", prompt="p")
+    tid = db.create_thread("t", session_id="s")
+    g.set_node_thread(db, "n8", tid)
+    with db._connect() as conn:
+        conn.execute("UPDATE graph_nodes SET state='failed-exec' WHERE id='n8'")
+        conn.commit()
+    assert check_node_guard(db, tid, force=False) is None
+```
+
+If `db.update_thread(tid, project_id=...)` or `db.get_thread` differ from the
+real API, check `src/dbops/threads.py` and adapt mechanics, not intent.
+
+- [ ] **Step 2: Run to verify failure**
+
+```bash
+uv run pytest -q tests/test_graph_contract.py -k "armed_project or unarmed or lifts_on_disarm or keeps_existing" -v
+```
+
+Expected: the first and third tests FAIL (guard returns None for unbound threads today); the other two pass trivially — keep them, they pin the boundary.
+
+- [ ] **Step 3: Extend `check_node_guard` in `src/juggle_cmd_agents_graph.py`**
+
+Replace the function with:
+
+```python
+def check_node_guard(db, thread_uuid, *, force: bool) -> str | None:
+    """DA B5 + R8: manual dispatch that fights the tick is refused.
+
+    Node-bound thread in a tick-owned state → double-dispatch race (DA B5).
+    Unbound thread of an ARMED project → new work must enter the graph as a
+    node, not ad-hoc send-task (R8, spec 2026-06-10 §2.8).
+    Returns a refusal message, or None when dispatch may proceed.
+    """
+    from dbops import db_graph
+
+    if force or not thread_uuid:
+        return None
+    node = _node_for_thread(db, thread_uuid)
+    if node:
+        if node["state"] not in db_graph.TICK_OWNED_STATES:
+            return None  # operator territory (failed/pending) — DA B5 unchanged
+        return (
+            f"thread is bound to graph node {node['id']} in tick-owned state "
+            f"{node['state']!r} — the autopilot watchdog tick dispatches it. "
+            f"Use --force-node to override (bypasses the single-dispatcher claim)."
+        )
+    from juggle_autopilot_state import get_armed_projects
+
+    thread = db.get_thread(thread_uuid) or {}
+    pid = thread.get("project_id")
+    if pid and pid in get_armed_projects(db):
+        return (
+            f"thread belongs to ARMED project {pid} — new work for an armed "
+            f"project must enter its graph: `juggle graph add-node … --project "
+            f"{pid}` (the watchdog tick dispatches it). Narrow exceptions "
+            "(graph-machinery fixes; planning whose output IS the nodes): "
+            "re-run with --force-node."
+        )
+    return None
+```
+
+- [ ] **Step 4: Update the hook carve-out wording** (in `src/juggle_hooks_autopilot.py`, the Task 5 version) — change the first sentence of `_ARMED_CARVEOUT` to:
+
+```python
+_ARMED_CARVEOUT = (
+    "ARMED PROJECTS {projects}: nodes of any armed project are tick-owned — "
+    "NEVER dispatch them manually; report status only. NEW work for an armed "
+    "project goes in via `juggle graph add-node`, never ad-hoc send-task "
+    "(code-enforced). The watchdog tick claims, dispatches, and completes "
+    "graph nodes; manual send-task is refused without --force-node."
+)
+```
+
+- [ ] **Step 5: Run the guard + contract + hooks suites**
+
+```bash
+uv run pytest -q tests/test_graph_contract.py tests/test_hooks_autopilot_multi.py tests/test_cli_agents.py -v 2>&1 | tail -5
+```
+
+Expected: ALL PASS — including the pre-existing DA B5 guard tests (unchanged semantics for node-bound threads) and any `test_cli_agents.py` send-task tests (their threads have no armed project, so the new clause is inert for them; if one arms a project AND uses an unbound project thread, it must now pass `--force-node` or the assertion needs the new refusal — judge by test intent).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/juggle_cmd_agents_graph.py src/juggle_hooks_autopilot.py tests/test_graph_contract.py
+git commit -m "feat: refuse ad-hoc send-task to armed-project threads (R8)
+
+New work for an armed project must enter the graph via add-node; --force-node
+is the single operator override. DA B5 node-bound semantics unchanged."
+```
+
+---
+
 ### Task 6: Cockpit shows all armed graphs (R5)
 
 **Files:**
@@ -1314,6 +1468,7 @@ Expected: only re-export/imports and docstrings — no remaining raw scalar READ
 | 3 | No external script parses status JSON beyond the kept fields | Script breaks on new keys | Additive keys only; deprecated fields retained one release |
 | 4 | Per-node body transplant is faithful | Cross-project thread mis-binding → wrong-repo agent work | Pinned test `test_each_thread_bound_to_its_nodes_project`; single-project pins unmodified |
 | 5 | 160-char floor is readable | 4+ projects → truncated-but-present lines | Bounded by design; ellipsis truncation is deterministic (existing DA m4) |
+| 5b | Tests never dispatch to unbound armed-project threads without --force-node | Existing suites break on the new refusal | Step 5 runs the cli_agents suite; the guard is inert unless a project is armed |
 | 6 | Stacked DAGs fit small viewports | Overflow in 80×67 third-pane | Viewport smoke matrix is the merge gate; panel clips per existing rules |
 | 7 | Pre-existing shared-DB hook-test failures are the documented isolation limitation | Masking a real new failure | Prove each failure exists on base before dismissing |
 

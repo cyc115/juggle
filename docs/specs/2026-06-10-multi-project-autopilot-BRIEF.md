@@ -69,3 +69,6 @@ R7. Hooks (`juggle_hooks_autopilot.py`) that re-inject the armed-project directi
 3. Implementation plan at `plan/2026-06-10-multi-project-autopilot.md`
    (superpowers:writing-plans) — agent-verifiable acceptance criteria per task,
    sized for a Sonnet coder to execute via TDD.
+
+## R8 (added 2026-06-10) — Armed graph routes ALL project work through the graph
+When a project's graph is armed, any NEW work related to that project must be added as a graph node (tick-owned), never dispatched ad-hoc via send-task. Provide a CODE-ENFORCED guard: `send-task` (or get-agent dispatch) to a thread auto-assigned to an armed project should refuse/warn and point to `juggle graph add-node`, unless `--force-node`/explicit override. Narrow exceptions: (a) fixes to the graph/dispatch machinery itself; (b) pure planning/spec/research whose output IS the nodes. Include this guard in the spec + plan.
