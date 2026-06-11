@@ -423,11 +423,22 @@ class CockpitApp(GraphModeMixin, App):
         self.push_screen(_PromptModal("Switch to thread (label):"), _on_label)
 
     def action_ack(self) -> None:
-        """a — ack all open action items on a thread by label."""
+        """a — ack all open action items on a thread by label (Z = orphaned/null-thread)."""
         def _on_label(label: str | None) -> None:
             if label is None:
                 return
             label_up = label.strip().upper()
+            if label_up == "Z":
+                try:
+                    count = self._db.dismiss_orphan_action_items()
+                    if count:
+                        self.notify(f"Acked {count} orphaned action(s) [Z]", timeout=2)
+                    else:
+                        self.notify("No orphaned actions [Z]", severity="warning", timeout=3)
+                    self._refresh()
+                except Exception as exc:
+                    self.notify(f"Ack failed: {exc}", severity="error", timeout=4)
+                return
             threads = self._db.get_all_threads()
             match = _resolve_thread_by_label(threads, label_up)
             if match is None:

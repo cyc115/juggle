@@ -1030,3 +1030,43 @@ async def test_keyboard_jk_scroll_not_regressed(tmp_path):
         await pilot.press("k")
         await pilot.pause(0.1)
         assert app._offsets["topics"] == 0, "k key must decrement offset back to 0"
+
+
+# ---------------------------------------------------------------------------
+# Orphan-action [Z] ack — regression pin 2026-06-10
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_action_ack_z_dismisses_orphaned_actions(tmp_path):
+    """Pressing 'a' then 'Z' must dismiss all thread_id IS NULL action items.
+
+    Regression pin: 2026-06-10 — graph-dispatch failure actions had no
+    thread label so they rendered '[]' and could not be dismissed via 'a'.
+    The fix: label 'Z' is the sentinel that routes to dismiss_orphan_action_items().
+    """
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    t_id = db.create_thread("real thread", session_id="")
+    db.add_action_item(t_id, "bound action", type_="question")
+    db.add_action_item(None, "orphan dispatch failure", type_="question")
+    db.add_action_item(None, "another orphan", type_="question")
+
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        await pilot.press("a")
+        await pilot.pause(0.1)
+        await pilot.press("z")
+        await pilot.press("enter")
+        await pilot.pause(0.3)
+
+    open_items = db.get_open_action_items()
+    assert len(open_items) == 1, (
+        f"Expected only the bound action to survive, got {len(open_items)}: {open_items}"
+    )
+    assert open_items[0]["thread_id"] == t_id, "Bound action must not be dismissed"

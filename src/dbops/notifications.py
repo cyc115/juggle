@@ -151,3 +151,14 @@ class NotificationsMixin:
             )
             conn.commit()
             return cursor.rowcount
+
+    def dismiss_orphan_action_items(self) -> int:
+        """Dismiss all open action items with thread_id IS NULL. Returns count dismissed."""
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE action_items SET dismissed_at = ? WHERE thread_id IS NULL AND dismissed_at IS NULL",
+                (now,),
+            )
+            conn.commit()
+            return cursor.rowcount

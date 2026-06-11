@@ -369,3 +369,24 @@ def test_snapshot_agent_pane_id_populated():
     state = snapshot(db)
     assert len(state.agents) == 1
     assert state.agents[0].pane_id == "juggle:1"  # set in _make_in_memory_db
+
+
+def test_snapshot_action_null_thread_gets_Z_label():
+    """Action items with thread_id IS NULL must render with topic_id 'Z' (sentinel).
+
+    Regression pin: 2026-06-10 — graph-dispatch failures produce orphaned
+    action items (thread_id=None) that rendered as '[]' and were un-ackable.
+    """
+    conn = _make_in_memory_db()
+    conn.execute(
+        "INSERT INTO action_items (thread_id, message, type, priority, created_at) "
+        "VALUES (NULL, 'graph dispatch failed', 'question', 'high', '2026-06-10 10:00')"
+    )
+    conn.commit()
+    db = _FakeDB(conn)
+    state = snapshot(db)
+    orphan = next((a for a in state.actions if "graph dispatch" in a.text), None)
+    assert orphan is not None, "orphaned action item missing from snapshot"
+    assert orphan.topic_id == "Z", (
+        f"Expected topic_id='Z' for null-thread action, got {orphan.topic_id!r}"
+    )

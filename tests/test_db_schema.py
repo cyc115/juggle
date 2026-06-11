@@ -1,4 +1,8 @@
 """Tests for Task 1 schema additions (notifications_v2, action_items, threads columns)."""
+# fmt: off
+
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import tempfile
 from pathlib import Path
@@ -84,3 +88,45 @@ def test_action_items_open_index_filters_dismissed(db):
         ).fetchall()
     assert len(rows) == 1
     assert rows[0]["message"] == "open"
+
+
+# ---------------------------------------------------------------------------
+# dismiss_orphan_action_items — regression pin 2026-06-10
+# ---------------------------------------------------------------------------
+
+
+def test_dismiss_orphan_action_items_clears_null_thread(db):
+    """dismiss_orphan_action_items() must dismiss only thread_id IS NULL items.
+
+    Regression pin: 2026-06-10 — graph-dispatch orphans (thread_id=None)
+    were un-dismissable because action_ack only resolved by thread label.
+    """
+    t_id = db.create_thread("real thread", session_id="")
+    db.add_action_item(t_id, "bound action", type_="question")
+    db.add_action_item(None, "orphan 1", type_="question")
+    db.add_action_item(None, "orphan 2", type_="question")
+
+    count = db.dismiss_orphan_action_items()
+
+    assert count == 2, f"Expected 2 orphans dismissed, got {count}"
+    open_items = db.get_open_action_items()
+    assert len(open_items) == 1, "Bound action item must survive"
+    assert open_items[0]["thread_id"] == t_id
+
+
+def test_dismiss_orphan_action_items_skips_already_dismissed(db):
+    """Already-dismissed orphans must not be re-counted."""
+    import datetime
+    from juggle_db import JuggleDB
+
+    db.add_action_item(None, "orphan already done", type_="question")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE action_items SET dismissed_at = '2026-01-01 00:00' "
+            "WHERE thread_id IS NULL AND dismissed_at IS NULL"
+        )
+        conn.commit()
+    db.add_action_item(None, "new orphan", type_="question")
+
+    count = db.dismiss_orphan_action_items()
+    assert count == 1

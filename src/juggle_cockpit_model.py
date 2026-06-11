@@ -308,7 +308,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
 
     actions: list[Action] = []
     for r in action_rows:
-        topic_label = ""
+        topic_label = "Z"  # sentinel for orphaned (thread_id IS NULL) items
         if r["thread_id"]:
             t_row = conn.execute(
                 "SELECT user_label, id FROM threads WHERE id = ?",
