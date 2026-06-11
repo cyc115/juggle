@@ -152,3 +152,48 @@ def test_watchdog_giveup_marks_node_failed_exec_and_blocks(db, tmp_path):
         for i in items
         if "Graph node" in i["message"]
     )
+
+
+# ── topic-bound agent death (R9, 2026-06-11) ──────────────────────────────────
+
+from dbops import db_topics as tp  # noqa: E402
+
+
+def _bind_running_topic(db, topic_id, session="sessA"):
+    tid = db.create_thread("t", session_id=session)
+    db.update_thread(tid, agent_task_id="task-1", status="running")
+    db._set_session_key_external("session_id", session)
+    tp.set_topic_thread(db, topic_id, tid)
+    for ev in ("deps_ready", "claim", "dispatch"):
+        tp.topic_transition(db, topic_id, ev)
+    return tid
+
+
+def test_fail_agent_topic_thread_fails_topic_and_preserves_task_states(db):
+    """(adapted to topics, R9 2026-06-11) Agent death on a TOPIC thread fails
+    the TOPIC (failed-exec) + blocks derived dependents, but per-task states are
+    PRESERVED (the resume story, spec DA A9)."""
+    tp.create_topic(db, topic_id="A", project_id="INBOX", title="A")
+    tp.create_topic(db, topic_id="B", project_id="INBOX", title="B")
+    for n, topic in (("a1", "A"), ("a2", "A"), ("b1", "B")):
+        g.create_node(db, node_id=n, project_id="INBOX", title=n, prompt="p")
+        with db._connect() as conn:
+            conn.execute("UPDATE graph_nodes SET topic_id=? WHERE id=?", (topic, n))
+            conn.commit()
+    with db._connect() as conn:  # B derives on A (b1 → a1)
+        conn.execute("INSERT INTO graph_edges (node_id, depends_on_id) "
+                     "VALUES ('b1','a1')")
+        conn.commit()
+    g.mark_completion(db, "a1", integrate_ok=True, verify_ok=True, handoff="h")
+    tid = _bind_running_topic(db, "A")  # pending → deps_ready → … → running
+
+    _fail(tid)
+
+    assert tp.get_topic(db, "A")["state"] == "failed-exec"
+    assert tp.get_topic(db, "B")["state"] == "blocked-failed"
+    # per-task states untouched — resume story (DA A9)
+    assert g.get_node(db, "a1")["state"] == "verified"
+    assert g.get_node(db, "a2")["state"] == "pending"
+    items = db.get_open_action_items()
+    assert any("failed-exec" in i["message"] and i["priority"] == "high"
+               for i in items if "Topic" in i["message"])

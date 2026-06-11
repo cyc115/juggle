@@ -138,6 +138,20 @@ def register_graph_parsers(subparsers) -> None:
     )
     _an.set_defaults(func=cmd_graph_add_node)
 
+    _mt = _g2s.add_parser(
+        "mark-task", help="Topic agent: mark one task verified (or --fail)"
+    )
+    _mt.add_argument("task_id", help="Task (node) id to mark")
+    _mt.add_argument(
+        "--fail", action="store_true",
+        help="Mark the task failed-verify instead of verified",
+    )
+    _mt.add_argument(
+        "--handoff", default=None,
+        help="Handoff for the task (files touched, interfaces, decisions)",
+    )
+    _mt.set_defaults(func=cmd_graph_mark_task)
+
 
 def _csv(value) -> list[str]:
     """Split a comma-separated CLI arg into a clean id list (``None`` → [])."""
@@ -234,3 +248,26 @@ def cmd_graph_add_node(args):
         f"Added node {result['node_id']!r} to project {args.project} "
         f"(state: {result['state']}).{tail}"
     )
+
+
+def cmd_graph_mark_task(args):
+    """`juggle graph mark-task <task-id> [--fail] [--handoff '…']` — the topic
+    agent's per-task completion (R9 hybrid). Maps onto the EXISTING node machine
+    via mark_completion(integrate_ok=True, verify_ok=not --fail): task 'verified'
+    = committed-in-topic-worktree + verify_cmd green — verified-means-MERGED
+    holds at TOPIC level only (spec §2.3)."""
+    db = get_db(getattr(args, "db_path", None), init=True)
+    task = db_graph.get_node(db, args.task_id)
+    if not task:
+        print(f"Error: task {args.task_id!r} not found.", file=sys.stderr)
+        sys.exit(1)
+    try:
+        state = db_graph.mark_completion(
+            db, args.task_id, integrate_ok=True,
+            verify_ok=not getattr(args, "fail", False),
+            handoff=getattr(args, "handoff", None),
+        )
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    print(f"task {args.task_id} → {state}")

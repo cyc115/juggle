@@ -114,8 +114,16 @@ def fail_graph_node(db, thread_uuid, session_id, reason=None):
     state even reload refuses) and dependents stalled silently. Marks the node
     failed-exec via the legal walk, blocks dependents, raises the action item.
     No-op for unbound threads / terminal nodes (double-failure stays warn-only).
+
+    Topic-aware (R9): delegates to fail_graph_topic first — a TOPIC-bound thread
+    fails the TOPIC (per-task states preserved, spec DA A9). Falls back to the
+    node path for legacy node-bound threads.
     """
     from dbops import db_graph
+    from juggle_cmd_agents_graph_topics import fail_graph_topic
+
+    if fail_graph_topic(db, thread_uuid, session_id, reason):
+        return
 
     node = _node_for_thread(db, thread_uuid)
     if not node or node["state"] not in _ENFORCEABLE_STATES:
@@ -185,3 +193,9 @@ def mark_graph_node(db, thread_uuid, integrate_ok, handoff, session_id,
             type_="manual_step",
             priority="normal",
         )
+
+
+# Topic completion/failure glue lives in juggle_cmd_agents_graph_topics (LOC
+# gate); fail_graph_node delegates to fail_graph_topic, and the completion
+# handler imports check_topic_completion_gate/enforce_topic_gate/mark_graph_topic
+# from there directly.

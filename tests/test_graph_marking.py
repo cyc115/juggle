@@ -13,6 +13,7 @@ import pytest  # noqa: E402
 
 from juggle_db import JuggleDB  # noqa: E402
 from dbops import db_graph as g  # noqa: E402
+import juggle_cmd_graph as cg  # noqa: E402  (top-level: bind real get_db pre-patch)
 
 
 @pytest.fixture
@@ -165,3 +166,35 @@ def test_context_no_tag_for_unbound_thread(db):
     tid = db.create_thread("t", session_id="s")
     header = _tier1_header(db, tid)
     assert "[ready]" not in header and "[blocked" not in header
+
+
+# ── graph mark-task: per-task completion (R9, 2026-06-11) ─────────────────────
+
+from dbops import db_topics as tp  # noqa: E402
+
+
+def _mk_task(db, task_id, topic="A", project="INBOX"):
+    if tp.get_topic(db, topic) is None:
+        tp.create_topic(db, topic_id=topic, project_id=project, title=topic)
+    g.create_node(db, node_id=task_id, project_id=project, title=task_id, prompt="p")
+    with db._connect() as conn:
+        conn.execute("UPDATE graph_nodes SET topic_id=? WHERE id=?", (topic, task_id))
+        conn.commit()
+
+
+def test_mark_task_verifies_and_stores_handoff(db, capsys):
+    """`juggle graph mark-task t1 --handoff '…'` walks the task to 'verified'
+    via the EXISTING node machine. Task 'verified' = committed in topic
+    worktree + verify_cmd green — NOT merged (merged is TOPIC-level §2.3)."""
+    _mk_task(db, "t1")
+    cg.cmd_graph_mark_task(argparse.Namespace(
+        task_id="t1", fail=False, handoff="did things", db_path=str(db.db_path)))
+    assert g.get_node(db, "t1")["state"] == "verified"
+    assert g.get_node(db, "t1")["handoff"] == "did things"
+
+
+def test_mark_task_fail_maps_to_failed_verify(db, capsys):
+    _mk_task(db, "t1")
+    cg.cmd_graph_mark_task(argparse.Namespace(
+        task_id="t1", fail=True, handoff=None, db_path=str(db.db_path)))
+    assert g.get_node(db, "t1")["state"] == "failed-verify"

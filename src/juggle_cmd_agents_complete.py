@@ -31,8 +31,12 @@ def cmd_complete_agent(args):
     # Output contract (DA M4): a graph node with dependents MUST hand off.
     # Enforced BEFORE any side effects — refusal leaves node + thread untouched.
     from juggle_cmd_agents_graph import enforce_handoff_contract
+    from juggle_cmd_agents_graph_topics import enforce_topic_gate
 
     enforce_handoff_contract(db, thread_uuid, getattr(args, "handoff", None))
+    # R9/A10 topic gate: refuse a topic thread while any task is unmarked —
+    # BEFORE integrate, so nothing is marked or merged on refusal.
+    enforce_topic_gate(db, thread_uuid)
 
     # Finalize worktree BEFORE closing the thread.
     # Route through _run_integrate (rebase-aware) when worktree fields are present;
@@ -181,9 +185,9 @@ def cmd_complete_agent(args):
     # outcome onto the bound node's state machine, store the handoff, and
     # notify newly-ready dependents. Notify ONLY — dispatch is watchdog-owned
     # (Phase 2); complete-agent never dispatches (DA B4/M1).
-    from juggle_cmd_agents_graph import mark_graph_node
+    from juggle_cmd_agents_graph_topics import mark_graph_topic
 
-    mark_graph_node(
+    mark_graph_topic(
         db, thread_uuid, ft_success, getattr(args, "handoff", None), session_id,
         verify_failed=verify_failed,
     )
