@@ -40,21 +40,21 @@ class GraphModeMixin:
     # -- render ---------------------------------------------------------------
 
     def _render_graph_panel(self, state):
-        """Build the graph Panel from the snapshot's lazily-loaded DAG."""
-        from juggle_cockpit_graph_panel import build_graph_panel
+        """Build the graph Panel from the snapshot's lazily-loaded DAGs."""
+        from juggle_cockpit_graph_panel import build_multi_graph_panel
 
-        dag = getattr(state, "graph_dag", None)
+        dags = getattr(state, "graph_dags", None) or (
+            [state.graph_dag] if getattr(state, "graph_dag", None) else []
+        )
         try:
             w = self.query_one("#notifications").size.width or 80
             h = self.query_one("#notifications").size.height or 20
         except Exception:
             w, h = 80, 20
-        nodes = dag.nodes if dag else []
-        self._graph_sel = min(self._graph_sel, max(0, len(nodes) - 1))
-        return build_graph_panel(
-            project_id=(dag.project_id if dag else None),
-            nodes=nodes,
-            edges=(dag.edges if dag else []),
+        total_nodes = sum(len(d.nodes) for d in dags)
+        self._graph_sel = min(self._graph_sel, max(0, total_nodes - 1))
+        return build_multi_graph_panel(
+            dags=dags,
             selection=self._graph_sel,
             unread=self._graph_unread,
             width=w, height=h, pan_offset=self._graph_pan,
@@ -86,7 +86,7 @@ class GraphModeMixin:
         self._refresh()
 
     def _open_graph_node_modal(self) -> None:
-        """Enter — open the read-only detail modal for the selected node."""
+        """Enter — open the read-only detail modal for the selected topic/node."""
         from juggle_cockpit_model import snapshot as _snapshot
         from dbops import db_graph as _g
 
@@ -94,19 +94,26 @@ class GraphModeMixin:
             state = _snapshot(self._db, load_graph_dag=True)
         except Exception:
             return
-        dag = getattr(state, "graph_dag", None)
-        if not dag or not dag.nodes:
+        dags = getattr(state, "graph_dags", None) or (
+            [state.graph_dag] if getattr(state, "graph_dag", None) else []
+        )
+        if not dags:
             return
-        nodes = sorted(dag.nodes, key=lambda n: n.id)
-        if not (0 <= self._graph_sel < len(nodes)):
+        # Concatenated flat list (same order as the panel).
+        from juggle_cockpit_graph_panel import topological_order
+        flat = [n for d in dags for n in topological_order(d.nodes, d.edges)]
+        if not (0 <= self._graph_sel < len(flat)):
             return
-        node_id = nodes[self._graph_sel].id
+        node_id = flat[self._graph_sel].id
+        # Find which DAG owns this node and get its task list.
+        owner_dag = next((d for d in dags if any(n.id == node_id for n in d.nodes)), None)
+        tasks = (owner_dag.tasks or {}).get(node_id, []) if owner_dag else []
         full = _g.get_node(self._db, node_id) or {}
         try:
             deps = _g.get_deps(self._db, node_id)
         except Exception:
-            deps = [d for (nid, d) in dag.edges if nid == node_id]
-        self.push_screen(_GraphNodeModal(full, deps))
+            deps = [d for dag in dags for (nid, d) in dag.edges if nid == node_id]
+        self.push_screen(_GraphNodeModal(full, deps, tasks=tasks))
 
     # -- key capture ----------------------------------------------------------
 

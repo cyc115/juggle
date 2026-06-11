@@ -156,12 +156,15 @@ class _GraphNodeModal(ModalScreen):
 
     _EXCERPT = 400
 
-    def __init__(self, node: dict, deps: list[str]) -> None:
+    def __init__(self, node: dict, deps: list[str], *, tasks: list | None = None) -> None:
         super().__init__()
         self._node = node
         self._deps = deps
+        self._tasks = tasks or []
 
     def _lines(self) -> list[str]:
+        from juggle_cockpit_view import NODE_STATE_GLYPHS
+
         n = self._node
         out = [
             f"Node {n.get('id', '?')}",
@@ -172,6 +175,11 @@ class _GraphNodeModal(ModalScreen):
             f"thread   {n.get('thread_id') or '(unbound)'}",
             f"verify   {n.get('verify_cmd') or '(none)'}",
         ]
+        if self._tasks:
+            out += ["", "tasks:"]
+            for t in self._tasks:
+                glyph = NODE_STATE_GLYPHS.get(t.get("state", ""), "⬢")
+                out.append(f"  {glyph} {t.get('id', '')}  {t.get('title', '')}")
         prompt = (n.get("prompt") or "").strip()
         if prompt:
             out += ["", "prompt:", prompt[: self._EXCERPT]]

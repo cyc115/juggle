@@ -134,3 +134,39 @@ def test_narrow_width_no_overflow():
     out = _text(panel, width=40)
     for line in out.splitlines():
         assert len(line) <= 40, f"overflow: {len(line)} > 40: {line!r}"
+
+
+# ── Task-progress cell suffix + multi-DAG stacking (R5, 2026-06-11) ──────────
+
+def test_topic_cell_shows_task_progress():
+    from juggle_cockpit_graph_panel import build_graph_panel
+
+    nodes = [GraphNode(id="auth", state="running", title="auth",
+                       tasks_done=2, tasks_total=6)]
+    panel = build_graph_panel(
+        project_id="P1", nodes=nodes, edges=[],
+        selection=0, unread=0, width=80, height=20, pan_offset=0,
+    )
+    out = _text(panel)
+    assert "2/6" in out
+
+
+def test_multi_panel_stacks_each_armed_dag_with_header():
+    """REGRESSION PIN (2026-06-11): graph panel rendered only the first armed
+    DAG — with two dags both project headers must render, P1 before P2."""
+    from juggle_cockpit_graph_dag import GraphDag
+    from juggle_cockpit_graph_panel import build_multi_graph_panel
+
+    nodes1 = [GraphNode("a", "A", "verified")]
+    nodes2 = [GraphNode("b", "B", "ready")]
+    dags = [
+        GraphDag(project_id="P1", nodes=nodes1, edges=[], tasks={}),
+        GraphDag(project_id="P2", nodes=nodes2, edges=[], tasks={}),
+    ]
+    panel = build_multi_graph_panel(
+        dags=dags, selection=0, unread=0, width=80, height=30, pan_offset=0
+    )
+    out = _text(panel)
+    p1_pos = out.find("P1")
+    p2_pos = out.find("P2")
+    assert p1_pos != -1 and p2_pos != -1 and p1_pos < p2_pos

@@ -90,6 +90,8 @@ def _cell_text(
         suffix = " ✗"
     else:
         suffix = ""
+    if getattr(node, "tasks_total", None):
+        suffix = f" {node.tasks_done}/{node.tasks_total}" + suffix
 
     prefix = f"{idx:>{idx_w}} {glyph} "
     budget = max(3, cell_w - len(prefix) - len(suffix))
@@ -101,6 +103,66 @@ def _cell_text(
         reverse=selected,
     )
     return Text(label, style=style, no_wrap=True, overflow="ellipsis")
+
+
+def _flat_selectable(nodes: list[GraphNode]) -> list[GraphNode]:
+    """Topological order for a DAG — shared by panel and multi-panel."""
+    return topological_order(nodes, [])
+
+
+def _graph_section(
+    project_id: str,
+    nodes: list[GraphNode],
+    edges: list[tuple[str, str]],
+    sel_id: str | None,
+    inner_w: int,
+    pan_offset: int,
+) -> list:
+    """Header + grid (no Panel wrapper) — extracted so build_multi_graph_panel
+    can stack multiple sections."""
+    if not nodes:
+        return [Text(f"{project_id}: no graph nodes yet", style=Style(dim=True))]
+
+    counts = counts_from_states([n.state for n in nodes])
+    header = Text(
+        f"{project_id}  {_progress_bar(nodes)}  {format_progress(counts)}",
+        style=Style(bold=True),
+    )
+
+    flat = topological_order(nodes, edges)
+    idx_of = {n.id: i + 1 for i, n in enumerate(flat)}
+    first_dep: dict[str, str] = {}
+    for node_id, dep_id in edges:
+        first_dep.setdefault(node_id, dep_id)
+
+    idx_w = len(str(len(flat)))
+    n_cols = max(1, min(_MAX_COLS, inner_w // _CELL_WIDTH))
+    cell_w = max(10, inner_w // n_cols - 1)
+    rows = math.ceil(len(flat) / n_cols)
+
+    grid = Table.grid(padding=(0, 1))
+    for _ in range(n_cols):
+        grid.add_column(no_wrap=True, overflow="ellipsis", width=cell_w)
+
+    for r in range(rows):
+        cells: list = []
+        for c in range(n_cols):
+            i = c * rows + r
+            if i < len(flat):
+                node = flat[i]
+                dep_id = first_dep.get(node.id)
+                dep_num = idx_of.get(dep_id) if dep_id else None
+                cells.append(
+                    _cell_text(
+                        i + 1, node, idx_w=idx_w, dep_num=dep_num,
+                        cell_w=cell_w, selected=(node.id == sel_id),
+                    )
+                )
+            else:
+                cells.append(Text(""))
+        grid.add_row(*cells)
+
+    return [header, grid]
 
 
 def build_graph_panel(
@@ -193,4 +255,43 @@ def build_graph_panel(
     )
     parts.append(legend)
 
+    return Panel(_Group(*parts), title=title, border_style="cyan")
+
+
+def build_multi_graph_panel(
+    *,
+    dags: list,
+    selection: int,
+    unread: int,
+    width: int,
+    height: int,
+    pan_offset: int,
+) -> Panel:
+    """Stacked multi-DAG panel: one titled topic-DAG section per armed project.
+
+    selection indexes the concatenated flat selectable list across dags.
+    """
+    title = f"Graph{_badge_segment(unread)}"
+    if not dags:
+        body = Text(
+            "no armed graph — arm a project with /juggle:toggle-autopilot",
+            style=Style(dim=True),
+        )
+        return Panel(body, title=title, border_style="grey50")
+    if len(dags) == 1:
+        d = dags[0]
+        return build_graph_panel(
+            project_id=d.project_id, nodes=d.nodes, edges=d.edges,
+            selection=selection, unread=unread, width=width, height=height,
+            pan_offset=pan_offset,
+        )
+    inner_w = max(8, width - 4)
+    flat_all = [n for d in dags for n in topological_order(d.nodes, d.edges)]
+    sel_id = flat_all[selection].id if 0 <= selection < len(flat_all) else None
+    parts: list = []
+    for i, d in enumerate(dags):
+        if i:
+            parts.append(Text("─" * inner_w, style=Style(dim=True)))
+        parts.extend(_graph_section(d.project_id, d.nodes, d.edges, sel_id,
+                                    inner_w, pan_offset))
     return Panel(_Group(*parts), title=title, border_style="cyan")

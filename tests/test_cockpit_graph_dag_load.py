@@ -111,3 +111,72 @@ def test_no_extra_query_when_flag_off(db):
 
     # The DAG-specific edge query references graph_edges; must not appear.
     assert not any("graph_edges" in s for s in seen)
+
+
+# ── Topic DAG loader (R5/R9, 2026-06-11) ─────────────────────────────────────
+
+def _seed_two_project_topics(db):
+    """P1: topics A (2 tasks, 1 verified) and B with a task edge B→A.
+       P2: topic C with 1 task. Settings key 'P1,P2'."""
+    from dbops import db_graph as g, db_topics as tp
+    for pid in ("P1", "P2"):
+        with db._connect() as conn:
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "INSERT INTO projects(id,name,status,created_at,last_active) "
+                "VALUES(?,?,?,?,?)",
+                (pid, pid, "active", now, now),
+            )
+            conn.commit()
+    tp.create_topic(db, topic_id="A", project_id="P1", title="auth")
+    tp.create_topic(db, topic_id="B", project_id="P1", title="build")
+    tp.create_topic(db, topic_id="C", project_id="P2", title="ci")
+    g.create_node(db, node_id="a1", project_id="P1", title="a1", prompt="p")
+    g.create_node(db, node_id="a2", project_id="P1", title="a2", prompt="p")
+    g.create_node(db, node_id="b1", project_id="P1", title="b1", prompt="p")
+    g.create_node(db, node_id="c1", project_id="P2", title="c1", prompt="p")
+    with db._connect() as conn:
+        conn.execute("UPDATE graph_nodes SET topic_id='A' WHERE id IN ('a1','a2')")
+        conn.execute("UPDATE graph_nodes SET topic_id='B' WHERE id='b1'")
+        conn.execute("UPDATE graph_nodes SET topic_id='C' WHERE id='c1'")
+        conn.execute("UPDATE graph_nodes SET state='verified' WHERE id='a1'")
+        # task edge b1 → a1 → crosses B→A boundary
+        conn.execute("INSERT INTO graph_edges(node_id,depends_on_id) VALUES('b1','a1')")
+        conn.commit()
+    db.set_setting(ARMED_PROJECT_KEY, "P1,P2")
+
+
+def test_load_graph_dags_topics_are_the_dag_nodes(db):
+    """REGRESSION PIN (2026-06-11 R5/R9): the loader rendered TASKS as DAG
+    nodes and read the armed key as a scalar. Nodes must be TOPICS with task
+    progress; edges the DERIVED topic deps; one GraphDag per armed project
+    (CSV), arm order."""
+    from juggle_cockpit_graph_dag import load_graph_dags
+
+    _seed_two_project_topics(db)
+    dags = load_graph_dags(db._connect())
+    assert [d.project_id for d in dags] == ["P1", "P2"]
+    assert {n.id for n in dags[0].nodes} == {"A", "B"}
+    assert dags[0].edges == [("B", "A")]
+    a_node = next(n for n in dags[0].nodes if n.id == "A")
+    assert a_node.tasks_done == 1 and a_node.tasks_total == 2
+    assert "a1" in dags[0].tasks["A"] or any(
+        t["id"] == "a1" for t in dags[0].tasks["A"]
+    )
+
+
+def test_load_graph_dag_shim_returns_first(db):
+    from juggle_cockpit_graph_dag import load_graph_dag
+
+    _seed_two_project_topics(db)
+    dag = load_graph_dag(db._connect())
+    assert dag is not None and dag.project_id == "P1"
+
+
+def test_load_graph_dags_empty_when_disarmed(db):
+    from juggle_cockpit_graph_dag import load_graph_dags
+
+    _seed_two_project_topics(db)
+    db.set_setting(ARMED_PROJECT_KEY, None)
+    assert load_graph_dags(db._connect()) == []

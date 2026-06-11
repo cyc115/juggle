@@ -28,6 +28,8 @@ class GraphNode:
     state: str
     thread_id: str | None = None
     user_label: str | None = None
+    tasks_done: "int | None" = None
+    tasks_total: "int | None" = None
 
 
 @dataclass

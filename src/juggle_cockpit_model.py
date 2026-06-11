@@ -12,7 +12,7 @@ from juggle_cockpit_sched import (  # noqa: F401 — re-exported model types
 )
 from juggle_cockpit_graph_dag import (  # noqa: F401 — re-exported for back-compat
     GraphDag,
-    load_graph_dag as _load_graph_dag,
+    load_graph_dags as _load_graph_dags,
 )
 
 
@@ -68,6 +68,7 @@ class CockpitState:
     projects_by_id: dict = None  # type: ignore  # {id: name}, None → no grouping
     graph_by_project: dict = None  # type: ignore  # {id: node counts}, None → no graph
     graph_dag: "GraphDag | None" = None  # armed-project DAG, only in graph mode
+    graph_dags: "list | None" = None  # all armed projects' DAGs (multi-project)
 
 
 # ---------------------------------------------------------------------------
@@ -399,7 +400,8 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
     except Exception:
         notifications = []
 
-    graph_dag = _load_graph_dag(conn) if load_graph_dag else None
+    _dags = _load_graph_dags(conn) if load_graph_dag else []
+    graph_dag, graph_dags = (_dags[0], _dags) if _dags else (None, None)
 
     result = CockpitState(
         topics=topics,
@@ -411,6 +413,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
         projects_by_id=projects_by_id if projects_by_id else None,
         graph_by_project=graph_by_project,
         graph_dag=graph_dag,
+        graph_dags=graph_dags,
     )
     conn.close()
     return result
