@@ -141,16 +141,28 @@ class CockpitHandle:
     # -- lifecycle -----------------------------------------------------------
 
     def close(self, timeout: float = 4.0) -> None:
-        """Send q, wait for clean exit, kill if timeout."""
+        """Send ctrl+c, wait for clean exit, kill whole process group on timeout.
+
+        Idempotent: safe to call multiple times.
+        """
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         try:
-            os.write(self._master_fd, b"q")
+            os.write(self._master_fd, b"\x03")  # ctrl+c — real quit key
         except OSError:
             pass
         try:
             self._proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            self._proc.kill()
-            self._proc.wait()
+            try:
+                os.killpg(os.getpgid(self._proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                pass
+            try:
+                self._proc.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                pass
         try:
             os.close(self._master_fd)
         except OSError:
@@ -203,6 +215,7 @@ def open_cockpit_pty(
         stderr=slave_fd,
         close_fds=True,
         env=env,
+        start_new_session=True,
     )
     os.close(slave_fd)  # parent keeps master_fd only
 

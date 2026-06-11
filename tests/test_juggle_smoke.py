@@ -535,6 +535,61 @@ def test_smoke_waits_for_body_paint_not_blank_first_frame(monkeypatch, tmp_path)
     assert handle.frame_calls >= 3
 
 
+@_skip_pty
+def test_cockpit_pty_no_orphan_after_close(tmp_path):
+    """REGRESSION PIN (2026-06-10): CockpitHandle.close() left an orphaned
+    juggle_cockpit.py grandchild process when:
+      (a) `q` was sent but the quit binding was removed (no-op), so the process
+          never exited and proc.wait(timeout=4) expired.
+      (b) proc.kill() killed only the `uv` wrapper, orphaning the real cockpit.
+    Fix: spawn in own session (start_new_session=True), quit via ctrl+c, on
+    timeout kill the whole process group via os.killpg."""
+    import signal
+
+    from juggle_smoke_pty import open_cockpit_pty
+
+    export_db = str(tmp_path / "smoke.db")
+    from juggle_db import JuggleDB
+    db = JuggleDB(export_db)
+    db.init_db()
+
+    from juggle_smoke import load_viewports
+    vp = load_viewports(VIEWPORTS_YAML)
+    profile = vp["2k_third"]  # smallest profile
+
+    with open_cockpit_pty(profile, db_path=export_db) as handle:
+        pgid = os.getpgid(handle._proc.pid)
+
+    # After context manager exits, NO process in the process group should survive
+    try:
+        os.killpg(pgid, 0)  # signal 0 = existence check
+        surviving = True
+    except (ProcessLookupError, PermissionError):
+        surviving = False
+    assert not surviving, (
+        f"Process group {pgid} still alive after CockpitHandle.close() — "
+        "cockpit was orphaned"
+    )
+
+
+@_skip_pty
+def test_cockpit_pty_close_is_idempotent(tmp_path):
+    """REGRESSION PIN (2026-06-10): close() must be safe to call twice — the
+    second call must be a no-op without raising."""
+    from juggle_smoke_pty import open_cockpit_pty
+    from juggle_smoke import load_viewports
+    from juggle_db import JuggleDB
+
+    export_db = str(tmp_path / "smoke2.db")
+    JuggleDB(export_db).init_db()
+    vp = load_viewports(VIEWPORTS_YAML)
+    profile = vp["2k_third"]
+
+    handle = open_cockpit_pty(profile, db_path=export_db)
+    handle.close()
+    handle.close()  # must not raise
+
+
 def test_smoke_genuinely_blank_body_still_fails(monkeypatch, tmp_path):
     """Companion to the 2026-06-10 blank-frame pin: a cockpit whose body NEVER
     paints must still fail real-estate (poll deadline bounded, last grid kept)."""
