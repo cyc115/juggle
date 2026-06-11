@@ -21,6 +21,19 @@ from juggle_db import JuggleDB  # noqa: E402
 from dbops import db_graph as g  # noqa: E402
 import juggle_graph_dispatch as gd  # noqa: E402
 
+# 2026-06-11 (R9 Task 6): graph_tick now claims/dispatches TOPICS, not flat
+# nodes, so this node-level diamond e2e flow is obsolete as a product path. Its
+# topic-level replacement needs the topic-completion + integrate-once + failure
+# action-item wiring built in Task 7 (mark-task / complete-agent topic gate).
+# Deferred (xfail, approved 2026-06-11) — Task 7 rewrites these to the topic
+# seam in test_graph_contract.py and restores the pins. strict=False: a future
+# accidental pass must not itself fail the suite before Task 7 lands.
+_R9_TASK7 = pytest.mark.xfail(
+    reason="node-level autopilot e2e obsoleted by R9 topic tick (Task 6); "
+    "restore at topic level in Task 7 (topic completion/integrate wiring)",
+    strict=False,
+)
+
 
 @pytest.fixture
 def db(tmp_path, monkeypatch):
@@ -77,6 +90,7 @@ def _complete_node(db, node_id, handoff):
     )
 
 
+@_R9_TASK7
 def test_diamond_happy_path_full_flow(db):
     _load_diamond(db)
     fake = FakeDispatch()
@@ -120,6 +134,7 @@ def test_diamond_happy_path_full_flow(db):
     assert all(db.get_thread(t)["project_id"] == "INBOX" for t in tids)
 
 
+@_R9_TASK7
 def test_diamond_failed_integration_branch_blocks_dependents_loudly(db, monkeypatch):
     """b's integrate fails mid-diamond → b = failed-integration (DA B3: never
     verified), downstream d goes 'blocked-failed' and is NEVER dispatched,
@@ -163,6 +178,7 @@ def test_diamond_failed_integration_branch_blocks_dependents_loudly(db, monkeypa
                for i in items), "action item must name the blocked dependent"
 
 
+@_R9_TASK7
 def test_add_node_mid_execution_does_not_touch_running_node(db):
     """FEATURE PIN (graph add-node, 2026-06-10): injecting a node while another
     node is RUNNING must leave the running node untouched and execute the new

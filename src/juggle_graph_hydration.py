@@ -61,3 +61,59 @@ def hydrate_for_node(db, project_id: str, node: dict) -> str:
         if (d := db_graph.get_node(db, dep_id)) is not None
     ]
     return build_hydration(project.get("objective") or "", node, deps)
+
+
+def build_topic_hydration(objective: str, topic: dict, deps: list[dict],
+                          tasks: list[dict]) -> str:
+    """Dispatch prompt for a TOPIC (R9 hybrid): project objective + dep-topic
+    handoffs (+ diffstat) + the topic objective + the SEQUENTIAL task list with
+    the per-task TDD/commit/mark-task contract. Pure; never thread.summary."""
+    parts = []
+    if (objective or "").strip():
+        parts.append(f"## Project objective\n{objective.strip()}")
+    if deps:
+        chunks = []
+        for d in deps:
+            handoff = (d.get("handoff") or "").strip() or "(no handoff recorded)"
+            diffstat = (d.get("diffstat") or "").strip()
+            if diffstat:
+                handoff += f"\nIntegrated diffstat:\n{diffstat}"
+            chunks.append(f"### {d['id']} — {d['title']}\n{handoff}")
+        parts.append(
+            "## Upstream topic handoffs (verified dependencies, already "
+            "integrated into main)\n" + "\n".join(chunks)
+        )
+    parts.append(f"## Topic {topic['id']}: {topic['title']}\n"
+                 f"{(topic.get('objective') or '').strip()}")
+    rows = []
+    for n in tasks:
+        flag = " [VERIFIED — skip]" if n.get("state") == "verified" else ""
+        vc = f"\nverify_cmd: {n['verify_cmd']}" if n.get("verify_cmd") else ""
+        rows.append(f"### {n['id']} — {n['title']}{flag}{vc}\n{n['prompt']}")
+    parts.append(
+        "## Tasks — execute SEQUENTIALLY, in this order\n"
+        "Per task: TDD (failing test first) → make it pass → run its "
+        "verify_cmd → COMMIT → mark it:\n"
+        "`juggle graph mark-task <task-id> --handoff '<files touched, "
+        "interfaces changed, key decisions>'` (or `--fail` if you must give "
+        "up on the task). Tasks flagged VERIFIED: skip them.\n\n"
+        + "\n\n".join(rows)
+    )
+    parts.append(
+        "## Finish\nWhen EVERY task above is marked, run "
+        "`juggle complete-agent <thread> \"<summary>\"` — integrate runs ONCE "
+        "for the whole topic. complete-agent REFUSES while tasks are unmarked."
+    )
+    return "\n\n".join(parts)
+
+
+def hydrate_for_topic(db, project_id: str, topic: dict) -> str:
+    """DB wrapper: dep-topic rows + topo-ordered tasks → build_topic_hydration."""
+    from dbops import db_topics
+
+    project = db.get_project(project_id) or {}
+    deps = [db_topics.get_topic(db, t)
+            for t in db_topics.derived_topic_deps(db, topic["id"])]
+    tasks = db_topics.list_topic_tasks(db, topic["id"])
+    return build_topic_hydration(project.get("objective") or "", topic,
+                                 [d for d in deps if d], tasks)

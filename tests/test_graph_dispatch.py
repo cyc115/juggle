@@ -155,11 +155,11 @@ def test_sweep_resets_stale_threadless_claims_only(db):
 
 def test_crash_mid_dispatch_recovers_via_sweep_then_redispatches(db):
     """Crash between claim and send-task (no thread bound): after 10 min the
-    sweep returns the node to ready and the SAME tick re-dispatches it."""
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
-    assert gd.claim_node(db, "a")  # simulated dispatcher died right here
-    _age_claim(db, "a", gd.STALE_CLAIM_SECS + 60)
+    sweep returns the topic to ready and the SAME tick re-dispatches it.
+    (adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
+    assert gd.claim_topic(db, "a")  # simulated dispatcher died right here
+    _age_topic_claim(db, "a", gd.STALE_CLAIM_SECS + 60)
     _arm(db)
 
     fake = FakeDispatch()
@@ -167,8 +167,8 @@ def test_crash_mid_dispatch_recovers_via_sweep_then_redispatches(db):
 
     assert stats["swept"] == ["a"]
     assert stats["dispatched"] == ["a"]
-    assert g.get_node(db, "a")["state"] == "running"
-    assert g.get_node(db, "a")["thread_id"]
+    assert tp.get_topic(db, "a")["state"] == "running"
+    assert tp.get_topic(db, "a")["thread_id"]
 
 
 # ── hydration (DA M4) ──────────────────────────────────────────────────────────
@@ -196,25 +196,23 @@ def test_build_hydration_contains_objective_handoffs_prompt_contract():
 
 
 def test_hydration_never_uses_thread_summary(db):
-    """DA M4: dependent prompts hydrate from dep handoffs, NEVER the dep
-    thread's 80-char summary."""
-    _mk(db, "a")
-    _mk(db, "b", deps=("a",))
+    """DA M4: dependent TOPIC prompts hydrate from dep-TOPIC handoffs, NEVER the
+    dep thread's 80-char summary. (adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
+    _mk_topic(db, "b", ready=False)
+    _dep_topic(db, "b", "a")  # b derives on a
     tid = db.create_thread("dep thread", session_id="s")
     db.update_thread(tid, summary="SUMMARY-JUNK-MUST-NOT-LEAK")
-    g.set_node_thread(db, "a", tid)
-    g.recompute_ready(db, "INBOX")
-    for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
-        g.node_transition(db, "a", ev)
-    g.set_node_handoff(db, "a", "real handoff content")
-    g.recompute_ready(db, "INBOX")  # b → ready
+    tp.set_topic_thread(db, "a", tid)
+    _verify_topic(db, "a", handoff="real handoff content")
+    tp.recompute_topic_ready(db, "INBOX")  # b → ready
     _arm(db)
 
     fake = FakeDispatch()
     gd.graph_tick(db, dispatch_fn=fake)
 
-    (_, prompt, node_id), = fake.calls
-    assert node_id == "b"
+    (_, prompt, topic_id), = fake.calls
+    assert topic_id == "b"
     assert "real handoff content" in prompt
     assert "SUMMARY-JUNK-MUST-NOT-LEAK" not in prompt
 
@@ -223,85 +221,87 @@ def test_hydration_never_uses_thread_summary(db):
 
 
 def test_tick_noop_when_disarmed(db):
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
+    """(adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")  # ready topic, but nothing armed
     fake = FakeDispatch()
     stats = gd.graph_tick(db, dispatch_fn=fake)
     assert stats["dispatched"] == [] and fake.calls == []
-    assert g.get_node(db, "a")["state"] == "ready"
+    assert tp.get_topic(db, "a")["state"] == "ready"
 
 
 def test_tick_dispatches_ready_nodes_and_binds_threads(db):
-    _mk(db, "a")
-    _mk(db, "b")
-    _mk(db, "c", deps=("a",))
-    g.recompute_ready(db, "INBOX")
+    """(adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
+    _mk_topic(db, "b")
+    _mk_topic(db, "c", ready=False)
+    _dep_topic(db, "c", "a")  # c gated on a
     _arm(db)
     fake = FakeDispatch()
 
     stats = gd.graph_tick(db, dispatch_fn=fake)
 
     assert sorted(stats["dispatched"]) == ["a", "b"]
-    for nid in ("a", "b"):
-        node = g.get_node(db, nid)
-        assert node["state"] == "running"
-        thread = db.get_thread(node["thread_id"])
+    for tid_ in ("a", "b"):
+        topic = tp.get_topic(db, tid_)
+        assert topic["state"] == "running"
+        thread = db.get_thread(topic["thread_id"])
         assert thread is not None
         assert thread["project_id"] == "INBOX"
-    assert g.get_node(db, "c")["state"] == "pending"  # dep not verified
+    assert tp.get_topic(db, "c")["state"] == "pending"  # dep not verified
 
 
 def test_tick_self_heals_missed_ready_promotion(db):
-    """A completion that crashes between marking 'verified' and ready-recompute
-    would strand eligible dependents in 'pending' forever — the tick promotes
-    them itself (idempotent recompute_ready) before scanning the ready set."""
-    _mk(db, "a")
-    _mk(db, "b", deps=("a",))
-    g.recompute_ready(db, "INBOX")
+    """A completion that crashes between marking 'verified' and topic-ready
+    recompute would strand eligible dependents in 'pending' forever — the tick
+    promotes them itself (idempotent recompute_topic_ready) before scanning the
+    ready set. (adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
+    _mk_topic(db, "b", ready=False)
+    _dep_topic(db, "b", "a")
     for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
-        g.node_transition(db, "a", ev)  # verified, but NO recompute ran
-    assert g.get_node(db, "b")["state"] == "pending"
+        tp.topic_transition(db, "a", ev)  # verified, but NO recompute ran
+    assert tp.get_topic(db, "b")["state"] == "pending"
     _arm(db)
 
     fake = FakeDispatch()
     stats = gd.graph_tick(db, dispatch_fn=fake)
 
     assert stats["dispatched"] == ["b"]
-    assert g.get_node(db, "b")["state"] == "running"
+    assert tp.get_topic(db, "b")["state"] == "running"
 
 
 def test_tick_cap_hit_defers_and_retries_next_tick(db, monkeypatch):
-    """MAX_THREADS during lazy create_thread: skip + retry next tick, node
-    back to 'ready', daemon never crashes (cap-aware lazy threads)."""
+    """MAX_THREADS during lazy create_thread: skip + retry next tick, topic
+    back to 'ready', daemon never crashes (cap-aware lazy threads).
+    (adapted to topics, R9 2026-06-11)"""
     import dbops.threads as threads_mod
 
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
+    _mk_topic(db, "a")
     _arm(db)
     monkeypatch.setattr(threads_mod, "MAX_THREADS", 0)
 
     fake = FakeDispatch()
     stats = gd.graph_tick(db, dispatch_fn=fake)
     assert stats["deferred"] == ["a"] and fake.calls == []
-    assert g.get_node(db, "a")["state"] == "ready"  # claim released
+    assert tp.get_topic(db, "a")["state"] == "ready"  # claim released
 
     monkeypatch.setattr(threads_mod, "MAX_THREADS", 10)
     stats = gd.graph_tick(db, dispatch_fn=fake)  # next tick: cap lifted
     assert stats["dispatched"] == ["a"]
-    assert g.get_node(db, "a")["state"] == "running"
+    assert tp.get_topic(db, "a")["state"] == "running"
 
 
 def test_tick_dispatch_failure_releases_node_and_files_action_item(db):
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
+    """(adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
     _arm(db)
 
     stats = gd.graph_tick(db, dispatch_fn=FakeDispatch(exc=RuntimeError("tmux gone")))
 
     assert stats["errors"] == ["a"]
-    node = g.get_node(db, "a")
-    assert node["state"] == "ready"  # released for retry/operator
-    assert node["thread_id"] is None
+    topic = tp.get_topic(db, "a")
+    assert topic["state"] == "ready"  # released for retry/operator
+    assert topic["thread_id"] is None
     items = db.get_open_action_items()
     assert any("dispatch failed" in i["message"] and "a" in i["message"] for i in items)
     # orphan thread was archived, not leaked into the active cap
@@ -309,30 +309,30 @@ def test_tick_dispatch_failure_releases_node_and_files_action_item(db):
 
 
 def test_tick_capacity_error_defers_quietly(db):
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
+    """(adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
     _arm(db)
 
     stats = gd.graph_tick(db, dispatch_fn=FakeDispatch(exc=gd.CapacityError("pool full")))
 
     assert stats["deferred"] == ["a"] and stats["errors"] == []
-    assert g.get_node(db, "a")["state"] == "ready"
+    assert tp.get_topic(db, "a")["state"] == "ready"
     assert db.get_open_action_items() == []  # no spam for capacity defers
 
 
 def test_tick_stops_claiming_when_disarmed_mid_batch(db):
-    _mk(db, "a")
-    _mk(db, "b")
-    g.recompute_ready(db, "INBOX")
+    """(adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
+    _mk_topic(db, "b")
     _arm(db)
 
-    def disarming_dispatch(db_, thread_id, prompt, node):
-        db_.set_setting(gd.ARMED_PROJECT_KEY, None)  # disarm during node 1
+    def disarming_dispatch(db_, thread_id, prompt, topic):
+        db_.set_setting(gd.ARMED_PROJECT_KEY, None)  # disarm during topic 1
 
     stats = gd.graph_tick(db, dispatch_fn=disarming_dispatch)
 
-    assert len(stats["dispatched"]) == 1  # second node never claimed
-    states = {nid: g.get_node(db, nid)["state"] for nid in ("a", "b")}
+    assert len(stats["dispatched"]) == 1  # second topic never claimed
+    states = {tid_: tp.get_topic(db, tid_)["state"] for tid_ in ("a", "b")}
     assert sorted(states.values()) == ["ready", "running"]
 
 
@@ -343,14 +343,14 @@ def test_node_thread_bound_before_dispatch_call(db):
     """REGRESSION PIN (DA round-2 MAJOR-4, 2026-06-10): the tick dispatched
     BEFORE binding thread_id; a crash in that window left a 'dispatching' node
     with thread_id NULL — the stale sweep reclaimed it and the task was
-    double-dispatched. thread_id must be bound before send-task fires."""
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
+    double-dispatched. thread_id must be bound before send-task fires.
+    (adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
     _arm(db)
     seen = {}
 
-    def spy(db_, thread_id, prompt, node):
-        seen["bound"] = g.get_node(db_, node["id"])["thread_id"]
+    def spy(db_, thread_id, prompt, topic):
+        seen["bound"] = tp.get_topic(db_, topic["id"])["thread_id"]
         seen["thread"] = thread_id
 
     gd.graph_tick(db, dispatch_fn=spy)
@@ -360,59 +360,59 @@ def test_node_thread_bound_before_dispatch_call(db):
 
 def test_crash_in_dispatch_window_not_reclaimed_by_sweep(db):
     """REGRESSION PIN (DA round-2 MAJOR-4, 2026-06-10): simulate a hard crash
-    after send-task fired but before the node went 'running'. The node stays
+    after send-task fired but before the topic went 'running'. The topic stays
     thread-bound 'dispatching', so the stale sweep must NOT reclaim it — the
-    old order yielded a second dispatch of already-running work."""
+    old order yielded a second dispatch of already-running work.
+    (adapted to topics, R9 2026-06-11)"""
 
     class HardCrash(BaseException):
         """Process death — bypasses the tick's belt-and-braces Exception nets."""
 
-    def crashing(db_, thread_id, prompt, node):
+    def crashing(db_, thread_id, prompt, topic):
         raise HardCrash()
 
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
+    _mk_topic(db, "a")
     _arm(db)
     with pytest.raises(HardCrash):
         gd.graph_tick(db, dispatch_fn=crashing)
 
-    node = g.get_node(db, "a")
-    assert node["state"] == "dispatching"
-    assert node["thread_id"]  # bound → sweep-immune
-    _age_claim(db, "a", gd.STALE_CLAIM_SECS + 60)
-    assert gd.sweep_stale_claims(db, "INBOX") == []  # no reclaim, no redispatch
+    topic = tp.get_topic(db, "a")
+    assert topic["state"] == "dispatching"
+    assert topic["thread_id"]  # bound → sweep-immune
+    _age_topic_claim(db, "a", gd.STALE_CLAIM_SECS + 60)
+    assert gd.sweep_stale_topic_claims(db, "INBOX") == []  # no reclaim
 
 
 def test_capacity_defer_clears_thread_binding(db):
     """Guard for the MAJOR-4 reorder: defer/failure paths must clear the
-    binding they now set before dispatch, or the released node would carry a
-    stale archived thread."""
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
+    binding they now set before dispatch, or the released topic would carry a
+    stale archived thread. (adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
     _arm(db)
     gd.graph_tick(db, dispatch_fn=FakeDispatch(exc=gd.CapacityError("pool full")))
-    node = g.get_node(db, "a")
-    assert node["state"] == "ready"
-    assert node["thread_id"] is None
+    topic = tp.get_topic(db, "a")
+    assert topic["state"] == "ready"
+    assert topic["thread_id"] is None
 
 
 def test_dispatch_retry_cap_marks_failed_exec_and_stops_flood(db):
     """REGRESSION PIN (DA round-2 minor 1, 2026-06-10): a permanently broken
     dispatch path reset the node to 'ready' every tick — one HIGH action item
     per tick forever (action-item flood) and an infinite retry loop. After
-    MAX_DISPATCH_FAILS consecutive failures the node must go failed-exec and
-    propagate to dependents instead."""
-    _mk(db, "a")
-    _mk(db, "b", deps=("a",))
-    g.recompute_ready(db, "INBOX")
+    MAX_DISPATCH_FAILS consecutive failures the topic must go failed-exec and
+    propagate to dependents instead. (adapted to topics, R9 2026-06-11)"""
+    gd._dispatch_fails.clear()  # module-level counter — isolate from other tests
+    _mk_topic(db, "a")
+    _mk_topic(db, "b", ready=False)
+    _dep_topic(db, "b", "a")
     _arm(db)
     failing = FakeDispatch(exc=RuntimeError("broken adapter"))
 
     for _ in range(gd.MAX_DISPATCH_FAILS):
         gd.graph_tick(db, dispatch_fn=failing)
 
-    assert g.get_node(db, "a")["state"] == "failed-exec"
-    assert g.get_node(db, "b")["state"] == "blocked-failed"
+    assert tp.get_topic(db, "a")["state"] == "failed-exec"
+    assert tp.get_topic(db, "b")["state"] == "blocked-failed"
     items = db.get_open_action_items()
     assert any("gave up" in i["message"] and "a" in i["message"] for i in items)
 
@@ -424,24 +424,24 @@ def test_dispatch_retry_cap_marks_failed_exec_and_stops_flood(db):
 
 
 def test_dispatch_success_resets_failure_count(db):
-    """One-off dispatch hiccups must not accumulate toward the give-up cap."""
+    """One-off dispatch hiccups must not accumulate toward the give-up cap.
+    (adapted to topics, R9 2026-06-11)"""
     gd._dispatch_fails.clear()  # module-level counter — isolate from other tests
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
+    _mk_topic(db, "a")
     _arm(db)
     gd.graph_tick(db, dispatch_fn=FakeDispatch(exc=RuntimeError("hiccup")))
-    assert g.get_node(db, "a")["state"] == "ready"
+    assert tp.get_topic(db, "a")["state"] == "ready"
     gd.graph_tick(db, dispatch_fn=FakeDispatch())  # succeeds
-    assert g.get_node(db, "a")["state"] == "running"
+    assert tp.get_topic(db, "a")["state"] == "running"
     assert gd._dispatch_fails == {}
 
 
 def test_unrelated_valueerror_in_create_thread_is_error_not_defer(db, monkeypatch):
     """REGRESSION PIN (DA round-2 minor 6, 2026-06-10): EVERY ValueError from
     create_thread was treated as the MAX_THREADS cap and silently deferred —
-    an unrelated bug could starve the graph forever with zero signal."""
-    _mk(db, "a")
-    g.recompute_ready(db, "INBOX")
+    an unrelated bug could starve the graph forever with zero signal.
+    (adapted to topics, R9 2026-06-11)"""
+    _mk_topic(db, "a")
     _arm(db)
 
     def buggy_create_thread(*a, **kw):
@@ -452,7 +452,7 @@ def test_unrelated_valueerror_in_create_thread_is_error_not_defer(db, monkeypatc
 
     assert stats["errors"] == ["a"]
     assert stats["deferred"] == []
-    assert g.get_node(db, "a")["state"] == "ready"  # released for the operator
+    assert tp.get_topic(db, "a")["state"] == "ready"  # released for the operator
     items = db.get_open_action_items()
     assert any("thread creation failed" in i["message"] for i in items)
 
@@ -530,3 +530,159 @@ def test_dispatch_via_pool_releases_agent_on_any_exception(db, monkeypatch):
         gd._dispatch_via_pool(db, tid, "prompt", {"id": "a"})
     assert db.get_agent(agent_id)["status"] == "idle"
     assert db.get_agent(agent_id)["assigned_thread"] is None
+
+
+# ── multi-project TOPIC tick (R9, 2026-06-11) ─────────────────────────────────
+
+from dbops import db_topics as tp  # noqa: E402
+
+
+def _mk_topic(db, tid, project="INBOX", n_tasks=1, ready=True):
+    tp.create_topic(db, topic_id=tid, project_id=project, title=f"Topic {tid}")
+    for i in range(n_tasks):
+        nid = f"{tid}-k{i}"
+        g.create_node(db, node_id=nid, project_id=project, title=nid, prompt="p")
+        with db._connect() as conn:
+            conn.execute("UPDATE graph_nodes SET topic_id=? WHERE id=?", (tid, nid))
+            conn.commit()
+    if ready:
+        tp.recompute_topic_ready(db, project)
+
+
+def _arm_many(db, *projects):
+    db.set_setting(gd.ARMED_PROJECT_KEY, ",".join(projects))
+
+
+def _age_topic_claim(db, tid, secs):
+    old = (datetime.now(timezone.utc) - timedelta(seconds=secs)).isoformat()
+    with db._connect() as conn:
+        conn.execute("UPDATE graph_topics SET updated_at=? WHERE id=?", (old, tid))
+        conn.commit()
+
+
+def _verify_topic(db, tid, handoff=None):
+    """Walk a ready topic to 'verified' (claim→dispatch→integrate)."""
+    for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
+        tp.topic_transition(db, tid, ev)
+    if handoff is not None:
+        tp.set_topic_handoff(db, tid, handoff)
+
+
+def _dep_topic(db, child, parent, project="INBOX"):
+    """Make topic `child` derive-depend on `parent`: child's task → parent's."""
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO graph_edges (node_id, depends_on_id) VALUES (?,?)",
+            (f"{child}-k0", f"{parent}-k0"),
+        )
+        conn.commit()
+    tp.recompute_topic_ready(db, project)
+
+
+def test_tick_dispatches_topics_across_all_armed_projects(db):
+    """REGRESSION PIN (2026-06-10): the tick served get_armed_project() only —
+    a second armed project never dispatched. Every armed graph must tick,
+    and the dispatch unit is the TOPIC (R9): one dispatch per topic, not per
+    task."""
+    _mk_topic(db, "A1", "P1", n_tasks=3)
+    _mk_topic(db, "B1", "P2")
+    _arm_many(db, "P1", "P2")
+    fd = FakeDispatch()
+    stats = gd.graph_tick(db, dispatch_fn=fd)
+    assert sorted(stats["dispatched"]) == ["A1", "B1"]
+    assert tp.get_topic(db, "A1")["state"] == "running"
+    assert len(fd.calls) == 2, "one dispatch per TOPIC, not per task"
+
+
+def test_each_thread_bound_to_its_topics_project(db):
+    """REGRESSION PIN (2026-06-10 spec DA): cross-project thread mis-binding
+    would hydrate the wrong objective. Thread.project_id must match its
+    topic's project."""
+    _mk_topic(db, "A1", "P1")
+    _mk_topic(db, "B1", "P2")
+    _arm_many(db, "P1", "P2")
+    gd.graph_tick(db, dispatch_fn=FakeDispatch())
+    for tid_, pid in (("A1", "P1"), ("B1", "P2")):
+        th = tp.get_topic(db, tid_)["thread_id"]
+        assert th and db.get_thread(th)["project_id"] == pid
+
+
+def test_disarm_one_mid_batch_other_project_keeps_dispatching(db):
+    """REGRESSION PIN (2026-06-10): old mid-batch guard stopped EVERYTHING on
+    disarm — must skip only the disarmed project's topics."""
+    for t_ in ("A1", "A2"):
+        _mk_topic(db, t_, "P1")
+    for t_ in ("B1", "B2"):
+        _mk_topic(db, t_, "P2")
+    _arm_many(db, "P1", "P2")
+
+    class DisarmingDispatch(FakeDispatch):
+        def __call__(self, db_, thread_id, prompt, topic):
+            super().__call__(db_, thread_id, prompt, topic)
+            if topic["id"].startswith("A"):
+                db_.set_setting(gd.ARMED_PROJECT_KEY, "P2")
+
+    stats = gd.graph_tick(db, dispatch_fn=DisarmingDispatch())
+    dispatched = set(stats["dispatched"])
+    assert {"B1", "B2"} <= dispatched
+    assert len({"A1", "A2"} & dispatched) == 1
+
+
+def test_poisoned_project_scan_does_not_block_others(db, monkeypatch):
+    """REGRESSION PIN (R4): a ready-scan exception used to abort the whole
+    tick; blast radius must be one project."""
+    _mk_topic(db, "A1", "P1")
+    _mk_topic(db, "B1", "P2")
+    _arm_many(db, "P1", "P2")
+    real = tp.recompute_topic_ready
+
+    def boom(db_, pid):
+        if pid == "P1":
+            raise RuntimeError("poisoned graph")
+        return real(db_, pid)
+
+    monkeypatch.setattr(gd.db_topics, "recompute_topic_ready", boom)
+    stats = gd.graph_tick(db, dispatch_fn=FakeDispatch())
+    assert stats["dispatched"] == ["B1"]
+
+
+def test_global_cap_defers_fairly_across_projects(db):
+    """Capacity is GLOBAL (MAX_THREADS bounds TOPICS — R9 budget model): a cap
+    hit defers the pass with claims released; the fair prefix contains BOTH
+    projects."""
+    for i in range(3):
+        _mk_topic(db, f"A{i}", "P1")
+    _mk_topic(db, "B0", "P2")
+    _arm_many(db, "P1", "P2")
+
+    class CapAfter(FakeDispatch):
+        def __init__(self, n):
+            super().__init__()
+            self.n = n
+        def __call__(self, db_, thread_id, prompt, topic):
+            if len(self.calls) >= self.n:
+                raise gd.CapacityError("pool full")
+            super().__call__(db_, thread_id, prompt, topic)
+
+    stats = gd.graph_tick(db, dispatch_fn=CapAfter(2))
+    assert len(stats["dispatched"]) == 2
+    assert {t_[0] for t_ in stats["dispatched"]} == {"A", "B"}
+    for tid_ in stats["deferred"]:
+        assert tp.get_topic(db, tid_)["state"] == "ready", "claim released"
+
+
+def test_single_project_single_topic_behavior_unchanged(db):
+    """R6 pin: a 1-element armed set with synthetic 1-task topics behaves like
+    the legacy flat tick (one dispatch, dep-gated)."""
+    _mk_topic(db, "T-a")
+    tp.create_topic(db, topic_id="T-b", project_id="INBOX", title="b")
+    g.create_node(db, node_id="b", project_id="INBOX", title="b", prompt="p")
+    with db._connect() as conn:
+        conn.execute("UPDATE graph_nodes SET topic_id='T-b' WHERE id='b'")
+        conn.execute(
+            "INSERT INTO graph_edges (node_id, depends_on_id) VALUES ('b','T-a-k0')")
+        conn.commit()
+    tp.recompute_topic_ready(db, "INBOX")
+    _arm(db)  # legacy scalar arm helper
+    stats = gd.graph_tick(db, dispatch_fn=FakeDispatch())
+    assert stats["dispatched"] == ["T-a"]  # T-b gated on T-a via derived dep

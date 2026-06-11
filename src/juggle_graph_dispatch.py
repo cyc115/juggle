@@ -21,7 +21,7 @@ import logging
 import tempfile
 from datetime import datetime, timedelta, timezone
 
-from dbops import db_graph
+from dbops import db_graph, db_topics
 from dbops.schema import _now
 from juggle_autopilot_state import (  # noqa: F401 — re-exported, existing importers
     ARMED_PROJECT_KEY,
@@ -184,110 +184,117 @@ def _give_up_dispatch(db, node_id: str, err: Exception) -> None:
 
 
 def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
-    """One dispatcher tick for the armed project. Never raises.
+    """One dispatcher tick across ALL armed projects, claiming TOPICS (R9).
 
-    Per ready node: atomic claim → lazy thread (cap-aware: defer on
-    MAX_THREADS/pool-full, retry next tick) → hydrated dispatch → running.
-    Also runs the stale-claim sweep first. Returns a stats dict.
+    Per project: topic stale-claim sweep + topic-ready recompute (a failure
+    skips ONLY that project — R4). Ready topics are ordered fairly
+    (juggle_graph_scheduler) then dispatched through the claim → thread →
+    hydrate → dispatch body. ONE thread per topic (MAX_THREADS bounds concurrent
+    topics; integrate runs once per topic). Never raises.
     """
+    from juggle_graph_hydration import hydrate_for_topic
+    from juggle_graph_scheduler import interleave_ready
+    from juggle_graph_status import IN_FLIGHT_STATES
+
     stats: dict = {"dispatched": [], "swept": [], "deferred": [], "errors": []}
-    armed = get_armed_project(db)
+    armed = get_armed_projects(db)
     if not armed:
         return stats
     dispatch = dispatch_fn or _dispatch_via_pool
 
-    try:
-        stats["swept"] = sweep_stale_claims(db, armed)
-        # Self-heal: promote any eligible pending nodes (idempotent) — covers a
-        # completion that crashed between marking and ready-recompute.
-        db_graph.recompute_ready(db, armed)
-        ready = [n for n in db_graph.list_nodes(db, armed) if n["state"] == "ready"]
-    except Exception:
-        _log.exception("graph tick: ready-set scan failed — skipping tick")
-        return stats
-
-    for node in ready:
-        node_id = node["id"]
-        if get_armed_project(db) != armed:
-            break  # disarmed mid-batch — stop claiming
+    ready_by_project: dict[str, list[dict]] = {}
+    in_flight: dict[str, int] = {}
+    for pid in armed:
         try:
-            if not claim_node(db, node_id):
+            stats["swept"] += sweep_stale_topic_claims(db, pid)
+            db_topics.recompute_topic_ready(db, pid)
+            topics = db_topics.list_topics(db, pid)
+        except Exception:
+            _log.exception(
+                "graph tick: ready-set scan failed for %s — skipping project", pid
+            )
+            continue
+        ready_by_project[pid] = [t for t in topics if t["state"] == "ready"]
+        in_flight[pid] = sum(1 for t in topics if t["state"] in IN_FLIGHT_STATES)
+
+    for pid, topic in interleave_ready(ready_by_project, in_flight, armed):
+        tid = topic["id"]
+        if pid not in get_armed_projects(db):
+            continue  # THIS project disarmed mid-batch — others keep going
+        try:
+            if not claim_topic(db, tid):
                 continue  # another claimer won (DA B4)
             try:
                 thread_id = db.create_thread(
-                    f"[{node_id}] {node['title']}"[:80], session_id=_session_id(db)
+                    f"[{tid}] {topic['title']}"[:80], session_id=_session_id(db)
                 )
             except ValueError as e:
-                db_graph.node_transition(db, node_id, "stale_reset")
+                db_topics.topic_transition(db, tid, "stale_reset")
                 if "Maximum of" not in str(e):
-                    # NOT the MAX_THREADS cap (DA round-2 minor 6, 2026-06-10:
-                    # unrelated ValueErrors were silently deferred forever).
-                    stats["errors"].append(node_id)
+                    stats["errors"].append(tid)
                     db.add_action_item(
                         thread_id=None,
-                        message=(
-                            f"⚠️ Autopilot thread creation failed for graph "
-                            f"node {node_id}: {e}"
-                        ),
-                        type_="failure",
-                        priority="high",
+                        message=(f"⚠️ Autopilot thread creation failed for "
+                                 f"topic {tid}: {e}"),
+                        type_="failure", priority="high",
                     )
                     continue
-                # MAX_THREADS cap — claim released, retry next tick.
-                stats["deferred"].append(node_id)
-                _log.info("graph tick: thread cap hit — node %s deferred", node_id)
-                break  # cap is global; later nodes would hit it too
-            db.update_thread(thread_id, project_id=armed)
-            # Bind BEFORE send-task (DA round-2 MAJOR-4, 2026-06-10): a crash
-            # in the dispatch window must leave the node thread-bound so the
-            # stale sweep cannot reclaim it and double-dispatch the work.
-            db_graph.set_node_thread(db, node_id, thread_id)
-            fail_key = (str(db.db_path), node_id)
+                stats["deferred"].append(tid)
+                _log.info("graph tick: thread cap hit — topic %s deferred", tid)
+                break  # cap is global; later topics would hit it too
+            db.update_thread(thread_id, project_id=pid)
+            # Bind BEFORE send-task (DA round-2 MAJOR-4): a crash in the
+            # dispatch window must leave the topic thread-bound so the stale
+            # sweep cannot reclaim and double-dispatch it.
+            db_topics.set_topic_thread(db, tid, thread_id)
+            fail_key = (str(db.db_path), tid)
             try:
-                dispatch(db, thread_id, _hydrate_for_node(db, armed, node), node)
+                dispatch(db, thread_id, hydrate_for_topic(db, pid, topic), topic)
             except CapacityError:
                 db.archive_thread(thread_id)
-                db_graph.set_node_thread(db, node_id, None)
-                db_graph.node_transition(db, node_id, "stale_reset")
-                stats["deferred"].append(node_id)
+                db_topics.set_topic_thread(db, tid, None)
+                db_topics.topic_transition(db, tid, "stale_reset")
+                stats["deferred"].append(tid)
                 break
             except Exception as e:
                 db.archive_thread(thread_id)
-                db_graph.set_node_thread(db, node_id, None)
-                stats["errors"].append(node_id)
+                db_topics.set_topic_thread(db, tid, None)
+                stats["errors"].append(tid)
                 fails = _dispatch_fails.get(fail_key, 0) + 1
                 _dispatch_fails[fail_key] = fails
                 if fails >= MAX_DISPATCH_FAILS:
                     _dispatch_fails.pop(fail_key, None)
-                    _give_up_dispatch(db, node_id, e)
+                    _give_up_topic_dispatch(db, tid, e)
                 else:
-                    db_graph.node_transition(db, node_id, "stale_reset")
+                    db_topics.topic_transition(db, tid, "stale_reset")
                     db.add_action_item(
                         thread_id=None,
-                        message=(
-                            f"⚠️ Autopilot dispatch failed for graph node "
-                            f"{node_id} (attempt {fails}/{MAX_DISPATCH_FAILS}): {e}"
-                        ),
-                        type_="failure",
-                        priority="high",
+                        message=(f"⚠️ Autopilot dispatch failed for topic {tid} "
+                                 f"(attempt {fails}/{MAX_DISPATCH_FAILS}): {e}"),
+                        type_="failure", priority="high",
                     )
                 continue
             _dispatch_fails.pop(fail_key, None)
-            db_graph.node_transition(db, node_id, "dispatch")  # → running
+            db_topics.topic_transition(db, tid, "dispatch")  # → running
             db.add_notification_v2(
                 thread_id=thread_id,
-                message=f"⬢ autopilot dispatched graph node {node_id} — {node['title']}",
+                message=f"⬢ autopilot dispatched topic {tid} — {topic['title']}",
                 session_id=_session_id(db),
             )
-            stats["dispatched"].append(node_id)
+            stats["dispatched"].append(tid)
         except Exception:
-            # Belt-and-braces: a tick must never take the watchdog down.
-            _log.exception("graph tick: unexpected error on node %s", node_id)
-            stats["errors"].append(node_id)
+            _log.exception("graph tick: unexpected error on topic %s", tid)
+            stats["errors"].append(tid)
     return stats
 
 
 def _session_id(db) -> str:
     with db._connect() as conn:
         return db._get_session_key(conn, "session_id") or ""
+
+
+# Topic claim/sweep/give-up live in juggle_graph_dispatch_topics (LOC gate),
+# re-exported here for graph_tick + callers/tests (bottom import breaks the cycle).
+from juggle_graph_dispatch_topics import (  # noqa: E402, F401
+    _give_up_topic_dispatch, claim_topic, sweep_stale_topic_claims)
 
