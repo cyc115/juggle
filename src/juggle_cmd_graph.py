@@ -138,6 +138,14 @@ def register_graph_parsers(subparsers) -> None:
     )
     _an.set_defaults(func=cmd_graph_add_node)
 
+    _rc = _g2s.add_parser(
+        "reconcile", help="Reconcile topic states from member node states"
+    )
+    _rc.add_argument("project", help="Project id")
+    _rc.add_argument("--json", dest="json_out", action="store_true",
+                     help="Machine-readable output")
+    _rc.set_defaults(func=cmd_graph_reconcile)
+
     _mt = _g2s.add_parser(
         "mark-task", help="Topic agent: mark one task verified (or --fail)"
     )
@@ -250,6 +258,29 @@ def cmd_graph_add_node(args):
     )
 
 
+def cmd_graph_reconcile(args):
+    """`juggle graph reconcile <project>` — re-derive topic states from nodes."""
+    import json as _json
+
+    db = get_db(getattr(args, "db_path", None), init=True)
+    if not db.get_project(args.project):
+        print(f"Error: project {args.project!r} not found.", file=sys.stderr)
+        sys.exit(1)
+
+    result = db_topics.reconcile_project_topics(db, args.project)
+
+    if getattr(args, "json_out", False):
+        print(_json.dumps(result))
+        return
+
+    for topic_id, info in result.items():
+        before, after = info["before"], info["after"]
+        if before != after:
+            print(f"  {topic_id}: {before} → {after}")
+        else:
+            print(f"  {topic_id}: {before} (unchanged)")
+
+
 def cmd_graph_mark_task(args):
     """`juggle graph mark-task <task-id> [--fail] [--handoff '…']` — the topic
     agent's per-task completion (R9 hybrid). Maps onto the EXISTING node machine
@@ -271,3 +302,6 @@ def cmd_graph_mark_task(args):
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     print(f"task {args.task_id} → {state}")
+    topic_id = db_graph.get_node(db, args.task_id)["topic_id"]
+    if topic_id:
+        db_topics.reconcile_topic_state(db, topic_id)

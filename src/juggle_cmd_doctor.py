@@ -106,5 +106,29 @@ def cmd_doctor(args) -> int:
             print("db: schema already on 1.21.0")
     else:
         print(f"db: {DB_PATH} does not exist — will be created on first juggle command")
+        return 0
+
+    # 3. Reconcile graph topic states (repair drift between node tier + topic tier)
+    from dbops import db_topics as dbt
+
+    db_instance = JuggleDB(DB_PATH)
+    try:
+        projects = db_instance.list_projects(include_archived=True)
+    except Exception:
+        projects = []
+    fixed = 0
+    for project in projects:
+        try:
+            result = dbt.reconcile_project_topics(db_instance, project["id"])
+        except Exception:
+            continue
+        for tid, info in result.items():
+            if info["before"] != info["after"]:
+                print(f"graph reconcile: {tid}: {info['before']} → {info['after']}")
+                fixed += 1
+    if fixed:
+        print(f"graph reconcile: {fixed} topic(s) repaired")
+    else:
+        print("graph reconcile: all topics consistent")
 
     return 0

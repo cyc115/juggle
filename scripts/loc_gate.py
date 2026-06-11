@@ -58,6 +58,10 @@ GRANDFATHERED: dict[str, int] = {
     "scripts/talkback": 415,
     # 2026-06-11 bug J fix: added _dispatch_flat_node_fallback() for legacy node-only graphs
     "src/juggle_graph_dispatch.py": 386,
+    # 2026-06-11 bug J fix (B1+B3): reconcile_topic_state + reconcile_project_topics
+    "src/dbops/db_topics.py": 350,
+    # 2026-06-11 bug J fix (B1+B3): cmd_graph_reconcile subcommand
+    "src/juggle_cmd_graph.py": 307,
 }
 
 

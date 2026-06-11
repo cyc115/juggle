@@ -266,6 +266,75 @@ def propagate_topic_failure(db, topic_id) -> list[str]:
     return blocked
 
 
+_FAILED_NODE_STATES = frozenset({
+    "failed-exec", "failed-integration", "failed-verify", "blocked-failed"
+})
+_ACTIVE_NODE_STATES = frozenset({"running", "dispatching", "integrating"})
+
+
+def reconcile_topic_state(db, topic_id: str) -> str:
+    """Derive and sync a topic's state from its member node states.
+
+    Priority: all verified → 'verified'; any failed → 'failed-verify'; any
+    active (running/dispatching/integrating) → 'running'; else leave
+    pending/ready unchanged (or reset a phantom non-terminal to 'pending').
+    Idempotent; safe on terminal topics (no spurious transitions).
+    """
+    topic = get_topic(db, topic_id)
+    if topic is None:
+        raise ValueError(f"graph topic not found: {topic_id!r}")
+
+    with db._connect() as conn:
+        rows = conn.execute(
+            "SELECT state FROM graph_nodes WHERE topic_id=?", (topic_id,)
+        ).fetchall()
+
+    if not rows:
+        return topic["state"]
+
+    node_states = [r[0] for r in rows]
+
+    if all(s == "verified" for s in node_states):
+        target = "verified"
+    elif any(s in _FAILED_NODE_STATES for s in node_states):
+        target = "failed-verify"
+    elif any(s in _ACTIVE_NODE_STATES for s in node_states):
+        target = "running"
+    elif topic["state"] in ("pending", "ready"):
+        return topic["state"]
+    else:
+        target = "pending"
+
+    if target == topic["state"]:
+        return target
+
+    now = _now()
+    sets, params = ["state=?", "updated_at=?"], [target, now]
+    if target == "verified":
+        sets.append("verified_at=?")
+        params.append(now)
+    with _cx(db) as conn:
+        conn.execute(
+            f"UPDATE graph_topics SET {', '.join(sets)} WHERE id=?",
+            (*params, topic_id),
+        )
+    return target
+
+
+def reconcile_project_topics(db, project_id: str) -> dict:
+    """Reconcile all topics in a project from their member node states.
+
+    Returns {topic_id: {"before": old_state, "after": new_state}}.
+    """
+    topics = list_topics(db, project_id)
+    result = {}
+    for topic in topics:
+        before = topic["state"]
+        after = reconcile_topic_state(db, topic["id"])
+        result[topic["id"]] = {"before": before, "after": after}
+    return result
+
+
 def topic_counts(db, project_id) -> dict | None:
     """Display counts over graph_topics (same shape as juggle_graph_status)."""
     from juggle_graph_status import counts_from_states
