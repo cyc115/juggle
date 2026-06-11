@@ -141,6 +141,7 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
                 no_template=False, worktree_path=None, worktree_branch=None,
                 main_repo_path=None, allow_main=False,
                 force_node=True,  # the tick IS the sanctioned dispatcher
+                db_path=str(db.db_path),
             )
         )
     except BaseException as e:

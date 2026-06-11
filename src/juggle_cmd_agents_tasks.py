@@ -18,7 +18,8 @@ import juggle_cmd_agents_common as _com
 
 
 def cmd_send_task(args):
-    db = _com.get_db()
+    _db_path = getattr(args, "db_path", None)
+    db = _com.get_db(db_path=_db_path) if isinstance(_db_path, str) else _com.get_db()
     agent = db.get_agent(args.agent_id)
     if agent is None:
         print(f"Error: Agent {args.agent_id} not found.")
