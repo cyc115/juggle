@@ -30,22 +30,14 @@ from juggle_hooks_autopilot import (  # noqa: F401 — re-exported for juggle_ho
 
 # Patterns that are always safe to approve (send "1" = proceed).
 _SAFE_APPROVE_PATTERNS = [
-    r"Do you want to proceed with",
-    r"Do you want to overwrite",
-    r"Do you want to create",
-    r"Would you like to",
+    r"Do you want to proceed with", r"Do you want to overwrite",
+    r"Do you want to create", r"Would you like to",
 ]
 
 # Keywords that indicate a destructive action — never auto-approve if present.
 _DESTRUCTIVE_KEYWORDS = [
-    "delete",
-    "force",
-    "reset",
-    "remove",
-    "drop",
-    "destroy",
-    "push to main",
-    "push to master",
+    "delete", "force", "reset", "remove",
+    "drop", "destroy", "push to main", "push to master",
 ]
 
 _FINANCE_KEYWORDS = re.compile(
@@ -197,6 +189,7 @@ def handle_user_prompt_submit(data: dict) -> None:
                     )
                 )
         except Exception as exc:
+            print(f"[juggle] WARNING: UserPromptSubmit agent error (fail-open): {exc}", file=sys.stderr)
             _record_error_safe(exc, "juggle_hooks.UserPromptSubmit")
             logging.error("UserPromptSubmit agent-anchor error: %s", exc, exc_info=True)
         sys.exit(0)
@@ -261,6 +254,7 @@ def handle_user_prompt_submit(data: dict) -> None:
                     daemon=True,
                 ).start()
     except Exception as exc:
+        print(f"[juggle] WARNING: UserPromptSubmit error (fail-open): {exc}", file=sys.stderr)
         _record_error_safe(exc, "juggle_hooks.UserPromptSubmit")
         logging.error("UserPromptSubmit handler error: %s", exc, exc_info=True)
 

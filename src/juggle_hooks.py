@@ -108,6 +108,14 @@ def main() -> None:
     try:
         handler(data)
     except Exception as exc:
+        # UserPromptSubmit is additive (inject context) — a filesystem or other error
+        # must never block the prompt. Warn to stderr so the failure is diagnosable.
+        if event_name == "UserPromptSubmit":
+            print(
+                f"[juggle] WARNING: UserPromptSubmit unhandled error (fail-open): {exc}",
+                file=sys.stderr,
+            )
+            sys.exit(0)
         _record_error_safe(exc, f"juggle_hooks.{event_name}")
         logging.error("Unhandled error in hook %s: %s", event_name, exc, exc_info=True)
         sys.exit(1)

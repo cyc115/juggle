@@ -166,9 +166,9 @@ def render_agent_role_anchor_for(role: str) -> str:
         return ""
     from pathlib import Path as _Path
 
-    plugin_root = os.environ.get(
-        "CLAUDE_PLUGIN_ROOT", str(_Path(__file__).resolve().parent.parent)
-    )
+    try: _r = _Path(__file__).resolve().parent.parent
+    except OSError: _r = _Path(__file__).parent.parent
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", str(_r))
     return (
         "--- AGENT ROLE ---\n"
         f"ROLE: {role}. {identity}\n"
