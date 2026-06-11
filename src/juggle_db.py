@@ -94,12 +94,23 @@ class JuggleDB(
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
+        # Corruption-hardening, applied on EVERY connection (the one chokepoint
+        # all CLI/hooks/watchdog/test callers funnel through):
+        #   journal_mode=WAL  — persisted in the file header; concurrent readers
+        #     + single writer, which suits juggle's multi-agent access.
+        #   synchronous=FULL  — PER-CONNECTION (not persisted), so it MUST be
+        #     re-asserted every connect; protects against corruption on crash.
+        #   busy_timeout=5000 — WAL still serializes writers and juggle opens
+        #     many concurrent connections; prevents spurious "database is locked".
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=FULL;")
+        conn.execute("PRAGMA busy_timeout=5000;")
         return conn
 
     def init_db(self):
         """Create tables if not exist, run schema migrations, enable WAL mode."""
         with self._connect() as conn:
-            conn.execute("PRAGMA journal_mode=WAL;")
+            # WAL/synchronous/busy_timeout are set by _connect() on every open.
             conn.execute(CREATE_THREADS)
             conn.execute(CREATE_MESSAGES)
             conn.execute(CREATE_NOTIFICATIONS)
