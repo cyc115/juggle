@@ -23,8 +23,12 @@ from datetime import datetime, timedelta, timezone
 
 from dbops import db_graph
 from dbops.schema import _now
+from juggle_autopilot_state import (  # noqa: F401 — re-exported, existing importers
+    ARMED_PROJECT_KEY,
+    get_armed_project,
+    get_armed_projects,
+)
 
-ARMED_PROJECT_KEY = "autopilot_armed_project"
 STALE_CLAIM_SECS = 600  # dispatching >10 min with no thread → back to ready
 NODE_ROLE = "coder"
 # Retry cap (DA round-2 minor 1, 2026-06-10): a permanently broken dispatch
@@ -38,15 +42,6 @@ _log = logging.getLogger("juggle-graph-dispatch")
 
 class CapacityError(RuntimeError):
     """Thread/agent capacity hit — defer quietly and retry next tick."""
-
-
-def get_armed_project(db) -> str | None:
-    """Armed project id from the settings table, or None when disarmed."""
-    try:
-        val = (db.get_setting(ARMED_PROJECT_KEY) or "").strip()
-    except Exception:
-        return None  # pre-migration DB without a settings table
-    return val or None
 
 
 def claim_node(db, node_id: str) -> bool:
