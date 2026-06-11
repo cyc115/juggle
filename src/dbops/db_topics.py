@@ -194,10 +194,17 @@ _ADVANCE_TO_INTEGRATING = {
 def mark_topic_completion(db, topic_id, *, integrate_ok, verify_ok=True,
                           handoff=None) -> str:
     """Topic twin of db_graph.mark_completion: walk legally to 'integrating',
-    apply the outcome. verified-means-MERGED holds at topic level (spec §2.3)."""
+    apply the outcome. verified-means-MERGED holds at topic level (spec §2.3).
+
+    Idempotent for the success path: if the topic is already 'verified', return
+    'verified' without raising. Prevents a node stuck at 'running' when an
+    out-of-band integrate + a racing complete-agent both succeed (2026-06-11 bug I).
+    """
     topic = get_topic(db, topic_id)
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
+    if topic["state"] == "verified" and integrate_ok:
+        return "verified"
     if topic["state"] not in _ADVANCE_TO_INTEGRATING:
         raise ValueError(
             f"cannot mark completion: topic {topic_id!r} in terminal state "

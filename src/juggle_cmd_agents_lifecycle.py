@@ -178,13 +178,15 @@ def cmd_release_agent(args):
 
     # Clear task state so a re-pooled agent doesn't carry stale last_task
     # into its next assignment — prevents watchdog from replaying a previous
-    # thread's task during recovery.
+    # thread's task during recovery.  model=None prevents a poisoned/typo model
+    # value from being reused on the next dispatch (2026-06-11 bug F).
     db.update_agent(
         agent_id,
         last_task=None,
         last_send_task_pane_hash=None,
         last_send_task_at=None,
         watchdog_retried=0,
+        model=None,
     )
 
     # Reconcile: if the agent's thread is still "background", it was released

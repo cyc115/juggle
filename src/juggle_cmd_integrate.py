@@ -207,6 +207,17 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             release_repo_lock(lock_path)
             return True, f"Branch {worktree_branch} pushed to origin for PR (no local merge)"
 
+        # Discard any local modifications to graphify-out/ before the ff-merge.
+        # The graphify watch hook regenerates tracked files in graphify-out/ on
+        # every commit; if the agent's branch also updated them, git merge
+        # --ff-only fails with "local changes would be overwritten" (2026-06-11
+        # bug G). Discarding is safe: graphify regenerates them on demand.
+        if Path(main_repo_path, "graphify-out").exists():
+            subprocess.run(
+                ["git", "-C", main_repo_path, "checkout", "--", "graphify-out/"],
+                capture_output=True, text=True,
+            )
+
         # direct or none: ff-merge into local main
         result = subprocess.run(
             ["git", "-C", main_repo_path, "merge", "--ff-only", worktree_branch],

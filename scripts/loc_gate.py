@@ -56,6 +56,8 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cmd_context.py": 370,
     # src/schedules/common.py (ex juggle_schedule_common) removed 2026-06-10: shrank to 297 (Phase 1.2)
     "scripts/talkback": 415,
+    # 2026-06-11 bug J fix: added _dispatch_flat_node_fallback() for legacy node-only graphs
+    "src/juggle_graph_dispatch.py": 386,
 }
 
 

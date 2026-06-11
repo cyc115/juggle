@@ -285,7 +285,93 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
         except Exception:
             _log.exception("graph tick: unexpected error on topic %s", tid)
             stats["errors"].append(tid)
+
+    # ── Legacy flat-node fallback (R9/R6) ─────────────────────────────────────
+    # A project whose graph has graph_nodes but 0 graph_topics (e.g. pre-3-tier
+    # spec, or migration 37 backfilled 0 rows) produces no ready topics above,
+    # so the loop skips it entirely and the build stalls.  Detect this case and
+    # dispatch ready nodes directly via the existing node claim/hydrate path
+    # (2026-06-11 bug J).
+    _dispatch_flat_node_fallback(db, armed, stats, dispatch)
+
     return stats
+
+
+def _dispatch_flat_node_fallback(
+    db, armed: list[str], stats: dict, dispatch
+) -> None:
+    """Dispatch ready graph_nodes for projects that have no graph_topics."""
+    from juggle_graph_hydration import hydrate_for_node
+    from dbops import db_topics as _dt
+
+    for pid in armed:
+        if pid not in get_armed_projects(db):
+            continue
+        try:
+            if _dt.list_topics(db, pid):
+                continue  # project has topics — topic path owns dispatch
+            stats["swept"] += sweep_stale_claims(db, pid)
+            db_graph.recompute_ready(db, pid)
+            nodes = [n for n in db_graph.list_nodes(db, pid) if n["state"] == "ready"]
+        except Exception:
+            _log.exception(
+                "graph tick (flat fallback): ready-set scan failed for %s", pid
+            )
+            continue
+        for node in nodes:
+            if pid not in get_armed_projects(db):
+                break
+            node_id = node["id"]
+            fail_key = (str(db.db_path), node_id)
+            try:
+                if not claim_node(db, node_id):
+                    continue
+                try:
+                    thread_id = db.create_thread(
+                        f"[{node_id}] {node['title']}"[:80],
+                        session_id=_session_id(db),
+                    )
+                except ValueError as e:
+                    db_graph.node_transition(db, node_id, "stale_reset")
+                    if "Maximum of" not in str(e):
+                        stats["errors"].append(node_id)
+                    else:
+                        stats["deferred"].append(node_id)
+                        _log.info("graph tick (flat): thread cap — node %s deferred", node_id)
+                    continue
+                db.update_thread(thread_id, project_id=pid)
+                db_graph.set_node_thread(db, node_id, thread_id)
+                try:
+                    dispatch(db, thread_id, hydrate_for_node(db, pid, node), node)
+                except CapacityError:
+                    db.archive_thread(thread_id)
+                    db_graph.bind_thread(db, node_id, None)
+                    db_graph.node_transition(db, node_id, "stale_reset")
+                    stats["deferred"].append(node_id)
+                    break
+                except Exception as e:
+                    db.archive_thread(thread_id)
+                    db_graph.bind_thread(db, node_id, None)
+                    stats["errors"].append(node_id)
+                    fails = _dispatch_fails.get(fail_key, 0) + 1
+                    _dispatch_fails[fail_key] = fails
+                    if fails >= MAX_DISPATCH_FAILS:
+                        _dispatch_fails.pop(fail_key, None)
+                        _give_up_dispatch(db, node_id, e)
+                    else:
+                        db_graph.node_transition(db, node_id, "stale_reset")
+                    continue
+                _dispatch_fails.pop(fail_key, None)
+                db_graph.node_transition(db, node_id, "dispatch")
+                db.add_notification_v2(
+                    thread_id=thread_id,
+                    message=f"⬢ autopilot dispatched node {node_id} — {node['title']}",
+                    session_id=_session_id(db),
+                )
+                stats["dispatched"].append(node_id)
+            except Exception:
+                _log.exception("graph tick (flat fallback): error on node %s", node_id)
+                stats["errors"].append(node_id)
 
 
 def _session_id(db) -> str:
