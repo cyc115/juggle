@@ -157,12 +157,11 @@ def test_render_topics_narrow_shows_title():
 
 
 def test_render_topics_narrow_icon_always_visible():
-    """At narrow width, the status glyph and [label] must stay visible; the
-    title WRAPS onto indented continuation lines instead of truncating.
+    """At narrow width, age + status glyph + [label] must stay visible; only
+    the title RIGHT-truncates with an ellipsis.
 
-    Updated 2026-06-11 (supersedes the 2026-06-10 truncation pin): user wants
-    the title wrapped (with hanging indent), never cut off. glyph + [label]
-    remain pinned on line 1; only the title folds across lines.
+    Updated 2026-06-11: single combined cell, right-cropped — the emoji/label
+    sit on the left and are never truncated; the title ellipsizes on the right.
     """
     topic = Topic(
         id="t1",
@@ -179,12 +178,10 @@ def test_render_topics_narrow_icon_always_visible():
     text = c.export_text()
     assert "👉" in text, f"Status glyph missing in narrow render: {text!r}"
     assert "[K]" in text, f"Label missing in narrow render: {text!r}"
-    # Title must WRAP (full text preserved across lines), never be ellipsized.
-    assert "…" not in text, (
-        f"Title was truncated — narrow render must wrap, not ellipsize. Got: {text!r}"
+    # Title right-truncates with an ellipsis; the glyph/label are never dropped.
+    assert "…" in text, (
+        f"Title should right-truncate with ellipsis. Got: {text!r}"
     )
-    for word in ("truncated", "narrow"):
-        assert word in text, f"missing '{word}' — title was cut off:\n{text}"
 
 
 def test_render_topics_medium_one_topic_per_line():

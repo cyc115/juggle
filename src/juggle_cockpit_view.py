@@ -115,25 +115,17 @@ def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
         style = Style(dim=True)
     else:
         style = Style()
-    if bp == "wide":
-        table.add_row(
-            Text(format_age(t.age_secs), style=Style(dim=True)),
-            Text(glyph),
-            Text(label_str, style=style),
-            Text(t.title or t.label, style=style),
-        )
-    elif bp == "narrow":
-        table.add_row(
-            Text(glyph),
-            Text(label_str, style=style),
-            Text(t.title or t.label, style=style),
-        )
-    else:
-        table.add_row(
-            Text(glyph),
-            Text(label_str, style=style),
-            Text(t.title or t.label, style=style),
-        )
+    # Single combined cell, RIGHT-cropped: age + glyph + [label] sit on the left
+    # and are NEVER truncated; only the title ellipsizes on the right. bp no
+    # longer changes the structure — the Topics pane is a fraction of the
+    # terminal at any breakpoint, so uniform right-crop keeps the emoji safe.
+    combined = Text(no_wrap=True, overflow="ellipsis")
+    combined.append(f"{format_age(t.age_secs)} ", style=Style(dim=True))
+    combined.append(glyph)
+    combined.append(label_str, style=style)
+    combined.append(" ")
+    combined.append(t.title or t.label, style=style)
+    table.add_row(combined)
 
 
 def render_topics(
@@ -161,21 +153,11 @@ def render_topics(
     visible = topics[scroll_offset:]
 
     def _make_table() -> Table:
+        # One column holding the combined row Text; right-crop happens inside
+        # the Text (overflow="ellipsis"), protecting age/glyph/[label] from
+        # truncation at every breakpoint.
         t = Table.grid(padding=(0, 0))
-        if bp == "wide":
-            t.add_column("age", no_wrap=True, width=3)
-            t.add_column("glyph", no_wrap=True)
-            t.add_column("label", no_wrap=True)
-            t.add_column("title", no_wrap=True, overflow="ellipsis")
-        elif bp == "narrow":
-            # Wrap (not truncate): glyph + [label] pinned, title folds w/ indent.
-            t.add_column("glyph", no_wrap=True)
-            t.add_column("label", no_wrap=True)
-            t.add_column("title", no_wrap=False, overflow="fold")
-        else:
-            t.add_column("glyph", no_wrap=True)
-            t.add_column("label", no_wrap=True)
-            t.add_column("title", no_wrap=False, overflow="fold")
+        t.add_column("row", no_wrap=True, overflow="ellipsis")
         return t
 
     if not use_grouping:
