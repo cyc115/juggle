@@ -40,8 +40,9 @@ def load_graph_dag(conn) -> "GraphDag | None":
         return None
     try:
         node_rows = conn.execute(
-            "SELECT id, title, state, thread_id FROM graph_nodes WHERE project_id=? "
-            "ORDER BY created_at, id",
+            "SELECT n.id, n.title, n.state, n.thread_id, t.user_label "
+            "FROM graph_nodes n LEFT JOIN threads t ON n.thread_id = t.id "
+            "WHERE n.project_id=? ORDER BY n.created_at, n.id",
             (armed,),
         ).fetchall()
         if not node_rows:
@@ -57,7 +58,7 @@ def load_graph_dag(conn) -> "GraphDag | None":
     nodes = [
         GraphNode(
             id=r["id"], title=r["title"] or r["id"], state=r["state"],
-            thread_id=r["thread_id"],
+            thread_id=r["thread_id"], user_label=r["user_label"],
         )
         for r in node_rows
     ]

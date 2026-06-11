@@ -123,12 +123,11 @@ def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
             Text(t.title or t.label, style=style),
         )
     elif bp == "narrow":
-        combined = Text()
-        combined.append(glyph)
-        combined.append(label_str, style=style)
-        combined.append(" ")
-        combined.append(t.title or t.label, style=style)
-        table.add_row(combined)
+        table.add_row(
+            Text(glyph),
+            Text(label_str, style=style),
+            Text(t.title or t.label, style=style),
+        )
     else:
         table.add_row(
             Text(glyph),
@@ -169,7 +168,10 @@ def render_topics(
             t.add_column("label", no_wrap=True)
             t.add_column("title", no_wrap=True, overflow="ellipsis")
         elif bp == "narrow":
-            t.add_column("combined", no_wrap=True, overflow="ellipsis")
+            # Wrap (not truncate): glyph + [label] pinned, title folds w/ indent.
+            t.add_column("glyph", no_wrap=True)
+            t.add_column("label", no_wrap=True)
+            t.add_column("title", no_wrap=False, overflow="fold")
         else:
             t.add_column("glyph", no_wrap=True)
             t.add_column("label", no_wrap=True)

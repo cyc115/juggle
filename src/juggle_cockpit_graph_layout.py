@@ -27,6 +27,7 @@ class GraphNode:
     title: str
     state: str
     thread_id: str | None = None
+    user_label: str | None = None
 
 
 @dataclass

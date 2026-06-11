@@ -55,7 +55,11 @@ def _cell_text(node: GraphNode, inner_w: int, selected: bool) -> Text:
     glyph = NODE_STATE_GLYPHS.get(node.state, "⬢")
     label = f"{glyph} {node.id}"
     if node.thread_id and node.state in ("running", "dispatching", "integrating"):
-        extra = f" [{node.thread_id[:4]}]"
+        # Prefer the human-readable A-Z topic label so a running node
+        # correlates with its row in the Agents pane; fall back to the
+        # thread UUID prefix only if the thread row is gone.
+        tag = node.user_label or node.thread_id[:4]
+        extra = f" [{tag}]"
         if len(label) + len(extra) <= inner_w:
             label += extra
     if len(label) > inner_w:

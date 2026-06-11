@@ -157,11 +157,12 @@ def test_render_topics_narrow_shows_title():
 
 
 def test_render_topics_narrow_icon_always_visible():
-    """At narrow width, the status glyph and [label] must never be truncated away.
+    """At narrow width, the status glyph and [label] must stay visible; the
+    title WRAPS onto indented continuation lines instead of truncating.
 
-    Regression pin: 2026-06-10 — narrow pane was wrapping (fold) instead of
-    right-truncating, which let the icon survive but produced multi-line rows.
-    The fix: no_wrap=True + overflow=ellipsis right-truncates the title only.
+    Updated 2026-06-11 (supersedes the 2026-06-10 truncation pin): user wants
+    the title wrapped (with hanging indent), never cut off. glyph + [label]
+    remain pinned on line 1; only the title folds across lines.
     """
     topic = Topic(
         id="t1",
@@ -178,10 +179,12 @@ def test_render_topics_narrow_icon_always_visible():
     text = c.export_text()
     assert "👉" in text, f"Status glyph missing in narrow render: {text!r}"
     assert "[K]" in text, f"Label missing in narrow render: {text!r}"
-    # Title must be right-truncated with ellipsis, not wrapped to multiple lines
-    assert "…" in text, (
-        f"No ellipsis in narrow render — title should be right-truncated. Got: {text!r}"
+    # Title must WRAP (full text preserved across lines), never be ellipsized.
+    assert "…" not in text, (
+        f"Title was truncated — narrow render must wrap, not ellipsize. Got: {text!r}"
     )
+    for word in ("truncated", "narrow"):
+        assert word in text, f"missing '{word}' — title was cut off:\n{text}"
 
 
 def test_render_topics_medium_one_topic_per_line():
