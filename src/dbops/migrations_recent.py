@@ -14,8 +14,6 @@ from dbops.schema import (
     CREATE_AGENT_COMPLETIONS,
     CREATE_AGENT_TOOL_EVENTS,
     CREATE_ERROR_EVENTS,
-    CREATE_GRAPH_EDGES,
-    CREATE_GRAPH_NODES,
     CREATE_PROJECT_CORRECTIONS,
     CREATE_PROJECTS,
     CREATE_WATCHDOG_EVENTS,
@@ -271,30 +269,7 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         _log.warning("Migration 34 (worktree) skipped: %s", e)
 
-    # Migration 35: graph_nodes + graph_edges plan store for project autopilot
-    # (design 2026-06-10 rev 2 — nodes hold the plan, threads only execute)
-    try:
-        conn.execute(CREATE_GRAPH_NODES)
-        conn.execute(CREATE_GRAPH_EDGES)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_graph_nodes_project_state "
-            "ON graph_nodes(project_id, state)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_graph_nodes_thread "
-            "ON graph_nodes(thread_id) WHERE thread_id IS NOT NULL"
-        )
-        conn.commit()
-        _log.info("Migration 35: graph_nodes + graph_edges tables created")
-    except sqlite3.OperationalError as e:
-        _log.warning("Migration 35 (graph_nodes/graph_edges) skipped: %s", e)
-
-    # Migration 36: graph_nodes.diffstat — pre-merge diffstat captured inside
-    # _run_integrate for dependent-node hydration (autopilot Phase 3, DA M4;
-    # the branch+worktree are deleted on merge, so capture must be pre-merge)
-    try:
-        conn.execute("ALTER TABLE graph_nodes ADD COLUMN diffstat TEXT")
-        conn.commit()
-        _log.info("Migration 36: graph_nodes.diffstat column added")
-    except sqlite3.OperationalError as e:
-        _log.warning("Migration 36 (graph_nodes.diffstat) skipped: %s", e)
+    # Migrations 35-37: autopilot graph/topic store (graph_nodes / graph_edges /
+    # graph_topics). Extracted to dbops.migrations_graph for the 300-line gate.
+    from dbops.migrations_graph import apply_graph_migrations
+    apply_graph_migrations(conn)

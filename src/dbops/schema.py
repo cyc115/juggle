@@ -228,28 +228,14 @@ CREATE TABLE IF NOT EXISTS project_corrections (
 );
 """
 
-# Autopilot plan store (2026-06-10 rev 2): nodes hold the PLAN; done is
-# state='verified' + verified_at, never thread.status; edges reference nodes.
-CREATE_GRAPH_NODES = """
-CREATE TABLE IF NOT EXISTS graph_nodes (
-  id          TEXT PRIMARY KEY,
-  project_id  TEXT NOT NULL REFERENCES projects(id),
-  title       TEXT NOT NULL,
-  prompt      TEXT NOT NULL,
-  verify_cmd  TEXT,
-  state       TEXT NOT NULL DEFAULT 'pending',
-  thread_id   TEXT,
-  handoff     TEXT,
-  diffstat    TEXT,
-  verified_at TEXT,
-  created_at  TEXT NOT NULL, updated_at TEXT NOT NULL);
-"""
-CREATE_GRAPH_EDGES = """
-CREATE TABLE IF NOT EXISTS graph_edges (
-  node_id       TEXT NOT NULL REFERENCES graph_nodes(id),
-  depends_on_id TEXT NOT NULL REFERENCES graph_nodes(id),
-  PRIMARY KEY (node_id, depends_on_id));
-"""
+# Autopilot graph/topic store DDL lives in dbops.schema_graph (architecture
+# gate: ≤300 lines/module). Re-exported here so existing
+# ``from dbops.schema import CREATE_GRAPH_NODES`` imports keep working.
+from dbops.schema_graph import (  # noqa: E402,F401
+    CREATE_GRAPH_EDGES,
+    CREATE_GRAPH_NODES,
+    CREATE_GRAPH_TOPICS,
+)
 
 # ---------------------------------------------------------------------------
 # Pure helper functions

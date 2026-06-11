@@ -34,6 +34,7 @@ from dbops.schema import (  # noqa: E402, F401
     CREATE_ERROR_EVENTS,
     CREATE_GRAPH_EDGES,
     CREATE_GRAPH_NODES,
+    CREATE_GRAPH_TOPICS,
     CREATE_MESSAGES,
     CREATE_NOTIFICATIONS,
     CREATE_NOTIFICATIONS_V2,
@@ -126,6 +127,7 @@ class JuggleDB(
             conn.execute(CREATE_PROJECTS)
             conn.execute(CREATE_GRAPH_NODES)
             conn.execute(CREATE_GRAPH_EDGES)
+            conn.execute(CREATE_GRAPH_TOPICS)
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_graph_nodes_project_state "
                 "ON graph_nodes(project_id, state)"

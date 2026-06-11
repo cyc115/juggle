@@ -1,0 +1,49 @@
+"""dbops.schema_graph — autopilot graph/topic store DDL (CREATE_* constants).
+
+Owns: the CREATE TABLE strings for the project-autopilot plan store
+(graph_nodes / graph_edges / graph_topics). Extracted from dbops.schema to
+keep both modules within the 300-line architecture gate. Re-exported from
+dbops.schema for back-compat, so ``from dbops.schema import CREATE_GRAPH_NODES``
+keeps working.
+"""
+from __future__ import annotations
+
+# Autopilot plan store (2026-06-10 rev 2): nodes hold the PLAN; done is
+# state='verified' + verified_at, never thread.status; edges reference nodes.
+CREATE_GRAPH_NODES = """
+CREATE TABLE IF NOT EXISTS graph_nodes (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id),
+  title       TEXT NOT NULL,
+  prompt      TEXT NOT NULL,
+  verify_cmd  TEXT,
+  state       TEXT NOT NULL DEFAULT 'pending',
+  thread_id   TEXT,
+  handoff     TEXT,
+  diffstat    TEXT,
+  verified_at TEXT,
+  created_at  TEXT NOT NULL, updated_at TEXT NOT NULL);
+"""
+CREATE_GRAPH_EDGES = """
+CREATE TABLE IF NOT EXISTS graph_edges (
+  node_id       TEXT NOT NULL REFERENCES graph_nodes(id),
+  depends_on_id TEXT NOT NULL REFERENCES graph_nodes(id),
+  PRIMARY KEY (node_id, depends_on_id));
+"""
+
+# 3-tier hierarchy (R9, 2026-06-11): a Topic owns a task-DAG; ONE thread/agent/
+# worktree per topic; integrate runs once per topic. Topics reuse the node
+# state machine (dbops.db_topics imports db_graph._TRANSITIONS).
+CREATE_GRAPH_TOPICS = """
+CREATE TABLE IF NOT EXISTS graph_topics (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id),
+  title       TEXT NOT NULL,
+  objective   TEXT NOT NULL DEFAULT '',
+  state       TEXT NOT NULL DEFAULT 'pending',
+  thread_id   TEXT,
+  handoff     TEXT,
+  diffstat    TEXT,
+  verified_at TEXT,
+  created_at  TEXT NOT NULL, updated_at TEXT NOT NULL);
+"""
