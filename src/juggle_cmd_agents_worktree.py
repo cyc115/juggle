@@ -58,6 +58,31 @@ def _finalize_worktree(thread: dict) -> tuple:
     return True, f"Worktree {worktree_path} finalized (merged {worktree_branch})."
 
 
+def _main_worktree_root(repo_path: str) -> str:
+    """Resolve ``repo_path`` to the MAIN worktree root.
+
+    Critical for nested-dispatch safety: when an agent creates a worktree from
+    *inside* another worktree (e.g. repo_path=/tmp/juggle-juggle-WR), deriving
+    the path basename from that worktree compounds the name
+    (juggle-juggle-juggle-WR-...) and the linked worktree may lack a main/master
+    ref, breaking integrate. The first entry of ``git worktree list --porcelain``
+    is always the main worktree; use its path so basename is stable ("juggle")
+    and ``git worktree add`` runs from the primary repo.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "-C", repo_path, "worktree", "list", "--porcelain"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                if line.startswith("worktree "):
+                    return line[len("worktree "):].strip()
+    except Exception:
+        pass
+    return repo_path
+
+
 def _create_worktree(
     repo_path: str, thread_label: str, worktree_root: str = "/tmp"
 ) -> tuple[bool, str, str, str]:
@@ -67,6 +92,7 @@ def _create_worktree(
     worktree_path and branch are empty strings on failure.
     Idempotent: if worktree_path already exists, returns (True, path, branch, "already exists").
     """
+    repo_path = _main_worktree_root(repo_path)
     basename = Path(repo_path).name
     worktree_path = str(Path(worktree_root) / f"juggle-{basename}-{thread_label}")
     branch = f"cyc_{thread_label}"
