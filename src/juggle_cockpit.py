@@ -116,15 +116,15 @@ class CockpitApp(GraphModeMixin, App):
         Binding("pagedown",     "page_down",     "PgDn",    show=False),
         Binding("pageup",       "page_up",       "PgUp",    show=False),
         Binding("tab",          "cycle_pane",    "Tab",     show=False),
-        Binding("s",            "switch",        "Switch"),
+        Binding("s",            "switch",        "Sw"),
         Binding("a",            "ack",           "Ack"),
-        Binding("shift+c",      "close",         "Close"),
-        Binding("x",            "archive",       "Archive"),
-        Binding("d",            "decommission",  "Decommission"),
-        Binding("slash",        "filter",        "Filter"),
-        Binding("f",            "focus_pane",    "Focus"),
-        Binding("t",            "tail_toggle",   "Tail"),
-        Binding("g",            "toggle_graph",  "Graph"),
+        Binding("shift+c",      "close",         "Cl",  key_display="C"),
+        Binding("x",            "archive",       "Ar"),
+        Binding("d",            "decommission",  "Dc",  show=False),
+        Binding("slash",        "filter",        "Flt", show=False),
+        Binding("f",            "focus_pane",    "Foc", show=False),
+        Binding("t",            "tail_toggle",   "Tl",  show=False),
+        Binding("g",            "toggle_graph",  "Gr",  show=False),
     ]
 
     CSS = """
@@ -228,7 +228,7 @@ class CockpitApp(GraphModeMixin, App):
                     yield Static("", id="agents")
                 yield HSplitter("upper", "notifications")
                 yield Static("", id="notifications")
-        yield Footer()
+        yield Footer(compact=True)
 
     def on_mount(self) -> None:
         self.title = "Juggle"

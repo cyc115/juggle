@@ -1,0 +1,98 @@
+"""Regression pin: footer must remain visible at narrow (40-col) widths.
+
+All required action hints (switch, ack, close, archive, help) must render
+in the footer bar even when the terminal is only 40 columns wide.
+"""
+
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+REQUIRED_DESCRIPTIONS = {"Sw", "Ack", "Cl", "Ar", "Help"}
+
+
+def _make_db(tmp_path):
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
+    db.init_db()
+    db.set_active(True)
+    return db
+
+
+# ---------------------------------------------------------------------------
+# Cycle 1 — footer exists and renders at narrow width
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_footer_exists_at_narrow_width(tmp_path):
+    """Footer widget is present and has positive height at 40×20."""
+    from juggle_cockpit import CockpitApp
+    from textual.widgets import Footer
+
+    db = _make_db(tmp_path)
+    app = CockpitApp(db_path=str(tmp_path / "juggle.db"))
+    async with app.run_test(size=(40, 20)) as pilot:
+        await pilot.pause(0.1)
+        footer = app.query_one(Footer)
+        assert footer is not None
+        assert footer.size.height >= 1, "Footer must have at least 1 row"
+
+
+# ---------------------------------------------------------------------------
+# Cycle 2 — required key hints visible at narrow width
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_footer_required_hints_visible_at_narrow_width(tmp_path):
+    """Switch, Ack, Close, Archive, Help hints all render at 40-col width.
+
+    Incident 2026-06-11: footer scrolled off-screen at <80 cols because
+    labels were too long (Switch, Archive, Decommission, Filter, Focus, Tail,
+    Graph) and Footer(compact=False) added extra padding.
+    """
+    from juggle_cockpit import CockpitApp
+    from textual.widgets._footer import FooterKey
+
+    db = _make_db(tmp_path)
+    app = CockpitApp(db_path=str(tmp_path / "juggle.db"))
+    async with app.run_test(size=(40, 20)) as pilot:
+        await pilot.pause(0.1)
+        keys = app.query(FooterKey)
+        descriptions = {k.description for k in keys}
+        missing = REQUIRED_DESCRIPTIONS - descriptions
+        assert not missing, (
+            f"Footer missing required hints at 40-col width: {missing}. "
+            f"Found: {sorted(descriptions)}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Cycle 3 — footer content fits within 40 columns (no horizontal overflow)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_footer_fits_within_40_cols(tmp_path):
+    """Footer content width does not exceed the terminal width (40 cols).
+
+    If the footer overflows, key hints are scrolled off and invisible to
+    the user.
+    """
+    from juggle_cockpit import CockpitApp
+    from textual.widgets import Footer
+
+    db = _make_db(tmp_path)
+    app = CockpitApp(db_path=str(tmp_path / "juggle.db"))
+    async with app.run_test(size=(40, 20)) as pilot:
+        await pilot.pause(0.1)
+        footer = app.query_one(Footer)
+        assert footer.virtual_size.width <= 40, (
+            f"Footer virtual width {footer.virtual_size.width} exceeds 40 cols; "
+            "hints will be scrolled off-screen"
+        )
