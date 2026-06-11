@@ -42,12 +42,12 @@ def test_factory_connection_uses_wal_journal_mode(tmp_path):
     assert mode.lower() == "wal", f"expected wal, got {mode!r}"
 
 
-def test_factory_connection_uses_synchronous_full(tmp_path):
-    """synchronous=FULL (2) — per-connection, must be set on every connect."""
+def test_factory_connection_uses_synchronous_normal(tmp_path):
+    """synchronous=NORMAL (1) — per-connection, must be set on every connect."""
     db = _raw_db(tmp_path)
     with db._connect() as conn:
         sync = conn.execute("PRAGMA synchronous").fetchone()[0]
-    assert sync == 2, f"expected synchronous=FULL (2), got {sync!r}"
+    assert sync == 1, f"expected synchronous=NORMAL (1), got {sync!r}"
 
 
 def test_factory_connection_sets_busy_timeout(tmp_path):

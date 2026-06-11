@@ -98,12 +98,12 @@ class JuggleDB(
         # all CLI/hooks/watchdog/test callers funnel through):
         #   journal_mode=WAL  — persisted in the file header; concurrent readers
         #     + single writer, which suits juggle's multi-agent access.
-        #   synchronous=FULL  — PER-CONNECTION (not persisted), so it MUST be
-        #     re-asserted every connect; protects against corruption on crash.
+        #   synchronous=NORMAL — PER-CONNECTION (not persisted), so it MUST be
+        #     re-asserted every connect. WAL-safe (no corruption; only risks last txn on power loss); relaxed from FULL 2026-06-10 — FULL fsync-per-commit caused integrate lock-hold storms under concurrent agents.
         #   busy_timeout=5000 — WAL still serializes writers and juggle opens
         #     many concurrent connections; prevents spurious "database is locked".
         conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=FULL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
         conn.execute("PRAGMA busy_timeout=5000;")
         return conn
 
