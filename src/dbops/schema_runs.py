@@ -27,7 +27,12 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   diffstat      TEXT,
   status        TEXT NOT NULL,
   dispatched_at TEXT NOT NULL,
-  completed_at  TEXT
+  completed_at  TEXT,
+  repo_path     TEXT,
+  vcs_type      TEXT,
+  before_sha    TEXT,
+  after_sha     TEXT,
+  was_dirty     INTEGER
 );
 """
 

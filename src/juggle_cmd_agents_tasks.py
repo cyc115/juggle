@@ -206,6 +206,21 @@ def cmd_send_task(args):
             _thread = db.get_thread(thread_uuid) or {}
             _task = db_graph.get_task_by_thread(db, thread_uuid)
             _topic = db_topics.get_topic_by_thread(db, thread_uuid)
+            # VCS provenance (best-effort): repo_path from the agent (fall back to
+            # the thread's worktree). detect()->vcs_type, before_sha=head, was_dirty.
+            _repo_path = agent.get("repo_path") or _thread.get("worktree_path")
+            _vcs_type = _before_sha = _was_dirty = None
+            if _repo_path:
+                try:
+                    import vcs as _vcs
+
+                    _vcs_type = _vcs.detect(_repo_path)
+                    _backend = _vcs.get_backend(_vcs_type)
+                    if _backend:
+                        _before_sha = _backend.head(_repo_path)
+                        _was_dirty = _backend.is_dirty(_repo_path)
+                except Exception:  # noqa: BLE001
+                    pass
             db.supersede_open_runs(thread_uuid)
             run_id = db.insert_agent_run(
                 thread_id=thread_uuid,
@@ -217,6 +232,10 @@ def cmd_send_task(args):
                 project_id=_thread.get("project_id"),
                 topic_id=_topic["id"] if _topic else None,
                 task_id=_task["id"] if _task else None,
+                repo_path=_repo_path,
+                vcs_type=_vcs_type,
+                before_sha=_before_sha,
+                was_dirty=_was_dirty,
             )
             db.update_agent(args.agent_id, current_run_id=run_id)
     except Exception as _exc:  # noqa: BLE001

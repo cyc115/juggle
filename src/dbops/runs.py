@@ -36,16 +36,27 @@ class RunsMixin:
         project_id: str | None,
         topic_id: str | None,
         task_id: str | None,
+        repo_path: str | None = None,
+        vcs_type: str | None = None,
+        before_sha: str | None = None,
+        was_dirty: bool | None = None,
     ) -> int:
-        """Insert a new ledger row in status 'dispatched'. Returns run_id."""
+        """Insert a new ledger row in status 'dispatched'. Returns run_id.
+
+        The trailing VCS-provenance kwargs (repo_path/vcs_type/before_sha/
+        was_dirty) are captured at the dispatch choke point; they default None so
+        non-VCS callers and pre-existing tests are unaffected.
+        """
         now = _now()
+        dirty = None if was_dirty is None else (1 if was_dirty else 0)
         with self._connect() as conn:
             cur = conn.execute(
                 "INSERT INTO agent_runs (thread_id, project_id, topic_id, task_id, "
-                "agent_id, role, model, harness, input_prompt, status, dispatched_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?, 'dispatched', ?)",
+                "agent_id, role, model, harness, input_prompt, status, dispatched_at, "
+                "repo_path, vcs_type, before_sha, was_dirty) "
+                "VALUES (?,?,?,?,?,?,?,?,?, 'dispatched', ?,?,?,?,?)",
                 (thread_id, project_id, topic_id, task_id, agent_id, role, model,
-                 harness, input_prompt, now),
+                 harness, input_prompt, now, repo_path, vcs_type, before_sha, dirty),
             )
             conn.commit()
             return int(cur.lastrowid)
@@ -54,20 +65,33 @@ class RunsMixin:
         self, thread_id: str, output: str | None, diffstat: str | None,
         status: str = "completed",
     ) -> None:
-        """Close the NEWEST open ('dispatched') run for thread_id."""
+        """Close the NEWEST open ('dispatched') run for thread_id.
+
+        Best-effort captures after_sha = HEAD of the run's repo at completion so
+        `juggle runs restore` can report whether the run advanced HEAD. Covers
+        cmd_complete AND every mark_graph_* path (all funnel through here)."""
         now = _now()
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT id FROM agent_runs WHERE thread_id=? AND status='dispatched' "
-                "ORDER BY id DESC LIMIT 1",
+                "SELECT id, repo_path, vcs_type FROM agent_runs WHERE thread_id=? "
+                "AND status='dispatched' ORDER BY id DESC LIMIT 1",
                 (thread_id,),
             ).fetchone()
             if not row:
                 return
+            after_sha = None
+            try:
+                import vcs as _vcs
+
+                backend = _vcs.get_backend(row["vcs_type"])
+                if backend and row["repo_path"]:
+                    after_sha = backend.head(row["repo_path"])
+            except Exception:  # noqa: BLE001
+                after_sha = None
             conn.execute(
-                "UPDATE agent_runs SET output=?, diffstat=?, status=?, completed_at=? "
-                "WHERE id=?",
-                (output, diffstat, status, now, row["id"]),
+                "UPDATE agent_runs SET output=?, diffstat=?, status=?, completed_at=?, "
+                "after_sha=? WHERE id=?",
+                (output, diffstat, status, now, after_sha, row["id"]),
             )
             conn.commit()
 

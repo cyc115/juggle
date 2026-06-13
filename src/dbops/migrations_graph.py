@@ -131,6 +131,34 @@ def _migrate_node_to_task(conn: sqlite3.Connection) -> None:
         _log.warning("Migration 39 (node->task rename) skipped: %s", e)
 
 
+def migrate_runs_vcs(conn: sqlite3.Connection) -> None:
+    """Migration 40 (T-vcs-checkpoint): VCS provenance columns on agent_runs.
+
+    Adds repo_path/vcs_type/before_sha/after_sha/was_dirty so `juggle runs
+    restore` can checkout a task's pre-run commit. Called from migrations_recent
+    AFTER Migration 38 creates agent_runs. IDEMPOTENT: each ADD COLUMN is guarded
+    by a PRAGMA column-existence check, so it converges on a fresh dev DB AND on
+    prod, where the 5 columns already exist (applied out-of-band during the
+    shared-DB incident). Migration 39 is the node->task rename above."""
+    try:
+        runs_cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(agent_runs)").fetchall()
+        }
+        for col, defn in [
+            ("repo_path", "TEXT"),
+            ("vcs_type", "TEXT"),
+            ("before_sha", "TEXT"),
+            ("after_sha", "TEXT"),
+            ("was_dirty", "INTEGER"),
+        ]:
+            if col not in runs_cols:
+                conn.execute(f"ALTER TABLE agent_runs ADD COLUMN {col} {defn}")
+        conn.commit()
+        _log.info("Migration 40: VCS provenance columns added to agent_runs")
+    except sqlite3.OperationalError as e:
+        _log.warning("Migration 40 (agent_runs vcs) skipped: %s", e)
+
+
 def apply_graph_migrations(conn: sqlite3.Connection) -> None:
     """Apply migrations 35-37 + 39 (graph_tasks / graph_edges / graph_topics + rename)."""
     # Migration 39 runs FIRST: rename an existing node-era DB to task naming

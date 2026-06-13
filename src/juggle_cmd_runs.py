@@ -76,6 +76,76 @@ def cmd_runs_show(args):
     print(run.get("diffstat") or "(none)")
 
 
+def _short(sha, n=8):
+    return (sha or "")[:n]
+
+
+def cmd_runs_restore(args):
+    """Restore the repo to a task/thread run's pre-run state on a safety branch.
+
+    Default targets the EARLIEST run for the selector; --latest the most recent.
+    Refuses on a dirty worktree (no stash/clobber); graceful no-ops when there is
+    nothing to restore. Leaves the original branch + later commits intact.
+    """
+    db = get_db(getattr(args, "db_path", None), init=True)
+    task = getattr(args, "task", None)
+    thread = getattr(args, "thread", None)
+    if not task and not thread:
+        print("Error: provide --task <id> or --thread <id>.")
+        raise SystemExit(1)
+    runs = db.get_runs(task_id=task, thread_id=thread)  # newest-first
+    if not runs:
+        sel = f"task {task}" if task else f"thread {thread}"
+        print(f"Nothing to restore: no runs for {sel}.")
+        return
+    run = runs[0] if getattr(args, "latest", False) else runs[-1]
+
+    vcs_type = run.get("vcs_type")
+    before_sha = run.get("before_sha")
+    repo_path = run.get("repo_path")
+    if not vcs_type or not before_sha:
+        print(f"Nothing to restore: run {run['id']} has no VCS provenance.")
+        return
+
+    import vcs as vcs_mod
+
+    backend = vcs_mod.get_backend(vcs_type)
+    if backend is None or not repo_path:
+        print(f"Error: run {run['id']} repo unavailable (vcs={vcs_type}, path={repo_path}).")
+        raise SystemExit(1)
+    import os
+
+    if not os.path.isdir(repo_path) or vcs_mod.detect(repo_path) != vcs_type:
+        print(f"Error: repo_path missing or not a {vcs_type} repo: {repo_path}")
+        raise SystemExit(1)
+
+    # Live dirty re-check: never stash/clobber uncommitted work.
+    if backend.is_dirty(repo_path):
+        print(
+            f"Refusing to restore: working tree at {repo_path} is dirty. "
+            "Commit or discard changes first (juggle will not stash/clobber)."
+        )
+        raise SystemExit(1)
+
+    after_sha = run.get("after_sha")
+    if after_sha and after_sha == before_sha:
+        print(
+            f"No-op: run {run['id']} did not advance HEAD "
+            f"(before == after == {_short(before_sha)}). Nothing to restore."
+        )
+        return
+
+    label = task or (thread or "run")[:8]
+    branch = f"juggle/pre-{label}-{_short(before_sha)}"
+    if not backend.make_safety_branch(repo_path, before_sha, branch):
+        print(f"Error: failed to create safety branch {branch} at {_short(before_sha)}.")
+        raise SystemExit(1)
+    print(
+        f"Restored {repo_path} to {_short(before_sha)} (run {run['id']}) on "
+        f"branch {branch!r}. Original branch + later commits left intact."
+    )
+
+
 def cmd_runs_prune(args):
     db = get_db(getattr(args, "db_path", None), init=True)
     try:
@@ -105,6 +175,18 @@ def register_runs_parsers(subparsers) -> None:
     p_show.add_argument("run_id")
     p_show.add_argument("--json", dest="json_out", action="store_true")
     p_show.set_defaults(func=cmd_runs_show)
+
+    p_restore = sub.add_parser(
+        "restore", help="Checkout the repo to a task/thread run's pre-run state"
+    )
+    p_restore.add_argument("--task", "--node", dest="task", default=None,
+                           help="Target task id (--node: deprecated alias)")
+    p_restore.add_argument("--thread", default=None, help="Target thread id")
+    p_restore.add_argument(
+        "--latest", action="store_true",
+        help="Target the most recent run (default: earliest)",
+    )
+    p_restore.set_defaults(func=cmd_runs_restore)
 
     p_prune = sub.add_parser("prune", help="Delete runs older than a cutoff")
     p_prune.add_argument("--older-than", dest="older_than", required=True,

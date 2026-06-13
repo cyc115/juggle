@@ -273,7 +273,7 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
 
     # Migrations 35-37 + 39 (graph store + node->task rename) live in
     # dbops.migrations_graph (300-line gate).
-    from dbops.migrations_graph import _rename_column, apply_graph_migrations
+    from dbops.migrations_graph import _rename_column, apply_graph_migrations, migrate_runs_vcs
     from dbops.schema_runs import CREATE_AGENT_RUNS, CREATE_AGENT_RUNS_INDEXES
 
     apply_graph_migrations(conn)
@@ -295,3 +295,5 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
         _log.info("Migration 38: agent_runs ledger + current_run_id created")
     except sqlite3.OperationalError as e:
         _log.warning("Migration 38 (agent_runs) skipped: %s", e)
+    # Migration 40 (T-vcs-checkpoint): VCS cols on agent_runs (impl in graph mod).
+    migrate_runs_vcs(conn)
