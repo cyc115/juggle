@@ -28,15 +28,15 @@ def db(tmp_path):
     return d
 
 
-def _node_thread(db, git_repo, tmp_path, label, verify_cmd):
-    """Real worktree with one commit + a graph node bound to a real thread."""
+def _task_thread(db, git_repo, tmp_path, label, verify_cmd):
+    """Real worktree with one commit + a graph task bound to a real thread."""
     from dbops import db_graph
     wt = _make_worktree(git_repo, str(tmp_path), label)
     _add_commit(wt, f"feat_{label}.py", "y = 2\n", f"feat: {label}")
-    tid = db.create_thread(f"node {label}", session_id="sessV")
-    db_graph.create_node(db, node_id=f"n{label}", project_id="INBOX",
+    tid = db.create_thread(f"task {label}", session_id="sessV")
+    db_graph.create_task(db, task_id=f"n{label}", project_id="INBOX",
                          title=label, prompt=f"do {label}", verify_cmd=verify_cmd)
-    db_graph.set_node_thread(db, f"n{label}", tid)
+    db_graph.set_task_thread(db, f"n{label}", tid)
     thread = {"id": tid, "worktree_path": wt,
               "worktree_branch": f"cyc_{label}", "main_repo_path": git_repo}
     return thread, wt
@@ -109,7 +109,7 @@ def test_failed_verify_leaves_main_untouched_pin(db, git_repo, tmp_path):
     leave main untouched, and preserve the worktree + branch."""
     from juggle_integrate_verify import VERIFY_FAIL_PREFIX
 
-    thread, wt = _node_thread(db, git_repo, tmp_path, "VF",
+    thread, wt = _task_thread(db, git_repo, tmp_path, "VF",
                               f"{PY} -c \"import sys; sys.exit(1)\"")
     ok, msg = _integrate(thread, db, tmp_path)
 
@@ -127,29 +127,29 @@ def test_failed_verify_leaves_main_untouched_pin(db, git_repo, tmp_path):
 
 def test_passing_verify_merges_and_stores_diffstat(db, git_repo, tmp_path):
     from dbops import db_graph
-    thread, wt = _node_thread(db, git_repo, tmp_path, "VP",
+    thread, wt = _task_thread(db, git_repo, tmp_path, "VP",
                               f"{PY} -c \"import sys; sys.exit(0)\"")
     ok, msg = _integrate(thread, db, tmp_path)
     assert ok, msg
     assert (Path(git_repo) / "feat_VP.py").exists()
-    node = db_graph.get_node(db, "nVP")
-    assert "feat_VP.py" in (node["diffstat"] or ""), "pre-merge diffstat not stored"
+    task = db_graph.get_task(db, "nVP")
+    assert "feat_VP.py" in (task["diffstat"] or ""), "pre-merge diffstat not stored"
 
 
 def test_failed_verify_still_stores_diffstat(db, git_repo, tmp_path):
     """Diffstat is captured before verify runs — available for diagnosis."""
     from dbops import db_graph
-    thread, _ = _node_thread(db, git_repo, tmp_path, "VD",
+    thread, _ = _task_thread(db, git_repo, tmp_path, "VD",
                              f"{PY} -c \"import sys; sys.exit(1)\"")
     ok, _ = _integrate(thread, db, tmp_path)
     assert not ok
-    assert "feat_VD.py" in (db_graph.get_node(db, "nVD")["diffstat"] or "")
+    assert "feat_VD.py" in (db_graph.get_task(db, "nVD")["diffstat"] or "")
 
 
 def test_verify_and_test_cmd_both_required_when_both_set(db, git_repo, tmp_path):
-    """Repo test_cmd green but node verify_cmd red → no merge (both must pass)."""
+    """Repo test_cmd green but task verify_cmd red → no merge (both must pass)."""
     from juggle_cmd_integrate import _run_integrate
-    thread, _ = _node_thread(db, git_repo, tmp_path, "VB",
+    thread, _ = _task_thread(db, git_repo, tmp_path, "VB",
                              f"{PY} -c \"import sys; sys.exit(1)\"")
     with patch("juggle_cmd_integrate.get_repo_config",
                return_value={"push_mode": "direct", "test_cmd": "true"}):
@@ -160,38 +160,38 @@ def test_verify_and_test_cmd_both_required_when_both_set(db, git_repo, tmp_path)
     assert not (Path(git_repo) / "feat_VB.py").exists()
 
 
-def test_node_without_verify_cmd_merges_normally(db, git_repo, tmp_path):
+def test_task_without_verify_cmd_merges_normally(db, git_repo, tmp_path):
     from dbops import db_graph
-    thread, _ = _node_thread(db, git_repo, tmp_path, "VN", None)
+    thread, _ = _task_thread(db, git_repo, tmp_path, "VN", None)
     ok, msg = _integrate(thread, db, tmp_path)
     assert ok, msg
     assert (Path(git_repo) / "feat_VN.py").exists()
     # diffstat still captured for hydration
-    assert "feat_VN.py" in (db_graph.get_node(db, "nVN")["diffstat"] or "")
+    assert "feat_VN.py" in (db_graph.get_task(db, "nVN")["diffstat"] or "")
 
 
 # ── completion mapping ────────────────────────────────────────────────────────
 
-def test_verify_failure_marks_node_failed_verify_not_failed_integration(db):
-    """The VERIFY_FAIL_PREFIX channel maps to 'failed-verify' on the node —
+def test_verify_failure_marks_task_failed_verify_not_failed_integration(db):
+    """The VERIFY_FAIL_PREFIX channel maps to 'failed-verify' on the task —
     distinct from 'failed-integration' — and main stays untouched (pin)."""
     from dbops import db_graph
-    from juggle_cmd_agents_graph import mark_graph_node
+    from juggle_cmd_agents_graph import mark_graph_task
 
     tid = db.create_thread("t", session_id="sessV")
-    db_graph.create_node(db, node_id="vx", project_id="INBOX",
+    db_graph.create_task(db, task_id="vx", project_id="INBOX",
                          title="VX", prompt="p")
-    db_graph.set_node_thread(db, "vx", tid)
-    mark_graph_node(db, tid, False, None, "sessV", verify_failed=True)
-    assert db_graph.get_node(db, "vx")["state"] == "failed-verify"
+    db_graph.set_task_thread(db, "vx", tid)
+    mark_graph_task(db, tid, False, None, "sessV", verify_failed=True)
+    assert db_graph.get_task(db, "vx")["state"] == "failed-verify"
 
 
 def test_diffstat_column_round_trip(db):
     from dbops import db_graph
-    db_graph.create_node(db, node_id="ds", project_id="INBOX",
+    db_graph.create_task(db, task_id="ds", project_id="INBOX",
                          title="DS", prompt="p")
-    db_graph.set_node_diffstat(db, "ds", " 1 file changed")
-    assert db_graph.get_node(db, "ds")["diffstat"] == " 1 file changed"
+    db_graph.set_task_diffstat(db, "ds", " 1 file changed")
+    assert db_graph.get_task(db, "ds")["diffstat"] == " 1 file changed"
 
 
 def test_hydration_includes_dep_diffstat(db):
@@ -199,10 +199,10 @@ def test_hydration_includes_dep_diffstat(db):
     now captured pre-merge and must flow into dependent prompts."""
     from juggle_graph_dispatch import build_hydration
 
-    node = {"id": "child", "title": "Child", "prompt": "do child",
+    task = {"id": "child", "title": "Child", "prompt": "do child",
             "verify_cmd": None}
     deps = [{"id": "parent", "title": "Parent", "handoff": "api: use foo()",
              "diffstat": " src/foo.py | 10 +++++"}]
-    prompt = build_hydration("objective", node, deps)
+    prompt = build_hydration("objective", task, deps)
     assert "api: use foo()" in prompt
     assert "src/foo.py | 10" in prompt

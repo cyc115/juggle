@@ -29,19 +29,19 @@ def db(tmp_path, monkeypatch):
 
 def _mk_graph(db):
     """a → b (b depends on a); a promoted to ready."""
-    g.create_node(db, node_id="a", project_id="INBOX", title="Node A", prompt="do a")
-    g.create_node(db, node_id="b", project_id="INBOX", title="Node B", prompt="do b")
+    g.create_task(db, task_id="a", project_id="INBOX", title="Task A", prompt="do a")
+    g.create_task(db, task_id="b", project_id="INBOX", title="Task B", prompt="do b")
     g.replace_edges(db, "b", ["a"])
     g.recompute_ready(db, "INBOX")
 
 
-def _bind_running_thread(db, node_id, session="sessA"):
+def _bind_running_thread(db, task_id, session="sessA"):
     tid = db.create_thread("t", session_id=session)
     db.update_thread(tid, agent_task_id="task-1", status="running")
     db._set_session_key_external("session_id", session)
-    g.set_node_thread(db, node_id, tid)
+    g.set_task_thread(db, task_id, tid)
     for ev in ("claim", "dispatch"):
-        g.node_transition(db, node_id, ev)
+        g.task_transition(db, task_id, ev)
     return tid
 
 
@@ -62,11 +62,11 @@ def _complete(tid, summary="done", handoff=None):
 # ── --handoff enforcement (DA M4) ──────────────────────────────────────────────
 
 
-def test_complete_refuses_missing_handoff_when_node_has_dependents(db, capsys):
+def test_complete_refuses_missing_handoff_when_task_has_dependents(db, capsys):
     """REGRESSION PIN (DA M4, 2026-06-10): hydration garbage-in — completing a
-    graph node WITH dependents and no --handoff used to succeed, leaving
+    graph task WITH dependents and no --handoff used to succeed, leaving
     dependents to hydrate from junk. complete-agent must REFUSE (exit nonzero)
-    and leave node + thread untouched."""
+    and leave task + thread untouched."""
     _mk_graph(db)
     tid = _bind_running_thread(db, "a")
 
@@ -76,7 +76,7 @@ def test_complete_refuses_missing_handoff_when_node_has_dependents(db, capsys):
     assert ei.value.code != 0
     out = capsys.readouterr().out + capsys.readouterr().err
     assert "--handoff" in out and "b" in out  # names the dependents
-    assert g.get_node(db, "a")["state"] == "running"  # node untouched
+    assert g.get_task(db, "a")["state"] == "running"  # task untouched
     assert db.get_thread(tid)["status"] == "running"  # thread NOT closed
     assert db.get_open_action_items() == []  # no partial side effects
 
@@ -86,36 +86,36 @@ def test_complete_refuses_blank_handoff(db):
     tid = _bind_running_thread(db, "a")
     with pytest.raises(SystemExit):
         _complete(tid, handoff="   ")
-    assert g.get_node(db, "a")["state"] == "running"
+    assert g.get_task(db, "a")["state"] == "running"
 
 
 def test_complete_with_handoff_passes_enforcement(db):
     _mk_graph(db)
     tid = _bind_running_thread(db, "a")
-    _complete(tid, handoff="files: x.py; api: get_node()")
-    assert g.get_node(db, "a")["state"] == "verified"
-    assert g.get_node(db, "b")["state"] == "ready"
+    _complete(tid, handoff="files: x.py; api: get_task()")
+    assert g.get_task(db, "a")["state"] == "verified"
+    assert g.get_task(db, "b")["state"] == "ready"
 
 
-def test_complete_leaf_node_needs_no_handoff(db):
-    """b has no dependents — the contract only binds nodes others consume."""
+def test_complete_leaf_task_needs_no_handoff(db):
+    """b has no dependents — the contract only binds tasks others consume."""
     _mk_graph(db)
     # drive a → verified first
     tid_a = _bind_running_thread(db, "a")
     _complete(tid_a, handoff="a done")
     tid_b = _bind_running_thread(db, "b")
     _complete(tid_b, handoff=None)  # must NOT raise
-    assert g.get_node(db, "b")["state"] == "verified"
+    assert g.get_task(db, "b")["state"] == "verified"
 
 
-def test_complete_terminal_node_skips_enforcement(db):
-    """Double-completion of an already-terminal node keeps Phase 1 warn+no-op
+def test_complete_terminal_task_skips_enforcement(db):
+    """Double-completion of an already-terminal task keeps Phase 1 warn+no-op
     behavior — no retroactive handoff demand."""
     _mk_graph(db)
     tid = _bind_running_thread(db, "a")
     _complete(tid, handoff="a done")
     _complete(tid, handoff=None)  # second completion: warn, never refuse
-    assert g.get_node(db, "a")["state"] == "verified"
+    assert g.get_task(db, "a")["state"] == "verified"
 
 
 def test_complete_unbound_thread_unaffected_by_enforcement(db):
@@ -123,59 +123,59 @@ def test_complete_unbound_thread_unaffected_by_enforcement(db):
     tid = db.create_thread("t", session_id="sessA")
     db.update_thread(tid, agent_task_id="task-1", status="running")
     db._set_session_key_external("session_id", "sessA")
-    _complete(tid, handoff=None)  # no node — must not raise
+    _complete(tid, handoff=None)  # no task — must not raise
     assert db.get_thread(tid)["status"] == "closed"
 
 
-# ── send-task node guard (DA B5) ───────────────────────────────────────────────
+# ── send-task task guard (DA B5) ───────────────────────────────────────────────
 
 
-def test_check_node_guard_refuses_tick_owned_states(db):
-    from juggle_cmd_agents_graph import check_node_guard
+def test_check_task_guard_refuses_tick_owned_states(db):
+    from juggle_cmd_agents_graph import check_task_guard
 
-    g.create_node(db, node_id="n", project_id="INBOX", title="N", prompt="p")
+    g.create_task(db, task_id="n", project_id="INBOX", title="N", prompt="p")
     tid = db.create_thread("t", session_id="s")
-    g.set_node_thread(db, "n", tid)
+    g.set_task_thread(db, "n", tid)
 
     for state in sorted(g.TICK_OWNED_STATES):
         with db._connect() as conn:
-            conn.execute("UPDATE graph_nodes SET state=? WHERE id='n'", (state,))
+            conn.execute("UPDATE graph_tasks SET state=? WHERE id='n'", (state,))
             conn.commit()
-        err = check_node_guard(db, tid, force=False)
-        assert err and "force-node" in err, state
-        assert check_node_guard(db, tid, force=True) is None, state
+        err = check_task_guard(db, tid, force=False)
+        assert err and "force-task" in err, state
+        assert check_task_guard(db, tid, force=True) is None, state
 
 
-def test_check_node_guard_allows_operator_states_and_unbound(db):
-    from juggle_cmd_agents_graph import check_node_guard
+def test_check_task_guard_allows_operator_states_and_unbound(db):
+    from juggle_cmd_agents_graph import check_task_guard
 
-    g.create_node(db, node_id="n", project_id="INBOX", title="N", prompt="p")
+    g.create_task(db, task_id="n", project_id="INBOX", title="N", prompt="p")
     tid = db.create_thread("t", session_id="s")
-    g.set_node_thread(db, "n", tid)
+    g.set_task_thread(db, "n", tid)
     for state in ("pending", "failed-exec", "failed-integration", "failed-verify",
                   "blocked-failed"):
         with db._connect() as conn:
-            conn.execute("UPDATE graph_nodes SET state=? WHERE id='n'", (state,))
+            conn.execute("UPDATE graph_tasks SET state=? WHERE id='n'", (state,))
             conn.commit()
-        assert check_node_guard(db, tid, force=False) is None, state
+        assert check_task_guard(db, tid, force=False) is None, state
     tid2 = db.create_thread("t2", session_id="s")
-    assert check_node_guard(db, tid2, force=False) is None  # unbound thread
+    assert check_task_guard(db, tid2, force=False) is None  # unbound thread
 
 
-def test_send_task_refuses_node_bound_thread_without_force(db, tmp_path, monkeypatch, capsys):
+def test_send_task_refuses_task_bound_thread_without_force(db, tmp_path, monkeypatch, capsys):
     """REGRESSION PIN (DA B5, 2026-06-10): the autopilot LLM loop raced the
-    tick by manually dispatching ready/running graph nodes. cmd_send_task must
-    refuse threads bound to tick-owned nodes unless --force-node, BEFORE any
+    tick by manually dispatching ready/running graph tasks. cmd_send_task must
+    refuse threads bound to tick-owned tasks unless --force-task, BEFORE any
     tmux side effects."""
     import juggle_cmd_agents_common as _com
     from juggle_cmd_agents import cmd_send_task
 
-    g.create_node(db, node_id="n", project_id="INBOX", title="N", prompt="p")
+    g.create_task(db, task_id="n", project_id="INBOX", title="N", prompt="p")
     g.recompute_ready(db, "INBOX")
     tid = db.create_thread("t", session_id="s")
-    g.set_node_thread(db, "n", tid)
+    g.set_task_thread(db, "n", tid)
     for ev in ("claim", "dispatch"):
-        g.node_transition(db, "n", ev)  # n → running (tick-owned)
+        g.task_transition(db, "n", ev)  # n → running (tick-owned)
     agent_id = db.create_agent("coder", "%99")
     db.update_agent(agent_id, assigned_thread=tid)
 
@@ -189,25 +189,25 @@ def test_send_task_refuses_node_bound_thread_without_force(db, tmp_path, monkeyp
     args = argparse.Namespace(
         agent_id=agent_id, prompt_file=str(prompt_file), no_template=True,
         worktree_path=None, worktree_branch=None, main_repo_path=None,
-        allow_main=False, force_node=False,
+        allow_main=False, force_task=False,
     )
     with pytest.raises(SystemExit) as ei:
         cmd_send_task(args)
     assert ei.value.code != 0
-    assert "force-node" in capsys.readouterr().out
+    assert "force-task" in capsys.readouterr().out
 
 
-def test_send_task_force_node_flag_registered():
-    """--force-node must be wired into the send-task parser."""
+def test_send_task_force_task_flag_registered():
+    """--force-task must be wired into the send-task parser."""
     import juggle_cli_parsers_agents as parsers
 
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command")
     parsers.register(sub)
-    args = parser.parse_args(["send-task", "AGENT", "/tmp/p.md", "--force-node"])
-    assert args.force_node is True
+    args = parser.parse_args(["send-task", "AGENT", "/tmp/p.md", "--force-task"])
+    assert args.force_task is True
     args = parser.parse_args(["send-task", "AGENT", "/tmp/p.md"])
-    assert args.force_node is False
+    assert args.force_task is False
 
 
 # ── topic completion gate + marking (R9, 2026-06-11) ──────────────────────────
@@ -218,9 +218,9 @@ from dbops import db_topics as tp  # noqa: E402
 def _mk_topic_task(db, topic_id, task_id, project="INBOX"):
     if tp.get_topic(db, topic_id) is None:
         tp.create_topic(db, topic_id=topic_id, project_id=project, title=topic_id)
-    g.create_node(db, node_id=task_id, project_id=project, title=task_id, prompt="p")
+    g.create_task(db, task_id=task_id, project_id=project, title=task_id, prompt="p")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_nodes SET topic_id=? WHERE id=?", (topic_id, task_id))
+        conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic_id, task_id))
         conn.commit()
 
 
@@ -259,7 +259,7 @@ def test_complete_agent_refuses_while_tasks_unmarked(db, capsys, monkeypatch):
 
     assert ei.value.code != 0
     assert tp.get_topic(db, "A")["state"] == "running"  # NOT advanced past running
-    assert g.get_node(db, "a2")["state"] == "pending"
+    assert g.get_task(db, "a2")["state"] == "pending"
     assert calls == [], "integrate must NOT run when the gate refuses"
 
 
@@ -293,7 +293,7 @@ def test_topic_with_failed_task_completes_as_failed_verify(db, monkeypatch):
     _mk_topic_task(db, "A", "a2")
     _mk_topic_task(db, "B", "b1")
     with db._connect() as conn:  # B derives on A (b1 → a1)
-        conn.execute("INSERT INTO graph_edges (node_id, depends_on_id) "
+        conn.execute("INSERT INTO graph_edges (task_id, depends_on_id) "
                      "VALUES ('b1','a1')")
         conn.commit()
     _verify_task(db, "a1")
@@ -313,38 +313,38 @@ def test_topic_with_failed_task_completes_as_failed_verify(db, monkeypatch):
 
 def test_guard_refuses_unbound_thread_of_armed_project(db):
     """REGRESSION PIN (2026-06-10 R8): ad-hoc send-task to an armed project's
-    threads bypassed the graph — new work must route through add-node."""
-    from juggle_cmd_agents_graph import check_node_guard
+    threads bypassed the graph — new work must route through add-task."""
+    from juggle_cmd_agents_graph import check_task_guard
     from juggle_autopilot_state import arm_project
 
     arm_project(db, "INBOX")
     tid = db.create_thread("adhoc", session_id="s")
     db.update_thread(tid, project_id="INBOX")
-    err = check_node_guard(db, tid, force=False)
-    assert err and "add-node" in err and "force-node" in err
-    assert check_node_guard(db, tid, force=True) is None
+    err = check_task_guard(db, tid, force=False)
+    assert err and "add-task" in err and "force-task" in err
+    assert check_task_guard(db, tid, force=True) is None
 
 
 def test_guard_lifts_on_disarm_and_ignores_unarmed(db):
-    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_cmd_agents_graph import check_task_guard
     from juggle_autopilot_state import arm_project, disarm_project
 
     p2 = db.create_project(name="Other", objective="o")
     arm_project(db, p2)
     tid = db.create_thread("adhoc", session_id="s")
     db.update_thread(tid, project_id="INBOX")
-    assert check_node_guard(db, tid, force=False) is None  # unarmed project
+    assert check_task_guard(db, tid, force=False) is None  # unarmed project
     arm_project(db, "INBOX")
-    assert check_node_guard(db, tid, force=False) is not None
+    assert check_task_guard(db, tid, force=False) is not None
     disarm_project(db, "INBOX")
-    assert check_node_guard(db, tid, force=False) is None
+    assert check_task_guard(db, tid, force=False) is None
 
 
 def test_guard_topic_bound_operator_state_allowed(db):
     """R8 must not tighten DA B5: a TOPIC-bound thread in operator territory
     (failed-exec) stays manually redispatchable even while armed."""
     from dbops import db_topics as tp_
-    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_cmd_agents_graph import check_task_guard
     from juggle_autopilot_state import arm_project
 
     arm_project(db, "INBOX")
@@ -354,4 +354,4 @@ def test_guard_topic_bound_operator_state_allowed(db):
     with db._connect() as conn:
         conn.execute("UPDATE graph_topics SET state='failed-exec' WHERE id='T1'")
         conn.commit()
-    assert check_node_guard(db, tid, force=False) is None
+    assert check_task_guard(db, tid, force=False) is None

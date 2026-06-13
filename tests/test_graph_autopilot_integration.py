@@ -2,7 +2,7 @@
 cmd_complete_agent calls + directly-invoked graph_tick (autopilot R9 topic tick).
 
 Rewritten to the TOPIC seam (2026-06-11 Task 7): graph_tick dispatches one
-thread per TOPIC; each topic's tasks are marked via the node machine
+thread per TOPIC; each topic's tasks are marked via the task machine
 (graph mark-task), then complete-agent finishes the topic ONCE — the A10 gate
 (refuse while tasks unmarked), integrate-once-per-topic, topic verified /
 failure propagation, and ready-set promotion of dependent topics.
@@ -40,16 +40,16 @@ def db(tmp_path, monkeypatch):
 def _topic(db, tid, project="INBOX"):
     """A single-task synthetic topic `tid` (task `<tid>1`)."""
     tp.create_topic(db, topic_id=tid, project_id=project, title=f"Topic {tid}")
-    g.create_node(db, node_id=f"{tid}1", project_id=project, title=f"{tid}1",
+    g.create_task(db, task_id=f"{tid}1", project_id=project, title=f"{tid}1",
                   prompt=f"build {tid}")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_nodes SET topic_id=? WHERE id=?", (tid, f"{tid}1"))
+        conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (tid, f"{tid}1"))
         conn.commit()
 
 
 def _task_edge(db, child_task, parent_task):
     with db._connect() as conn:
-        conn.execute("INSERT INTO graph_edges (node_id, depends_on_id) VALUES (?,?)",
+        conn.execute("INSERT INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
                      (child_task, parent_task))
         conn.commit()
 
@@ -182,8 +182,8 @@ def test_diamond_failed_integration_branch_blocks_dependents_loudly(db, monkeypa
                for i in items), "action item must name the blocked dependent"
 
 
-def test_add_node_mid_execution_does_not_touch_running_topic(db):
-    """FEATURE PIN (graph add-node, 2026-06-10): injecting work while a topic is
+def test_add_task_mid_execution_does_not_touch_running_topic(db):
+    """FEATURE PIN (graph add-task, 2026-06-10): injecting work while a topic is
     RUNNING must leave the running topic untouched and execute the new topic in
     dependency order via the tick (no manual dispatch).
     (rewritten to the topic seam, R9 2026-06-11 Task 7)"""
@@ -198,9 +198,9 @@ def test_add_node_mid_execution_does_not_touch_running_topic(db):
     a_before = tp.get_topic(db, "A")
 
     # Inject a new single-task topic X whose task depends on still-running A,
-    # via the live add-node CLI (--topic X required: project has real topics).
+    # via the live add-task CLI (--topic X required: project has real topics).
     tp.create_topic(db, topic_id="X", project_id="INBOX", title="Topic X")
-    cg.cmd_graph_add_node(SimpleNamespace(
+    cg.cmd_graph_add_task(SimpleNamespace(
         project="INBOX", id="x1", title="X1", prompt="run after A",
         deps="A1", required_by=None, verify_cmd=None, topic="X",
         json_out=False, db_path=str(db.db_path),

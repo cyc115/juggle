@@ -105,8 +105,7 @@ CREATE TABLE IF NOT EXISTS agents (
   last_send_task_pane_hash   TEXT,
   last_send_task_at          TEXT,
   last_activity_at           TEXT,
-  repo_path                  TEXT,
-  current_run_id             TEXT
+  repo_path                  TEXT
 );
 """
 
@@ -231,10 +230,10 @@ CREATE TABLE IF NOT EXISTS project_corrections (
 
 # Autopilot graph/topic store DDL lives in dbops.schema_graph (architecture
 # gate: ≤300 lines/module). Re-exported here so existing
-# ``from dbops.schema import CREATE_GRAPH_NODES`` imports keep working.
+# ``from dbops.schema import CREATE_GRAPH_TASKS`` imports keep working.
 from dbops.schema_graph import (  # noqa: E402,F401
     CREATE_GRAPH_EDGES,
-    CREATE_GRAPH_NODES,
+    CREATE_GRAPH_TASKS,
     CREATE_GRAPH_TOPICS,
 )
 

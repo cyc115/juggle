@@ -3,7 +3,7 @@
 Owns: lock path resolution, PID-liveness checks, acquire/release of the
 per-repo lockfile used to serialize `_run_integrate` runs (the merge queue).
 Must not own: the integration pipeline itself (juggle_cmd_integrate) or any
-graph-node semantics.
+graph-task semantics.
 
 Extracted verbatim from juggle_cmd_integrate (2026-06-10, autopilot Phase 3
 mechanical split — the file was at its LOC-gate budget).
@@ -20,7 +20,7 @@ from pathlib import Path
 # (DA M2: long test_cmd runs must look live to waiters/operators).
 HEARTBEAT_INTERVAL_SECS = 30.0
 
-# Autopilot-context integrations (thread bound to a graph node) wait longer
+# Autopilot-context integrations (thread bound to a graph task) wait longer
 # for the merge queue: fan-in completions legitimately queue behind a holder
 # running a full test suite (DA M2).
 AUTOPILOT_LOCK_TIMEOUT_SECS = 1800.0

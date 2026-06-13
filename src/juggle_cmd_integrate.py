@@ -13,11 +13,11 @@ from juggle_integrate_lock import (  # noqa: F401 — re-exported for callers
 )
 
 
-def _graph_node_for_thread(db, thread_uuid: str) -> dict | None:
-    """Graph node bound to this thread, or None (pre-migration DB, Mock db)."""
+def _graph_task_for_thread(db, thread_uuid: str) -> dict | None:
+    """Graph task bound to this thread, or None (pre-migration DB, Mock db)."""
     try:
         from dbops import db_graph
-        return db_graph.get_node_by_thread(db, thread_uuid)
+        return db_graph.get_task_by_thread(db, thread_uuid)
     except Exception:
         return None
 
@@ -54,10 +54,10 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
     push_mode = repo_cfg["push_mode"]
     test_cmd = repo_cfg["test_cmd"]
 
-    # Autopilot context (thread bound to a graph node): fan-in completions
+    # Autopilot context (thread bound to a graph task): fan-in completions
     # legitimately queue behind a long test_cmd — wait up to 30 min (DA M2).
-    node = _graph_node_for_thread(db, thread_uuid)
-    lock_timeout = AUTOPILOT_LOCK_TIMEOUT_SECS if node else 300.0
+    task = _graph_task_for_thread(db, thread_uuid)
+    lock_timeout = AUTOPILOT_LOCK_TIMEOUT_SECS if task else 300.0
     try:
         lock_path = acquire_repo_lock(main_repo_path, timeout_secs=lock_timeout)
     except RuntimeError as e:
@@ -172,12 +172,12 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
                     f"stdout tail: {result.stdout[-300:].strip()}"
                 )
 
-        # ── 5b. Graph-node gate: pre-merge diffstat + verify_cmd (DA M3) ──────
+        # ── 5b. Graph-task gate: pre-merge diffstat + verify_cmd (DA M3) ──────
         # Runs in the worktree, post-rebase, BEFORE any merge/push — alongside
         # test_cmd (both must pass if both set). A verify failure aborts here:
-        # main untouched, worktree + branch preserved, node → failed-verify.
-        from juggle_integrate_verify import verify_node_premerge
-        v_ok, v_reason = verify_node_premerge(db, node, worktree_path, rebase_onto)
+        # main untouched, worktree + branch preserved, task → failed-verify.
+        from juggle_integrate_verify import verify_task_premerge
+        v_ok, v_reason = verify_task_premerge(db, task, worktree_path, rebase_onto)
         if not v_ok:
             return _fail(v_reason)
 

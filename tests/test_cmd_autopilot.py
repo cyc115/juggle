@@ -80,13 +80,13 @@ def test_arm_unknown_project_fails_loud(db_path, db, flag, capsys):
     assert not flag.exists()
 
 
-def test_arm_prints_spec_path_and_node_counts(db_path, db, flag, capsys):
-    g.create_node(db, node_id="a", project_id="INBOX", title="A", prompt="do a")
+def test_arm_prints_spec_path_and_task_counts(db_path, db, flag, capsys):
+    g.create_task(db, task_id="a", project_id="INBOX", title="A", prompt="do a")
     g.recompute_ready(db, "INBOX")
     ap.cmd_autopilot(_args(db_path, "arm", "INBOX"))
     out = capsys.readouterr().out
     assert "INBOX-graph.md" in out  # decomposition spec path convention (DA m3)
-    assert "1" in out  # node count surfaces
+    assert "1" in out  # task count surfaces
 
 
 def test_arm_warns_when_no_graph_loaded(db_path, flag, capsys):
@@ -174,7 +174,7 @@ def test_cli_registers_autopilot_subcommand():
 
 def test_arm_refuses_pr_push_mode_repo(db_path, db, flag, monkeypatch, capsys):
     """REGRESSION PIN (DA round-2 MAJOR-2, 2026-06-10): arming autopilot in a
-    push_mode='pr' repo lets integrate mark nodes 'verified' without merging —
+    push_mode='pr' repo lets integrate mark tasks 'verified' without merging —
     dependents hydrate against a main that does not contain their deps.
     `autopilot arm` must refuse with a clear error."""
     import juggle_cmd_graph as cg

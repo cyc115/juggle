@@ -24,7 +24,7 @@ def db(tmp_path: Path, monkeypatch) -> JuggleDB:
     return d
 
 
-def test_carveout_names_every_armed_project_and_addnode_route(db):
+def test_carveout_names_every_armed_project_and_addtask_route(db):
     """REGRESSION PIN (2026-06-10): the carve-out named ONE project — an agent
     could treat project 2's topics as manually dispatchable."""
     db.create_project(name="P1", objective="p1")
@@ -38,7 +38,7 @@ def test_carveout_names_every_armed_project_and_addnode_route(db):
     db.set_setting(ARMED_PROJECT_KEY, f"{p1},{p2}")
     ctx = ha._armed_graph_context()
     first_line = ctx.splitlines()[0]
-    assert p1 in first_line and p2 in first_line and "add-node" in ctx
+    assert p1 in first_line and p2 in first_line and "add-task" in ctx
     assert f"Graph [{p1}]" in ctx and f"Graph [{p2}]" in ctx
 
 

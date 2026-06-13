@@ -73,9 +73,9 @@ def test_poll_once_calls_reap_stale_agents():
 
 
 def _find_func(tree: ast.AST, name: str) -> ast.FunctionDef | None:
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == name:
-            return node
+    for task in ast.walk(tree):
+        if isinstance(task, ast.FunctionDef) and task.name == name:
+            return task
     return None
 
 

@@ -1,14 +1,14 @@
 """juggle_cmd_agents_graph_topics — TOPIC completion/failure glue (R9 Task 7).
 
 Extracted from juggle_cmd_agents_graph (2026-06-11, LOC gate): the topic twins
-of the node completion glue. The TOPIC owns the thread; its tasks are marked
-per-task via the node machine (graph mark-task) and the topic finishes ONCE.
+of the task completion glue. The TOPIC owns the thread; its tasks are marked
+per-task via the task machine (graph mark-task) and the topic finishes ONCE.
 
 Owns: the A10 completion gate (check_topic_completion_gate + enforce_topic_gate),
 mark_graph_topic (maps integrate/verify outcomes onto the TOPIC machine; falls
-back to mark_graph_node for legacy node-bound threads), and fail_graph_topic
+back to mark_graph_task for legacy task-bound threads), and fail_graph_topic
 (agent death → topic failed-exec + dependent blocking, per-task states preserved).
-Must not own: node glue (juggle_cmd_agents_graph), topic state semantics
+Must not own: task glue (juggle_cmd_agents_graph), topic state semantics
 (dbops.db_topics), completion/failure handlers (juggle_cmd_agents_complete).
 """
 
@@ -54,18 +54,18 @@ def enforce_topic_gate(db, thread_uuid) -> None:
 
 def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
                      *, verify_failed=False):
-    """Topic twin of mark_graph_node: map (integrate, verify) outcomes onto the
+    """Topic twin of mark_graph_task: map (integrate, verify) outcomes onto the
     TOPIC machine; verify_ok additionally requires every task 'verified'.
-    Falls back to mark_graph_node for legacy node-bound threads."""
+    Falls back to mark_graph_task for legacy task-bound threads."""
     from dbops import db_topics
-    from juggle_cmd_agents_graph import mark_graph_node
+    from juggle_cmd_agents_graph import mark_graph_task
 
     try:
         topic = db_topics.get_topic_by_thread(db, thread_uuid)
     except Exception:
         return  # pre-migration DB without graph tables
     if not topic:
-        return mark_graph_node(db, thread_uuid, integrate_ok, handoff,
+        return mark_graph_task(db, thread_uuid, integrate_ok, handoff,
                                session_id, verify_failed=verify_failed)
     tasks = db_topics.list_topic_tasks(db, topic["id"])
     all_verified = bool(tasks) and all(n["state"] == "verified" for n in tasks)
@@ -125,7 +125,7 @@ def fail_graph_topic(db, thread_uuid, session_id, reason=None) -> bool:
     """Agent death on a TOPIC thread → topic failed-exec + derived-dependent
     blocking + HIGH action item. Per-task states are NOT touched (resume story,
     spec DA A9). Returns True if a topic was handled, False otherwise (caller
-    falls back to the node path)."""
+    falls back to the task path)."""
     from dbops import db_topics
     from juggle_cmd_agents_graph import _ENFORCEABLE_STATES
 

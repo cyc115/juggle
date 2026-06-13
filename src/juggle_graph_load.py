@@ -6,9 +6,9 @@ load path (parse → validate → guarded one-transaction topic+task upsert) liv
 in one focused module and juggle_cmd_graph stays under the architecture line
 budget. Owns the load handler only.
 
-Must not own: pure spec parsing/validation (juggle_graph_upsert), node/topic
+Must not own: pure spec parsing/validation (juggle_graph_upsert), task/topic
 state semantics (dbops.db_graph / dbops.db_topics), or the PR-mode refusal
-policy / live add-node (juggle_cmd_graph — pr_mode_refusal imported lazily to
+policy / live add-task (juggle_cmd_graph — pr_mode_refusal imported lazily to
 keep `_git_root` monkeypatchable on that module and avoid an import cycle).
 
 Spec format (markdown), 3-tier with legacy flat fallback:
@@ -20,8 +20,8 @@ Spec format (markdown), 3-tier with legacy flat fallback:
     verify_cmd: pytest tests -q   (optional; lint-gated)
     <remaining lines = dispatch prompt>
 
-A spec with no `## topic` headings loads as before — each flat `## node`
-becomes a synthetic single-task topic `T-<node-id>`.
+A spec with no `## topic` headings loads as before — each flat `## task`
+becomes a synthetic single-task topic `T-<task-id>`.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ from juggle_graph_upsert import (
 
 def cmd_project_graph_load(args):
     """Load (or guarded-upsert) a graph spec markdown file into graph_topics +
-    graph_nodes."""
+    graph_tasks."""
     from juggle_cmd_graph import pr_mode_refusal  # lazy: avoid import cycle
 
     db = get_db(getattr(args, "db_path", None), init=True)
@@ -68,21 +68,21 @@ def cmd_project_graph_load(args):
         sys.exit(1)
 
     # Flatten the task tier; remember each task's owning topic for topic_id.
-    nodes = [n for t in topics for n in t["tasks"]]
-    node_topic = {n["id"]: t["id"] for t in topics for n in t["tasks"]}
+    tasks = [n for t in topics for n in t["tasks"]]
+    task_topic = {n["id"]: t["id"] for t in topics for n in t["tasks"]}
 
-    # Guarded upsert: REFUSE the whole load if any protected node would change.
-    existing = {n["id"]: n for n in db_graph.list_nodes(db, args.project)}
+    # Guarded upsert: REFUSE the whole load if any protected task would change.
+    existing = {n["id"]: n for n in db_graph.list_tasks(db, args.project)}
     refused = [
         n["id"]
-        for n in nodes
+        for n in tasks
         if n["id"] in existing
         and existing[n["id"]]["state"] in db_graph.PROTECTED_STATES
         and _content_changed(existing[n["id"]], n, n["deps"], db)
     ]
     if refused:
         print(
-            "Re-load REFUSED — these nodes are dispatching/running/integrating/"
+            "Re-load REFUSED — these tasks are dispatching/running/integrating/"
             f"verified and may not change: {', '.join(refused)}",
             file=sys.stderr,
         )
@@ -90,12 +90,12 @@ def cmd_project_graph_load(args):
 
     existing_topics = {t["id"]: t for t in db_topics.list_topics(db, args.project)}
 
-    # Single transaction (DA round-2 BLOCKER-1c, 2026-06-10): per-node commits
+    # Single transaction (DA round-2 BLOCKER-1c, 2026-06-10): per-task commits
     # left a half-applied spec when a later upsert raised. All-or-nothing.
     created = updated = unchanged = 0
     conn = db._connect()
     try:
-        # Topics first (graph_nodes.topic_id FK references graph_topics). A topic
+        # Topics first (graph_tasks.topic_id FK references graph_topics). A topic
         # in a PROTECTED_STATE keeps its state untouched; title/objective of a
         # non-protected existing topic may update.
         for t in topics:
@@ -110,12 +110,12 @@ def cmd_project_graph_load(args):
                     "UPDATE graph_topics SET title=?, objective=? WHERE id=?",
                     (t["title"], t.get("objective", ""), t["id"]),
                 )
-        for n in nodes:
+        for n in tasks:
             prev = existing.get(n["id"])
             if prev is None:
-                db_graph.create_node(
+                db_graph.create_task(
                     db,
-                    node_id=n["id"],
+                    task_id=n["id"],
                     project_id=args.project,
                     title=n["title"],
                     prompt=n["prompt"],
@@ -123,8 +123,8 @@ def cmd_project_graph_load(args):
                     conn=conn,
                 )
                 conn.execute(
-                    "UPDATE graph_nodes SET topic_id=? WHERE id=?",
-                    (node_topic[n["id"]], n["id"]),
+                    "UPDATE graph_tasks SET topic_id=? WHERE id=?",
+                    (task_topic[n["id"]], n["id"]),
                 )
                 db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
                 created += 1
@@ -133,36 +133,36 @@ def cmd_project_graph_load(args):
             ):
                 unchanged += 1
             else:
-                db_graph.update_node_content(
+                db_graph.update_task_content(
                     db, n["id"], title=n["title"], prompt=n["prompt"],
                     verify_cmd=n["verify_cmd"], conn=conn,
                 )
                 conn.execute(
-                    "UPDATE graph_nodes SET topic_id=? WHERE id=?",
-                    (node_topic[n["id"]], n["id"]),
+                    "UPDATE graph_tasks SET topic_id=? WHERE id=?",
+                    (task_topic[n["id"]], n["id"]),
                 )
                 db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
                 if prev["state"] != "pending":
-                    db_graph.node_transition(db, n["id"], "reload", conn=conn)
+                    db_graph.task_transition(db, n["id"], "reload", conn=conn)
                 updated += 1
         conn.commit()
     except Exception as e:
         conn.rollback()
         print(
-            f"Graph load FAILED — rolled back, no nodes changed: {e}",
+            f"Graph load FAILED — rolled back, no tasks changed: {e}",
             file=sys.stderr,
         )
         sys.exit(1)
     finally:
         conn.close()
 
-    # Resume the blocked tail of any node the reload just fixed (BLOCKER-1b):
+    # Resume the blocked tail of any task the reload just fixed (BLOCKER-1b):
     # blocked-failed ⇄ pending re-derived from current dep states.
     unblocked, _reblocked = db_graph.recompute_blocked(db, args.project)
     ready = db_graph.recompute_ready(db, args.project)
     resumed = f" resumed: {', '.join(unblocked)}." if unblocked else ""
     print(
-        f"Graph loaded for project {args.project}: {len(nodes)} node(s) "
+        f"Graph loaded for project {args.project}: {len(tasks)} task(s) "
         f"({created} new, {updated} updated, {unchanged} unchanged). "
         f"ready: {', '.join(ready) if ready else '(none new)'}.{resumed}"
     )

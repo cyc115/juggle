@@ -4,7 +4,7 @@ Covers: atomic claim (DA B4 pin: two concurrent claimers, exactly one wins),
 cap-aware defer + next-tick retry, crash-mid-dispatch stale-claim sweep
 recovery, hydration content (DA M4: dep handoffs + objective, never
 thread.summary), and graph_tick orchestration (armed-key gating, dispatch
-errors → node released + action item, disarm mid-batch).
+errors → task released + action item, disarm mid-batch).
 """
 from __future__ import annotations
 
@@ -30,17 +30,17 @@ def db(tmp_path: Path) -> JuggleDB:
     return d
 
 
-def _mk(db, node_id, deps=(), state=None, **kw):
-    g.create_node(
+def _mk(db, task_id, deps=(), state=None, **kw):
+    g.create_task(
         db,
-        node_id=node_id,
+        task_id=task_id,
         project_id="INBOX",
-        title=kw.get("title", f"Node {node_id}"),
-        prompt=kw.get("prompt", f"do {node_id}"),
+        title=kw.get("title", f"Task {task_id}"),
+        prompt=kw.get("prompt", f"do {task_id}"),
         verify_cmd=kw.get("verify_cmd"),
     )
     if deps:
-        g.replace_edges(db, node_id, list(deps))
+        g.replace_edges(db, task_id, list(deps))
 
 
 def _arm(db, project="INBOX"):
@@ -51,13 +51,13 @@ class FakeDispatch:
     """Records dispatches; optionally raises. No tmux, no LLM."""
 
     def __init__(self, exc=None):
-        self.calls: list[tuple[str, str, str]] = []  # (thread_id, prompt, node_id)
+        self.calls: list[tuple[str, str, str]] = []  # (thread_id, prompt, task_id)
         self.exc = exc
 
-    def __call__(self, db, thread_id, prompt, node):
+    def __call__(self, db, thread_id, prompt, task):
         if self.exc:
             raise self.exc
-        self.calls.append((thread_id, prompt, node["id"]))
+        self.calls.append((thread_id, prompt, task["id"]))
 
 
 # ── settings key / arming ─────────────────────────────────────────────────────
@@ -85,16 +85,16 @@ def test_get_armed_project_blank_means_disarmed(db):
 
 def test_claim_only_from_ready(db):
     _mk(db, "a")
-    assert gd.claim_node(db, "a") is False  # pending — not claimable
+    assert gd.claim_task(db, "a") is False  # pending — not claimable
     g.recompute_ready(db, "INBOX")
-    assert gd.claim_node(db, "a") is True
-    assert g.get_node(db, "a")["state"] == "dispatching"
-    assert gd.claim_node(db, "a") is False  # already claimed
+    assert gd.claim_task(db, "a") is True
+    assert g.get_task(db, "a")["state"] == "dispatching"
+    assert gd.claim_task(db, "a") is False  # already claimed
 
 
 def test_concurrent_claim_exactly_one_wins(db, tmp_path):
     """REQUIRED PIN (DA B4, 2026-06-10): two dispatchers racing the same ready
-    node spawned two agents on one thread/worktree — the atomic
+    task spawned two agents on one thread/worktree — the atomic
     UPDATE..WHERE state='ready' claim must let EXACTLY one claimer win."""
     _mk(db, "a")
     g.recompute_ready(db, "INBOX")
@@ -106,7 +106,7 @@ def test_concurrent_claim_exactly_one_wins(db, tmp_path):
 
     def _claim(handle):
         barrier.wait()
-        won = gd.claim_node(handle, "a")
+        won = gd.claim_task(handle, "a")
         with lock:
             results.append(won)
 
@@ -119,17 +119,17 @@ def test_concurrent_claim_exactly_one_wins(db, tmp_path):
         t.join()
 
     assert sorted(results) == [False, True]  # exactly one winner
-    assert g.get_node(db, "a")["state"] == "dispatching"
+    assert g.get_task(db, "a")["state"] == "dispatching"
 
 
 # ── stale-claim sweep ──────────────────────────────────────────────────────────
 
 
-def _age_claim(db, node_id, secs):
+def _age_claim(db, task_id, secs):
     old = (datetime.now(timezone.utc) - timedelta(seconds=secs)).isoformat()
     with db._connect() as conn:
         conn.execute(
-            "UPDATE graph_nodes SET updated_at=? WHERE id=?", (old, node_id)
+            "UPDATE graph_tasks SET updated_at=? WHERE id=?", (old, task_id)
         )
         conn.commit()
 
@@ -140,17 +140,17 @@ def test_sweep_resets_stale_threadless_claims_only(db):
     _mk(db, "bound")
     g.recompute_ready(db, "INBOX")
     for n in ("stale", "fresh", "bound"):
-        assert gd.claim_node(db, n)
-    g.set_node_thread(db, "bound", "some-thread")
+        assert gd.claim_task(db, n)
+    g.set_task_thread(db, "bound", "some-thread")
     _age_claim(db, "stale", gd.STALE_CLAIM_SECS + 60)
     _age_claim(db, "bound", gd.STALE_CLAIM_SECS + 60)
 
     swept = gd.sweep_stale_claims(db, "INBOX")
 
     assert swept == ["stale"]
-    assert g.get_node(db, "stale")["state"] == "ready"
-    assert g.get_node(db, "fresh")["state"] == "dispatching"  # too young
-    assert g.get_node(db, "bound")["state"] == "dispatching"  # has a thread
+    assert g.get_task(db, "stale")["state"] == "ready"
+    assert g.get_task(db, "fresh")["state"] == "dispatching"  # too young
+    assert g.get_task(db, "bound")["state"] == "dispatching"  # has a thread
 
 
 def test_crash_mid_dispatch_recovers_via_sweep_then_redispatches(db):
@@ -175,17 +175,17 @@ def test_crash_mid_dispatch_recovers_via_sweep_then_redispatches(db):
 
 
 def test_build_hydration_contains_objective_handoffs_prompt_contract():
-    node = {
+    task = {
         "id": "api",
         "title": "Build API",
         "prompt": "Implement the API on top of the schema.",
         "verify_cmd": "uv run pytest tests/test_api.py -q",
     }
     deps = [
-        {"id": "schema", "title": "Add schema", "handoff": "migration 35 adds graph tables; use db_graph.get_node"},
+        {"id": "schema", "title": "Add schema", "handoff": "migration 35 adds graph tables; use db_graph.get_task"},
         {"id": "auth", "title": "Auth", "handoff": None},
     ]
-    out = gd.build_hydration("Ship the autopilot.", node, deps)
+    out = gd.build_hydration("Ship the autopilot.", task, deps)
     assert "Ship the autopilot." in out
     assert "migration 35 adds graph tables" in out
     assert "### schema — Add schema" in out  # dep section: id then title
@@ -229,7 +229,7 @@ def test_tick_noop_when_disarmed(db):
     assert tp.get_topic(db, "a")["state"] == "ready"
 
 
-def test_tick_dispatches_ready_nodes_and_binds_threads(db):
+def test_tick_dispatches_ready_tasks_and_binds_threads(db):
     """(adapted to topics, R9 2026-06-11)"""
     _mk_topic(db, "a")
     _mk_topic(db, "b")
@@ -291,7 +291,7 @@ def test_tick_cap_hit_defers_and_retries_next_tick(db, monkeypatch):
     assert tp.get_topic(db, "a")["state"] == "running"
 
 
-def test_tick_dispatch_failure_releases_node_and_files_action_item(db):
+def test_tick_dispatch_failure_releases_task_and_files_action_item(db):
     """(adapted to topics, R9 2026-06-11)"""
     _mk_topic(db, "a")
     _arm(db)
@@ -339,9 +339,9 @@ def test_tick_stops_claiming_when_disarmed_mid_batch(db):
 # ── DA round-2 (2026-06-10): dispatch window, retry cap, error hygiene ─────────
 
 
-def test_node_thread_bound_before_dispatch_call(db):
+def test_task_thread_bound_before_dispatch_call(db):
     """REGRESSION PIN (DA round-2 MAJOR-4, 2026-06-10): the tick dispatched
-    BEFORE binding thread_id; a crash in that window left a 'dispatching' node
+    BEFORE binding thread_id; a crash in that window left a 'dispatching' task
     with thread_id NULL — the stale sweep reclaimed it and the task was
     double-dispatched. thread_id must be bound before send-task fires.
     (adapted to topics, R9 2026-06-11)"""
@@ -397,7 +397,7 @@ def test_capacity_defer_clears_thread_binding(db):
 
 def test_dispatch_retry_cap_marks_failed_exec_and_stops_flood(db):
     """REGRESSION PIN (DA round-2 minor 1, 2026-06-10): a permanently broken
-    dispatch path reset the node to 'ready' every tick — one HIGH action item
+    dispatch path reset the task to 'ready' every tick — one HIGH action item
     per tick forever (action-item flood) and an infinite retry loop. After
     MAX_DISPATCH_FAILS consecutive failures the topic must go failed-exec and
     propagate to dependents instead. (adapted to topics, R9 2026-06-11)"""
@@ -466,7 +466,7 @@ def test_cross_connection_thread_visibility(tmp_path):
     db1 = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db1.init_db()
 
-    thread_id = db1.create_thread("node thread", session_id="s")
+    thread_id = db1.create_thread("task thread", session_id="s")
 
     db2 = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db2.init_db()
@@ -490,7 +490,7 @@ def test_dispatch_via_pool_passes_db_path_to_cmd_get_agent(tmp_path, monkeypatch
 
     db_local = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db_local.init_db()
-    thread_id = db_local.create_thread("node-thread", session_id="s")
+    thread_id = db_local.create_thread("task-thread", session_id="s")
 
     captured = {}
 
@@ -541,9 +541,9 @@ def _mk_topic(db, tid, project="INBOX", n_tasks=1, ready=True):
     tp.create_topic(db, topic_id=tid, project_id=project, title=f"Topic {tid}")
     for i in range(n_tasks):
         nid = f"{tid}-k{i}"
-        g.create_node(db, node_id=nid, project_id=project, title=nid, prompt="p")
+        g.create_task(db, task_id=nid, project_id=project, title=nid, prompt="p")
         with db._connect() as conn:
-            conn.execute("UPDATE graph_nodes SET topic_id=? WHERE id=?", (tid, nid))
+            conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (tid, nid))
             conn.commit()
     if ready:
         tp.recompute_topic_ready(db, project)
@@ -572,7 +572,7 @@ def _dep_topic(db, child, parent, project="INBOX"):
     """Make topic `child` derive-depend on `parent`: child's task → parent's."""
     with db._connect() as conn:
         conn.execute(
-            "INSERT INTO graph_edges (node_id, depends_on_id) VALUES (?,?)",
+            "INSERT INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
             (f"{child}-k0", f"{parent}-k0"),
         )
         conn.commit()
@@ -676,11 +676,11 @@ def test_single_project_single_topic_behavior_unchanged(db):
     the legacy flat tick (one dispatch, dep-gated)."""
     _mk_topic(db, "T-a")
     tp.create_topic(db, topic_id="T-b", project_id="INBOX", title="b")
-    g.create_node(db, node_id="b", project_id="INBOX", title="b", prompt="p")
+    g.create_task(db, task_id="b", project_id="INBOX", title="b", prompt="p")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_nodes SET topic_id='T-b' WHERE id='b'")
+        conn.execute("UPDATE graph_tasks SET topic_id='T-b' WHERE id='b'")
         conn.execute(
-            "INSERT INTO graph_edges (node_id, depends_on_id) VALUES ('b','T-a-k0')")
+            "INSERT INTO graph_edges (task_id, depends_on_id) VALUES ('b','T-a-k0')")
         conn.commit()
     tp.recompute_topic_ready(db, "INBOX")
     _arm(db)  # legacy scalar arm helper

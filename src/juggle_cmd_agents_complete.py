@@ -28,8 +28,8 @@ def cmd_complete_agent(args):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
 
-    # Output contract (DA M4): a graph node with dependents MUST hand off.
-    # Enforced BEFORE any side effects — refusal leaves node + thread untouched.
+    # Output contract (DA M4): a graph task with dependents MUST hand off.
+    # Enforced BEFORE any side effects — refusal leaves task + thread untouched.
     from juggle_cmd_agents_graph import close_adhoc_run, enforce_handoff_contract
     from juggle_cmd_agents_graph_topics import enforce_topic_gate
 
@@ -47,7 +47,7 @@ def cmd_complete_agent(args):
         ft_success, ft_msg = _com._finalize_worktree(thread)
 
     # DA M3 channel: a VERIFY_FAIL_PREFIX'd failure means rebase + repo tests
-    # were fine but the node's verify_cmd was red → node maps to
+    # were fine but the task's verify_cmd was red → task maps to
     # 'failed-verify' (not 'failed-integration'); main was left untouched.
     from juggle_integrate_verify import VERIFY_FAIL_PREFIX
 
@@ -97,11 +97,10 @@ def cmd_complete_agent(args):
         )
     if open_questions:
         db.update_thread(thread_uuid, open_questions="[]")
-
     # 2. Store the agent result as an assistant message
     if args.result_summary:
         db.add_message(thread_uuid, role="assistant", content=args.result_summary)
-    close_adhoc_run(db, thread_uuid, args.result_summary)  # ledger (ad-hoc; graph→6c)
+    close_adhoc_run(db, thread_uuid, args.result_summary)  # ledger (ad-hoc; graph→topic)
 
     # 3. Auto-generate summary if the thread has none yet
     if not (thread.get("summary") or "").strip():
@@ -182,9 +181,10 @@ def cmd_complete_agent(args):
                 priority="normal",
             )
 
-    # 6b. Graph-node marking (autopilot Phase 1): map the integrate outcome onto
-    # the bound node's state machine, store the handoff, notify newly-ready
-    # dependents. Notify ONLY — dispatch is watchdog-owned (DA B4/M1).
+    # 6b. Graph-task marking (project autopilot Phase 1): map the integrate
+    # outcome onto the bound task's state machine, store the handoff, and
+    # notify newly-ready dependents. Notify ONLY — dispatch is watchdog-owned
+    # (Phase 2); complete-agent never dispatches (DA B4/M1).
     from juggle_cmd_agents_graph_topics import mark_graph_topic
 
     mark_graph_topic(
@@ -288,10 +288,10 @@ def cmd_fail_agent(args):
         )
         db.set_thread_status(thread_uuid, "closed")
         # Agent death must reach the graph (DA round-2 MAJOR-1, 2026-06-10):
-        # bound node → failed-exec + dependents blocked + HIGH action item.
-        from juggle_cmd_agents_graph import fail_graph_node
+        # bound task → failed-exec + dependents blocked + HIGH action item.
+        from juggle_cmd_agents_graph import fail_graph_task
 
-        fail_graph_node(
+        fail_graph_task(
             db, thread_uuid, session_id,
             reason=f"unrecoverable agent failure: {args.error}",
         )

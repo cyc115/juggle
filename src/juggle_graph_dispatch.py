@@ -2,11 +2,11 @@
 
 Owns: the per-tick claim→hydrate→dispatch loop for the armed project
 (``graph_tick``), the atomic ready→dispatching claim (the one sanctioned
-``graph_nodes.state`` writer besides ``dbops.db_graph.node_transition`` —
+``graph_tasks.state`` writer besides ``dbops.db_graph.task_transition`` —
 a compare-and-swap cannot go through read-then-write), the stale-claim
 sweep.
 Must not own: hydration (juggle_graph_hydration — re-exported here for
-callers), node state semantics (dbops.db_graph), completion marking
+callers), task state semantics (dbops.db_graph), completion marking
 (juggle_cmd_agents_graph), or the watchdog poll loop (which only calls
 ``graph_tick`` and must never crash because of it).
 
@@ -30,12 +30,12 @@ from juggle_autopilot_state import (  # noqa: F401 — re-exported, existing imp
 )
 
 STALE_CLAIM_SECS = 600  # dispatching >10 min with no thread → back to ready
-NODE_ROLE = "coder"
+TASK_ROLE = "coder"
 # Retry cap (DA round-2 minor 1, 2026-06-10): a permanently broken dispatch
-# path reset the node to ready every tick — one HIGH action item per tick
-# forever. After this many consecutive failures the node goes failed-exec.
+# path reset the task to ready every tick — one HIGH action item per tick
+# forever. After this many consecutive failures the task goes failed-exec.
 MAX_DISPATCH_FAILS = 3
-_dispatch_fails: dict[tuple[str, str], int] = {}  # (db_path, node_id) → count
+_dispatch_fails: dict[tuple[str, str], int] = {}  # (db_path, task_id) → count
 
 _log = logging.getLogger("juggle-graph-dispatch")
 
@@ -44,7 +44,7 @@ class CapacityError(RuntimeError):
     """Thread/agent capacity hit — defer quietly and retry next tick."""
 
 
-def claim_node(db, node_id: str) -> bool:
+def claim_task(db, task_id: str) -> bool:
     """Atomic ready→dispatching claim (DA B4). True iff THIS caller won.
 
     Single conditional UPDATE; rowcount==1 is the claim token. Any concurrent
@@ -52,9 +52,9 @@ def claim_node(db, node_id: str) -> bool:
     """
     with db._connect() as conn:
         cur = conn.execute(
-            "UPDATE graph_nodes SET state='dispatching', updated_at=? "
+            "UPDATE graph_tasks SET state='dispatching', updated_at=? "
             "WHERE id=? AND state='ready'",
-            (_now(), node_id),
+            (_now(), task_id),
         )
         conn.commit()
         return cur.rowcount == 1
@@ -64,21 +64,21 @@ def sweep_stale_claims(db, project_id: str) -> list[str]:
     """Reset crashed claims: dispatching >10 min with no thread → ready.
 
     Crash-safe + idempotent: a dispatcher that died between claim and
-    send-task never set thread_id, so the node is reclaimable next tick.
+    send-task never set thread_id, so the task is reclaimable next tick.
     """
     cutoff = (
         datetime.now(timezone.utc) - timedelta(seconds=STALE_CLAIM_SECS)
     ).isoformat()
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT id FROM graph_nodes WHERE project_id=? AND state='dispatching' "
+            "SELECT id FROM graph_tasks WHERE project_id=? AND state='dispatching' "
             "AND thread_id IS NULL AND updated_at < ?",
             (project_id, cutoff),
         ).fetchall()
     stale = [r["id"] for r in rows]
-    for node_id in stale:
-        db_graph.node_transition(db, node_id, "stale_reset")
-        _log.warning("graph dispatch: stale claim swept, node %s → ready", node_id)
+    for task_id in stale:
+        db_graph.task_transition(db, task_id, "stale_reset")
+        _log.warning("graph dispatch: stale claim swept, task %s → ready", task_id)
     return stale
 
 
@@ -86,14 +86,14 @@ def sweep_stale_claims(db, project_id: str) -> list[str]:
 
 from juggle_graph_hydration import (  # noqa: E402, F401
     build_hydration,
-    hydrate_for_node as _hydrate_for_node,
+    hydrate_for_task as _hydrate_for_task,
 )
 
 
 # ── dispatch path ──────────────────────────────────────────────────────────────
 
 
-def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
+def _dispatch_via_pool(db, thread_id: str, prompt: str, task: dict) -> None:
     """Dispatch ``prompt`` for ``thread_id`` through the existing CLI path:
     cmd_get_agent (idle reuse or spawn) + cmd_send_task (worktree guard,
     template, tmux). Raises CapacityError (pool full → defer) or RuntimeError.
@@ -109,7 +109,7 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
         with contextlib.redirect_stdout(buf):
             cmd_get_agent(
                 Namespace(
-                    thread_id=thread_id, role=NODE_ROLE, model=None,
+                    thread_id=thread_id, role=TASK_ROLE, model=None,
                     repo=None, harness=None, fresh=False,
                     db_path=str(db.db_path),
                 )
@@ -117,7 +117,7 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
     except SystemExit:
         out = buf.getvalue()
         if "pool full" in out.lower():
-            raise CapacityError(f"agent pool full for node {node['id']}")
+            raise CapacityError(f"agent pool full for task {task['id']}")
         raise RuntimeError(f"agent acquisition failed: {out.strip()}")
 
     agent = db.get_agent_by_thread(thread_id)
@@ -125,7 +125,7 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
         raise RuntimeError(f"no agent bound to thread {thread_id} after get-agent")
 
     with tempfile.NamedTemporaryFile(
-        "w", suffix=f"-{node['id']}.md", prefix="juggle-graph-", delete=False
+        "w", suffix=f"-{task['id']}.md", prefix="juggle-graph-", delete=False
     ) as f:
         f.write(prompt)
         prompt_file = f.name
@@ -135,7 +135,7 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
                 agent_id=agent["id"], prompt_file=prompt_file,
                 no_template=False, worktree_path=None, worktree_branch=None,
                 main_repo_path=None, allow_main=False,
-                force_node=True,  # the tick IS the sanctioned dispatcher
+                force_task=True,  # the tick IS the sanctioned dispatcher
                 db_path=str(db.db_path),
             )
         )
@@ -146,7 +146,7 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
         db.update_agent(agent["id"], status="idle", assigned_thread=None)
         if isinstance(e, SystemExit):
             raise RuntimeError(
-                f"send-task failed for node {node['id']} (exit {e.code})"
+                f"send-task failed for task {task['id']} (exit {e.code})"
             )
         raise
     finally:
@@ -158,16 +158,16 @@ def _dispatch_via_pool(db, thread_id: str, prompt: str, node: dict) -> None:
             pass
 
 
-def _give_up_dispatch(db, node_id: str, err: Exception) -> None:
-    """Retry cap reached: node → failed-exec + propagation + ONE final item
+def _give_up_dispatch(db, task_id: str, err: Exception) -> None:
+    """Retry cap reached: task → failed-exec + propagation + ONE final item
     (DA round-2 minor 1, 2026-06-10 — no more per-tick action-item flood)."""
-    db_graph.mark_exec_failed(db, node_id)
-    blocked = db_graph.propagate_failure(db, node_id)
+    db_graph.mark_exec_failed(db, task_id)
+    blocked = db_graph.propagate_failure(db, task_id)
     detail = f" Dependents blocked: {', '.join(blocked)}." if blocked else ""
     db.add_action_item(
         thread_id=None,
         message=(
-            f"⚠️ Autopilot gave up on graph node {node_id} after "
+            f"⚠️ Autopilot gave up on graph task {task_id} after "
             f"{MAX_DISPATCH_FAILS} consecutive dispatch failures: {err}.{detail} "
             f"Fix the dispatch path, then reload the graph spec to resume."
         ),
@@ -175,8 +175,8 @@ def _give_up_dispatch(db, node_id: str, err: Exception) -> None:
         priority="high",
     )
     _log.error(
-        "graph tick: node %s failed-exec after %d dispatch failures",
-        node_id, MAX_DISPATCH_FAILS,
+        "graph tick: task %s failed-exec after %d dispatch failures",
+        task_id, MAX_DISPATCH_FAILS,
     )
 
 
@@ -286,22 +286,22 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
             _log.exception("graph tick: unexpected error on topic %s", tid)
             stats["errors"].append(tid)
 
-    # ── Legacy flat-node fallback (R9/R6) ─────────────────────────────────────
-    # A project whose graph has graph_nodes but 0 graph_topics (e.g. pre-3-tier
+    # ── Legacy flat-task fallback (R9/R6) ─────────────────────────────────────
+    # A project whose graph has graph_tasks but 0 graph_topics (e.g. pre-3-tier
     # spec, or migration 37 backfilled 0 rows) produces no ready topics above,
     # so the loop skips it entirely and the build stalls.  Detect this case and
-    # dispatch ready nodes directly via the existing node claim/hydrate path
+    # dispatch ready tasks directly via the existing task claim/hydrate path
     # (2026-06-11 bug J).
-    _dispatch_flat_node_fallback(db, armed, stats, dispatch)
+    _dispatch_flat_task_fallback(db, armed, stats, dispatch)
 
     return stats
 
 
-def _dispatch_flat_node_fallback(
+def _dispatch_flat_task_fallback(
     db, armed: list[str], stats: dict, dispatch
 ) -> None:
-    """Dispatch ready graph_nodes for projects that have no graph_topics."""
-    from juggle_graph_hydration import hydrate_for_node
+    """Dispatch ready graph_tasks for projects that have no graph_topics."""
+    from juggle_graph_hydration import hydrate_for_task
     from dbops import db_topics as _dt
 
     for pid in armed:
@@ -312,66 +312,66 @@ def _dispatch_flat_node_fallback(
                 continue  # project has topics — topic path owns dispatch
             stats["swept"] += sweep_stale_claims(db, pid)
             db_graph.recompute_ready(db, pid)
-            nodes = [n for n in db_graph.list_nodes(db, pid) if n["state"] == "ready"]
+            tasks = [n for n in db_graph.list_tasks(db, pid) if n["state"] == "ready"]
         except Exception:
             _log.exception(
                 "graph tick (flat fallback): ready-set scan failed for %s", pid
             )
             continue
-        for node in nodes:
+        for task in tasks:
             if pid not in get_armed_projects(db):
                 break
-            node_id = node["id"]
-            fail_key = (str(db.db_path), node_id)
+            task_id = task["id"]
+            fail_key = (str(db.db_path), task_id)
             try:
-                if not claim_node(db, node_id):
+                if not claim_task(db, task_id):
                     continue
                 try:
                     thread_id = db.create_thread(
-                        f"[{node_id}] {node['title']}"[:80],
+                        f"[{task_id}] {task['title']}"[:80],
                         session_id=_session_id(db),
                     )
                 except ValueError as e:
-                    db_graph.node_transition(db, node_id, "stale_reset")
+                    db_graph.task_transition(db, task_id, "stale_reset")
                     if "Maximum of" not in str(e):
-                        stats["errors"].append(node_id)
+                        stats["errors"].append(task_id)
                     else:
-                        stats["deferred"].append(node_id)
-                        _log.info("graph tick (flat): thread cap — node %s deferred", node_id)
+                        stats["deferred"].append(task_id)
+                        _log.info("graph tick (flat): thread cap — task %s deferred", task_id)
                     continue
                 db.update_thread(thread_id, project_id=pid)
-                db_graph.set_node_thread(db, node_id, thread_id)
+                db_graph.set_task_thread(db, task_id, thread_id)
                 try:
-                    dispatch(db, thread_id, hydrate_for_node(db, pid, node), node)
+                    dispatch(db, thread_id, hydrate_for_task(db, pid, task), task)
                 except CapacityError:
                     db.archive_thread(thread_id)
-                    db_graph.bind_thread(db, node_id, None)
-                    db_graph.node_transition(db, node_id, "stale_reset")
-                    stats["deferred"].append(node_id)
+                    db_graph.bind_thread(db, task_id, None)
+                    db_graph.task_transition(db, task_id, "stale_reset")
+                    stats["deferred"].append(task_id)
                     break
                 except Exception as e:
                     db.archive_thread(thread_id)
-                    db_graph.bind_thread(db, node_id, None)
-                    stats["errors"].append(node_id)
+                    db_graph.bind_thread(db, task_id, None)
+                    stats["errors"].append(task_id)
                     fails = _dispatch_fails.get(fail_key, 0) + 1
                     _dispatch_fails[fail_key] = fails
                     if fails >= MAX_DISPATCH_FAILS:
                         _dispatch_fails.pop(fail_key, None)
-                        _give_up_dispatch(db, node_id, e)
+                        _give_up_dispatch(db, task_id, e)
                     else:
-                        db_graph.node_transition(db, node_id, "stale_reset")
+                        db_graph.task_transition(db, task_id, "stale_reset")
                     continue
                 _dispatch_fails.pop(fail_key, None)
-                db_graph.node_transition(db, node_id, "dispatch")
+                db_graph.task_transition(db, task_id, "dispatch")
                 db.add_notification_v2(
                     thread_id=thread_id,
-                    message=f"⬢ autopilot dispatched node {node_id} — {node['title']}",
+                    message=f"⬢ autopilot dispatched task {task_id} — {task['title']}",
                     session_id=_session_id(db),
                 )
-                stats["dispatched"].append(node_id)
+                stats["dispatched"].append(task_id)
             except Exception:
-                _log.exception("graph tick (flat fallback): error on node %s", node_id)
-                stats["errors"].append(node_id)
+                _log.exception("graph tick (flat fallback): error on task %s", task_id)
+                stats["errors"].append(task_id)
 
 
 def _session_id(db) -> str:

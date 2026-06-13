@@ -608,11 +608,11 @@ def execute_recovery(
             )
         if thread_id:
             # Agent death must reach the graph (DA round-2 MAJOR-1,
-            # 2026-06-10): bound node → failed-exec + dependents blocked.
+            # 2026-06-10): bound task → failed-exec + dependents blocked.
             try:
-                from juggle_cmd_agents_graph import fail_graph_node
+                from juggle_cmd_agents_graph import fail_graph_task
 
-                fail_graph_node(
+                fail_graph_task(
                     db, thread_id, session_id,
                     reason="watchdog auto-recovery exhausted (failed 2x)",
                 )

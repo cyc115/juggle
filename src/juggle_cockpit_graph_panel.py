@@ -5,8 +5,8 @@ into a Rich Panel that swaps into the cockpit's Notifications widget when graph
 mode is active. Rich-only: no DB, no Textual app. Read-only.
 
 Layout is a multi-column NUMBERED LIST in topological (execution) order: one
-task per cell — index, state glyph, node id, and a state suffix (running agent
-label, or ⊣<dep#> for a blocked node). Cells flow column-major to fill a wide,
+task per cell — index, state glyph, task id, and a state suffix (running agent
+label, or ⊣<dep#> for a blocked task). Cells flow column-major to fill a wide,
 short pane so all tasks stay readable without a horizontal scroll. A power-user
 view of a mostly-linear pipeline.
 """
@@ -20,8 +20,8 @@ from rich.table import Table
 from rich.text import Text
 from rich.style import Style
 
-from juggle_cockpit_graph_layout import GraphNode, build_ranks
-from juggle_cockpit_view import NODE_STATE_GLYPHS
+from juggle_cockpit_graph_layout import GraphTask, build_ranks
+from juggle_cockpit_view import TASK_STATE_GLYPHS
 from juggle_graph_status import counts_from_states, format_progress
 
 # Roughly the width one list cell wants: "10 🏃 cli-hooks-r8-guard [WK]".
@@ -48,30 +48,30 @@ def _badge_segment(unread: int) -> str:
     return f" · ⚠{unread}" if unread > 0 else ""
 
 
-def _progress_bar(nodes: list[GraphNode], width: int = 10) -> str:
+def _progress_bar(tasks: list[GraphTask], width: int = 10) -> str:
     """Tiny ▕█░▏ done-fraction bar."""
-    total = len(nodes) or 1
-    done = sum(1 for n in nodes if n.state == "verified")
+    total = len(tasks) or 1
+    done = sum(1 for n in tasks if n.state == "verified")
     filled = round(width * done / total)
     return "▕" + "█" * filled + "░" * (width - filled) + "▏"
 
 
 def topological_order(
-    nodes: list[GraphNode], edges: list[tuple[str, str]]
-) -> list[GraphNode]:
+    tasks: list[GraphTask], edges: list[tuple[str, str]]
+) -> list[GraphTask]:
     """Flatten the DAG into execution order: rank-major, id-stable within a rank.
 
     This is the display AND selection order, so j/k navigation matches the list.
     """
-    flat: list[GraphNode] = []
-    for rank in build_ranks(nodes, edges):
-        flat.extend(rank.nodes)
+    flat: list[GraphTask] = []
+    for rank in build_ranks(tasks, edges):
+        flat.extend(rank.tasks)
     return flat
 
 
 def _cell_text(
     idx: int,
-    node: GraphNode,
+    task: GraphTask,
     *,
     idx_w: int,
     dep_num: int | None,
@@ -79,40 +79,40 @@ def _cell_text(
     selected: bool,
 ) -> Text:
     """Render one list cell: '<idx> <glyph> <id><suffix>', truncated to cell_w."""
-    glyph = NODE_STATE_GLYPHS.get(node.state, "⬢")
-    if node.state in _RUNNING_STATES and (node.user_label or node.thread_id):
-        suffix = f" [{node.user_label or node.thread_id[:4]}]"
-    elif node.state == "pending" and dep_num is not None:
+    glyph = TASK_STATE_GLYPHS.get(task.state, "⬢")
+    if task.state in _RUNNING_STATES and (task.user_label or task.thread_id):
+        suffix = f" [{task.user_label or task.thread_id[:4]}]"
+    elif task.state == "pending" and dep_num is not None:
         suffix = f" ⊣{dep_num}"          # waiting on task #dep_num
-    elif node.state == "ready":
+    elif task.state == "ready":
         suffix = " ▸"                     # next up
-    elif node.state.startswith("failed") or node.state == "blocked-failed":
+    elif task.state.startswith("failed") or task.state == "blocked-failed":
         suffix = " ✗"
     else:
         suffix = ""
-    if getattr(node, "tasks_total", None):
-        suffix = f" {node.tasks_done}/{node.tasks_total}" + suffix
+    if getattr(task, "tasks_total", None):
+        suffix = f" {task.tasks_done}/{task.tasks_total}" + suffix
 
     prefix = f"{idx:>{idx_w}} {glyph} "
     budget = max(3, cell_w - len(prefix) - len(suffix))
-    name = node.id if len(node.id) <= budget else node.id[: max(1, budget - 1)] + "…"
+    name = task.id if len(task.id) <= budget else task.id[: max(1, budget - 1)] + "…"
     label = f"{prefix}{name}{suffix}"
     style = Style(
-        color=_STATE_COLORS.get(node.state, "white"),
-        bold=(node.state in _RUNNING_STATES),
+        color=_STATE_COLORS.get(task.state, "white"),
+        bold=(task.state in _RUNNING_STATES),
         reverse=selected,
     )
     return Text(label, style=style, no_wrap=True, overflow="ellipsis")
 
 
-def _flat_selectable(nodes: list[GraphNode]) -> list[GraphNode]:
+def _flat_selectable(tasks: list[GraphTask]) -> list[GraphTask]:
     """Topological order for a DAG — shared by panel and multi-panel."""
-    return topological_order(nodes, [])
+    return topological_order(tasks, [])
 
 
 def _graph_section(
     project_id: str,
-    nodes: list[GraphNode],
+    tasks: list[GraphTask],
     edges: list[tuple[str, str]],
     sel_id: str | None,
     inner_w: int,
@@ -120,20 +120,20 @@ def _graph_section(
 ) -> list:
     """Header + grid (no Panel wrapper) — extracted so build_multi_graph_panel
     can stack multiple sections."""
-    if not nodes:
-        return [Text(f"{project_id}: no graph nodes yet", style=Style(dim=True))]
+    if not tasks:
+        return [Text(f"{project_id}: no graph tasks yet", style=Style(dim=True))]
 
-    counts = counts_from_states([n.state for n in nodes])
+    counts = counts_from_states([n.state for n in tasks])
     header = Text(
-        f"{project_id}  {_progress_bar(nodes)}  {format_progress(counts)}",
+        f"{project_id}  {_progress_bar(tasks)}  {format_progress(counts)}",
         style=Style(bold=True),
     )
 
-    flat = topological_order(nodes, edges)
+    flat = topological_order(tasks, edges)
     idx_of = {n.id: i + 1 for i, n in enumerate(flat)}
     first_dep: dict[str, str] = {}
-    for node_id, dep_id in edges:
-        first_dep.setdefault(node_id, dep_id)
+    for task_id, dep_id in edges:
+        first_dep.setdefault(task_id, dep_id)
 
     idx_w = len(str(len(flat)))
     n_cols = max(1, min(_MAX_COLS, inner_w // _CELL_WIDTH))
@@ -149,13 +149,13 @@ def _graph_section(
         for c in range(n_cols):
             i = c * rows + r
             if i < len(flat):
-                node = flat[i]
-                dep_id = first_dep.get(node.id)
+                task = flat[i]
+                dep_id = first_dep.get(task.id)
                 dep_num = idx_of.get(dep_id) if dep_id else None
                 cells.append(
                     _cell_text(
-                        i + 1, node, idx_w=idx_w, dep_num=dep_num,
-                        cell_w=cell_w, selected=(node.id == sel_id),
+                        i + 1, task, idx_w=idx_w, dep_num=dep_num,
+                        cell_w=cell_w, selected=(task.id == sel_id),
                     )
                 )
             else:
@@ -168,7 +168,7 @@ def _graph_section(
 def build_graph_panel(
     *,
     project_id: str | None,
-    nodes: list[GraphNode],
+    tasks: list[GraphTask],
     edges: list[tuple[str, str]],
     selection: int,
     unread: int,
@@ -178,7 +178,7 @@ def build_graph_panel(
 ) -> Panel:
     """Build the graph Panel. Pure — no I/O.
 
-    selection indexes the flat topological node list (execution order).
+    selection indexes the flat topological task list (execution order).
     width/height are the panel's available inner dims (cells).
     """
     title = f"Graph{_badge_segment(unread)}"
@@ -190,21 +190,21 @@ def build_graph_panel(
         )
         return Panel(body, title=title, border_style="grey50")
 
-    if not nodes:
-        body = Text(f"{project_id}: no graph nodes yet", style=Style(dim=True))
+    if not tasks:
+        body = Text(f"{project_id}: no graph tasks yet", style=Style(dim=True))
         return Panel(body, title=title, border_style="grey50")
 
-    counts = counts_from_states([n.state for n in nodes])
+    counts = counts_from_states([n.state for n in tasks])
     header = Text(
-        f"{project_id}  {_progress_bar(nodes)}  {format_progress(counts)}",
+        f"{project_id}  {_progress_bar(tasks)}  {format_progress(counts)}",
         style=Style(bold=True),
     )
 
-    flat = topological_order(nodes, edges)
+    flat = topological_order(tasks, edges)
     idx_of = {n.id: i + 1 for i, n in enumerate(flat)}
     first_dep: dict[str, str] = {}
-    for node_id, dep_id in edges:
-        first_dep.setdefault(node_id, dep_id)
+    for task_id, dep_id in edges:
+        first_dep.setdefault(task_id, dep_id)
 
     inner_w = max(8, width - 4)
     idx_w = len(str(len(flat)))
@@ -230,13 +230,13 @@ def build_graph_panel(
         for c in range(n_cols):
             i = c * rows + r            # column-major fill
             if i < len(flat):
-                node = flat[i]
-                dep_id = first_dep.get(node.id)
+                task = flat[i]
+                dep_id = first_dep.get(task.id)
                 dep_num = idx_of.get(dep_id) if dep_id else None
                 cells.append(
                     _cell_text(
-                        i + 1, node, idx_w=idx_w, dep_num=dep_num,
-                        cell_w=cell_w, selected=(node.id == sel_id),
+                        i + 1, task, idx_w=idx_w, dep_num=dep_num,
+                        cell_w=cell_w, selected=(task.id == sel_id),
                     )
                 )
                 shown += 1
@@ -281,17 +281,17 @@ def build_multi_graph_panel(
     if len(dags) == 1:
         d = dags[0]
         return build_graph_panel(
-            project_id=d.project_id, nodes=d.nodes, edges=d.edges,
+            project_id=d.project_id, tasks=d.tasks, edges=d.edges,
             selection=selection, unread=unread, width=width, height=height,
             pan_offset=pan_offset,
         )
     inner_w = max(8, width - 4)
-    flat_all = [n for d in dags for n in topological_order(d.nodes, d.edges)]
+    flat_all = [n for d in dags for n in topological_order(d.tasks, d.edges)]
     sel_id = flat_all[selection].id if 0 <= selection < len(flat_all) else None
     parts: list = []
     for i, d in enumerate(dags):
         if i:
             parts.append(Text("─" * inner_w, style=Style(dim=True)))
-        parts.extend(_graph_section(d.project_id, d.nodes, d.edges, sel_id,
+        parts.extend(_graph_section(d.project_id, d.tasks, d.edges, sel_id,
                                     inner_w, pan_offset))
     return Panel(_Group(*parts), title=title, border_style="cyan")

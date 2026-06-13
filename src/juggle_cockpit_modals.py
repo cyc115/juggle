@@ -127,10 +127,10 @@ class _HelpModal(ModalScreen):
         yield Static("\n".join(lines))
 
 
-class _GraphNodeModal(ModalScreen):
-    """Read-only detail overlay for a task-graph node.
+class _GraphTaskModal(ModalScreen):
+    """Read-only detail overlay for a task-graph task.
 
-    Pops when the operator presses Enter on a selected node in graph mode.
+    Pops when the operator presses Enter on a selected task in graph mode.
     Shows id, title, state, deps, verify_cmd, and prompt/handoff excerpts.
     Dismisses on 'q' or Escape. Live agent-log tailing is out of scope (v1.1).
     """
@@ -143,10 +143,10 @@ class _GraphNodeModal(ModalScreen):
     ]
 
     DEFAULT_CSS = """
-    _GraphNodeModal {
+    _GraphTaskModal {
         align: center middle;
     }
-    _GraphNodeModal > VerticalScroll {
+    _GraphTaskModal > VerticalScroll {
         width: 70%;
         height: 70%;
         border: round $accent;
@@ -156,18 +156,20 @@ class _GraphNodeModal(ModalScreen):
 
     _EXCERPT = 400
 
-    def __init__(self, node: dict, deps: list[str], *, tasks: list | None = None) -> None:
+    def __init__(self, task: dict, deps: list[str], *, tasks: list | None = None) -> None:
         super().__init__()
-        self._node = node
+        # NB: store as _task_row, NOT _task — textual's MessagePump uses
+        # ``self._task`` for its message-loop asyncio Task and would clobber it.
+        self._task_row = task
         self._deps = deps
         self._tasks = tasks or []
 
     def _lines(self) -> list[str]:
-        from juggle_cockpit_view import NODE_STATE_GLYPHS
+        from juggle_cockpit_view import TASK_STATE_GLYPHS
 
-        n = self._node
+        n = self._task_row
         out = [
-            f"Node {n.get('id', '?')}",
+            f"Task {n.get('id', '?')}",
             "─" * 40,
             f"title    {n.get('title', '')}",
             f"state    {n.get('state', '')}",
@@ -178,7 +180,7 @@ class _GraphNodeModal(ModalScreen):
         if self._tasks:
             out += ["", "tasks:"]
             for t in self._tasks:
-                glyph = NODE_STATE_GLYPHS.get(t.get("state", ""), "⬢")
+                glyph = TASK_STATE_GLYPHS.get(t.get("state", ""), "⬢")
                 out.append(f"  {glyph} {t.get('id', '')}  {t.get('title', '')}")
         prompt = (n.get("prompt") or "").strip()
         if prompt:

@@ -35,7 +35,7 @@ def db_with_run(tmp_path):
     rid = db.insert_agent_run(
         thread_id=tid, input_prompt="THE FULL INPUT PROMPT", agent_id="a",
         role="coder", model="opus", harness="claude", project_id="PX",
-        topic_id="TX", node_id="NX",
+        topic_id="TX", task_id="NX",
     )
     db.close_run(tid, output="THE OUTPUT", diffstat="1 file", status="completed")
     return db_path, tid, rid

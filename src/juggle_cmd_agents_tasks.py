@@ -30,13 +30,13 @@ def cmd_send_task(args):
         print(f"Error: Prompt file {args.prompt_file} not found.")
         sys.exit(1)
 
-    # Graph-node guard (DA B5): tick-owned nodes are dispatched ONLY by the
-    # autopilot watchdog tick (which passes force_node). Checked before any
+    # Graph-task guard (DA B5): tick-owned tasks are dispatched ONLY by the
+    # autopilot watchdog tick (which passes force_task). Checked before any
     # tmux side effects.
-    from juggle_cmd_agents_graph import check_node_guard
+    from juggle_cmd_agents_graph import check_task_guard
 
-    guard_err = check_node_guard(
-        db, agent.get("assigned_thread"), force=getattr(args, "force_node", False)
+    guard_err = check_task_guard(
+        db, agent.get("assigned_thread"), force=getattr(args, "force_task", False)
     )
     if guard_err:
         print(f"Error: {guard_err}")
@@ -195,7 +195,7 @@ def cmd_send_task(args):
     db.update_agent(args.agent_id, **_update_fields)
 
     # Ledger (best-effort, NEVER breaks dispatch): record this dispatch's INPUT
-    # (the full sent prompt) keyed by thread + project/topic/node so the
+    # (the full sent prompt) keyed by thread + project/topic/task so the
     # orchestrator can pair it with the OUTPUT at completion. thread_id is the
     # universal key; project_id defaults to INBOX (non-project) via the thread.
     try:
@@ -204,7 +204,7 @@ def cmd_send_task(args):
             from dbops import db_graph, db_topics
 
             _thread = db.get_thread(thread_uuid) or {}
-            _node = db_graph.get_node_by_thread(db, thread_uuid)
+            _task = db_graph.get_task_by_thread(db, thread_uuid)
             _topic = db_topics.get_topic_by_thread(db, thread_uuid)
             db.supersede_open_runs(thread_uuid)
             run_id = db.insert_agent_run(
@@ -216,7 +216,7 @@ def cmd_send_task(args):
                 harness=adapter.id,
                 project_id=_thread.get("project_id"),
                 topic_id=_topic["id"] if _topic else None,
-                node_id=_node["id"] if _node else None,
+                task_id=_task["id"] if _task else None,
             )
             db.update_agent(args.agent_id, current_run_id=run_id)
     except Exception as _exc:  # noqa: BLE001

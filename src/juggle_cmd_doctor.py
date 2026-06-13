@@ -94,21 +94,28 @@ def cmd_doctor(args) -> int:
         stale = (
             "domain" in thread_cols or "domains" in tables or "domain_paths" in tables
         )
-        if stale:
+        # Migration 39 (node->task rename): a node-era DB still carries the old
+        # graph_nodes table; init_db's run_migrations reconciles it into graph_tasks.
+        node_era = "graph_nodes" in tables
+        if stale or node_era:
+            reason = []
+            if stale:
+                reason.append("Migrations 17–19 (dropped domain column + domain tables)")
+            if node_era:
+                reason.append("Migration 39 (graph_nodes -> graph_tasks rename)")
+            label = "; ".join(reason)
             if not dry:
                 JuggleDB(DB_PATH).init_db()
-                print(
-                    "db: ran Migrations 17–19 (dropped domain column + domain tables)"
-                )
+                print(f"db: ran {label}")
             else:
-                print("db: would run Migrations 17–19 (stale schema detected)")
+                print(f"db: would run {label}")
         else:
             print("db: schema already on 1.21.0")
     else:
         print(f"db: {DB_PATH} does not exist — will be created on first juggle command")
         return 0
 
-    # 3. Reconcile graph topic states (repair drift between node tier + topic tier)
+    # 3. Reconcile graph topic states (repair drift between task tier + topic tier)
     from dbops import db_topics as dbt
 
     db_instance = JuggleDB(DB_PATH)

@@ -72,9 +72,9 @@ def _cmd_arm(db, project_id: str) -> None:
     suffix = f" Armed set: {', '.join(armed)}." if len(armed) > 1 else ""
     print(f"AUTOPILOT ON — project {project_id} ({project['name']}) armed.{suffix}")
     if counts:
-        print(f"Graph: {counts['total']} node(s) loaded — {format_progress(counts)}.")
+        print(f"Graph: {counts['total']} task(s) loaded — {format_progress(counts)}.")
         print(f"Spec: {spec}")
-        print("The watchdog tick now claims and dispatches ready nodes.")
+        print("The watchdog tick now claims and dispatches ready tasks.")
     else:
         print(
             "No graph loaded yet. Decompose the objective into a spec at "

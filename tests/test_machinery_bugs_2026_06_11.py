@@ -4,7 +4,7 @@ Bug F — model field not cleared on agent release (release-agent model poison)
 Bug G — graphify-out dirty tree blocks integrate ff-merge
 Bug E — worktree trust pre-registration in ~/.claude.json
 Bug I — mark_topic_completion idempotent on already-verified topic
-Bug J — graph_tick legacy flat-node fallback for projects without topics
+Bug J — graph_tick legacy flat-task fallback for projects without topics
 """
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ def _setup_worktree_branch(repo: str, also_modify_graphify: bool = False) -> tup
     (Path(wt) / "feature.py").write_text("y = 2\n")
     if also_modify_graphify:
         Path(wt, "graphify-out").mkdir(exist_ok=True)
-        (Path(wt) / "graphify-out" / "graph.json").write_text('{"nodes":["agent-version"]}')
+        (Path(wt) / "graphify-out" / "graph.json").write_text('{"tasks":["agent-version"]}')
     subprocess.run(["git", "-C", wt, "add", "."], check=True, capture_output=True)
     subprocess.run(
         ["git", "-C", wt, "commit", "-m", "feat"],
@@ -116,7 +116,7 @@ def test_integrate_succeeds_with_dirty_graphify_out(db, git_repo):
     # Baseline: track graphify-out/graph.json in main
     gout = Path(repo) / "graphify-out"
     gout.mkdir(exist_ok=True)
-    (gout / "graph.json").write_text('{"nodes":[]}')
+    (gout / "graph.json").write_text('{"tasks":[]}')
     subprocess.run(["git", "-C", repo, "add", "."], check=True, capture_output=True)
     subprocess.run(
         ["git", "-C", repo, "commit", "-m", "track graphify-out"],
@@ -127,7 +127,7 @@ def test_integrate_succeeds_with_dirty_graphify_out(db, git_repo):
     wt, branch = _setup_worktree_branch(repo, also_modify_graphify=True)
 
     # Simulate hook re-running in main after some other work — leaves it dirty
-    (gout / "graph.json").write_text('{"nodes":["main-dirty"]}')
+    (gout / "graph.json").write_text('{"tasks":["main-dirty"]}')
 
     # Confirm the raw ff-merge fails (this is the bug we're pinning against)
     raw = subprocess.run(
@@ -139,7 +139,7 @@ def test_integrate_succeeds_with_dirty_graphify_out(db, git_repo):
         "if this passes the test fixture doesn't reproduce the bug"
     )
     # Restore dirty state (merge attempt may have exited cleanly or reset)
-    (gout / "graph.json").write_text('{"nodes":["main-dirty"]}')
+    (gout / "graph.json").write_text('{"tasks":["main-dirty"]}')
 
     thread_id = db.create_thread("gtest", session_id="")
     db.update_thread(
@@ -189,19 +189,19 @@ def test_mark_topic_completion_idempotent_on_verified(db):
     Pin: mark_topic_completion on an already-verified topic returns 'verified'
     without raising."""
     t.create_topic(db, topic_id="ta", project_id="INBOX", title="A", objective="")
-    g.create_node(db, node_id="n1", project_id="INBOX", title="n1", prompt="do n1")
+    g.create_task(db, task_id="n1", project_id="INBOX", title="n1", prompt="do n1")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_nodes SET topic_id='ta' WHERE id='n1'")
+        conn.execute("UPDATE graph_tasks SET topic_id='ta' WHERE id='n1'")
         conn.commit()
 
     # Walk topic to verified
     for ev in ("deps_ready", "claim", "dispatch", "integrate_start"):
         t.topic_transition(db, "ta", ev)
-    g.node_transition(db, "n1", "deps_ready")
-    g.node_transition(db, "n1", "claim")
-    g.node_transition(db, "n1", "dispatch")
-    g.node_transition(db, "n1", "integrate_start")
-    g.node_transition(db, "n1", "integrate_ok")
+    g.task_transition(db, "n1", "deps_ready")
+    g.task_transition(db, "n1", "claim")
+    g.task_transition(db, "n1", "dispatch")
+    g.task_transition(db, "n1", "integrate_start")
+    g.task_transition(db, "n1", "integrate_ok")
     result = t.topic_transition(db, "ta", "integrate_ok")
     assert result == "verified"
 
@@ -209,43 +209,43 @@ def test_mark_topic_completion_idempotent_on_verified(db):
     state = t.mark_topic_completion(db, "ta", integrate_ok=True, verify_ok=True)
     assert state == "verified", (
         "mark_topic_completion on already-verified topic must return 'verified' "
-        "idempotently (duplicate complete-agent calls must not leave node stuck)"
+        "idempotently (duplicate complete-agent calls must not leave task stuck)"
     )
 
 
-# ── Bug J: graph_tick legacy flat-node fallback ───────────────────────────────
+# ── Bug J: graph_tick legacy flat-task fallback ───────────────────────────────
 
 class FakeDispatchJ:
     def __init__(self):
         self.calls: list[tuple] = []
 
-    def __call__(self, db, thread_id, prompt, node_or_topic):
-        self.calls.append((thread_id, node_or_topic.get("id")))
+    def __call__(self, db, thread_id, prompt, task_or_topic):
+        self.calls.append((thread_id, task_or_topic.get("id")))
 
 
 def _arm(db, project="INBOX"):
     db.set_setting(gd.ARMED_PROJECT_KEY, project)
 
 
-def test_graph_tick_dispatches_ready_nodes_for_topicless_project(db):
+def test_graph_tick_dispatches_ready_tasks_for_topicless_project(db):
     """2026-06-11: graph_tick only dispatches topics; a project whose graph has
-    graph_nodes but 0 graph_topics (migration 37 backfilled 0) silently skips
-    all nodes → graph build stalls. Spec R9/R6 intended a legacy flat fallback.
-    Pin: ready nodes in a topicless project ARE dispatched by graph_tick."""
+    graph_tasks but 0 graph_topics (migration 37 backfilled 0) silently skips
+    all tasks → graph build stalls. Spec R9/R6 intended a legacy flat fallback.
+    Pin: ready tasks in a topicless project ARE dispatched by graph_tick."""
     _arm(db)
-    # Create nodes but NO topics
-    g.create_node(db, node_id="n1", project_id="INBOX", title="n1", prompt="do n1")
-    g.create_node(db, node_id="n2", project_id="INBOX", title="n2", prompt="do n2",)
+    # Create tasks but NO topics
+    g.create_task(db, task_id="n1", project_id="INBOX", title="n1", prompt="do n1")
+    g.create_task(db, task_id="n2", project_id="INBOX", title="n2", prompt="do n2",)
     g.replace_edges(db, "n2", ["n1"])  # n2 depends on n1
     g.recompute_ready(db, "INBOX")
 
     dispatcher = FakeDispatchJ()
     stats = gd.graph_tick(db, dispatch_fn=dispatcher)
 
-    dispatched_node_ids = {nid for _, nid in dispatcher.calls}
-    assert "n1" in dispatched_node_ids, (
-        "Ready node n1 must be dispatched by graph_tick legacy fallback "
+    dispatched_task_ids = {nid for _, nid in dispatcher.calls}
+    assert "n1" in dispatched_task_ids, (
+        "Ready task n1 must be dispatched by graph_tick legacy fallback "
         "when project has no topics."
     )
-    assert "n2" not in dispatched_node_ids, "n2 has unmet dep, must not be dispatched"
-    assert stats["dispatched"], "stats must reflect dispatched node"
+    assert "n2" not in dispatched_task_ids, "n2 has unmet dep, must not be dispatched"
+    assert stats["dispatched"], "stats must reflect dispatched task"

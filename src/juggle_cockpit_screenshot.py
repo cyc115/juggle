@@ -50,7 +50,7 @@ def save_screenshot(path: str, db_path: str | None, *, graph_mode: bool = False)
         dag = getattr(state, "graph_dag", None)
         con.print(build_graph_panel(
             project_id=(dag.project_id if dag else None),
-            nodes=(dag.nodes if dag else []),
+            tasks=(dag.tasks if dag else []),
             edges=(dag.edges if dag else []),
             selection=0, unread=0, width=80, height=20, pan_offset=0,
         ))

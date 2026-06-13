@@ -3,8 +3,8 @@
 Owns: insert/close/supersede/fail + query/prune over the append-only
 ``agent_runs`` table. Each row pairs a dispatch's INPUT (the full sent prompt)
 with its OUTPUT (handoff/result + diffstat), keyed by thread_id (universal) plus
-project/topic/node ids so the orchestrator can answer "what was the input and
-output for any project / topic / node / thread / agent".
+project/topic/task ids so the orchestrator can answer "what was the input and
+output for any project / topic / task / thread / agent".
 Must not own: dispatch/completion glue (lives in the cmd layer), graph/topic
 state semantics, or agent-pool CRUD.
 """
@@ -35,16 +35,16 @@ class RunsMixin:
         harness: str | None,
         project_id: str | None,
         topic_id: str | None,
-        node_id: str | None,
+        task_id: str | None,
     ) -> int:
         """Insert a new ledger row in status 'dispatched'. Returns run_id."""
         now = _now()
         with self._connect() as conn:
             cur = conn.execute(
-                "INSERT INTO agent_runs (thread_id, project_id, topic_id, node_id, "
+                "INSERT INTO agent_runs (thread_id, project_id, topic_id, task_id, "
                 "agent_id, role, model, harness, input_prompt, status, dispatched_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?, 'dispatched', ?)",
-                (thread_id, project_id, topic_id, node_id, agent_id, role, model,
+                (thread_id, project_id, topic_id, task_id, agent_id, role, model,
                  harness, input_prompt, now),
             )
             conn.commit()
@@ -104,7 +104,7 @@ class RunsMixin:
         self,
         project_id: str | None = None,
         topic_id: str | None = None,
-        node_id: str | None = None,
+        task_id: str | None = None,
         thread_id: str | None = None,
         limit: int | None = None,
     ) -> list[dict]:
@@ -112,7 +112,7 @@ class RunsMixin:
         clauses, params = [], []
         for col, val in (
             ("project_id", project_id), ("topic_id", topic_id),
-            ("node_id", node_id), ("thread_id", thread_id),
+            ("task_id", task_id), ("thread_id", thread_id),
         ):
             if val is not None:
                 clauses.append(f"{col}=?")

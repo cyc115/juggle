@@ -3,12 +3,12 @@ juggle_cmd_graph — `juggle project-graph` command handlers (autopilot Phase 1)
 
 Owns: the `project-graph load` command handler (orchestration + guarded upsert
 loop) and the PR-mode refusal policy.
-Must not own: pure spec parsing/validation or single-node upsert (extracted to
-juggle_graph_upsert), node state semantics (dbops.db_graph), or dispatching.
+Must not own: pure spec parsing/validation or single-task upsert (extracted to
+juggle_graph_upsert), task state semantics (dbops.db_graph), or dispatching.
 
-Spec format (markdown), one `##` section per node:
+Spec format (markdown), one `##` section per task:
 
-    ## <node-id>: <Title>
+    ## <task-id>: <Title>
     deps: dep1, dep2              (optional; `- deps:` also accepted)
     verify_cmd: pytest tests -q   (optional; lint-gated)
     <remaining lines = dispatch prompt>
@@ -19,13 +19,13 @@ from __future__ import annotations
 import sys
 
 from juggle_cli_common import get_db
-# db_graph re-exported (used by add-node + the atomicity regression pin, which
+# db_graph re-exported (used by add-task + the atomicity regression pin, which
 # monkeypatches cg.db_graph — the same module object juggle_graph_load uses).
 from dbops import db_graph, db_topics  # noqa: F401
 
 # Re-exported for backward compatibility (tests + callers import these from here).
 from juggle_graph_upsert import (  # noqa: F401
-    MAX_NODES,
+    MAX_TASKS,
     VERIFY_CMD_ALLOWLIST,
     find_cycle,
     lint_verify_cmd,
@@ -44,8 +44,8 @@ from juggle_graph_load import cmd_project_graph_load  # noqa: F401
 
 def _is_synthetic_topic(topic_id: str) -> bool:
     """Synthetic single-task topics (migration-37 / flat-spec fallback) are
-    named 'T-<node-id>' or 'T#<node-id>'. A project with ONLY synthetic topics
-    is treated as a flat graph for add-node (topic optional)."""
+    named 'T-<task-id>' or 'T#<task-id>'. A project with ONLY synthetic topics
+    is treated as a flat graph for add-task (topic optional)."""
     return topic_id.startswith("T-") or topic_id.startswith("T#")
 
 
@@ -64,7 +64,7 @@ def pr_mode_refusal(repo_path: str | None = None) -> str | None:
     """Refusal message when the target repo is push_mode='pr', else None.
 
     DA round-2 MAJOR-2 (2026-06-10): on PR-mode repos _run_integrate returns
-    success after only pushing the branch — the node went 'verified' WITHOUT
+    success after only pushing the branch — the task went 'verified' WITHOUT
     any merge, and dependents were hydrated with "already integrated into
     main" (false). Policy: autopilot (project-graph load / autopilot arm)
     refuses PR-mode repos until verified-means-merged holds for them.
@@ -81,7 +81,7 @@ def pr_mode_refusal(repo_path: str | None = None) -> str | None:
     return (
         f"repo {root} is configured push_mode='pr' — integrate only pushes "
         "the branch for a PR (no merge into main), so autopilot would mark "
-        "nodes 'verified' that are NOT in main and hydrate dependents with a "
+        "tasks 'verified' that are NOT in main and hydrate dependents with a "
         "false 'already integrated' claim. PR-mode repos are not supported "
         "by project autopilot: set push_mode to 'direct' or 'none', or drive "
         "this project without autopilot."
@@ -105,28 +105,28 @@ def register_graph_parsers(subparsers) -> None:
 
     p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
     _g2s = p_g2.add_subparsers(dest="graph2_command", required=True)
-    _an = _g2s.add_parser(
-        "add-node", help="Inject one new node into an existing project graph"
-    )
+    # 'add-node': deprecated hidden alias (baked into autopilot hook + CLAUDE.md).
+    _an = _g2s.add_parser("add-task", aliases=["add-node"],
+                          help="Inject one new task into an existing project graph")
     _an.add_argument("--project", required=True, help="Project id the graph belongs to")
-    _an.add_argument("--id", required=True, help="Stable node id")
-    _an.add_argument("--title", required=True, help="Node title")
+    _an.add_argument("--id", required=True, help="Stable task id")
+    _an.add_argument("--title", required=True, help="Task title")
     _an.add_argument(
         "--prompt", default=None,
         help="Dispatch prompt (omit or pass '-' to read from stdin)",
     )
     _an.add_argument(
         "--deps", default=None,
-        help="Comma-separated EXISTING node ids this node depends on (upstream)",
+        help="Comma-separated EXISTING task ids this task depends on (upstream)",
     )
     _an.add_argument(
         "--required-by", dest="required_by", default=None,
-        help="Comma-separated EXISTING node ids that gain a dep on this node",
+        help="Comma-separated EXISTING task ids that gain a dep on this task",
     )
     _an.add_argument(
         "--topic", default=None,
         help="Owning topic id (REQUIRED when the project has real topics; "
-        "omit on a flat project to auto-create a synthetic 'T-<node-id>' topic)",
+        "omit on a flat project to auto-create a synthetic 'T-<task-id>' topic)",
     )
     _an.add_argument(
         "--verify-cmd", dest="verify_cmd", default=None,
@@ -136,10 +136,10 @@ def register_graph_parsers(subparsers) -> None:
         "--json", dest="json_out", action="store_true",
         help="Machine-readable result",
     )
-    _an.set_defaults(func=cmd_graph_add_node)
+    _an.set_defaults(func=cmd_graph_add_task)
 
     _rc = _g2s.add_parser(
-        "reconcile", help="Reconcile topic states from member node states"
+        "reconcile", help="Reconcile topic states from member task states"
     )
     _rc.add_argument("project", help="Project id")
     _rc.add_argument("--json", dest="json_out", action="store_true",
@@ -149,7 +149,7 @@ def register_graph_parsers(subparsers) -> None:
     _mt = _g2s.add_parser(
         "mark-task", help="Topic agent: mark one task verified (or --fail)"
     )
-    _mt.add_argument("task_id", help="Task (node) id to mark")
+    _mt.add_argument("task_id", help="Task (task) id to mark")
     _mt.add_argument(
         "--fail", action="store_true",
         help="Mark the task failed-verify instead of verified",
@@ -168,17 +168,17 @@ def _csv(value) -> list[str]:
     return [tok.strip() for tok in value.split(",") if tok.strip()]
 
 
-def cmd_graph_add_node(args):
-    """Inject one new node into an EXISTING project graph mid-execution.
+def cmd_graph_add_task(args):
+    """Inject one new task into an EXISTING project graph mid-execution.
 
-    Validated, atomic, guarded upsert via juggle_graph_upsert.add_node — refuses
+    Validated, atomic, guarded upsert via juggle_graph_upsert.add_task — refuses
     (nonzero exit, graph unchanged) on unknown deps, a cycle, an empty prompt, a
-    verify_cmd lint failure, or touching a protected node. Supports args-or-stdin
+    verify_cmd lint failure, or touching a protected task. Supports args-or-stdin
     for --prompt so a long dispatch prompt can be piped.
     """
     import json
 
-    from juggle_graph_add import AddNodeError, add_node
+    from juggle_graph_add import AddTaskError, add_task
 
     db = get_db(getattr(args, "db_path", None), init=True)
     if not db.get_project(args.project):
@@ -197,18 +197,18 @@ def cmd_graph_add_node(args):
 
     # Resolve the owning topic BEFORE any graph mutation (so a missing --topic
     # exits without touching the graph). On a project with real (non-synthetic)
-    # topics --topic is REQUIRED; on a flat project it auto-creates 'T-<node-id>'.
+    # topics --topic is REQUIRED; on a flat project it auto-creates 'T-<task-id>'.
     topic = getattr(args, "topic", None)
     project_topics = db_topics.list_topics(db, args.project)
     has_real_topic = any(not _is_synthetic_topic(t["id"]) for t in project_topics)
     auto_topic = False
     if topic:
         if db_topics.get_topic(db, topic) is None:
-            print(f"add-node REFUSED — unknown topic {topic!r}.", file=sys.stderr)
+            print(f"add-task REFUSED — unknown topic {topic!r}.", file=sys.stderr)
             sys.exit(1)
     elif has_real_topic:
         print(
-            "add-node REFUSED — this project has topics; --topic <id> is "
+            "add-task REFUSED — this project has topics; --topic <id> is "
             "required.",
             file=sys.stderr,
         )
@@ -218,28 +218,28 @@ def cmd_graph_add_node(args):
         auto_topic = True
 
     try:
-        result = add_node(
+        result = add_task(
             db, args.project,
-            node_id=args.id, title=args.title, prompt=prompt,
+            task_id=args.id, title=args.title, prompt=prompt,
             deps=_csv(args.deps), required_by=_csv(args.required_by),
             verify_cmd=args.verify_cmd,
         )
-    except AddNodeError as e:
+    except AddTaskError as e:
         if getattr(args, "json_out", False):
             print(json.dumps({"ok": False, "error": str(e)}))
         else:
-            print(f"add-node REFUSED — graph unchanged: {e}", file=sys.stderr)
+            print(f"add-task REFUSED — graph unchanged: {e}", file=sys.stderr)
         sys.exit(1)
 
     # Assign the topic: auto-create the synthetic topic if needed, then point
-    # the new node at it (topic_id FK).
+    # the new task at it (topic_id FK).
     if auto_topic and db_topics.get_topic(db, topic) is None:
         db_topics.create_topic(
             db, topic_id=topic, project_id=args.project, title=args.title,
         )
     with db._connect() as conn:
         conn.execute(
-            "UPDATE graph_nodes SET topic_id=? WHERE id=?", (topic, args.id)
+            "UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic, args.id)
         )
         conn.commit()
 
@@ -253,13 +253,13 @@ def cmd_graph_add_node(args):
             f"{c['id']} {c['from']}→{c['to']}" for c in changed
         )
     print(
-        f"Added node {result['node_id']!r} to project {args.project} "
+        f"Added task {result['task_id']!r} to project {args.project} "
         f"(state: {result['state']}).{tail}"
     )
 
 
 def cmd_graph_reconcile(args):
-    """`juggle graph reconcile <project>` — re-derive topic states from nodes."""
+    """`juggle graph reconcile <project>` — re-derive topic states from tasks."""
     import json as _json
 
     db = get_db(getattr(args, "db_path", None), init=True)
@@ -283,12 +283,12 @@ def cmd_graph_reconcile(args):
 
 def cmd_graph_mark_task(args):
     """`juggle graph mark-task <task-id> [--fail] [--handoff '…']` — the topic
-    agent's per-task completion (R9 hybrid). Maps onto the EXISTING node machine
+    agent's per-task completion (R9 hybrid). Maps onto the EXISTING task machine
     via mark_completion(integrate_ok=True, verify_ok=not --fail): task 'verified'
     = committed-in-topic-worktree + verify_cmd green — verified-means-MERGED
     holds at TOPIC level only (spec §2.3)."""
     db = get_db(getattr(args, "db_path", None), init=True)
-    task = db_graph.get_node(db, args.task_id)
+    task = db_graph.get_task(db, args.task_id)
     if not task:
         print(f"Error: task {args.task_id!r} not found.", file=sys.stderr)
         sys.exit(1)
@@ -302,6 +302,6 @@ def cmd_graph_mark_task(args):
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     print(f"task {args.task_id} → {state}")
-    topic_id = db_graph.get_node(db, args.task_id)["topic_id"]
+    topic_id = db_graph.get_task(db, args.task_id)["topic_id"]
     if topic_id:
         db_topics.reconcile_topic_state(db, topic_id)

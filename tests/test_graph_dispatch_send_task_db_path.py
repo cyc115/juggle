@@ -42,7 +42,7 @@ def test_cmd_send_task_uses_injected_db_path(tmp_path):
 
     # Isolated DB containing the agent — simulates the watchdog's DB.
     db = _make_db(tmp_path, "watchdog.db")
-    thread_id = db.create_thread("graph-node-A", session_id="")
+    thread_id = db.create_thread("graph-task-A", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%1")
     db.update_agent(agent_id, status="idle", assigned_thread=thread_id)
 
@@ -58,7 +58,7 @@ def test_cmd_send_task_uses_injected_db_path(tmp_path):
         worktree_branch=None,
         main_repo_path=None,
         allow_main=False,
-        force_node=True,
+        force_task=True,
         db_path=str(tmp_path / "watchdog.db"),
     )
 
@@ -67,7 +67,7 @@ def test_cmd_send_task_uses_injected_db_path(tmp_path):
         pass
 
     with patch("juggle_cmd_agents_common.JuggleTmuxManager", side_effect=_StopHere):
-        with patch("juggle_cmd_agents_graph.check_node_guard", return_value=None):
+        with patch("juggle_cmd_agents_graph.check_task_guard", return_value=None):
             # Should reach JuggleTmuxManager (raise _StopHere), NOT exit(1).
             # Reaching _StopHere proves the agent was found in the injected DB.
             try:
@@ -96,12 +96,12 @@ def test_dispatch_via_pool_passes_db_path_to_send_task(tmp_path, monkeypatch):
     from dbops import db_graph as g
 
     db = _make_db(tmp_path)
-    thread_id = db.create_thread("graph-node-B", session_id="")
+    thread_id = db.create_thread("graph-task-B", session_id="")
     agent_id = db.create_agent(role="coder", pane_id="%1")
     db.update_agent(agent_id, status="idle", assigned_thread=thread_id)
 
-    g.create_node(db, node_id="B", project_id="INBOX", title="B", prompt="do B")
-    node = g.get_node(db, "B")
+    g.create_task(db, task_id="B", project_id="INBOX", title="B", prompt="do B")
+    task = g.get_task(db, "B")
 
     captured: list[Namespace] = []
 
@@ -116,7 +116,7 @@ def test_dispatch_via_pool_passes_db_path_to_send_task(tmp_path, monkeypatch):
     # Stub get_agent_by_thread to return a fake agent.
     monkeypatch.setattr(db, "get_agent_by_thread", lambda _tid: {"id": agent_id})
 
-    gd._dispatch_via_pool(db, thread_id, "do B", node)
+    gd._dispatch_via_pool(db, thread_id, "do B", task)
 
     assert captured, "_dispatch_via_pool never called cmd_send_task"
     ns = captured[0]

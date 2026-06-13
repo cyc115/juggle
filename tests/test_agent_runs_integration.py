@@ -76,13 +76,13 @@ def test_dispatch_creates_run_inbox_thread(started_db, tmp_path):
     # INBOX (non-project) thread defaults project_id=INBOX, no topic/node.
     assert run["project_id"] == "INBOX"
     assert run["topic_id"] is None
-    assert run["node_id"] is None
+    assert run["task_id"] is None
     # current_run_id correlation set on the agent.
     assert str(agent["current_run_id"]) == str(run["id"])
 
 
 def test_dispatch_resolves_graph_node_thread(started_db, tmp_path):
-    """A graph-node-bound thread records project_id + node_id on the run."""
+    """A graph-task-bound thread records project_id + task_id on the run."""
     db_path, _ = started_db
     from dbops import db_graph
     from juggle_db import JuggleDB
@@ -97,28 +97,28 @@ def test_dispatch_resolves_graph_node_thread(started_db, tmp_path):
         conn.commit()
     gthread = db.create_thread("graph thread", session_id="")
     db.update_thread(gthread, project_id="PG")
-    db_graph.create_node(
-        db, node_id="N1", project_id="PG", title="t", prompt="p",
+    db_graph.create_task(
+        db, task_id="N1", project_id="PG", title="t", prompt="p",
         verify_cmd=None,
     )
-    db_graph.set_node_thread(db, "N1", gthread)
+    db_graph.set_task_thread(db, "N1", gthread)
 
     prompt_file = tmp_path / "task.txt"
     prompt_file.write_text("graph task.\n")
-    # Bound graph node is tick-owned; dispatch with --force-node.
+    # Bound graph task is tick-owned; dispatch with --force-task.
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%4"}):
         r = run_cli(["get-agent", gthread, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
         res = run_cli(
-            ["send-task", "--force-node", agent_id, str(prompt_file)], db_path
+            ["send-task", "--force-task", agent_id, str(prompt_file)], db_path
         )
     assert res.returncode == 0, res.stdout + res.stderr
 
     runs = JuggleDB(str(db_path)).get_runs(thread_id=gthread)
     assert len(runs) == 1
     assert runs[0]["project_id"] == "PG"
-    assert runs[0]["node_id"] == "N1"
+    assert runs[0]["task_id"] == "N1"
 
 
 # ---------------------------------------------------------------------------

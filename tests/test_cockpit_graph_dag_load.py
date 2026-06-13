@@ -1,7 +1,7 @@
 """TDD tests for lazy DAG loading in the cockpit snapshot.
 
-snapshot(db, load_graph_dag=True) loads the armed project's nodes+edges into
-CockpitState.graph_dag. When load_graph_dag is False (default) NO node/edge
+snapshot(db, load_graph_dag=True) loads the armed project's tasks+edges into
+CockpitState.graph_dag. When load_graph_dag is False (default) NO task/edge
 DAG query runs — zero cost when graph mode is off. No armed project → None.
 """
 from __future__ import annotations
@@ -39,8 +39,8 @@ def _make_project_graph(db, pid="proj1"):
         )
         conn.commit()
     a, b = f"{pid}-a", f"{pid}-b"
-    g.create_node(db, node_id=a, project_id=pid, title="Setup", prompt="do a")
-    g.create_node(db, node_id=b, project_id=pid, title="Build", prompt="do b")
+    g.create_task(db, task_id=a, project_id=pid, title="Setup", prompt="do a")
+    g.create_task(db, task_id=b, project_id=pid, title="Build", prompt="do b")
     g.replace_edges(db, b, [a])
 
 
@@ -59,7 +59,7 @@ def test_dag_loaded_for_armed_project_when_flag_on(db):
     dag = state.graph_dag
     assert dag is not None
     assert dag.project_id == "proj1"
-    assert {n.id for n in dag.nodes} == {"proj1-a", "proj1-b"}
+    assert {n.id for n in dag.tasks} == {"proj1-a", "proj1-b"}
     assert ("proj1-b", "proj1-a") in dag.edges
 
 
@@ -70,18 +70,18 @@ def test_dag_none_when_no_armed_project(db):
     assert state.graph_dag is None
 
 
-def test_dag_only_armed_project_nodes(db):
+def test_dag_only_armed_project_tasks(db):
     _make_project_graph(db, "proj1")
     _make_project_graph(db, "proj2")
     db.set_setting(ARMED_PROJECT_KEY, "proj2")
     state = snapshot(db, load_graph_dag=True)
     assert state.graph_dag.project_id == "proj2"
-    # both projects use ids a/b — assert it queried proj2 only (2 nodes)
-    assert len(state.graph_dag.nodes) == 2
+    # both projects use ids a/b — assert it queried proj2 only (2 tasks)
+    assert len(state.graph_dag.tasks) == 2
 
 
 def test_no_extra_query_when_flag_off(db):
-    """Spy: the graph_nodes-by-project DAG query must not fire when flag off."""
+    """Spy: the graph_tasks-by-project DAG query must not fire when flag off."""
     _make_project_graph(db)
     db.set_setting(ARMED_PROJECT_KEY, "proj1")
 
@@ -132,24 +132,24 @@ def _seed_two_project_topics(db):
     tp.create_topic(db, topic_id="A", project_id="P1", title="auth")
     tp.create_topic(db, topic_id="B", project_id="P1", title="build")
     tp.create_topic(db, topic_id="C", project_id="P2", title="ci")
-    g.create_node(db, node_id="a1", project_id="P1", title="a1", prompt="p")
-    g.create_node(db, node_id="a2", project_id="P1", title="a2", prompt="p")
-    g.create_node(db, node_id="b1", project_id="P1", title="b1", prompt="p")
-    g.create_node(db, node_id="c1", project_id="P2", title="c1", prompt="p")
+    g.create_task(db, task_id="a1", project_id="P1", title="a1", prompt="p")
+    g.create_task(db, task_id="a2", project_id="P1", title="a2", prompt="p")
+    g.create_task(db, task_id="b1", project_id="P1", title="b1", prompt="p")
+    g.create_task(db, task_id="c1", project_id="P2", title="c1", prompt="p")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_nodes SET topic_id='A' WHERE id IN ('a1','a2')")
-        conn.execute("UPDATE graph_nodes SET topic_id='B' WHERE id='b1'")
-        conn.execute("UPDATE graph_nodes SET topic_id='C' WHERE id='c1'")
-        conn.execute("UPDATE graph_nodes SET state='verified' WHERE id='a1'")
+        conn.execute("UPDATE graph_tasks SET topic_id='A' WHERE id IN ('a1','a2')")
+        conn.execute("UPDATE graph_tasks SET topic_id='B' WHERE id='b1'")
+        conn.execute("UPDATE graph_tasks SET topic_id='C' WHERE id='c1'")
+        conn.execute("UPDATE graph_tasks SET state='verified' WHERE id='a1'")
         # task edge b1 → a1 → crosses B→A boundary
-        conn.execute("INSERT INTO graph_edges(node_id,depends_on_id) VALUES('b1','a1')")
+        conn.execute("INSERT INTO graph_edges(task_id,depends_on_id) VALUES('b1','a1')")
         conn.commit()
     db.set_setting(ARMED_PROJECT_KEY, "P1,P2")
 
 
-def test_load_graph_dags_topics_are_the_dag_nodes(db):
+def test_load_graph_dags_topics_are_the_dag_tasks(db):
     """REGRESSION PIN (2026-06-11 R5/R9): the loader rendered TASKS as DAG
-    nodes and read the armed key as a scalar. Nodes must be TOPICS with task
+    tasks and read the armed key as a scalar. Tasks must be TOPICS with task
     progress; edges the DERIVED topic deps; one GraphDag per armed project
     (CSV), arm order."""
     from juggle_cockpit_graph_dag import load_graph_dags
@@ -157,12 +157,12 @@ def test_load_graph_dags_topics_are_the_dag_nodes(db):
     _seed_two_project_topics(db)
     dags = load_graph_dags(db._connect())
     assert [d.project_id for d in dags] == ["P1", "P2"]
-    assert {n.id for n in dags[0].nodes} == {"A", "B"}
+    assert {n.id for n in dags[0].tasks} == {"A", "B"}
     assert dags[0].edges == [("B", "A")]
-    a_node = next(n for n in dags[0].nodes if n.id == "A")
-    assert a_node.tasks_done == 1 and a_node.tasks_total == 2
-    assert "a1" in dags[0].tasks["A"] or any(
-        t["id"] == "a1" for t in dags[0].tasks["A"]
+    a_task = next(n for n in dags[0].tasks if n.id == "A")
+    assert a_task.tasks_done == 1 and a_task.tasks_total == 2
+    assert "a1" in dags[0].member_tasks["A"] or any(
+        t["id"] == "a1" for t in dags[0].member_tasks["A"]
     )
 
 

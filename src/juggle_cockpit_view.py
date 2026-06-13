@@ -57,10 +57,10 @@ SCHED_STATUS_GLYPHS: dict[str, str] = {
     "unknown": "⏸️",
 }
 
-# Node-bound topics get their glyph from graph_nodes.state (autopilot, DA m2)
-# — never from thread status/TTL, so done/failed nodes stay legible even after
+# Task-bound topics get their glyph from graph_tasks.state (autopilot, DA m2)
+# — never from thread status/TTL, so done/failed tasks stay legible even after
 # their threads close or archive.
-NODE_STATE_GLYPHS: dict[str, str] = {
+TASK_STATE_GLYPHS: dict[str, str] = {
     "pending": "⬡",
     "ready": "◇",
     "dispatching": "◌",
@@ -103,9 +103,9 @@ def pick_breakpoint(size_or_width) -> str:
 
 
 def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
-    node_state = getattr(t, "node_state", None)
-    if node_state:
-        glyph = NODE_STATE_GLYPHS.get(node_state, "⬢")
+    task_state = getattr(t, "task_state", None)
+    if task_state:
+        glyph = TASK_STATE_GLYPHS.get(task_state, "⬢")
     else:
         glyph = TOPIC_STATUS_GLYPHS.get(t.status, "•")
     label_str = f"[{t.label}]"
@@ -141,7 +141,7 @@ def render_topics(
     Wide: one row per topic with glyph + [label] + title.
     Medium/narrow: compressed strip.
     When projects_by_id has >1 project, renders section headers per project;
-    a project with graph nodes shows aggregate progress in its header
+    a project with graph tasks shows aggregate progress in its header
     ('3/14 done, 1 failed, 2 ready' — autopilot, DA m2).
     """
     border = _pane_border(active)
@@ -169,7 +169,7 @@ def render_topics(
     # Grouped render — headers are separate Text renderables to avoid width=3 truncation
     groups = group_threads_by_project(visible, projects_by_id)
     # Synthesize a header row for graph projects with zero visible topics
-    # (DA round-2 minor 3, 2026-06-10): an armed project whose nodes have no
+    # (DA round-2 minor 3, 2026-06-10): an armed project whose tasks have no
     # live threads yet would otherwise vanish from the cockpit entirely.
     shown = {pid for pid, _, _ in groups}
     synthesized = [

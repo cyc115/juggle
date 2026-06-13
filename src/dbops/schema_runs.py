@@ -3,7 +3,7 @@
 Owns: the CREATE TABLE/INDEX strings for the append-only ``agent_runs`` ledger,
 which pairs each agent dispatch's INPUT (the full sent prompt) with its OUTPUT
 (handoff/result + diffstat), keyed by thread_id (universal) plus
-project/topic/node ids. Extracted from dbops.schema to keep both modules within
+project/topic/task ids. Extracted from dbops.schema to keep both modules within
 the 300-line architecture gate. Re-exported from dbops.schema for back-compat.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   thread_id     TEXT NOT NULL REFERENCES threads(id),
   project_id    TEXT,
   topic_id      TEXT,
-  node_id       TEXT,
+  task_id       TEXT,
   agent_id      TEXT,
   role          TEXT,
   model         TEXT,
@@ -35,5 +35,5 @@ CREATE_AGENT_RUNS_INDEXES = (
     "CREATE INDEX IF NOT EXISTS idx_agent_runs_thread ON agent_runs(thread_id)",
     "CREATE INDEX IF NOT EXISTS idx_agent_runs_project ON agent_runs(project_id)",
     "CREATE INDEX IF NOT EXISTS idx_agent_runs_topic ON agent_runs(topic_id)",
-    "CREATE INDEX IF NOT EXISTS idx_agent_runs_node ON agent_runs(node_id)",
+    "CREATE INDEX IF NOT EXISTS idx_agent_runs_task ON agent_runs(task_id)",
 )

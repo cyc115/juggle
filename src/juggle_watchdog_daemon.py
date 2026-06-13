@@ -197,7 +197,7 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
         pass
 
     # Graph claim-dispatch tick (autopilot Phase 2): the watchdog is the SOLE
-    # dispatcher for the armed project's ready nodes (DA B4/M1). graph_tick is
+    # dispatcher for the armed project's ready tasks (DA B4/M1). graph_tick is
     # internally fail-safe; this guard is belt-and-braces — a tick bug must
     # never take the daemon down.
     try:

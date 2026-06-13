@@ -1,7 +1,7 @@
 """juggle_graph_dispatch_topics — TOPIC-level claim / sweep / give-up helpers.
 
 Extracted from juggle_graph_dispatch (2026-06-11, R9 LOC gate): the topic twins
-of the node claim/sweep/give-up trio. Same SQL pattern, graph_topics table.
+of the task claim/sweep/give-up trio. Same SQL pattern, graph_topics table.
 juggle_graph_dispatch re-exports these (bottom import) so callers/tests keep
 using `juggle_graph_dispatch.claim_topic` etc., and `graph_tick` (which stays
 there) drives them.

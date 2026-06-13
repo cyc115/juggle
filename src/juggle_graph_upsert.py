@@ -1,14 +1,14 @@
 """
-juggle_graph_upsert — shared graph-spec validation + single-node upsert helpers.
+juggle_graph_upsert — shared graph-spec validation + single-task upsert helpers.
 
 Extracted from juggle_cmd_graph (2026-06-10) so both `project-graph load` (whole
-spec) and `graph add-node` (one node into a live graph) call ONE validation /
-upsert path. Pure validation lives here (cycle check, verify_cmd lint, per-node
+spec) and `graph add-task` (one task into a live graph) call ONE validation /
+upsert path. Pure validation lives here (cycle check, verify_cmd lint, per-task
 field checks); the DB upsert helpers compose dbops.db_graph primitives without
-duplicating its state semantics (node_transition remains the sole state writer).
+duplicating its state semantics (task_transition remains the sole state writer).
 
-Owns: load-time lint/validation (pure) + the guarded single-node upsert helper.
-Must not own: node state semantics (dbops.db_graph), CLI parsing (juggle_cmd_*).
+Owns: load-time lint/validation (pure) + the guarded single-task upsert helper.
+Must not own: task state semantics (dbops.db_graph), CLI parsing (juggle_cmd_*).
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from dbops import db_graph
 
-MAX_NODES = 50
+MAX_TASKS = 50
 
 _HEADING_RE = re.compile(r"^##\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
 _FIELD_RE = re.compile(r"^[-*\s]*\b(deps|verify_cmd)\s*:\s*(.*)$")
@@ -35,19 +35,19 @@ _FORBIDDEN_CHARS = ("&", ";", "|", ">", "<", "`", "$(")
 
 
 def parse_graph_spec(text: str) -> list[dict]:
-    """Parse a graph spec markdown string into node dicts.
+    """Parse a graph spec markdown string into task dicts.
 
     Returns [{"id", "title", "deps": [..], "verify_cmd": str|None, "prompt"}].
     Duplicate ids are preserved (validation reports them).
     """
-    nodes: list[dict] = []
+    tasks: list[dict] = []
     current: dict | None = None
     body: list[str] = []
 
     def _flush():
         if current is not None:
             current["prompt"] = "\n".join(body).strip()
-            nodes.append(current)
+            tasks.append(current)
 
     for line in text.splitlines():
         m = _HEADING_RE.match(line)
@@ -57,7 +57,7 @@ def parse_graph_spec(text: str) -> list[dict]:
             body = []
             continue
         if current is None:
-            continue  # preamble before first node heading
+            continue  # preamble before first task heading
         fm = _FIELD_RE.match(line)
         if fm:
             field, value = fm.group(1), fm.group(2).strip()
@@ -68,21 +68,21 @@ def parse_graph_spec(text: str) -> list[dict]:
             continue
         body.append(line)
     _flush()
-    return nodes
+    return tasks
 
 
-def find_cycle(node_ids, edges) -> list[str] | None:
-    """Kahn's algorithm over (node_id, depends_on_id) pairs. Pure.
+def find_cycle(task_ids, edges) -> list[str] | None:
+    """Kahn's algorithm over (task_id, depends_on_id) pairs. Pure.
 
-    Returns the list of node ids stuck in a cycle, or None for a DAG.
+    Returns the list of task ids stuck in a cycle, or None for a DAG.
     Lives here (load-time validation), not in dbops.db_graph — it never
     touches the DB.
     """
-    indegree = {n: 0 for n in node_ids}
-    dependents: dict[str, list[str]] = {n: [] for n in node_ids}
-    for node, dep in edges:
-        indegree[node] += 1
-        dependents[dep].append(node)
+    indegree = {n: 0 for n in task_ids}
+    dependents: dict[str, list[str]] = {n: [] for n in task_ids}
+    for task, dep in edges:
+        indegree[task] += 1
+        dependents[dep].append(task)
     queue = [n for n, d in indegree.items() if d == 0]
     seen = 0
     while queue:
@@ -117,43 +117,43 @@ def lint_verify_cmd(cmd: str) -> str | None:
     return None
 
 
-def validate_graph(nodes: list[dict]) -> list[str]:
+def validate_graph(tasks: list[dict]) -> list[str]:
     """Return a list of validation error strings (empty = valid)."""
     errors: list[str] = []
-    if not 1 <= len(nodes) <= MAX_NODES:
-        errors.append(f"node count {len(nodes)} outside sane range 1..{MAX_NODES}")
-    ids = [n["id"] for n in nodes]
+    if not 1 <= len(tasks) <= MAX_TASKS:
+        errors.append(f"task count {len(tasks)} outside sane range 1..{MAX_TASKS}")
+    ids = [n["id"] for n in tasks]
     seen: set[str] = set()
     for nid in ids:
         if nid in seen:
-            errors.append(f"duplicate node id: {nid!r}")
+            errors.append(f"duplicate task id: {nid!r}")
         seen.add(nid)
     id_set = set(ids)
     edges: list[tuple[str, str]] = []
-    for n in nodes:
+    for n in tasks:
         if not n["prompt"]:
-            errors.append(f"empty prompt for node {n['id']!r}")
+            errors.append(f"empty prompt for task {n['id']!r}")
         for dep in n["deps"]:
             if dep not in id_set:
-                errors.append(f"unknown dep {dep!r} on node {n['id']!r}")
+                errors.append(f"unknown dep {dep!r} on task {n['id']!r}")
             else:
                 edges.append((n["id"], dep))
         if n["verify_cmd"]:
             err = lint_verify_cmd(n["verify_cmd"])
             if err:
-                errors.append(f"node {n['id']!r}: {err}")
+                errors.append(f"task {n['id']!r}: {err}")
     if not errors:
         cyc = find_cycle(ids, edges)
         if cyc:
-            errors.append(f"dependency cycle involving nodes: {', '.join(cyc)}")
+            errors.append(f"dependency cycle involving tasks: {', '.join(cyc)}")
     return errors
 
 
 def parse_topics_spec(text: str) -> list[dict]:
-    """Parse a 3-tier spec: [{'id','title','objective','tasks':[node dicts]}].
+    """Parse a 3-tier spec: [{'id','title','objective','tasks':[task dicts]}].
 
     LEGACY FALLBACK (R6): a spec with no `## topic` headings parses via
-    parse_graph_spec and wraps each flat node in a synthetic 1-task topic
+    parse_graph_spec and wraps each flat task in a synthetic 1-task topic
     'T-<id>' — the exact shape migration 37 produces. A spec mixing both
     heading forms gets a '_mixed' marker for validate_topics to reject
     (parse never raises; validation reports).
@@ -224,7 +224,7 @@ def validate_topics(topics: list[dict]) -> list[str]:
     DERIVED topic deps."""
     errors: list[str] = []
     if any(t.get("_mixed") for t in topics):
-        errors.append("spec mixes `## topic` and flat `## node` headings — pick one form")
+        errors.append("spec mixes `## topic` and flat `## task` headings — pick one form")
     tids = [t["id"] for t in topics]
     seen: set[str] = set()
     for tid in tids:
@@ -249,12 +249,12 @@ def validate_topics(topics: list[dict]) -> list[str]:
     return errors
 
 
-def content_changed(existing: dict, spec_node: dict, spec_deps: list[str], db) -> bool:
-    """True if a re-loaded spec node differs from the stored node (title /
+def content_changed(existing: dict, spec_task: dict, spec_deps: list[str], db) -> bool:
+    """True if a re-loaded spec task differs from the stored task (title /
     prompt / verify_cmd / dep set). Drives the guarded-upsert decision."""
     return (
-        existing["title"] != spec_node["title"]
-        or existing["prompt"] != spec_node["prompt"]
-        or (existing["verify_cmd"] or None) != (spec_node["verify_cmd"] or None)
+        existing["title"] != spec_task["title"]
+        or existing["prompt"] != spec_task["prompt"]
+        or (existing["verify_cmd"] or None) != (spec_task["verify_cmd"] or None)
         or db_graph.get_deps(db, existing["id"]) != sorted(spec_deps)
     )

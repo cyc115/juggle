@@ -31,7 +31,7 @@ def cmd_runs_list(args):
     runs = db.get_runs(
         project_id=getattr(args, "project", None),
         topic_id=getattr(args, "topic", None),
-        node_id=getattr(args, "node", None),
+        task_id=getattr(args, "task", None),
         thread_id=getattr(args, "thread", None),
         limit=getattr(args, "limit", None),
     )
@@ -43,14 +43,14 @@ def cmd_runs_list(args):
         return
     print(
         f"{'ID':>5}  {'STATUS':<10} {'ROLE':<9} {'MODEL':<10} "
-        f"{'PROJECT':<10} {'TOPIC':<8} {'NODE':<8} {'DISPATCHED':<26} INPUT→OUTPUT"
+        f"{'PROJECT':<10} {'TOPIC':<8} {'TASK':<8} {'DISPATCHED':<26} INPUT→OUTPUT"
     )
     for r in runs:
         io = f"{_teaser(r['input_prompt'], 32)} → {_teaser(r['output'], 24)}"
         print(
             f"{r['id']:>5}  {r['status']:<10} {(r['role'] or ''):<9} "
             f"{(r['model'] or ''):<10} {(r['project_id'] or ''):<10} "
-            f"{(r['topic_id'] or ''):<8} {(r['node_id'] or ''):<8} "
+            f"{(r['topic_id'] or ''):<8} {(r['task_id'] or ''):<8} "
             f"{(r['dispatched_at'] or ''):<26} {io}"
         )
 
@@ -65,7 +65,7 @@ def cmd_runs_show(args):
         print(json.dumps(run, indent=2))
         return
     print(f"Run {run['id']} — {run['status']}")
-    for k in ("thread_id", "project_id", "topic_id", "node_id", "agent_id",
+    for k in ("thread_id", "project_id", "topic_id", "task_id", "agent_id",
               "role", "model", "harness", "dispatched_at", "completed_at"):
         print(f"  {k:<14} {run.get(k)}")
     print("\n--- INPUT (full sent prompt) ---")
@@ -94,7 +94,8 @@ def register_runs_parsers(subparsers) -> None:
 
     p.add_argument("--project", default=None, help="Filter by project_id")
     p.add_argument("--topic", default=None, help="Filter by topic_id")
-    p.add_argument("--node", default=None, help="Filter by node_id")
+    p.add_argument("--task", "--node", dest="task", default=None,
+                   help="Filter by task_id (--node: deprecated alias)")
     p.add_argument("--thread", default=None, help="Filter by thread_id")
     p.add_argument("--limit", type=int, default=None, help="Max rows")
     p.add_argument("--json", dest="json_out", action="store_true", help="JSON output")

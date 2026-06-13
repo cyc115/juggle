@@ -16,7 +16,7 @@ from dbops.db_graph import _EVENTS, _TRANSITIONS, _cx
 
 
 def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
-    """Apply ``event`` to the topic. Same machine as nodes. Fail-loud."""
+    """Apply ``event`` to the topic. Same machine as tasks. Fail-loud."""
     if event not in _EVENTS:
         raise ValueError(f"graph topic event unknown: {event!r}")
     topic = get_topic(db, topic_id, conn=conn)
@@ -101,7 +101,7 @@ def list_topic_tasks(db, topic_id) -> list[dict]:
     The topic agent executes tasks SEQUENTIALLY in this order (R9 hybrid)."""
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM graph_nodes WHERE topic_id=? ORDER BY created_at, id",
+            "SELECT * FROM graph_tasks WHERE topic_id=? ORDER BY created_at, id",
             (topic_id,),
         ).fetchall()
     tasks = [dict(r) for r in rows]
@@ -110,14 +110,14 @@ def list_topic_tasks(db, topic_id) -> list[dict]:
         return []
     with db._connect() as conn:
         edges = conn.execute(
-            "SELECT node_id, depends_on_id FROM graph_edges "
-            "WHERE node_id IN (%s)" % ",".join("?" * len(ids)),
+            "SELECT task_id, depends_on_id FROM graph_edges "
+            "WHERE task_id IN (%s)" % ",".join("?" * len(ids)),
             tuple(ids),
         ).fetchall()
     deps = {n["id"]: set() for n in tasks}
     for e in edges:
         if e["depends_on_id"] in ids:  # intra-topic edges only order execution
-            deps[e["node_id"]].add(e["depends_on_id"])
+            deps[e["task_id"]].add(e["depends_on_id"])
     ordered, emitted = [], set()
     pool = list(tasks)
     while pool:
@@ -139,8 +139,8 @@ def derived_topic_deps(db, topic_id) -> list[str]:
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT DISTINCT d.topic_id FROM graph_edges e "
-            "JOIN graph_nodes n ON n.id = e.node_id "
-            "JOIN graph_nodes d ON d.id = e.depends_on_id "
+            "JOIN graph_tasks n ON n.id = e.task_id "
+            "JOIN graph_tasks d ON d.id = e.depends_on_id "
             "WHERE n.topic_id=? AND d.topic_id IS NOT NULL AND d.topic_id != ? "
             "ORDER BY d.topic_id",
             (topic_id, topic_id),
@@ -155,8 +155,8 @@ def topic_ready_eligible(db, project_id) -> list[str]:
             "SELECT t.id FROM graph_topics t WHERE t.project_id=? "
             "AND t.state='pending' AND NOT EXISTS ("
             "  SELECT 1 FROM graph_edges e"
-            "  JOIN graph_nodes n ON n.id = e.node_id"
-            "  JOIN graph_nodes d ON d.id = e.depends_on_id"
+            "  JOIN graph_tasks n ON n.id = e.task_id"
+            "  JOIN graph_tasks d ON d.id = e.depends_on_id"
             "  JOIN graph_topics dt ON dt.id = d.topic_id"
             "  WHERE n.topic_id = t.id AND d.topic_id != t.id"
             "  AND dt.state != 'verified') "
@@ -197,7 +197,7 @@ def mark_topic_completion(db, topic_id, *, integrate_ok, verify_ok=True,
     apply the outcome. verified-means-MERGED holds at topic level (spec §2.3).
 
     Idempotent for the success path: if the topic is already 'verified', return
-    'verified' without raising. Prevents a node stuck at 'running' when an
+    'verified' without raising. Prevents a task stuck at 'running' when an
     out-of-band integrate + a racing complete-agent both succeed (2026-06-11 bug I).
     """
     topic = get_topic(db, topic_id)
@@ -251,8 +251,8 @@ def propagate_topic_failure(db, topic_id) -> list[str]:
         with db._connect() as conn:
             rows = conn.execute(
                 "SELECT DISTINCT n.topic_id FROM graph_edges e "
-                "JOIN graph_nodes n ON n.id = e.node_id "
-                "JOIN graph_nodes d ON d.id = e.depends_on_id "
+                "JOIN graph_tasks n ON n.id = e.task_id "
+                "JOIN graph_tasks d ON d.id = e.depends_on_id "
                 "WHERE d.topic_id=? AND n.topic_id != ?",
                 (cur, cur),
             ).fetchall()
@@ -266,14 +266,14 @@ def propagate_topic_failure(db, topic_id) -> list[str]:
     return blocked
 
 
-_FAILED_NODE_STATES = frozenset({
+_FAILED_TASK_STATES = frozenset({
     "failed-exec", "failed-integration", "failed-verify", "blocked-failed"
 })
-_ACTIVE_NODE_STATES = frozenset({"running", "dispatching", "integrating"})
+_ACTIVE_TASK_STATES = frozenset({"running", "dispatching", "integrating"})
 
 
 def reconcile_topic_state(db, topic_id: str) -> str:
-    """Derive and sync a topic's state from its member node states.
+    """Derive and sync a topic's state from its member task states.
 
     Priority: all verified → 'verified'; any failed → 'failed-verify'; any
     active (running/dispatching/integrating) → 'running'; else leave
@@ -286,19 +286,19 @@ def reconcile_topic_state(db, topic_id: str) -> str:
 
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT state FROM graph_nodes WHERE topic_id=?", (topic_id,)
+            "SELECT state FROM graph_tasks WHERE topic_id=?", (topic_id,)
         ).fetchall()
 
     if not rows:
         return topic["state"]
 
-    node_states = [r[0] for r in rows]
+    task_states = [r[0] for r in rows]
 
-    if all(s == "verified" for s in node_states):
+    if all(s == "verified" for s in task_states):
         target = "verified"
-    elif any(s in _FAILED_NODE_STATES for s in node_states):
+    elif any(s in _FAILED_TASK_STATES for s in task_states):
         target = "failed-verify"
-    elif any(s in _ACTIVE_NODE_STATES for s in node_states):
+    elif any(s in _ACTIVE_TASK_STATES for s in task_states):
         target = "running"
     elif topic["state"] in ("pending", "ready"):
         return topic["state"]
@@ -322,7 +322,7 @@ def reconcile_topic_state(db, topic_id: str) -> str:
 
 
 def reconcile_project_topics(db, project_id: str) -> dict:
-    """Reconcile all topics in a project from their member node states.
+    """Reconcile all topics in a project from their member task states.
 
     Returns {topic_id: {"before": old_state, "after": new_state}}.
     """

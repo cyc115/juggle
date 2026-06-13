@@ -30,12 +30,12 @@ DEFAULTS: dict = {
     "stale_summary_message_threshold": 3,
     "agent_boot_grace_secs": 120,
     "summary_max_chars": 250,
-    # Per-repo integration config. Key=abs repo path. Value: {push_mode, test_cmd}.
-    # push_mode: "direct"=ff-merge+push main | "pr"=push branch | "none"=local merge
+    # Per-repo integration config. Key = absolute repo path.
+    # Example: {"/home/user/juggle": {"push_mode": "direct", "test_cmd": "pytest"}}
+    # push_mode: "direct" = ff-merge+push main | "pr" = push branch only | "none" = local merge only
     "repos": {},
     "thread_idle_threshold_secs": 1800,
     "thread_archive_threshold_secs": 172800,
-    "runs": {"retention_days": 0},  # 0 = keep all (manual `runs prune` only)
     # Task Templates — prepended to agent prompts by role
     "task_templates": {
         "coder": (

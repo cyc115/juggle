@@ -1,8 +1,8 @@
-"""Tests for cockpit graph-node visibility (autopilot Phase 4, DA m2).
+"""Tests for cockpit graph-task visibility (autopilot Phase 4, DA m2).
 
-Project rows show aggregate node progress ('3/14 done, 1 failed, 2 ready')
-and node-bound topics get their glyph from graph_nodes.state — NOT from
-thread status or TTL, so the un-instantiated tail and done nodes stay
+Project rows show aggregate task progress ('3/14 done, 1 failed, 2 ready')
+and task-bound topics get their glyph from graph_tasks.state — NOT from
+thread status or TTL, so the un-instantiated tail and done tasks stay
 visible regardless of thread lifecycle.
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from juggle_db import JuggleDB  # noqa: E402
 from dbops import db_graph as g  # noqa: E402
 from juggle_cockpit_model import Topic, snapshot  # noqa: E402
-from juggle_cockpit_view import NODE_STATE_GLYPHS, render_topics  # noqa: E402
+from juggle_cockpit_view import TASK_STATE_GLYPHS, render_topics  # noqa: E402
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ def _render_text(panel, width: int = 100) -> str:
     return buf.getvalue()
 
 
-def _topic(label="T", status="running", node_state=None, project_id="INBOX"):
+def _topic(label="T", status="running", task_state=None, project_id="INBOX"):
     return Topic(
         id=f"id-{label}",
         label=label,
@@ -47,7 +47,7 @@ def _topic(label="T", status="running", node_state=None, project_id="INBOX"):
         title=f"Topic {label}",
         project_id=project_id,
         project_name="Inbox",
-        node_state=node_state,
+        task_state=task_state,
     )
 
 
@@ -55,10 +55,10 @@ def _topic(label="T", status="running", node_state=None, project_id="INBOX"):
 
 
 def test_snapshot_exposes_graph_by_project(db):
-    g.create_node(db, node_id="a", project_id="INBOX", title="A", prompt="p")
-    g.create_node(db, node_id="b", project_id="INBOX", title="B", prompt="p")
+    g.create_task(db, task_id="a", project_id="INBOX", title="A", prompt="p")
+    g.create_task(db, task_id="b", project_id="INBOX", title="B", prompt="p")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_nodes SET state='verified' WHERE id='a'")
+        conn.execute("UPDATE graph_tasks SET state='verified' WHERE id='a'")
         conn.commit()
     state = snapshot(db)
     assert state.graph_by_project is not None
@@ -66,51 +66,51 @@ def test_snapshot_exposes_graph_by_project(db):
     assert counts["total"] == 2 and counts["verified"] == 1
 
 
-def test_snapshot_graph_none_when_no_nodes(db):
+def test_snapshot_graph_none_when_no_tasks(db):
     state = snapshot(db)
     assert state.graph_by_project is None
 
 
-def test_snapshot_topic_node_state_from_graph_nodes(db):
-    """2026-06-10 DA m2 pin: a node-bound thread's cockpit glyph state comes
-    from graph_nodes.state, not from the thread's own status."""
-    tid = db.create_thread("[a] node thread", session_id="s")
-    g.create_node(db, node_id="a", project_id="INBOX", title="A", prompt="p")
+def test_snapshot_topic_task_state_from_graph_tasks(db):
+    """2026-06-10 DA m2 pin: a task-bound thread's cockpit glyph state comes
+    from graph_tasks.state, not from the thread's own status."""
+    tid = db.create_thread("[a] task thread", session_id="s")
+    g.create_task(db, task_id="a", project_id="INBOX", title="A", prompt="p")
     with db._connect() as conn:
         conn.execute(
-            "UPDATE graph_nodes SET state='verified', thread_id=? WHERE id='a'", (tid,)
+            "UPDATE graph_tasks SET state='verified', thread_id=? WHERE id='a'", (tid,)
         )
         conn.commit()
     state = snapshot(db)
     topic = next(t for t in state.topics if t.id == tid)
     assert topic.status != "verified"  # thread status vocabulary is unchanged
-    assert topic.node_state == "verified"
+    assert topic.task_state == "verified"
 
 
-def test_snapshot_topic_node_state_none_for_unbound(db):
+def test_snapshot_topic_task_state_none_for_unbound(db):
     db.create_thread("plain thread", session_id="s")
     state = snapshot(db)
-    assert all(t.node_state is None for t in state.topics)
+    assert all(t.task_state is None for t in state.topics)
 
 
-# ── glyphs (DA m2: sourced from graph_nodes.state) ────────────────────────────
+# ── glyphs (DA m2: sourced from graph_tasks.state) ────────────────────────────
 
 
-def test_all_node_states_have_glyphs():
+def test_all_task_states_have_glyphs():
     for s in g.VALID_STATES:
-        assert s in NODE_STATE_GLYPHS, f"no cockpit glyph for node state {s!r}"
+        assert s in TASK_STATE_GLYPHS, f"no cockpit glyph for task state {s!r}"
 
 
-def test_node_bound_topic_uses_node_glyph_not_thread_status():
-    topics = [_topic(label="N", status="running", node_state="verified")]
+def test_task_bound_topic_uses_task_glyph_not_thread_status():
+    topics = [_topic(label="N", status="running", task_state="verified")]
     text = _render_text(render_topics(topics, "wide"))
-    assert NODE_STATE_GLYPHS["verified"] in text
+    assert TASK_STATE_GLYPHS["verified"] in text
 
 
 def test_unbound_topic_keeps_thread_status_glyph():
     from juggle_cockpit_view import TOPIC_STATUS_GLYPHS
 
-    topics = [_topic(label="P", status="running", node_state=None)]
+    topics = [_topic(label="P", status="running", task_state=None)]
     text = _render_text(render_topics(topics, "wide"))
     assert TOPIC_STATUS_GLYPHS["running"] in text
 
@@ -153,7 +153,7 @@ def test_project_header_no_progress_without_graph():
 
 def test_armed_project_header_visible_with_zero_visible_topics():
     """REGRESSION PIN (DA round-2 minor 3, 2026-06-10): an armed project whose
-    nodes have no live threads yet (or whose threads all aged out of the TTL
+    tasks have no live threads yet (or whose threads all aged out of the TTL
     window) had NO topics — group_threads_by_project dropped it entirely, so
     the aggregate '⬢ x/y done' row vanished from the cockpit exactly when the
     operator most needs it. A header row must be synthesized for any project

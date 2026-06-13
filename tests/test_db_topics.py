@@ -29,15 +29,15 @@ def _topic(db, tid, project="INBOX", **kw):
 
 
 def _task(db, nid, topic_id, deps=()):
-    g.create_node(db, node_id=nid, project_id="INBOX", title=nid, prompt=f"do {nid}")
+    g.create_task(db, task_id=nid, project_id="INBOX", title=nid, prompt=f"do {nid}")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_nodes SET topic_id=? WHERE id=?", (topic_id, nid))
+        conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic_id, nid))
         conn.commit()
     if deps:
         g.replace_edges(db, nid, list(deps))
 
 
-def test_topic_uses_node_state_machine(db):
+def test_topic_uses_task_state_machine(db):
     _topic(db, "ta")
     assert t.get_topic(db, "ta")["state"] == "pending"
     assert t.topic_transition(db, "ta", "deps_ready") == "ready"

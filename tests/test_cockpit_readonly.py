@@ -11,9 +11,9 @@ _COCKPIT_PATH = Path(__file__).parent.parent / "src" / "juggle_cockpit.py"
 
 
 def _find_method(tree: ast.AST, class_name: str, method_name: str) -> ast.FunctionDef | None:
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == class_name:
-            for item in ast.walk(node):
+    for task in ast.walk(tree):
+        if isinstance(task, ast.ClassDef) and task.name == class_name:
+            for item in ast.walk(task):
                 if isinstance(item, ast.FunctionDef) and item.name == method_name:
                     return item
     return None

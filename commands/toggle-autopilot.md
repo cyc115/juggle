@@ -36,10 +36,10 @@ juggle autopilot off
    global flag. The command prints graph state and the spec path.
 2. **Decompose** (if no graph is loaded yet): break the project objective into
    a task-graph spec and write it to `<data_dir>/graphs/<project>-graph.md`
-   (the path the arm command printed). Spec format: one `## <node-id>: <Title>`
-   section per node with optional `deps:` / `verify_cmd:` lines and the
+   (the path the arm command printed). Spec format: one `## <task-id>: <Title>`
+   section per task with optional `deps:` / `verify_cmd:` lines and the
    dispatch prompt as the body.
-3. **One approval gate:** surface the spec in chat (node list, deps,
+3. **One approval gate:** surface the spec in chat (task list, deps,
    verify_cmds rendered prominently) and wait for an explicit user reply.
    ONLY skip this gate when the user passed `--auto-approve`.
 4. **Load:** `juggle project-graph load <data_dir>/graphs/<project>-graph.md --project <project>`
@@ -53,7 +53,7 @@ juggle autopilot off
 
 **Nodes of the armed project are tick-owned — NEVER dispatch them manually;
 report status only.** Do not `send-task` to a node-bound thread (the CLI
-refuses without `--force-node`, and you should not use `--force-node` unless
+refuses without `--force-task`, and you should not use `--force-task` unless
 the user explicitly asks). Your job for armed-project nodes is: monitor
 (`juggle autopilot status`), report progress, triage failures
 (`failed-*`/`blocked-failed` nodes are operator territory — fix the spec and

@@ -1,6 +1,6 @@
 """Graph-mode controller mixin for the cockpit App.
 
-Owns the lower-right panel's Notifications ⇄ Graph toggle, node selection,
+Owns the lower-right panel's Notifications ⇄ Graph toggle, task selection,
 horizontal pan, the unread badge accounting, the detail-modal launch, and the
 in-graph key capture. Extracted from juggle_cockpit.py to keep that module
 within its LOC budget. Read-only — never writes the DB.
@@ -12,7 +12,7 @@ Mixed into CockpitApp; relies on these attributes existing on self:
 """
 from __future__ import annotations
 
-from juggle_cockpit_modals import _GraphNodeModal
+from juggle_cockpit_modals import _GraphTaskModal
 
 
 class GraphModeMixin:
@@ -21,7 +21,7 @@ class GraphModeMixin:
     def _graph_state_init(self) -> None:
         """Initialise graph view-state. Call from __init__."""
         self._graph_mode = False
-        self._graph_sel = 0          # selected node index (rank-major, id order)
+        self._graph_sel = 0          # selected task index (rank-major, id order)
         self._graph_pan = 0          # horizontal rank pan offset
         self._graph_unread = 0       # notifications landed while graph shown
         self._graph_unread_seen: set[str] = set()  # notif texts at enter-time
@@ -51,8 +51,8 @@ class GraphModeMixin:
             h = self.query_one("#notifications").size.height or 20
         except Exception:
             w, h = 80, 20
-        total_nodes = sum(len(d.nodes) for d in dags)
-        self._graph_sel = min(self._graph_sel, max(0, total_nodes - 1))
+        total_tasks = sum(len(d.tasks) for d in dags)
+        self._graph_sel = min(self._graph_sel, max(0, total_tasks - 1))
         return build_multi_graph_panel(
             dags=dags,
             selection=self._graph_sel,
@@ -85,8 +85,8 @@ class GraphModeMixin:
         self._graph_pan = max(0, self._graph_pan + delta)
         self._refresh()
 
-    def _open_graph_node_modal(self) -> None:
-        """Enter — open the read-only detail modal for the selected topic/node."""
+    def _open_graph_task_modal(self) -> None:
+        """Enter — open the read-only detail modal for the selected topic/task."""
         from juggle_cockpit_model import snapshot as _snapshot
         from dbops import db_graph as _g
 
@@ -101,19 +101,19 @@ class GraphModeMixin:
             return
         # Concatenated flat list (same order as the panel).
         from juggle_cockpit_graph_panel import topological_order
-        flat = [n for d in dags for n in topological_order(d.nodes, d.edges)]
+        flat = [n for d in dags for n in topological_order(d.tasks, d.edges)]
         if not (0 <= self._graph_sel < len(flat)):
             return
-        node_id = flat[self._graph_sel].id
-        # Find which DAG owns this node and get its task list.
-        owner_dag = next((d for d in dags if any(n.id == node_id for n in d.nodes)), None)
-        tasks = (owner_dag.tasks or {}).get(node_id, []) if owner_dag else []
-        full = _g.get_node(self._db, node_id) or {}
+        task_id = flat[self._graph_sel].id
+        # Find which DAG owns this task and get its task list.
+        owner_dag = next((d for d in dags if any(n.id == task_id for n in d.tasks)), None)
+        tasks = (owner_dag.member_tasks or {}).get(task_id, []) if owner_dag else []
+        full = _g.get_task(self._db, task_id) or {}
         try:
-            deps = _g.get_deps(self._db, node_id)
+            deps = _g.get_deps(self._db, task_id)
         except Exception:
-            deps = [d for dag in dags for (nid, d) in dag.edges if nid == node_id]
-        self.push_screen(_GraphNodeModal(full, deps, tasks=tasks))
+            deps = [d for dag in dags for (nid, d) in dag.edges if nid == task_id]
+        self.push_screen(_GraphTaskModal(full, deps, tasks=tasks))
 
     # -- key capture ----------------------------------------------------------
 
@@ -130,7 +130,7 @@ class GraphModeMixin:
             elif k == "right":
                 self._graph_pan_by(+1)
             else:  # enter
-                self._open_graph_node_modal()
+                self._open_graph_task_modal()
             event.stop()
             event.prevent_default()
             return True

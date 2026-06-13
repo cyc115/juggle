@@ -26,7 +26,7 @@ class Topic:
     title: str = ""  # display title
     project_id: str = "INBOX"
     project_name: str = "Inbox"
-    node_state: str | None = None  # bound graph node's state (autopilot), or None
+    task_state: str | None = None  # bound graph task's state (autopilot), or None
 
 
 @dataclass(frozen=True)
@@ -66,7 +66,7 @@ class CockpitState:
     scheduled: list[ScheduledTask]
     fetched_at: float
     projects_by_id: dict = None  # type: ignore  # {id: name}, None → no grouping
-    graph_by_project: dict = None  # type: ignore  # {id: node counts}, None → no graph
+    graph_by_project: dict = None  # type: ignore  # {id: task counts}, None → no graph
     graph_dag: "GraphDag | None" = None  # armed-project DAG, only in graph mode
     graph_dags: "list | None" = None  # all armed projects' DAGs (multi-project)
 
@@ -164,7 +164,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
     committed writes from any connection (avoids WAL read-transaction pinning).
 
     load_graph_dag: when True (graph mode active), ALSO load the armed project's
-    DAG (nodes+edges) into ``graph_dag``. Default False → zero extra cost.
+    DAG (tasks+edges) into ``graph_dag``. Default False → zero extra cost.
     """
     import sqlite3 as _sqlite3
     from datetime import datetime, timezone, timedelta
@@ -207,22 +207,22 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
     except Exception:
         projects_by_id = {}
 
-    # Graph-node visibility (autopilot, DA m2): aggregate counts per project +
-    # node state per bound thread — sourced from graph_nodes.state, never from
+    # Graph-task visibility (autopilot, DA m2): aggregate counts per project +
+    # task state per bound thread — sourced from graph_tasks.state, never from
     # thread status/TTL. Pre-migration DBs degrade gracefully.
     graph_by_project: dict | None = None
-    node_state_by_thread: dict[str, str] = {}
+    task_state_by_thread: dict[str, str] = {}
     try:
         from juggle_graph_status import counts_from_states
 
         g_rows = conn.execute(
-            "SELECT project_id, state, thread_id FROM graph_nodes"
+            "SELECT project_id, state, thread_id FROM graph_tasks"
         ).fetchall()
         states_by_proj: dict[str, list[str]] = {}
         for r in g_rows:
             states_by_proj.setdefault(r["project_id"], []).append(r["state"])
             if r["thread_id"]:
-                node_state_by_thread[r["thread_id"]] = r["state"]
+                task_state_by_thread[r["thread_id"]] = r["state"]
         if states_by_proj:
             graph_by_project = {
                 pid: counts_from_states(states)
@@ -257,7 +257,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
             title=title,
             project_id=pid,
             project_name=pname,
-            node_state=node_state_by_thread.get(tid),
+            task_state=task_state_by_thread.get(tid),
         )
 
     # 1. Active

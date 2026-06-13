@@ -58,3 +58,46 @@ def test_migrate_config_handles_missing_vault_entry():
     new_cfg, changes = _migrate_config(dict(cfg))
     assert "domains" not in new_cfg
     assert "vault" not in new_cfg["paths"]
+
+
+def test_doctor_migrates_node_era_db(tmp_path, monkeypatch, capsys):
+    """REGRESSION PIN (2026-06-13): doctor's presence-based detection only
+    looked for the stale domain schema, so a node-era graph_nodes DB printed
+    'already on 1.21.0' and never got the node->task rename. doctor must detect
+    graph_nodes and run init_db to apply Migration 39."""
+    import sqlite3
+
+    import juggle_cmd_doctor as doc
+    import juggle_db
+
+    db_path = tmp_path / "node_era.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE graph_nodes (id TEXT PRIMARY KEY, project_id TEXT, title TEXT,"
+        " prompt TEXT, verify_cmd TEXT, state TEXT, thread_id TEXT, handoff TEXT,"
+        " diffstat TEXT, verified_at TEXT, created_at TEXT, updated_at TEXT, topic_id TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO graph_nodes (id, project_id, title, prompt, state, created_at,"
+        " updated_at) VALUES ('z','INBOX','Z','p','pending','t','t')"
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(juggle_db, "DB_PATH", str(db_path))
+    monkeypatch.setattr(doc, "CONFIG_PATH", tmp_path / "nope.json")
+
+    class _Args:
+        dry_run = False
+
+    assert doc.cmd_doctor(_Args()) == 0
+    assert "Migration 39" in capsys.readouterr().out
+
+    conn = sqlite3.connect(str(db_path))
+    tables = {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    ids = {r[0] for r in conn.execute("SELECT id FROM graph_tasks")}
+    conn.close()
+    assert "graph_nodes" not in tables and "graph_tasks" in tables
+    assert ids == {"z"}, "node-era rows must migrate into graph_tasks, not be lost"

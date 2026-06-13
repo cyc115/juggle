@@ -199,8 +199,8 @@ def test_lock_holder_heartbeats_lockfile_while_held(tmp_path):
     assert not lp.exists()
 
 
-def test_integrate_node_bound_thread_uses_autopilot_lock_deadline(tmp_path, git_repo):
-    """DA M2: autopilot-context integrations (thread bound to a graph node)
+def test_integrate_task_bound_thread_uses_autopilot_lock_deadline(tmp_path, git_repo):
+    """DA M2: autopilot-context integrations (thread bound to a graph task)
     wait up to 30 min for the merge-queue lock; lock timeout files a HIGH
     action item instead of failing silently."""
     import juggle_cmd_integrate as jci
@@ -209,10 +209,10 @@ def test_integrate_node_bound_thread_uses_autopilot_lock_deadline(tmp_path, git_
 
     db = JuggleDB(db_path=str(tmp_path / "j.db"))
     db.init_db()
-    tid = db.create_thread("node thread", session_id="sessL")
-    db_graph.create_node(db, node_id="n1", project_id="INBOX",
+    tid = db.create_thread("task thread", session_id="sessL")
+    db_graph.create_task(db, task_id="n1", project_id="INBOX",
                          title="N1", prompt="do n1")
-    db_graph.set_node_thread(db, "n1", tid)
+    db_graph.set_task_thread(db, "n1", tid)
 
     wt = _make_worktree(git_repo, str(tmp_path), "NB")
     thread = {"id": tid, "worktree_path": wt,

@@ -1,7 +1,7 @@
 """TDD tests for graph-mode key wiring in CockpitApp.
 
 `g` swaps the lower-right panel Notifications↔Graph; in graph mode ↑↓ move the
-node selection, ←→ pan, enter opens the detail modal, and `g`/`esc` restore
+task selection, ←→ pan, enter opens the detail modal, and `g`/`esc` restore
 Notifications. Navigation keys must NOT leak to global scroll/cycle while in
 graph mode (regression pin).
 """
@@ -32,8 +32,8 @@ def _armed_db(tmp_path):
             "VALUES(?,?,?,?,?)", ("P", "Proj", "active", now, now),
         )
         conn.commit()
-    g.create_node(db, node_id="n1", project_id="P", title="One", prompt="do 1")
-    g.create_node(db, node_id="n2", project_id="P", title="Two", prompt="do 2")
+    g.create_task(db, task_id="n1", project_id="P", title="One", prompt="do 1")
+    g.create_task(db, task_id="n2", project_id="P", title="Two", prompt="do 2")
     g.replace_edges(db, "n2", ["n1"])
     db.set_setting(ARMED_PROJECT_KEY, "P")
     return db_path
@@ -122,7 +122,7 @@ async def test_right_left_pans(tmp_path):
 @pytest.mark.asyncio
 async def test_enter_opens_detail_modal(tmp_path):
     from juggle_cockpit import CockpitApp
-    from juggle_cockpit_modals import _GraphNodeModal
+    from juggle_cockpit_modals import _GraphTaskModal
 
     app = CockpitApp(db_path=_armed_db(tmp_path))
     async with app.run_test(size=(160, 40)) as pilot:
@@ -130,10 +130,10 @@ async def test_enter_opens_detail_modal(tmp_path):
         await pilot.pause(0.1)
         await pilot.press("enter")
         await pilot.pause(0.15)
-        assert isinstance(app.screen, _GraphNodeModal)
+        assert isinstance(app.screen, _GraphTaskModal)
         await pilot.press("escape")
         await pilot.pause(0.1)
-        assert not isinstance(app.screen, _GraphNodeModal)
+        assert not isinstance(app.screen, _GraphTaskModal)
 
 
 @pytest.mark.asyncio

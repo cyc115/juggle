@@ -225,7 +225,7 @@ def _arm_graph(db_path: str) -> None:
         )
         conn.commit()
     for i in range(8):
-        g.create_node(db, node_id=f"g{i}", project_id="GP",
+        g.create_task(db, task_id=f"g{i}", project_id="GP",
                       title=f"Task number {i}", prompt=f"do {i}")
         if i:
             g.replace_edges(db, f"g{i}", [f"g{i-1}"])

@@ -1,9 +1,10 @@
-"""juggle_cli_parsers_misc — Subparser registration for context/memory,
-selfheal, research, schedules, cockpit, agent-tools, runs, and project commands.
+"""
+juggle_cli_parsers_misc — Subparser registration for context/memory, selfheal,
+research, schedules, cockpit, agent-tools, and project commands.
 
-Owns: argparse wiring only. Must not own: command handler logic (lives in
-juggle_cmd_context, juggle_cmd_misc, juggle_cmd_research, juggle_cmd_projects,
-juggle_cmd_runs, schedule modules).
+Owns: argparse wiring only.
+Must not own: command handler logic (lives in juggle_cmd_context,
+juggle_cmd_misc, juggle_cmd_research, juggle_cmd_projects, schedule modules).
 """
 
 from juggle_cmd_context import (
@@ -243,10 +244,9 @@ def register(subparsers, *, vault_path_default: str) -> None:
         help="During smoke, toggle the lower-right panel into Graph mode (press g) and validate it",
     )
     p_cockpit.set_defaults(func=cmd_cockpit)
-
-    register_graph_parsers(subparsers)  # graph <subcmd> — task-graph plan store
+    # juggle project-graph / graph <subcmd> — task-graph plan store + live edits
+    register_graph_parsers(subparsers)
     register_runs_parsers(subparsers)  # runs <subcmd> — agent I/O ledger
-
     # juggle project <subcmd>
     p_project = subparsers.add_parser("project", help="Manage projects")
     _ps = p_project.add_subparsers(dest="project_command", required=True)

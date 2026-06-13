@@ -1,21 +1,21 @@
 """
-juggle_cmd_agents_graph — graph-node glue for the agent CLI (autopilot).
+juggle_cmd_agents_graph — graph-task glue for the agent CLI (autopilot).
 
-Owns: mark_graph_node (maps a thread completion's integrate outcome onto the
-bound graph node + ready-set notifications/action items; notify ONLY —
+Owns: mark_graph_task (maps a thread completion's integrate outcome onto the
+bound graph task + ready-set notifications/action items; notify ONLY —
 dispatch is watchdog-owned, DA B4/M1), enforce_handoff_contract (DA M4:
-complete-agent refuses nodes-with-dependents without --handoff), and
-check_node_guard (DA B5: send-task refuses tick-owned nodes sans --force-node).
+complete-agent refuses tasks-with-dependents without --handoff), and
+check_task_guard (DA B5: send-task refuses tick-owned tasks sans --force-task).
 Must not own: completion/failure handlers (juggle_cmd_agents_complete) or
-node state semantics (dbops.db_graph).
+task state semantics (dbops.db_graph).
 """
 
 from __future__ import annotations
 
 import sys
 
-# Node states where a completion is still meaningful (mirrors db_graph
-# mark_completion's legal walk); terminal/blocked nodes skip enforcement —
+# Task states where a completion is still meaningful (mirrors db_graph
+# mark_completion's legal walk); terminal/blocked tasks skip enforcement —
 # a double-completion stays the Phase 1 warn+no-op, never a refusal.
 _ENFORCEABLE_STATES = frozenset(
     {"pending", "ready", "dispatching", "running", "integrating"}
@@ -24,14 +24,14 @@ _ENFORCEABLE_STATES = frozenset(
 
 def close_adhoc_run(db, thread_uuid, result_summary) -> None:
     """Ledger close for AD-HOC (non-graph) completions (best-effort, NEVER
-    breaks completion). Graph node/topic threads are closed by mark_graph_topic
+    breaks completion). Graph task/topic threads are closed by mark_graph_topic
     with the captured diffstat + integrate-aware status, so they are skipped
     here to avoid a premature completed-status close."""
     from dbops import db_graph, db_topics
 
     try:
         is_graph = bool(
-            db_graph.get_node_by_thread(db, thread_uuid)
+            db_graph.get_task_by_thread(db, thread_uuid)
             or db_topics.get_topic_by_thread(db, thread_uuid)
         )
         if not is_graph:
@@ -43,34 +43,34 @@ def close_adhoc_run(db, thread_uuid, result_summary) -> None:
         pass
 
 
-def _node_for_thread(db, thread_uuid):
-    """Bound node for a thread, or None (incl. pre-migration DBs)."""
+def _task_for_thread(db, thread_uuid):
+    """Bound task for a thread, or None (incl. pre-migration DBs)."""
     from dbops import db_graph
 
     try:
-        return db_graph.get_node_by_thread(db, thread_uuid)
+        return db_graph.get_task_by_thread(db, thread_uuid)
     except Exception:
         return None
 
 
 def enforce_handoff_contract(db, thread_uuid, handoff) -> None:
-    """DA M4: a graph node with dependents MUST hand off. Exits 1 on violation.
+    """DA M4: a graph task with dependents MUST hand off. Exits 1 on violation.
 
     Runs BEFORE any completion side effects — dependent prompts are hydrated
-    from this handoff, so an empty one is garbage-in for every downstream node.
+    from this handoff, so an empty one is garbage-in for every downstream task.
     """
     from dbops import db_graph
 
-    node = _node_for_thread(db, thread_uuid)
-    if not node or node["state"] not in _ENFORCEABLE_STATES:
+    task = _task_for_thread(db, thread_uuid)
+    if not task or task["state"] not in _ENFORCEABLE_STATES:
         return
     if handoff and str(handoff).strip():
         return
-    dependents = db_graph.get_dependents(db, node["id"])
+    dependents = db_graph.get_dependents(db, task["id"])
     if not dependents:
         return
     print(
-        f"Error: graph node {node['id']} has dependents ({', '.join(dependents)}) "
+        f"Error: graph task {task['id']} has dependents ({', '.join(dependents)}) "
         f"which are hydrated from its handoff — re-run with "
         f"--handoff '<files touched, interfaces added/changed, key decisions, "
         f"follow-ups>'. Nothing was marked or closed."
@@ -78,11 +78,11 @@ def enforce_handoff_contract(db, thread_uuid, handoff) -> None:
     sys.exit(1)
 
 
-def check_node_guard(db, thread_uuid, *, force: bool) -> str | None:
+def check_task_guard(db, thread_uuid, *, force: bool) -> str | None:
     """DA B5 + R8 (3-tier): manual dispatch that fights the tick is refused.
 
     TOPIC-bound thread in a tick-owned state → double-dispatch race (DA B5,
-    lifted node→topic; legacy node bindings still checked). Unbound thread of
+    lifted task→topic; legacy task bindings still checked). Unbound thread of
     an ARMED project → new work must enter the graph as a task (R8, spec
     §2.11). None = dispatch may proceed.
     """
@@ -94,15 +94,15 @@ def check_node_guard(db, thread_uuid, *, force: bool) -> str | None:
         topic = db_topics.get_topic_by_thread(db, thread_uuid)
     except Exception:
         topic = None  # pre-migration DB
-    bound = topic or _node_for_thread(db, thread_uuid)  # legacy node fallback
+    bound = topic or _task_for_thread(db, thread_uuid)  # legacy task fallback
     if bound:
         if bound["state"] not in db_graph.TICK_OWNED_STATES:
             return None  # operator territory — DA B5 unchanged
-        kind = "topic" if topic else "node"
+        kind = "topic" if topic else "task"
         return (
             f"thread is bound to graph {kind} {bound['id']} in tick-owned "
             f"state {bound['state']!r} — the autopilot watchdog tick "
-            f"dispatches it. Use --force-node to override."
+            f"dispatches it. Use --force-task to override."
         )
     from juggle_autopilot_state import get_armed_projects
 
@@ -111,55 +111,55 @@ def check_node_guard(db, thread_uuid, *, force: bool) -> str | None:
     if pid and pid in get_armed_projects(db):
         return (
             f"thread belongs to ARMED project {pid} — new work must enter its "
-            f"graph: `juggle graph add-node … --topic <t> --project {pid}` "
+            f"graph: `juggle graph add-task … --topic <t> --project {pid}` "
             "(the tick dispatches it). Narrow exceptions (graph-machinery "
-            "fixes; planning whose output IS the nodes): re-run with "
-            "--force-node."
+            "fixes; planning whose output IS the tasks): re-run with "
+            "--force-task."
         )
     return None
 
 
-def _notify_failure(db, node, state, thread_uuid, session_id, reason=None):
+def _notify_failure(db, task, state, thread_uuid, session_id, reason=None):
     """Failure aftermath shared by completion marking and agent death:
     Phase 3 propagation blocks ALL transitive dependents (blocked-failed) so
-    the graph never silently stalls — the tick only claims 'ready' nodes, so
-    blocked nodes are never dispatched — plus notification + HIGH action item.
+    the graph never silently stalls — the tick only claims 'ready' tasks, so
+    blocked tasks are never dispatched — plus notification + HIGH action item.
     """
     from dbops import db_graph
 
-    blocked = db_graph.propagate_failure(db, node["id"])
+    blocked = db_graph.propagate_failure(db, task["id"])
     db.add_notification_v2(
         thread_id=thread_uuid,
-        message=f"⬢ graph node {node['id']} → {state}",
+        message=f"⬢ graph task {task['id']} → {state}",
         session_id=session_id,
     )
     detail = (
         f"dependents blocked (blocked-failed): {', '.join(blocked)}. "
-        f"Fix the node, then reload the graph spec to resume."
+        f"Fix the task, then reload the graph spec to resume."
         if blocked
         else "fix before dependents can run."
     )
     cause = f" Cause: {reason}." if reason else ""
     db.add_action_item(
         thread_id=thread_uuid,
-        message=f"⚠️ Graph node {node['id']} ended in {state} — {detail}{cause}",
+        message=f"⚠️ Graph task {task['id']} ended in {state} — {detail}{cause}",
         type_="failure",
         priority="high",
     )
 
 
-def fail_graph_node(db, thread_uuid, session_id, reason=None):
+def fail_graph_task(db, thread_uuid, session_id, reason=None):
     """Agent death → graph (DA round-2 MAJOR-1, 2026-06-10).
 
     cmd_fail_agent (unrecoverable) and the watchdog give-up path set thread
-    status but never touched the bound node: it stayed 'running' (a PROTECTED
-    state even reload refuses) and dependents stalled silently. Marks the node
+    status but never touched the bound task: it stayed 'running' (a PROTECTED
+    state even reload refuses) and dependents stalled silently. Marks the task
     failed-exec via the legal walk, blocks dependents, raises the action item.
-    No-op for unbound threads / terminal nodes (double-failure stays warn-only).
+    No-op for unbound threads / terminal tasks (double-failure stays warn-only).
 
     Topic-aware (R9): delegates to fail_graph_topic first — a TOPIC-bound thread
     fails the TOPIC (per-task states preserved, spec DA A9). Falls back to the
-    node path for legacy node-bound threads.
+    task path for legacy task-bound threads.
     """
     from dbops import db_graph
     from juggle_cmd_agents_graph_topics import fail_graph_topic
@@ -167,88 +167,77 @@ def fail_graph_node(db, thread_uuid, session_id, reason=None):
     if fail_graph_topic(db, thread_uuid, session_id, reason):
         return
 
-    node = _node_for_thread(db, thread_uuid)
-    if not node or node["state"] not in _ENFORCEABLE_STATES:
+    task = _task_for_thread(db, thread_uuid)
+    if not task or task["state"] not in _ENFORCEABLE_STATES:
         return
     try:
-        state = db_graph.mark_exec_failed(db, node["id"])
+        state = db_graph.mark_exec_failed(db, task["id"])
     except ValueError as e:
-        print(f"Warning: graph node {node['id']} not marked failed — {e}")
+        print(f"Warning: graph task {task['id']} not marked failed — {e}")
         return
-    _notify_failure(db, node, state, thread_uuid, session_id, reason=reason)
+    _notify_failure(db, task, state, thread_uuid, session_id, reason=reason)
 
 
-def mark_graph_node(db, thread_uuid, integrate_ok, handoff, session_id,
+def mark_graph_task(db, thread_uuid, integrate_ok, handoff, session_id,
                     *, verify_failed=False):
-    """If the thread is bound to a graph node, record the completion outcome.
+    """If the thread is bound to a graph task, record the completion outcome.
 
-    Maps (integrate outcome, verify outcome) → node event via
+    Maps (integrate outcome, verify outcome) → task event via
     dbops.db_graph.mark_completion: success → 'verified' (stored verified_at),
     verify_cmd failure → 'failed-verify' (DA M3: main untouched), any other
     integrate failure → 'failed-integration' (DA B3: never 'verified').
     Recomputes the ready set and emits a notification + action item per
-    newly-ready node. NEVER dispatches.
+    newly-ready task. NEVER dispatches.
     """
     from dbops import db_graph
 
     try:
-        node = db_graph.get_node_by_thread(db, thread_uuid)
+        task = db_graph.get_task_by_thread(db, thread_uuid)
     except Exception:
         return  # pre-migration DB without graph tables — nothing to mark
-    if not node:
+    if not task:
         return
 
     try:
         state = db_graph.mark_completion(
             db,
-            node["id"],
+            task["id"],
             # A verify failure is not an integrate failure: rebase + repo
-            # tests were fine, the node's own predicate was red.
+            # tests were fine, the task's own predicate was red.
             integrate_ok=integrate_ok or verify_failed,
             verify_ok=not verify_failed,
             handoff=handoff,
         )
     except ValueError as e:
-        print(f"Warning: graph node {node['id']} not marked — {e}")
+        print(f"Warning: graph task {task['id']} not marked — {e}")
         return
-
-    # Ledger close (best-effort): pair the node thread's open dispatch run with
-    # its OUTPUT (handoff) + the captured diffstat; status mirrors integrate.
-    try:
-        _n = db_graph.get_node(db, node["id"]) or {}
-        db.close_run(
-            thread_uuid, output=handoff, diffstat=_n.get("diffstat"),
-            status="completed" if state == "verified" else "failed",
-        )
-    except Exception:
-        pass
 
     if state == "verified":
         db.add_notification_v2(
             thread_id=thread_uuid,
-            message=f"⬢ graph node {node['id']} verified",
+            message=f"⬢ graph task {task['id']} verified",
             session_id=session_id,
         )
     else:
-        _notify_failure(db, node, state, thread_uuid, session_id)
+        _notify_failure(db, task, state, thread_uuid, session_id)
 
-    for ready_id in db_graph.recompute_ready(db, node["project_id"]):
-        ready_node = db_graph.get_node(db, ready_id)
-        title = ready_node["title"] if ready_node else ready_id
+    for ready_id in db_graph.recompute_ready(db, task["project_id"]):
+        ready_task = db_graph.get_task(db, ready_id)
+        title = ready_task["title"] if ready_task else ready_id
         db.add_notification_v2(
             thread_id=None,
-            message=f"⬢ graph node ready: {ready_id} — {title}",
+            message=f"⬢ graph task ready: {ready_id} — {title}",
             session_id=session_id,
         )
         db.add_action_item(
             thread_id=None,
-            message=f"Graph node ready to dispatch: {ready_id} — {title}",
+            message=f"Graph task ready to dispatch: {ready_id} — {title}",
             type_="manual_step",
             priority="normal",
         )
 
 
 # Topic completion/failure glue lives in juggle_cmd_agents_graph_topics (LOC
-# gate); fail_graph_node delegates to fail_graph_topic, and the completion
+# gate); fail_graph_task delegates to fail_graph_topic, and the completion
 # handler imports check_topic_completion_gate/enforce_topic_gate/mark_graph_topic
 # from there directly.

@@ -1,7 +1,9 @@
-"""dbops.migrations_recent — schema migrations 20-36.
+"""dbops.migrations_recent — schema migrations 20-39.
 
 Owns: the second half of the incremental migration chain (watchdog columns
 onward), applied by ``dbops.migrations.run_migrations`` after migrations 1-19.
+Migrations 35-37 + 39 (graph store + node->task rename) live in
+``dbops.migrations_graph``; 38 (agent_runs ledger) is inline here.
 Must not own: query or business logic — only schema evolution.
 """
 
@@ -269,15 +271,16 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         _log.warning("Migration 34 (worktree) skipped: %s", e)
 
-    # Migrations 35-37: autopilot graph/topic store (graph_nodes / graph_edges /
-    # graph_topics). Extracted to dbops.migrations_graph for the 300-line gate.
-    from dbops.migrations_graph import apply_graph_migrations
-    apply_graph_migrations(conn)
-
-    # Migration 38: agent_runs ledger + indexes; agents.current_run_id (open-run
-    # correlation pointer). Append-only INPUT/OUTPUT ledger keyed by thread_id.
+    # Migrations 35-37 + 39 (graph store + node->task rename) live in
+    # dbops.migrations_graph (300-line gate).
+    from dbops.migrations_graph import _rename_column, apply_graph_migrations
     from dbops.schema_runs import CREATE_AGENT_RUNS, CREATE_AGENT_RUNS_INDEXES
 
+    apply_graph_migrations(conn)
+
+    # Migration 38: agent_runs ledger + current_run_id pointer. Created AFTER the
+    # graph migrations, so the migration-39 rename of agent_runs.node_id->task_id
+    # is re-run here (idempotent) now that the table is guaranteed present.
     try:
         conn.execute(CREATE_AGENT_RUNS)
         for _idx in CREATE_AGENT_RUNS_INDEXES:
@@ -287,6 +290,7 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
         }
         if "current_run_id" not in agents_cols:
             conn.execute("ALTER TABLE agents ADD COLUMN current_run_id TEXT")
+        _rename_column(conn, "agent_runs", "node_id", "task_id")
         conn.commit()
         _log.info("Migration 38: agent_runs ledger + current_run_id created")
     except sqlite3.OperationalError as e:

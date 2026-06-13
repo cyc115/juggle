@@ -1,6 +1,6 @@
 ---
 name: project:add-task
-description: Inject a single new task (node) into an existing project task-graph mid-execution, without disarming or restarting autopilot. Brainstorm the task with the user, derive its id/deps/verify_cmd/prompt, confirm, then upsert it via `juggle graph add-node` — the watchdog tick claims it when its deps verify.
+description: Inject a single new task (node) into an existing project task-graph mid-execution, without disarming or restarting autopilot. Brainstorm the task with the user, derive its id/deps/verify_cmd/prompt, confirm, then upsert it via `juggle graph add-task` — the watchdog tick claims it when its deps verify.
 allowed-tools: Bash
 ---
 
@@ -10,7 +10,7 @@ Add ONE new task to an already-loaded, possibly-executing project task-graph.
 The graph keeps running: existing nodes are untouched, the new node lands as
 `pending` and the watchdog tick claims it once its dependencies verify. This is
 the conversational front-end; the validated, atomic, guarded upsert is done by
-the CLI (`juggle graph add-node`) — same code-vs-prompt split as
+the CLI (`juggle graph add-task`) — same code-vs-prompt split as
 `/juggle:toggle-autopilot` (markdown) → `juggle autopilot` (CLI).
 
 The CLI is the source of truth for every safety rule — it refuses (nonzero
@@ -54,12 +54,12 @@ a good task and call it; never hand-write graph state.
 
    ```bash
    # short prompt inline:
-   juggle graph add-node --project <project> --id <node-id> --title "<Title>" \
+   juggle graph add-task --project <project> --id <task-id> --title "<Title>" \
      --prompt "<dispatch prompt>" \
      --deps a,b --required-by e2e --verify-cmd "pytest tests/test_x.py -q"
 
    # long prompt via stdin:
-   cat <<'PROMPT' | juggle graph add-node --project <project> --id <node-id> \
+   cat <<'PROMPT' | juggle graph add-task --project <project> --id <task-id> \
      --title "<Title>" --deps a,b --prompt -
    <multi-line dispatch prompt>
    PROMPT
@@ -76,6 +76,6 @@ a good task and call it; never hand-write graph state.
 The new node is part of the armed project's graph, so it is **tick-owned**: the
 watchdog claims it, dispatches a hydrated coder agent, integrates, verifies, and
 marks it — exactly like every other graph node. Do **not** `send-task` to it and
-do **not** otherwise dispatch it yourself. After `add-node` succeeds, your job is
+do **not** otherwise dispatch it yourself. After `add-task` succeeds, your job is
 to report the resulting state and let the tick run. Triage only failures
 (`failed-*`/`blocked-failed` are operator territory).

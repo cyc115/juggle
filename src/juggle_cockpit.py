@@ -50,7 +50,7 @@ from juggle_cockpit_helpers import (
 )
 from juggle_cockpit_modals import (
     _ConfirmModal,
-    _GraphNodeModal,
+    _GraphTaskModal,
     _HelpModal,
     _PromptModal,
     _TailModal,

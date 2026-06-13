@@ -29,7 +29,7 @@ _AUTOPILOT_DIRECTIVE = (
     "external action, or a product-direction fork with no defensible default.\n"
     "5. DEFECT PROTOCOL — defects outrank features: the instant a Juggle "
     "machinery defect appears (illegal/unexpected state transition, dispatch "
-    "race, topic/node/agent state divergence, shared-DB corruption, or a "
+    "race, topic/task/agent state divergence, shared-DB corruption, or a "
     "'verified' that isn't merged), STOP feature work, freeze (stop the "
     "watchdog), RCA → plan → fix the defect, capture it as a tracked incident, "
     "THEN resume.\n"
@@ -42,12 +42,12 @@ _AUTOPILOT_DIRECTIVE = (
 )
 
 # LLM directive carve-out (DA B5 / R7): re-asserted every turn while projects
-# are armed, alongside the code-level send-task node guard (belt and braces).
+# are armed, alongside the code-level send-task task guard (belt and braces).
 _ARMED_CARVEOUT = (
     "ARMED PROJECTS {projects}: topics of any armed project are tick-owned — "
     "NEVER dispatch them manually; report status only. NEW work for an armed "
-    "project goes in as a task: `juggle graph add-node … --topic <t>` "
-    "(code-enforced — manual send-task is refused without --force-node). "
+    "project goes in as a task: `juggle graph add-task … --topic <t>` "
+    "(code-enforced — manual send-task is refused without --force-task). "
     "The watchdog tick claims, dispatches, and completes topics; integrate "
     "runs once per topic."
 )

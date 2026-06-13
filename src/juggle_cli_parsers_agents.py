@@ -51,9 +51,9 @@ def register(subparsers) -> None:
         dest="handoff",
         default=None,
         metavar="JSON_OR_TEXT",
-        help="Structured output contract for graph-node threads: files touched, "
+        help="Structured output contract for graph-task threads: files touched, "
         "interfaces added/changed, key decisions, follow-ups. REQUIRED when "
-        "the bound graph node has dependents (DA M4)",
+        "the bound graph task has dependents (DA M4)",
     )
     p_complete.add_argument(
         "--role",
@@ -254,12 +254,15 @@ def register(subparsers) -> None:
         help="Bypass worktree guard and allow coder/planner to run in main worktree (logged)",
     )
     p_send_task.add_argument(
+        # '--force-node' is a DEPRECATED hidden alias of '--force-task', baked
+        # into the autopilot hook + global CLAUDE.md — it MUST keep working.
+        "--force-task",
         "--force-node",
         action="store_true",
-        dest="force_node",
+        dest="force_task",
         default=False,
-        help="Bypass the graph-node guard: dispatch to a thread bound to a "
-        "tick-owned graph node (the autopilot tick uses this internally)",
+        help="Bypass the graph-task guard: dispatch to a thread bound to a "
+        "tick-owned graph task (the autopilot tick uses this internally)",
     )
     p_send_task.set_defaults(func=cmd_send_task)
 

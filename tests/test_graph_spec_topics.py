@@ -46,9 +46,9 @@ def test_parse_topics_spec_two_tiers():
     assert topics[1]["tasks"][0]["deps"] == ["t2"]  # cross-topic task dep
 
 
-def test_legacy_flat_spec_wraps_each_node_in_synthetic_topic():
+def test_legacy_flat_spec_wraps_each_task_in_synthetic_topic():
     """REGRESSION PIN (2026-06-11 R6): existing flat spec files must keep
-    loading — each old `## node` becomes a 1-task topic (task ≡ topic)."""
+    loading — each old `## task` becomes a 1-task topic (task ≡ topic)."""
     topics = parse_topics_spec(LEGACY_SPEC)
     assert [t["id"] for t in topics] == ["T-n1", "T-n2"]
     assert all(len(t["tasks"]) == 1 for t in topics)
@@ -56,7 +56,7 @@ def test_legacy_flat_spec_wraps_each_node_in_synthetic_topic():
 
 
 def test_mixed_spec_rejected():
-    mixed = TOPIC_SPEC + "\n## stray: Flat node\nprompt\n"
+    mixed = TOPIC_SPEC + "\n## stray: Flat task\nprompt\n"
     errors = validate_topics(parse_topics_spec(mixed))
     assert any("mix" in e.lower() for e in errors)
 
@@ -81,7 +81,7 @@ p
     assert any("cycle" in e.lower() for e in errors)
 
 
-# ── Step 4 wiring: load creates topics + sets topic_id; add-node --topic ────────
+# ── Step 4 wiring: load creates topics + sets topic_id; add-task --topic ────────
 
 import pytest  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
@@ -117,30 +117,30 @@ def _add_args(db, **kw):
 def test_load_topic_spec_creates_topics_and_sets_topic_id(db, tmp_path):
     cg.cmd_project_graph_load(_load_args(tmp_path, db, TOPIC_SPEC))
     assert [t["id"] for t in db_topics.list_topics(db, "INBOX")] == ["auth", "ui"]
-    assert g.get_node(db, "t1")["topic_id"] == "auth"
-    assert g.get_node(db, "u1")["topic_id"] == "ui"
+    assert g.get_task(db, "t1")["topic_id"] == "auth"
+    assert g.get_task(db, "u1")["topic_id"] == "ui"
 
 
 def test_load_legacy_spec_creates_synthetic_topics(db, tmp_path):
     cg.cmd_project_graph_load(_load_args(tmp_path, db, LEGACY_SPEC))
     assert [t["id"] for t in db_topics.list_topics(db, "INBOX")] == ["T-n1", "T-n2"]
-    assert g.get_node(db, "n1")["topic_id"] == "T-n1"
+    assert g.get_task(db, "n1")["topic_id"] == "T-n1"
 
 
-def test_add_node_requires_topic_when_real_topics_exist(db, tmp_path):
+def test_add_task_requires_topic_when_real_topics_exist(db, tmp_path):
     cg.cmd_project_graph_load(_load_args(tmp_path, db, TOPIC_SPEC))
     with pytest.raises(SystemExit):
-        cg.cmd_graph_add_node(_add_args(db, id="t3", deps="t1", topic=None))
+        cg.cmd_graph_add_task(_add_args(db, id="t3", deps="t1", topic=None))
 
 
-def test_add_node_with_topic_assigns_it(db, tmp_path):
+def test_add_task_with_topic_assigns_it(db, tmp_path):
     cg.cmd_project_graph_load(_load_args(tmp_path, db, TOPIC_SPEC))
-    cg.cmd_graph_add_node(_add_args(db, id="t3", deps="t1", topic="auth"))
-    assert g.get_node(db, "t3")["topic_id"] == "auth"
+    cg.cmd_graph_add_task(_add_args(db, id="t3", deps="t1", topic="auth"))
+    assert g.get_task(db, "t3")["topic_id"] == "auth"
 
 
-def test_add_node_auto_creates_synthetic_topic_on_flat_project(db, tmp_path):
+def test_add_task_auto_creates_synthetic_topic_on_flat_project(db, tmp_path):
     cg.cmd_project_graph_load(_load_args(tmp_path, db, LEGACY_SPEC))
-    cg.cmd_graph_add_node(_add_args(db, id="n3", deps="n1", topic=None))
-    assert g.get_node(db, "n3")["topic_id"] == "T-n3"
+    cg.cmd_graph_add_task(_add_args(db, id="n3", deps="n1", topic=None))
+    assert g.get_task(db, "n3")["topic_id"] == "T-n3"
     assert db_topics.get_topic(db, "T-n3") is not None

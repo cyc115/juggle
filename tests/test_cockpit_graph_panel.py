@@ -13,9 +13,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from juggle_cockpit_graph_layout import GraphNode  # noqa: E402
+from juggle_cockpit_graph_layout import GraphTask  # noqa: E402
 from juggle_cockpit_graph_panel import build_graph_panel  # noqa: E402
-from juggle_cockpit_view import NODE_STATE_GLYPHS  # noqa: E402
+from juggle_cockpit_view import TASK_STATE_GLYPHS  # noqa: E402
 
 
 def _text(panel, width=80) -> str:
@@ -27,13 +27,13 @@ def _text(panel, width=80) -> str:
 
 
 def _dag():
-    nodes = [
-        GraphNode("a", "Setup", "verified"),
-        GraphNode("b", "Build", "running", thread_id="t1"),
-        GraphNode("c", "Ship", "ready"),
+    tasks = [
+        GraphTask("a", "Setup", "verified"),
+        GraphTask("b", "Build", "running", thread_id="t1"),
+        GraphTask("c", "Ship", "ready"),
     ]
     edges = [("b", "a"), ("c", "b")]
-    return nodes, edges
+    return tasks, edges
 
 
 # ---------------------------------------------------------------------------
@@ -42,9 +42,9 @@ def _dag():
 
 
 def test_header_shows_project_and_progress():
-    nodes, edges = _dag()
+    tasks, edges = _dag()
     panel = build_graph_panel(
-        project_id="oauth-login", nodes=nodes, edges=edges,
+        project_id="oauth-login", tasks=tasks, edges=edges,
         selection=0, unread=0, width=80, height=20, pan_offset=0,
     )
     out = _text(panel)
@@ -53,20 +53,20 @@ def test_header_shows_project_and_progress():
 
 
 # ---------------------------------------------------------------------------
-# Node glyphs from state
+# Task glyphs from state
 # ---------------------------------------------------------------------------
 
 
-def test_node_glyphs_from_state():
-    nodes, edges = _dag()
+def test_task_glyphs_from_state():
+    tasks, edges = _dag()
     panel = build_graph_panel(
-        project_id="p", nodes=nodes, edges=edges,
+        project_id="p", tasks=tasks, edges=edges,
         selection=0, unread=0, width=80, height=20, pan_offset=0,
     )
     out = _text(panel)
-    assert NODE_STATE_GLYPHS["verified"] in out
-    assert NODE_STATE_GLYPHS["running"] in out
-    assert NODE_STATE_GLYPHS["ready"] in out
+    assert TASK_STATE_GLYPHS["verified"] in out
+    assert TASK_STATE_GLYPHS["running"] in out
+    assert TASK_STATE_GLYPHS["ready"] in out
 
 
 # ---------------------------------------------------------------------------
@@ -75,9 +75,9 @@ def test_node_glyphs_from_state():
 
 
 def test_unread_badge_in_title():
-    nodes, edges = _dag()
+    tasks, edges = _dag()
     panel = build_graph_panel(
-        project_id="p", nodes=nodes, edges=edges,
+        project_id="p", tasks=tasks, edges=edges,
         selection=0, unread=3, width=80, height=20, pan_offset=0,
     )
     assert "3" in str(panel.title)
@@ -85,9 +85,9 @@ def test_unread_badge_in_title():
 
 
 def test_no_badge_when_zero_unread():
-    nodes, edges = _dag()
+    tasks, edges = _dag()
     panel = build_graph_panel(
-        project_id="p", nodes=nodes, edges=edges,
+        project_id="p", tasks=tasks, edges=edges,
         selection=0, unread=0, width=80, height=20, pan_offset=0,
     )
     title = str(panel.title)
@@ -103,7 +103,7 @@ def test_no_badge_when_zero_unread():
 
 def test_no_armed_graph_hint():
     panel = build_graph_panel(
-        project_id=None, nodes=[], edges=[],
+        project_id=None, tasks=[], edges=[],
         selection=0, unread=0, width=80, height=20, pan_offset=0,
     )
     out = _text(panel)
@@ -112,11 +112,11 @@ def test_no_armed_graph_hint():
 
 def test_armed_but_empty_graph_hint():
     panel = build_graph_panel(
-        project_id="p", nodes=[], edges=[],
+        project_id="p", tasks=[], edges=[],
         selection=0, unread=0, width=80, height=20, pan_offset=0,
     )
     out = _text(panel)
-    assert "no" in out.lower() and ("node" in out.lower() or "graph" in out.lower())
+    assert "no" in out.lower() and ("task" in out.lower() or "graph" in out.lower())
 
 
 # ---------------------------------------------------------------------------
@@ -125,10 +125,10 @@ def test_armed_but_empty_graph_hint():
 
 
 def test_narrow_width_no_overflow():
-    nodes = [GraphNode(f"n{i}", f"Task {i}", "verified" if i < 8 else "ready") for i in range(10)]
+    tasks = [GraphTask(f"n{i}", f"Task {i}", "verified" if i < 8 else "ready") for i in range(10)]
     edges = [(f"n{i}", f"n{i-1}") for i in range(1, 10)]
     panel = build_graph_panel(
-        project_id="p", nodes=nodes, edges=edges,
+        project_id="p", tasks=tasks, edges=edges,
         selection=0, unread=0, width=40, height=20, pan_offset=0,
     )
     out = _text(panel, width=40)
@@ -141,10 +141,10 @@ def test_narrow_width_no_overflow():
 def test_topic_cell_shows_task_progress():
     from juggle_cockpit_graph_panel import build_graph_panel
 
-    nodes = [GraphNode(id="auth", state="running", title="auth",
+    tasks = [GraphTask(id="auth", state="running", title="auth",
                        tasks_done=2, tasks_total=6)]
     panel = build_graph_panel(
-        project_id="P1", nodes=nodes, edges=[],
+        project_id="P1", tasks=tasks, edges=[],
         selection=0, unread=0, width=80, height=20, pan_offset=0,
     )
     out = _text(panel)
@@ -157,11 +157,11 @@ def test_multi_panel_stacks_each_armed_dag_with_header():
     from juggle_cockpit_graph_dag import GraphDag
     from juggle_cockpit_graph_panel import build_multi_graph_panel
 
-    nodes1 = [GraphNode("a", "A", "verified")]
-    nodes2 = [GraphNode("b", "B", "ready")]
+    tasks1 = [GraphTask("a", "A", "verified")]
+    tasks2 = [GraphTask("b", "B", "ready")]
     dags = [
-        GraphDag(project_id="P1", nodes=nodes1, edges=[], tasks={}),
-        GraphDag(project_id="P2", nodes=nodes2, edges=[], tasks={}),
+        GraphDag(project_id="P1", tasks=tasks1, edges=[], member_tasks={}),
+        GraphDag(project_id="P2", tasks=tasks2, edges=[], member_tasks={}),
     ]
     panel = build_multi_graph_panel(
         dags=dags, selection=0, unread=0, width=80, height=30, pan_offset=0

@@ -15,6 +15,7 @@ Domain modules (each ≤300 lines):
   dbops/notifications.py — NotificationsMixin (notif_v2, action_items)
   dbops/selfheal.py      — SelfhealMixin (error_events)
   dbops/agents.py        — AgentsMixin   (agent pool, tool telemetry, watchdog events)
+  dbops/runs.py          — RunsMixin     (durable agent I/O ledger: agent_runs)
 """
 
 import logging
@@ -29,13 +30,11 @@ _log = logging.getLogger(__name__)
 from dbops.schema import (  # noqa: E402, F401
     CREATE_ACTION_ITEMS,
     CREATE_AGENT_COMPLETIONS,
-    CREATE_AGENT_RUNS,
-    CREATE_AGENT_RUNS_INDEXES,
     CREATE_AGENT_TOOL_EVENTS,
     CREATE_AGENTS,
     CREATE_ERROR_EVENTS,
     CREATE_GRAPH_EDGES,
-    CREATE_GRAPH_NODES,
+    CREATE_GRAPH_TASKS,
     CREATE_GRAPH_TOPICS,
     CREATE_MESSAGES,
     CREATE_NOTIFICATIONS,
@@ -129,19 +128,16 @@ class JuggleDB(
             conn.execute(CREATE_AGENT_TOOL_EVENTS)
             conn.execute(CREATE_ERROR_EVENTS)
             conn.execute(CREATE_PROJECTS)
-            conn.execute(CREATE_GRAPH_NODES)
+            conn.execute(CREATE_GRAPH_TASKS)
             conn.execute(CREATE_GRAPH_EDGES)
             conn.execute(CREATE_GRAPH_TOPICS)
-            conn.execute(CREATE_AGENT_RUNS)
-            for _idx in CREATE_AGENT_RUNS_INDEXES:
-                conn.execute(_idx)
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_graph_nodes_project_state "
-                "ON graph_nodes(project_id, state)"
+                "CREATE INDEX IF NOT EXISTS idx_graph_tasks_project_state "
+                "ON graph_tasks(project_id, state)"
             )
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_graph_nodes_thread "
-                "ON graph_nodes(thread_id) WHERE thread_id IS NOT NULL"
+                "CREATE INDEX IF NOT EXISTS idx_graph_tasks_thread "
+                "ON graph_tasks(thread_id) WHERE thread_id IS NOT NULL"
             )
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_error_events_sig "

@@ -27,19 +27,19 @@ def db(tmp_path: Path) -> JuggleDB:
     return d
 
 
-def _mk(db, node_id, state="pending", title=None, thread_id=None):
-    g.create_node(
+def _mk(db, task_id, state="pending", title=None, thread_id=None):
+    g.create_task(
         db,
-        node_id=node_id,
+        task_id=task_id,
         project_id="INBOX",
-        title=title or f"Node {node_id}",
-        prompt=f"do {node_id}",
+        title=title or f"Task {task_id}",
+        prompt=f"do {task_id}",
     )
     if state != "pending":
         with db._connect() as conn:  # test seam: force a display state directly
             conn.execute(
-                "UPDATE graph_nodes SET state=?, thread_id=? WHERE id=?",
-                (state, thread_id, node_id),
+                "UPDATE graph_tasks SET state=?, thread_id=? WHERE id=?",
+                (state, thread_id, task_id),
             )
             conn.commit()
 
@@ -68,12 +68,12 @@ def test_counts_running_includes_dispatching_and_integrating():
     assert c["running"] == 3
 
 
-def test_graph_counts_none_when_no_nodes(db):
+def test_graph_counts_none_when_no_tasks(db):
     assert gs.graph_counts(db, "INBOX") is None
 
 
 def test_graph_counts_none_on_pre_migration_db(tmp_path):
-    """Pre-graph_nodes DBs must degrade to None, never raise."""
+    """Pre-graph_tasks DBs must degrade to None, never raise."""
     import sqlite3
 
     class Stub:
@@ -127,9 +127,9 @@ def test_injection_contains_counts_and_titles(db):
 
 def test_injection_hard_500_char_budget(db):
     """2026-06-10 DA m4: injection must NEVER exceed 500 chars, regardless of
-    how many ready/running nodes exist or how long their titles are."""
+    how many ready/running tasks exist or how long their titles are."""
     for i in range(30):
-        _mk(db, f"n{i:02d}", "ready", title="An extremely long node title " * 8)
+        _mk(db, f"n{i:02d}", "ready", title="An extremely long task title " * 8)
     text = gs.build_graph_injection(db, "INBOX")
     assert len(text) <= 500
     assert text  # still says something
@@ -137,7 +137,7 @@ def test_injection_hard_500_char_budget(db):
 
 def test_injection_truncation_deterministic(db):
     for i in range(30):
-        _mk(db, f"n{i:02d}", "ready", title="Another very long node title " * 8)
+        _mk(db, f"n{i:02d}", "ready", title="Another very long task title " * 8)
     a = gs.build_graph_injection(db, "INBOX")
     b = gs.build_graph_injection(db, "INBOX")
     assert a == b

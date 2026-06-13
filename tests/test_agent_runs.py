@@ -46,7 +46,7 @@ def test_insert_agent_run_returns_id_and_persists(db, thread):
         harness="claude",
         project_id="P1",
         topic_id="T1",
-        node_id="N1",
+        task_id="N1",
     )
     assert isinstance(run_id, int)
     row = db.get_run(run_id)
@@ -59,7 +59,7 @@ def test_insert_agent_run_returns_id_and_persists(db, thread):
     assert row["harness"] == "claude"
     assert row["project_id"] == "P1"
     assert row["topic_id"] == "T1"
-    assert row["node_id"] == "N1"
+    assert row["task_id"] == "N1"
     assert row["status"] == "dispatched"
     assert row["dispatched_at"]
     assert row["completed_at"] is None
@@ -75,12 +75,12 @@ def test_insert_agent_run_returns_id_and_persists(db, thread):
 def test_close_run_updates_newest_open_only(db, thread):
     old_id = db.insert_agent_run(
         thread_id=thread, input_prompt="old", agent_id="a", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     time.sleep(0.01)
     new_id = db.insert_agent_run(
         thread_id=thread, input_prompt="new", agent_id="a", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     db.close_run(thread, output="DONE", diffstat="1 file changed")
 
@@ -99,7 +99,7 @@ def test_close_run_updates_newest_open_only(db, thread):
 def test_close_run_sets_status_arg(db, thread):
     rid = db.insert_agent_run(
         thread_id=thread, input_prompt="x", agent_id="a", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     db.close_run(thread, output="boom", diffstat=None, status="failed")
     assert db.get_run(rid)["status"] == "failed"
@@ -118,7 +118,7 @@ def test_close_run_noop_when_no_open_run(db, thread):
 def test_supersede_open_runs_flips_open(db, thread):
     rid = db.insert_agent_run(
         thread_id=thread, input_prompt="first", agent_id="a", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     db.supersede_open_runs(thread)
     assert db.get_run(rid)["status"] == "superseded"
@@ -127,12 +127,12 @@ def test_supersede_open_runs_flips_open(db, thread):
 def test_second_dispatch_supersedes_first(db, thread):
     rid1 = db.insert_agent_run(
         thread_id=thread, input_prompt="first", agent_id="a", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     db.supersede_open_runs(thread)
     rid2 = db.insert_agent_run(
         thread_id=thread, input_prompt="second", agent_id="a", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     assert db.get_run(rid1)["status"] == "superseded"
     assert db.get_run(rid2)["status"] == "dispatched"
@@ -146,7 +146,7 @@ def test_second_dispatch_supersedes_first(db, thread):
 def test_fail_open_runs_by_thread(db, thread):
     rid = db.insert_agent_run(
         thread_id=thread, input_prompt="x", agent_id="agent-9", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     db.fail_open_runs(thread_id=thread)
     assert db.get_run(rid)["status"] == "failed"
@@ -155,7 +155,7 @@ def test_fail_open_runs_by_thread(db, thread):
 def test_fail_open_runs_by_agent(db, thread):
     rid = db.insert_agent_run(
         thread_id=thread, input_prompt="x", agent_id="agent-9", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     db.fail_open_runs(agent_id="agent-9")
     assert db.get_run(rid)["status"] == "failed"
@@ -164,7 +164,7 @@ def test_fail_open_runs_by_agent(db, thread):
 def test_fail_open_runs_leaves_closed_alone(db, thread):
     rid = db.insert_agent_run(
         thread_id=thread, input_prompt="x", agent_id="a", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     db.close_run(thread, output="done", diffstat=None)
     db.fail_open_runs(thread_id=thread)
@@ -179,7 +179,7 @@ def test_fail_open_runs_leaves_closed_alone(db, thread):
 def _seed(db, thread, **kw):
     base = dict(
         thread_id=thread, input_prompt="p", agent_id="a", role="coder",
-        model=None, harness=None, project_id=None, topic_id=None, node_id=None,
+        model=None, harness=None, project_id=None, topic_id=None, task_id=None,
     )
     base.update(kw)
     return db.insert_agent_run(**base)
@@ -190,12 +190,12 @@ def test_get_runs_filter_by_each_key(db):
     t2 = db.create_thread("t2", session_id="")
     r_proj = _seed(db, t1, project_id="PA")
     r_topic = _seed(db, t1, topic_id="TB")
-    r_node = _seed(db, t1, node_id="NC")
+    r_task = _seed(db, t1, task_id="NC")
     r_thread2 = _seed(db, t2, project_id="PZ")
 
     assert {r["id"] for r in db.get_runs(project_id="PA")} == {r_proj}
     assert {r["id"] for r in db.get_runs(topic_id="TB")} == {r_topic}
-    assert {r["id"] for r in db.get_runs(node_id="NC")} == {r_node}
+    assert {r["id"] for r in db.get_runs(task_id="NC")} == {r_task}
     assert {r["id"] for r in db.get_runs(thread_id=t2)} == {r_thread2}
 
 
@@ -255,7 +255,7 @@ def test_migration_idempotent(tmp_path):
     t = d.create_thread("x", session_id="")
     rid = d.insert_agent_run(
         thread_id=t, input_prompt="x", agent_id="a", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     assert d.get_run(rid) is not None
 
@@ -277,7 +277,7 @@ def test_existing_db_without_table_gets_it(tmp_path):
     t = d2.create_thread("x", session_id="")
     rid = d2.insert_agent_run(
         thread_id=t, input_prompt="x", agent_id="a", role="coder",
-        model=None, harness=None, project_id="P", topic_id=None, node_id=None,
+        model=None, harness=None, project_id="P", topic_id=None, task_id=None,
     )
     assert d2.get_run(rid) is not None
 
