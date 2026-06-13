@@ -79,6 +79,17 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
     except ValueError as e:
         print(f"Warning: graph topic {topic['id']} not marked — {e}")
         return
+    # Ledger close (best-effort): pair the topic thread's open dispatch run with
+    # its OUTPUT (handoff) + the captured diffstat; status mirrors integrate.
+    try:
+        _t = db_topics.get_topic(db, topic["id"]) or {}
+        db.close_run(
+            thread_uuid, output=handoff, diffstat=_t.get("diffstat"),
+            status="completed" if state == "verified" else "failed",
+        )
+    except Exception:
+        pass
+
     if state == "verified":
         db.add_notification_v2(
             thread_id=thread_uuid,

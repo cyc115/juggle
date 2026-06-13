@@ -29,6 +29,8 @@ _log = logging.getLogger(__name__)
 from dbops.schema import (  # noqa: E402, F401
     CREATE_ACTION_ITEMS,
     CREATE_AGENT_COMPLETIONS,
+    CREATE_AGENT_RUNS,
+    CREATE_AGENT_RUNS_INDEXES,
     CREATE_AGENT_TOOL_EVENTS,
     CREATE_AGENTS,
     CREATE_ERROR_EVENTS,
@@ -61,6 +63,7 @@ from dbops.messages import MessagesMixin  # noqa: E402, F401
 from dbops.migrations import run_migrations  # noqa: E402, F401
 from dbops.notifications import NotificationsMixin  # noqa: E402, F401
 from dbops.projects import ProjectsMixin  # noqa: E402, F401
+from dbops.runs import RunsMixin  # noqa: E402, F401
 from dbops.selfheal import SelfhealMixin  # noqa: E402, F401
 from dbops.session import SessionMixin  # noqa: E402, F401
 from dbops.threads import ThreadsMixin  # noqa: E402, F401
@@ -78,6 +81,7 @@ class JuggleDB(
     NotificationsMixin,
     SelfhealMixin,
     AgentsMixin,
+    RunsMixin,
 ):
     """Full juggle database interface — all domain mixins assembled here.
 
@@ -128,6 +132,9 @@ class JuggleDB(
             conn.execute(CREATE_GRAPH_NODES)
             conn.execute(CREATE_GRAPH_EDGES)
             conn.execute(CREATE_GRAPH_TOPICS)
+            conn.execute(CREATE_AGENT_RUNS)
+            for _idx in CREATE_AGENT_RUNS_INDEXES:
+                conn.execute(_idx)
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_graph_nodes_project_state "
                 "ON graph_nodes(project_id, state)"

@@ -273,3 +273,21 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     # graph_topics). Extracted to dbops.migrations_graph for the 300-line gate.
     from dbops.migrations_graph import apply_graph_migrations
     apply_graph_migrations(conn)
+
+    # Migration 38: agent_runs ledger + indexes; agents.current_run_id (open-run
+    # correlation pointer). Append-only INPUT/OUTPUT ledger keyed by thread_id.
+    from dbops.schema_runs import CREATE_AGENT_RUNS, CREATE_AGENT_RUNS_INDEXES
+
+    try:
+        conn.execute(CREATE_AGENT_RUNS)
+        for _idx in CREATE_AGENT_RUNS_INDEXES:
+            conn.execute(_idx)
+        agents_cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(agents)").fetchall()
+        }
+        if "current_run_id" not in agents_cols:
+            conn.execute("ALTER TABLE agents ADD COLUMN current_run_id TEXT")
+        conn.commit()
+        _log.info("Migration 38: agent_runs ledger + current_run_id created")
+    except sqlite3.OperationalError as e:
+        _log.warning("Migration 38 (agent_runs) skipped: %s", e)

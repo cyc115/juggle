@@ -193,6 +193,35 @@ def cmd_send_task(args):
     if not adapter.is_interactive and oneshot_pid is not None:
         _update_fields["oneshot_pid"] = oneshot_pid
     db.update_agent(args.agent_id, **_update_fields)
+
+    # Ledger (best-effort, NEVER breaks dispatch): record this dispatch's INPUT
+    # (the full sent prompt) keyed by thread + project/topic/node so the
+    # orchestrator can pair it with the OUTPUT at completion. thread_id is the
+    # universal key; project_id defaults to INBOX (non-project) via the thread.
+    try:
+        thread_uuid = agent.get("assigned_thread")
+        if thread_uuid:
+            from dbops import db_graph, db_topics
+
+            _thread = db.get_thread(thread_uuid) or {}
+            _node = db_graph.get_node_by_thread(db, thread_uuid)
+            _topic = db_topics.get_topic_by_thread(db, thread_uuid)
+            db.supersede_open_runs(thread_uuid)
+            run_id = db.insert_agent_run(
+                thread_id=thread_uuid,
+                input_prompt=full_prompt,
+                agent_id=args.agent_id,
+                role=_role,
+                model=_update_fields.get("model"),
+                harness=adapter.id,
+                project_id=_thread.get("project_id"),
+                topic_id=_topic["id"] if _topic else None,
+                node_id=_node["id"] if _node else None,
+            )
+            db.update_agent(args.agent_id, current_run_id=run_id)
+    except Exception as _exc:  # noqa: BLE001
+        print(f"[juggle] WARNING: ledger insert failed: {_exc}", file=sys.stderr)
+
     print(f"Task sent to agent {args.agent_id[:8]} (pane {pane_id}).")
 
 

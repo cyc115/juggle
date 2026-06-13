@@ -105,7 +105,8 @@ CREATE TABLE IF NOT EXISTS agents (
   last_send_task_pane_hash   TEXT,
   last_send_task_at          TEXT,
   last_activity_at           TEXT,
-  repo_path                  TEXT
+  repo_path                  TEXT,
+  current_run_id             TEXT
 );
 """
 
@@ -235,6 +236,13 @@ from dbops.schema_graph import (  # noqa: E402,F401
     CREATE_GRAPH_EDGES,
     CREATE_GRAPH_NODES,
     CREATE_GRAPH_TOPICS,
+)
+
+# agent_runs ledger DDL lives in dbops.schema_runs (architecture gate). Re-
+# exported here so ``from dbops.schema import CREATE_AGENT_RUNS`` keeps working.
+from dbops.schema_runs import (  # noqa: E402,F401
+    CREATE_AGENT_RUNS,
+    CREATE_AGENT_RUNS_INDEXES,
 )
 
 # ---------------------------------------------------------------------------

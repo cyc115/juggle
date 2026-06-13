@@ -22,6 +22,27 @@ _ENFORCEABLE_STATES = frozenset(
 )
 
 
+def close_adhoc_run(db, thread_uuid, result_summary) -> None:
+    """Ledger close for AD-HOC (non-graph) completions (best-effort, NEVER
+    breaks completion). Graph node/topic threads are closed by mark_graph_topic
+    with the captured diffstat + integrate-aware status, so they are skipped
+    here to avoid a premature completed-status close."""
+    from dbops import db_graph, db_topics
+
+    try:
+        is_graph = bool(
+            db_graph.get_node_by_thread(db, thread_uuid)
+            or db_topics.get_topic_by_thread(db, thread_uuid)
+        )
+        if not is_graph:
+            db.close_run(
+                thread_uuid, output=result_summary, diffstat=None,
+                status="completed",
+            )
+    except Exception:
+        pass
+
+
 def _node_for_thread(db, thread_uuid):
     """Bound node for a thread, or None (incl. pre-migration DBs)."""
     from dbops import db_graph
@@ -190,6 +211,17 @@ def mark_graph_node(db, thread_uuid, integrate_ok, handoff, session_id,
     except ValueError as e:
         print(f"Warning: graph node {node['id']} not marked — {e}")
         return
+
+    # Ledger close (best-effort): pair the node thread's open dispatch run with
+    # its OUTPUT (handoff) + the captured diffstat; status mirrors integrate.
+    try:
+        _n = db_graph.get_node(db, node["id"]) or {}
+        db.close_run(
+            thread_uuid, output=handoff, diffstat=_n.get("diffstat"),
+            status="completed" if state == "verified" else "failed",
+        )
+    except Exception:
+        pass
 
     if state == "verified":
         db.add_notification_v2(

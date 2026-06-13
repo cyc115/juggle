@@ -586,6 +586,10 @@ def execute_recovery(
     except Exception:
         pass
     db.delete_agent(agent_id)
+    try:  # Ledger: a reaped agent's open run must not linger as 'dispatched'.
+        db.fail_open_runs(thread_id=thread_id, agent_id=agent_id)
+    except Exception:
+        _log.warning("Watchdog: ledger fail_open_runs failed for %s", agent_id[:8])
 
     if thread_id:
         db.update_thread(thread_id, status="failed")

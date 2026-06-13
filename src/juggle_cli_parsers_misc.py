@@ -1,10 +1,9 @@
-"""
-juggle_cli_parsers_misc — Subparser registration for context/memory, selfheal,
-research, schedules, cockpit, agent-tools, and project commands.
+"""juggle_cli_parsers_misc — Subparser registration for context/memory,
+selfheal, research, schedules, cockpit, agent-tools, runs, and project commands.
 
-Owns: argparse wiring only.
-Must not own: command handler logic (lives in juggle_cmd_context,
-juggle_cmd_misc, juggle_cmd_research, juggle_cmd_projects, schedule modules).
+Owns: argparse wiring only. Must not own: command handler logic (lives in
+juggle_cmd_context, juggle_cmd_misc, juggle_cmd_research, juggle_cmd_projects,
+juggle_cmd_runs, schedule modules).
 """
 
 from juggle_cmd_context import (
@@ -38,6 +37,7 @@ from juggle_cmd_projects import (
 )
 from juggle_cmd_graph import register_graph_parsers
 from juggle_cmd_research import cmd_research
+from juggle_cmd_runs import register_runs_parsers
 
 
 def register(subparsers, *, vault_path_default: str) -> None:
@@ -244,8 +244,8 @@ def register(subparsers, *, vault_path_default: str) -> None:
     )
     p_cockpit.set_defaults(func=cmd_cockpit)
 
-    # juggle project-graph / graph <subcmd> — task-graph plan store + live edits
-    register_graph_parsers(subparsers)
+    register_graph_parsers(subparsers)  # graph <subcmd> — task-graph plan store
+    register_runs_parsers(subparsers)  # runs <subcmd> — agent I/O ledger
 
     # juggle project <subcmd>
     p_project = subparsers.add_parser("project", help="Manage projects")
