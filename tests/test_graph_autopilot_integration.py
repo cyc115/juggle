@@ -10,7 +10,9 @@ failure propagation, and ready-set promotion of dependent topics.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -78,10 +80,32 @@ def _states(db):
     return {t["id"]: t["state"] for t in tp.list_topics(db, "INBOX")}
 
 
-def _complete_topic(db, topic_id, handoff, *, fail_task=None):
+def _merged_repo() -> str:
+    """A real repo whose branch 'main' is trivially an ancestor of main, used to
+    satisfy the G1 verified⟺merged guard for topics that should verify."""
+    d = tempfile.mkdtemp(prefix="juggle-merged-")
+
+    def _git(*a):
+        subprocess.run(["git", "-C", d, *a], check=True, capture_output=True,
+                       text=True)
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.email", "t@t.t")
+    _git("config", "user.name", "T")
+    (Path(d) / "f.txt").write_text("base\n")
+    _git("add", ".")
+    _git("commit", "-qm", "base")
+    return d
+
+
+def _complete_topic(db, topic_id, handoff, *, fail_task=None, merged=True):
     """Mark every task of the topic terminal (verified, or fail_task →
     failed-verify) then finish the topic via REAL cmd_complete_agent (the A10
-    gate + integrate-once + topic marking)."""
+    gate + integrate-once + topic marking).
+
+    G1 (2026-06-13): bind the topic's thread to a MERGED repo (unless the test
+    already set worktree fields, e.g. a deliberate failed integrate) so the
+    verified⟺merged guard permits the topic to verify."""
     from juggle_cmd_agents import cmd_complete_agent
 
     for n in tp.list_topic_tasks(db, topic_id):
@@ -89,6 +113,11 @@ def _complete_topic(db, topic_id, handoff, *, fail_task=None):
                           verify_ok=(n["id"] != fail_task), handoff="task handoff")
     topic = tp.get_topic(db, topic_id)
     assert topic["thread_id"], f"topic {topic_id} has no bound thread"
+    if merged:
+        thread = db.get_thread(topic["thread_id"]) or {}
+        if not (thread.get("main_repo_path") or "").strip():
+            db.update_thread(topic["thread_id"], worktree_branch="main",
+                             main_repo_path=_merged_repo())
     cmd_complete_agent(argparse.Namespace(
         thread_id=topic["thread_id"],
         result_summary=f"{topic_id} complete",

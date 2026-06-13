@@ -258,6 +258,7 @@ def test_tick_self_heals_missed_ready_promotion(db):
     _mk_topic(db, "a")
     _mk_topic(db, "b", ready=False)
     _dep_topic(db, "b", "a")
+    _bind_merged_topic(db, "a")  # G1: merged → may verify
     for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
         tp.topic_transition(db, "a", ev)  # verified, but NO recompute ran
     assert tp.get_topic(db, "b")["state"] == "pending"
@@ -560,8 +561,40 @@ def _age_topic_claim(db, tid, secs):
         conn.commit()
 
 
+def _merged_repo() -> str:
+    """A real repo whose 'main' branch satisfies the G1 verified⟺merged guard."""
+    import subprocess
+    import tempfile
+    d = tempfile.mkdtemp(prefix="juggle-merged-")
+
+    def _git(*a):
+        subprocess.run(["git", "-C", d, *a], check=True, capture_output=True,
+                       text=True)
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.email", "t@t.t")
+    _git("config", "user.name", "T")
+    (Path(d) / "f.txt").write_text("base\n")
+    _git("add", ".")
+    _git("commit", "-qm", "base")
+    return d
+
+
+def _bind_merged_topic(db, tid):
+    """G1 (2026-06-13): bind tid to a thread on a merged repo so it may verify."""
+    existing = tp.get_topic(db, tid)
+    thread_id = existing["thread_id"] if existing else None
+    if not thread_id:
+        thread_id = db.create_thread("merge", session_id="s")
+        tp.set_topic_thread(db, tid, thread_id)
+    db.update_thread(thread_id, worktree_branch="main",
+                     main_repo_path=_merged_repo())
+
+
 def _verify_topic(db, tid, handoff=None):
-    """Walk a ready topic to 'verified' (claim→dispatch→integrate)."""
+    """Walk a ready topic to 'verified' (claim→dispatch→integrate). Binds a
+    merged repo (G1) so the verify transition is permitted."""
+    _bind_merged_topic(db, tid)
     for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
         tp.topic_transition(db, tid, ev)
     if handoff is not None:

@@ -228,11 +228,33 @@ def _verify_task(db, task_id, fail=False):
     g.mark_completion(db, task_id, integrate_ok=True, verify_ok=not fail, handoff="h")
 
 
-def _bind_running_topic(db, topic_id, session="sessA"):
+def _merged_repo() -> str:
+    """A real repo whose 'main' branch satisfies the G1 verified⟺merged guard."""
+    import subprocess
+    import tempfile
+    d = tempfile.mkdtemp(prefix="juggle-merged-")
+
+    def _git(*a):
+        subprocess.run(["git", "-C", d, *a], check=True, capture_output=True,
+                       text=True)
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.email", "t@t.t")
+    _git("config", "user.name", "T")
+    (Path(d) / "f.txt").write_text("base\n")
+    _git("add", ".")
+    _git("commit", "-qm", "base")
+    return d
+
+
+def _bind_running_topic(db, topic_id, session="sessA", *, merged=False):
     tid = db.create_thread("t", session_id=session)
+    # G1 (2026-06-13): a topic verifies only when merged. Use a real merged repo
+    # when the test expects verification; a fake path otherwise.
+    branch, repo = ("main", _merged_repo()) if merged else ("cyc_x", "/tmp/repo")
     db.update_thread(tid, agent_task_id="task-1", status="running",
-                     worktree_path="/tmp/wt", worktree_branch="cyc_x",
-                     main_repo_path="/tmp/repo")
+                     worktree_path="/tmp/wt", worktree_branch=branch,
+                     main_repo_path=repo)
     db._set_session_key_external("session_id", session)
     tp.set_topic_thread(db, topic_id, tid)
     for ev in ("deps_ready", "claim", "dispatch"):
@@ -272,7 +294,7 @@ def test_complete_agent_marks_topic_when_all_tasks_terminal(db, monkeypatch):
     _mk_topic_task(db, "A", "a2")
     _verify_task(db, "a1")
     _verify_task(db, "a2")
-    tid = _bind_running_topic(db, "A")
+    tid = _bind_running_topic(db, "A", merged=True)  # G1: merged → verifies
     calls = []
     monkeypatch.setattr(_com.juggle_cmd_integrate, "_run_integrate",
                         lambda thread, db_: calls.append(1) or (True, "ok"))

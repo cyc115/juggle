@@ -218,11 +218,14 @@ def cmd_graph_add_task(args):
         auto_topic = True
 
     try:
+        # G5: topic creation + task insert + topic_id FK happen in ONE
+        # transaction inside add_task — no empty-topic window for the tick.
         result = add_task(
             db, args.project,
             task_id=args.id, title=args.title, prompt=prompt,
             deps=_csv(args.deps), required_by=_csv(args.required_by),
             verify_cmd=args.verify_cmd,
+            topic_id=topic, auto_create_topic=auto_topic,
         )
     except AddTaskError as e:
         if getattr(args, "json_out", False):
@@ -230,18 +233,6 @@ def cmd_graph_add_task(args):
         else:
             print(f"add-task REFUSED — graph unchanged: {e}", file=sys.stderr)
         sys.exit(1)
-
-    # Assign the topic: auto-create the synthetic topic if needed, then point
-    # the new task at it (topic_id FK).
-    if auto_topic and db_topics.get_topic(db, topic) is None:
-        db_topics.create_topic(
-            db, topic_id=topic, project_id=args.project, title=args.title,
-        )
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic, args.id)
-        )
-        conn.commit()
 
     if getattr(args, "json_out", False):
         print(json.dumps({"ok": True, **result}))

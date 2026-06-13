@@ -15,6 +15,21 @@ from dbops.schema import _now
 from dbops.db_graph import _EVENTS, _TRANSITIONS, _cx
 
 
+class UnmergedVerifyRefused(ValueError):
+    """G1: a topic cannot be marked 'verified' while its work is unmerged."""
+
+
+def _verified_allowed(db, topic_id: str) -> bool:
+    """G1 gate: a topic may become 'verified' only when merged to main.
+
+    Tests inject an isolated repo via thread.main_repo_path; when no repo is
+    bound the topic is unmergeable → not allowed.
+    """
+    from dbops.graph_guards import topic_is_merged
+
+    return topic_is_merged(db, topic_id)
+
+
 def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
     """Apply ``event`` to the topic. Same machine as tasks. Fail-loud."""
     if event not in _EVENTS:
@@ -29,6 +44,11 @@ def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
             f"{topic['state']!r} got event {event!r}"
         )
     new_state = _TRANSITIONS[key]
+    if new_state == "verified" and not _verified_allowed(db, topic_id):
+        raise UnmergedVerifyRefused(
+            f"refusing to verify topic {topic_id!r}: its work is not merged into "
+            f"main (git merge-base --is-ancestor failed). Keeping it pre-verified."
+        )
     now = _now()
     sets, params = ["state=?", "updated_at=?"], [new_state, now]
     if new_state == "verified":
@@ -148,8 +168,19 @@ def derived_topic_deps(db, topic_id) -> list[str]:
     return [r[0] for r in rows]
 
 
+_DISPATCHABLE_TASK_STATES = ("pending", "ready")
+
+
 def topic_ready_eligible(db, project_id) -> list[str]:
-    """Pending topics whose DERIVED dep topics are all 'verified'."""
+    """Pending topics whose DERIVED dep topics are all 'verified' AND that have
+    at least one task in a dispatchable state.
+
+    G3 (claimable invariant): a topic with ZERO tasks in a dispatchable state
+    (empty, or all tasks terminal/active) is never promoted to 'ready'. The
+    2026-06-13 incident's empty-topic TOCTOU race claimed a topic created before
+    its first task existed — gate that here at the source of truth.
+    """
+    placeholders = ",".join("?" * len(_DISPATCHABLE_TASK_STATES))
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT t.id FROM graph_topics t WHERE t.project_id=? "
@@ -160,8 +191,11 @@ def topic_ready_eligible(db, project_id) -> list[str]:
             "  JOIN graph_topics dt ON dt.id = d.topic_id"
             "  WHERE n.topic_id = t.id AND d.topic_id != t.id"
             "  AND dt.state != 'verified') "
+            "AND EXISTS ("
+            "  SELECT 1 FROM graph_tasks gt"
+            f"  WHERE gt.topic_id = t.id AND gt.state IN ({placeholders})) "
             "ORDER BY t.created_at, t.id",
-            (project_id,),
+            (project_id, *_DISPATCHABLE_TASK_STATES),
         ).fetchall()
         return [r["id"] for r in rows]
 
@@ -266,73 +300,10 @@ def propagate_topic_failure(db, topic_id) -> list[str]:
     return blocked
 
 
-_FAILED_TASK_STATES = frozenset({
-    "failed-exec", "failed-integration", "failed-verify", "blocked-failed"
-})
-_ACTIVE_TASK_STATES = frozenset({"running", "dispatching", "integrating"})
-
-
-def reconcile_topic_state(db, topic_id: str) -> str:
-    """Derive and sync a topic's state from its member task states.
-
-    Priority: all verified → 'verified'; any failed → 'failed-verify'; any
-    active (running/dispatching/integrating) → 'running'; else leave
-    pending/ready unchanged (or reset a phantom non-terminal to 'pending').
-    Idempotent; safe on terminal topics (no spurious transitions).
-    """
-    topic = get_topic(db, topic_id)
-    if topic is None:
-        raise ValueError(f"graph topic not found: {topic_id!r}")
-
-    with db._connect() as conn:
-        rows = conn.execute(
-            "SELECT state FROM graph_tasks WHERE topic_id=?", (topic_id,)
-        ).fetchall()
-
-    if not rows:
-        return topic["state"]
-
-    task_states = [r[0] for r in rows]
-
-    if all(s == "verified" for s in task_states):
-        target = "verified"
-    elif any(s in _FAILED_TASK_STATES for s in task_states):
-        target = "failed-verify"
-    elif any(s in _ACTIVE_TASK_STATES for s in task_states):
-        target = "running"
-    elif topic["state"] in ("pending", "ready"):
-        return topic["state"]
-    else:
-        target = "pending"
-
-    if target == topic["state"]:
-        return target
-
-    now = _now()
-    sets, params = ["state=?", "updated_at=?"], [target, now]
-    if target == "verified":
-        sets.append("verified_at=?")
-        params.append(now)
-    with _cx(db) as conn:
-        conn.execute(
-            f"UPDATE graph_topics SET {', '.join(sets)} WHERE id=?",
-            (*params, topic_id),
-        )
-    return target
-
-
-def reconcile_project_topics(db, project_id: str) -> dict:
-    """Reconcile all topics in a project from their member task states.
-
-    Returns {topic_id: {"before": old_state, "after": new_state}}.
-    """
-    topics = list_topics(db, project_id)
-    result = {}
-    for topic in topics:
-        before = topic["state"]
-        after = reconcile_topic_state(db, topic["id"])
-        result[topic["id"]] = {"before": before, "after": after}
-    return result
+# Reconcile (derive-and-sync) lives in db_topics_reconcile (LOC split,
+# 2026-06-13). Re-exported here so existing callers keep importing from
+# dbops.db_topics. Imported at module end to avoid a circular import
+# (db_topics_reconcile imports get_topic/list_topics/_verified_allowed from here).
 
 
 def topic_counts(db, project_id) -> dict | None:
@@ -348,3 +319,12 @@ def topic_counts(db, project_id) -> dict | None:
         return None  # pre-migration DB
     states = [r[0] for r in rows]
     return counts_from_states(states) if states else None
+
+
+# Back-compat re-exports for the reconcile pass (LOC split, 2026-06-13). Placed
+# at module end so db_topics is fully defined before db_topics_reconcile imports
+# from it (avoids a circular-import failure at load time).
+from dbops.db_topics_reconcile import (  # noqa: E402,F401
+    reconcile_project_topics,
+    reconcile_topic_state,
+)

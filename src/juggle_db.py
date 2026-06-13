@@ -112,7 +112,15 @@ class JuggleDB(
         return conn
 
     def init_db(self):
-        """Create tables if not exist, run schema migrations, enable WAL mode."""
+        """Create tables if not exist, run schema migrations, enable WAL mode.
+
+        G2: refuse to migrate the shared production DB from an agent/worktree
+        context (only the orchestrator migrates the shared DB). Raises
+        SharedDBMigrationRefused before any DDL touches the shared file.
+        """
+        from dbops.graph_guards import assert_migration_allowed
+
+        assert_migration_allowed(self.db_path)
         with self._connect() as conn:
             # WAL/synchronous/busy_timeout are set by _connect() on every open.
             conn.execute(CREATE_THREADS)

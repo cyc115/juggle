@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +22,28 @@ from juggle_db import JuggleDB  # noqa: E402
 from dbops import db_graph as g  # noqa: E402
 from dbops import db_topics as t  # noqa: E402
 import juggle_cmd_graph as cg  # noqa: E402
+
+
+def _bind_merged(db, topic_id: str, tmp_path: Path) -> None:
+    """G1 (2026-06-13): a topic only reconciles to 'verified' when its bound
+    branch is merged to main. Give the topic a thread on a merged repo so the
+    reconcile-to-verified path stays exercisable post-guard."""
+    repo = tmp_path / f"repo_{topic_id}"
+    repo.mkdir()
+
+    def _git(*a):
+        subprocess.run(["git", "-C", str(repo), *a], check=True,
+                       capture_output=True, text=True)
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.email", "t@t.t")
+    _git("config", "user.name", "T")
+    (repo / "f.txt").write_text("base\n")
+    _git("add", ".")
+    _git("commit", "-qm", "base")  # branch 'cyc' will be an ancestor of main
+    thread_id = db.create_thread(topic="w", session_id="sessR")
+    db.update_thread(thread_id, worktree_branch="main", main_repo_path=str(repo))
+    t.set_topic_thread(db, topic_id, thread_id)
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -78,12 +101,13 @@ def _mk_task(db, task_id, project_id, topic_id, state="pending"):
 # ── reconcile_topic_state unit tests ──────────────────────────────────────────
 
 
-def test_reconcile_sets_topic_verified_when_all_tasks_verified(db):
-    """All member tasks verified → topic becomes verified."""
+def test_reconcile_sets_topic_verified_when_all_tasks_verified(db, tmp_path):
+    """All member tasks verified AND work merged → topic becomes verified."""
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="pending")
     _mk_task(db, "n1", pid, "T1", state="verified")
     _mk_task(db, "n2", pid, "T1", state="verified")
+    _bind_merged(db, "T1", tmp_path)
 
     result = t.reconcile_topic_state(db, "T1")
 
@@ -93,7 +117,7 @@ def test_reconcile_sets_topic_verified_when_all_tasks_verified(db):
     assert topic["verified_at"] is not None
 
 
-def test_reconcile_idempotent_on_already_verified_topic(db):
+def test_reconcile_idempotent_on_already_verified_topic(db, tmp_path):
     """Re-running reconcile on an already-verified topic leaves it unchanged.
 
     Regression pin (2026-06-11 bug J): idempotency required so repeated reconcile
@@ -102,6 +126,7 @@ def test_reconcile_idempotent_on_already_verified_topic(db):
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="verified")
     _mk_task(db, "n1", pid, "T1", state="verified")
+    _bind_merged(db, "T1", tmp_path)
 
     result1 = t.reconcile_topic_state(db, "T1")
     result2 = t.reconcile_topic_state(db, "T1")
@@ -111,18 +136,34 @@ def test_reconcile_idempotent_on_already_verified_topic(db):
     assert t.get_topic(db, "T1")["state"] == "verified"
 
 
-def test_reconcile_clears_phantom_running_to_verified(db):
+def test_reconcile_clears_phantom_running_to_verified(db, tmp_path):
     """Exact prod bug (2026-06-11 bug J): topic stored 'running' but all member
-    tasks verified → reconcile sets topic to verified."""
+    tasks verified AND merged → reconcile sets topic to verified."""
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="running")  # phantom — agent died
     _mk_task(db, "n1", pid, "T1", state="verified")
     _mk_task(db, "n2", pid, "T1", state="verified")
+    _bind_merged(db, "T1", tmp_path)
 
     result = t.reconcile_topic_state(db, "T1")
 
     assert result == "verified"
     assert t.get_topic(db, "T1")["state"] == "verified"
+
+
+def test_reconcile_holds_at_integrating_when_unmerged(db):
+    """G1 (2026-06-13): all member tasks verified but NO merge to main → topic
+    stays pre-verified ('integrating'), never silently 'verified'."""
+    pid = _mk_project(db)
+    _mk_topic(db, "T1", pid, state="running")
+    _mk_task(db, "n1", pid, "T1", state="verified")
+    _mk_task(db, "n2", pid, "T1", state="verified")
+    # No bound merged repo → not mergeable.
+
+    result = t.reconcile_topic_state(db, "T1")
+
+    assert result == "integrating"
+    assert t.get_topic(db, "T1")["state"] == "integrating"
 
 
 def test_reconcile_failed_member_sets_topic_failed_verify(db):
@@ -154,14 +195,16 @@ def test_reconcile_running_member_sets_topic_running(db):
 # ── B1: write-path sync via cmd_graph_mark_task ───────────────────────────────
 
 
-def test_mark_task_last_task_flips_topic_verified(db):
+def test_mark_task_last_task_flips_topic_verified(db, tmp_path):
     """B1 regression pin (2026-06-11 bug J): marking the last unverified task
     of a topic via 'graph mark-task' must atomically flip the owning topic to
-    verified — task tier and topic tier must never drift after mark-task."""
+    verified — task tier and topic tier must never drift after mark-task.
+    G1 (2026-06-13): the topic's work must be merged for the flip to verified."""
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="running")
     _mk_task(db, "n1", pid, "T1", state="verified")
     _mk_task(db, "n2", pid, "T1", state="pending")  # last unverified
+    _bind_merged(db, "T1", tmp_path)
 
     args = SimpleNamespace(
         task_id="n2", fail=False, handoff=None,
@@ -180,11 +223,12 @@ def test_mark_task_last_task_flips_topic_verified(db):
 # ── B3: reconcile CLI subcommand ──────────────────────────────────────────────
 
 
-def test_graph_reconcile_cli_corrects_drifted_topic(db, capsys):
+def test_graph_reconcile_cli_corrects_drifted_topic(db, capsys, tmp_path):
     """'juggle graph reconcile <project>' fixes drifted topic states."""
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="running")  # phantom running
     _mk_task(db, "n1", pid, "T1", state="verified")
+    _bind_merged(db, "T1", tmp_path)
     _mk_topic(db, "T2", pid, state="pending")
     _mk_task(db, "n2", pid, "T2", state="pending")
 
@@ -199,11 +243,12 @@ def test_graph_reconcile_cli_corrects_drifted_topic(db, capsys):
     assert t.get_topic(db, "T2")["state"] == "pending"  # unchanged
 
 
-def test_graph_reconcile_cli_json_output(db, capsys):
+def test_graph_reconcile_cli_json_output(db, capsys, tmp_path):
     """'juggle graph reconcile --json' emits valid JSON with before/after."""
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="running")
     _mk_task(db, "n1", pid, "T1", state="verified")
+    _bind_merged(db, "T1", tmp_path)
 
     args = SimpleNamespace(project=pid, json_out=True, db_path=str(db.db_path))
     cg.cmd_graph_reconcile(args)
@@ -227,6 +272,7 @@ def test_doctor_reconciles_drifted_topic(db, tmp_path, monkeypatch):
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="running")  # phantom
     _mk_task(db, "n1", pid, "T1", state="verified")
+    _bind_merged(db, "T1", tmp_path)
 
     import juggle_db
     import juggle_cmd_doctor as doc

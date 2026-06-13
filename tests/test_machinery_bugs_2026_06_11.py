@@ -181,7 +181,27 @@ def test_create_worktree_registers_trust(git_repo, tmp_path, monkeypatch):
 
 # ── Bug I: mark_topic_completion idempotent on verified ───────────────────────
 
-def test_mark_topic_completion_idempotent_on_verified(db):
+def _bind_merged_topic(db, topic_id, tmp_path):
+    """G1 (2026-06-13): topic→verified requires its branch merged to main."""
+    repo = tmp_path / f"repo_{topic_id}"
+    repo.mkdir()
+
+    def _git(*a):
+        subprocess.run(["git", "-C", str(repo), *a], check=True,
+                       capture_output=True, text=True)
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.email", "t@t.t")
+    _git("config", "user.name", "T")
+    (repo / "f.txt").write_text("base\n")
+    _git("add", ".")
+    _git("commit", "-qm", "base")
+    thread_id = db.create_thread(topic="w", session_id="s")
+    db.update_thread(thread_id, worktree_branch="main", main_repo_path=str(repo))
+    t.set_topic_thread(db, topic_id, thread_id)
+
+
+def test_mark_topic_completion_idempotent_on_verified(db, tmp_path):
     """2026-06-11: when an out-of-band integrate already moved the topic to
     'verified', a second complete-agent call triggers mark_topic_completion on a
     terminal state → ValueError, which mark_graph_topic catches as a warning.
@@ -193,6 +213,7 @@ def test_mark_topic_completion_idempotent_on_verified(db):
     with db._connect() as conn:
         conn.execute("UPDATE graph_tasks SET topic_id='ta' WHERE id='n1'")
         conn.commit()
+    _bind_merged_topic(db, "ta", tmp_path)  # G1: merged → verify allowed
 
     # Walk topic to verified
     for ev in ("deps_ready", "claim", "dispatch", "integrate_start"):

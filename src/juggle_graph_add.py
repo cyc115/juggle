@@ -128,17 +128,23 @@ def add_task(
     deps: list[str],
     required_by: list[str],
     verify_cmd: str | None,
+    topic_id: str | None = None,
+    auto_create_topic: bool = False,
 ) -> dict:
     """Validated, atomic, guarded insert of ONE task into a live graph.
 
     Validates first (validate_add_task — raises AddTaskError on any problem,
-    nothing written). Then, in a single transaction: upsert the task as
-    'pending' (re-add resets a mutable existing task via reload), set its --deps
-    edges, and add a depends_on edge from each --required-by target to the new
-    task. Commits, then runs the existing readiness recompute so the new task
-    becomes 'ready' iff all its deps are verified, and any downstream task that
-    now waits on the unfinished new task is demoted (recompute_blocked +
-    recompute_ready — the sanctioned seams; task_transition stays sole writer).
+    nothing written). Then, in a single transaction: (G5) auto-create the owning
+    topic when ``auto_create_topic`` and it doesn't yet exist, upsert the task as
+    'pending' (re-add resets a mutable existing task via reload), assign its
+    ``topic_id`` FK, set its --deps edges, and add a depends_on edge from each
+    --required-by target to the new task. Creating the topic + task + FK in the
+    SAME transaction closes the empty-topic TOCTOU window (2026-06-13 incident
+    defect #1): the tick can never observe a topic that has no member task.
+    Commits, then runs the existing readiness recompute so the new task becomes
+    'ready' iff all its deps are verified, and any downstream task that now waits
+    on the unfinished new task is demoted (recompute_blocked + recompute_ready —
+    the sanctioned seams; task_transition stays sole writer).
 
     Returns {"task_id", "state", "downstream_changed": [{"id","from","to"}]}.
     """
@@ -157,6 +163,15 @@ def add_task(
     # task with an unverified dep and dispatch it prematurely.
     conn = db._connect()
     try:
+        # G5: create the owning topic FIRST, in this same transaction, so a topic
+        # never exists without its first task (no empty-topic dispatch window).
+        if auto_create_topic and topic_id:
+            from dbops import db_topics
+            if db_topics.get_topic(db, topic_id, conn=conn) is None:
+                db_topics.create_topic(
+                    db, topic_id=topic_id, project_id=project_id, title=title,
+                    conn=conn,
+                )
         if task_id in live:
             # Re-add of a mutable existing task: reset content + state to pending.
             db_graph.update_task_content(
@@ -169,6 +184,11 @@ def add_task(
             db_graph.create_task(
                 db, task_id=task_id, project_id=project_id, title=title,
                 prompt=prompt, verify_cmd=verify_cmd, conn=conn,
+            )
+        if topic_id:
+            conn.execute(
+                "UPDATE graph_tasks SET topic_id=? WHERE id=?",
+                (topic_id, task_id),
             )
         db_graph.replace_edges(db, task_id, sorted(deps), conn=conn)
 

@@ -37,6 +37,28 @@ def _task(db, nid, topic_id, deps=()):
         g.replace_edges(db, nid, list(deps))
 
 
+def _bind_merged(db, topic_id, tmp_path):
+    """G1 (2026-06-13): topic→verified requires a branch merged to main. Bind the
+    topic to a thread on a merged repo so the verify path stays reachable."""
+    import subprocess
+    repo = tmp_path / f"repo_{topic_id}"
+    repo.mkdir()
+
+    def _git(*a):
+        subprocess.run(["git", "-C", str(repo), *a], check=True,
+                       capture_output=True, text=True)
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.email", "t@t.t")
+    _git("config", "user.name", "T")
+    (repo / "f.txt").write_text("base\n")
+    _git("add", ".")
+    _git("commit", "-qm", "base")
+    thread_id = db.create_thread(topic="w", session_id="s")
+    db.update_thread(thread_id, worktree_branch="main", main_repo_path=str(repo))
+    t.set_topic_thread(db, topic_id, thread_id)
+
+
 def test_topic_uses_task_state_machine(db):
     _topic(db, "ta")
     assert t.get_topic(db, "ta")["state"] == "pending"
@@ -57,12 +79,13 @@ def test_derived_topic_deps_from_cross_topic_task_edges(db):
     assert t.derived_topic_deps(db, "B") == []
 
 
-def test_topic_ready_requires_dep_topics_verified(db):
+def test_topic_ready_requires_dep_topics_verified(db, tmp_path):
     _topic(db, "A"); _topic(db, "B")
     _task(db, "b1", "B")
     _task(db, "a1", "A", deps=("b1",))
     assert t.recompute_topic_ready(db, "INBOX") == ["B"]  # A blocked on B
     assert t.get_topic(db, "A")["state"] == "pending"
+    _bind_merged(db, "B", tmp_path)  # G1: B's work merged → can verify
     for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
         t.topic_transition(db, "B", ev)
     assert t.recompute_topic_ready(db, "INBOX") == ["A"]
@@ -77,8 +100,9 @@ def test_list_topic_tasks_topological_order(db):
     assert [n["id"] for n in t.list_topic_tasks(db, "A")] == ["a1", "a2", "a3"]
 
 
-def test_mark_topic_completion_maps_outcomes(db):
+def test_mark_topic_completion_maps_outcomes(db, tmp_path):
     _topic(db, "A")
+    _bind_merged(db, "A", tmp_path)  # G1: A's work merged → can verify
     for ev in ("deps_ready", "claim", "dispatch"):
         t.topic_transition(db, "A", ev)
     state = t.mark_topic_completion(db, "A", integrate_ok=True, verify_ok=True,

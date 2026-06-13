@@ -78,9 +78,12 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
     from juggle_cockpit_graph_layout import GraphTask
 
     try:
+        # G6: join the bound thread's user_label so the panel renders the human
+        # code (e.g. 'XW') instead of falling back to the raw UUID prefix.
         topic_rows = conn.execute(
-            "SELECT id, title, state, thread_id FROM graph_topics "
-            "WHERE project_id=? ORDER BY created_at, id",
+            "SELECT gt.id, gt.title, gt.state, gt.thread_id, t.user_label "
+            "FROM graph_topics gt LEFT JOIN threads t ON gt.thread_id = t.id "
+            "WHERE gt.project_id=? ORDER BY gt.created_at, gt.id",
             (pid,),
         ).fetchall()
     except Exception:
@@ -147,6 +150,7 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
             title=r["title"] or tid,
             state=r["state"],
             thread_id=r["thread_id"],
+            user_label=r["user_label"],
             tasks_done=done or None,
             tasks_total=total or None,
         ))
