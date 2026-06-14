@@ -6,6 +6,7 @@ All symbols are re-exported from juggle_cockpit for backward compatibility.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable
 
 from textual import events
@@ -13,6 +14,51 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
+
+
+# ---------------------------------------------------------------------------
+# Project-arm row model (pure, no I/O — unit-testable without a live terminal)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ProjectArmRow:
+    pid: str
+    name: str
+    armed: bool
+    verified: int
+    total: int
+    running: int
+    hint: str  # "(complete)" | "— no graph" | ""
+
+
+def build_project_arm_rows(
+    projects: list[dict],
+    armed_set: set[str],
+    task_counts: dict[str, dict | None],
+) -> list[ProjectArmRow]:
+    """Pure row builder for the project-arm modal — no I/O, fully unit-testable."""
+    rows = []
+    for p in projects:
+        pid = p["id"]
+        counts = task_counts.get(pid)
+        if counts:
+            verified = counts.get("verified", 0)
+            total = counts.get("total", 0)
+            running = counts.get("running", 0)
+            hint = "(complete)" if total > 0 and verified == total else ""
+        else:
+            verified = total = running = 0
+            hint = "— no graph"
+        rows.append(ProjectArmRow(
+            pid=pid,
+            name=p.get("name", pid),
+            armed=pid in armed_set,
+            verified=verified,
+            total=total,
+            running=running,
+            hint=hint,
+        ))
+    return rows
 
 
 class _PromptModal(ModalScreen):
@@ -266,4 +312,118 @@ class _TailModal(ModalScreen):
             event.stop()
         elif event.key == "k":
             self.query_one("#tail-scroll", VerticalScroll).scroll_up()
+            event.stop()
+
+
+class _ProjectArmModal(ModalScreen):
+    """Project arm/disarm overlay (p key).
+
+    Multi-arm: armed is a SET. j/k navigate, Space/Enter toggle, A arm-all,
+    Esc/q close. Row display: ● armed / ○ disarmed, X/Y progress, running count,
+    (complete) / — no graph hint.
+    """
+
+    from textual.binding import Binding
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+        Binding("q", "dismiss", "Close", show=False),
+    ]
+
+    DEFAULT_CSS = """
+    _ProjectArmModal { align: center middle; }
+    _ProjectArmModal > Vertical {
+        width: 80; height: auto; max-height: 80%;
+        border: round $accent; padding: 1 2;
+    }
+    _ProjectArmModal #proj-list { height: auto; }
+    """
+
+    def __init__(self, db) -> None:
+        super().__init__()
+        self._db = db
+        self._cursor = 0
+        self._rows: list[ProjectArmRow] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static("", id="proj-header", markup=True)
+            yield Static("", id="proj-list", markup=False)
+            yield Static(
+                "[dim]j/k navigate  Space/Enter toggle  A arm-all  Esc close[/dim]",
+                markup=True,
+            )
+
+    def on_mount(self) -> None:
+        self._refresh()
+
+    def _refresh(self) -> None:
+        from juggle_autopilot_state import get_armed_projects
+        from juggle_cmd_autopilot import AUTOPILOT_FLAG
+        from juggle_graph_status import graph_counts
+
+        projects = self._db.list_projects()
+        counts = {p["id"]: graph_counts(self._db, p["id"]) for p in projects}
+        armed = set(get_armed_projects(self._db))
+        self._rows = build_project_arm_rows(projects, armed, counts)
+        self._cursor = min(self._cursor, max(0, len(self._rows) - 1))
+
+        global_s = "ON" if AUTOPILOT_FLAG.exists() else "OFF"
+        colour = "green" if global_s == "ON" else "red"
+        self.query_one("#proj-header", Static).update(
+            f"[bold]Projects[/bold]  global: [{colour}]{global_s}[/{colour}]"
+        )
+        lines = []
+        for i, r in enumerate(self._rows):
+            cur = "▶ " if i == self._cursor else "  "
+            dot = "●" if r.armed else "○"
+            prog = f"{r.verified}/{r.total}" if r.total else "—/—"
+            run_s = f"  · {r.running} running" if r.running else ""
+            hint = f"  {r.hint}" if r.hint else ""
+            lines.append(f"{cur}{dot}  {r.pid:<18} {r.name:<16} {prog:>6}{run_s}{hint}")
+        self.query_one("#proj-list", Static).update(
+            "\n".join(lines) if lines else "(no projects)"
+        )
+
+    def _toggle_current(self) -> None:
+        from juggle_autopilot_state import arm_project, disarm_project
+        from juggle_cmd_autopilot import _flag_set
+
+        if not self._rows:
+            return
+        row = self._rows[self._cursor]
+        if row.armed:
+            remaining = disarm_project(self._db, row.pid)
+            if not remaining:
+                _flag_set(False)
+        else:
+            arm_project(self._db, row.pid)
+            _flag_set(True)
+        self._refresh()
+
+    def _arm_all(self) -> None:
+        from juggle_autopilot_state import arm_project
+        from juggle_cmd_autopilot import _flag_set
+
+        to_arm = [r.pid for r in self._rows if r.hint != "(complete)"]
+        for pid in to_arm:
+            arm_project(self._db, pid)
+        if to_arm:
+            _flag_set(True)
+        self._refresh()
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key in ("j", "down"):
+            self._cursor = min(self._cursor + 1, max(0, len(self._rows) - 1))
+            self._refresh()
+            event.stop()
+        elif event.key in ("k", "up"):
+            self._cursor = max(self._cursor - 1, 0)
+            self._refresh()
+            event.stop()
+        elif event.key in ("space", "enter"):
+            self._toggle_current()
+            event.stop()
+        elif event.key == "A":
+            self._arm_all()
             event.stop()

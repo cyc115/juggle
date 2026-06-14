@@ -29,6 +29,7 @@ REQUIRED_SHOWN_KEYS = {
     "f",              # Focus pane    ← was missing (show=False)
     "slash",          # Filter        ← was missing (show=False)
     "tab",            # Cycle pane    ← was missing (show=False)
+    "p",              # Projects modal ← new (Feature A)
 }
 
 

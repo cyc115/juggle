@@ -125,6 +125,7 @@ class CockpitApp(GraphModeMixin, App):
         Binding("f",            "focus_pane",    "Foc"),
         Binding("t",            "tail_toggle",   "Tl"),
         Binding("g",            "toggle_graph",  "Gr"),
+        Binding("p",            "projects",      "Proj"),
     ]
 
     CSS = """
@@ -693,6 +694,11 @@ class CockpitApp(GraphModeMixin, App):
     def action_help(self) -> None:
         """? — show help overlay."""
         self.push_screen(_HelpModal())
+
+    def action_projects(self) -> None:
+        """p — show project arm/disarm overlay."""
+        from juggle_cockpit_modals import _ProjectArmModal
+        self.push_screen(_ProjectArmModal(self._db))
 
     def on_resize(self, event: events.Resize) -> None:
         from juggle_cockpit_view import pick_breakpoint
