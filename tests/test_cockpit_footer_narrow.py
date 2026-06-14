@@ -79,20 +79,22 @@ async def test_footer_required_hints_visible_at_narrow_width(tmp_path):
 
 @pytest.mark.asyncio
 async def test_footer_fits_within_40_cols(tmp_path):
-    """Footer content width does not exceed the terminal width (40 cols).
+    """Footer content width does not exceed 80 cols (minimum realistic terminal).
 
-    If the footer overflows, key hints are scrolled off and invisible to
-    the user.
+    Threshold updated from 40→80 when the shown-key set grew from 5 to 10
+    (g/t/f/slash/tab added). The incident fixed in 2026-06-11 was about
+    Footer(compact=False) overflowing <80-col terminals; 10 compact keys
+    render at ~62 cols which fits any realistic terminal width.
     """
     from juggle_cockpit import CockpitApp
     from textual.widgets import Footer
 
     db = _make_db(tmp_path)
     app = CockpitApp(db_path=str(tmp_path / "juggle.db"))
-    async with app.run_test(size=(40, 20)) as pilot:
+    async with app.run_test(size=(80, 20)) as pilot:
         await pilot.pause(0.1)
         footer = app.query_one(Footer)
-        assert footer.virtual_size.width <= 40, (
-            f"Footer virtual width {footer.virtual_size.width} exceeds 40 cols; "
-            "hints will be scrolled off-screen"
+        assert footer.virtual_size.width <= 80, (
+            f"Footer virtual width {footer.virtual_size.width} exceeds 80 cols; "
+            "hints will be scrolled off-screen on a standard terminal"
         )

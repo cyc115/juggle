@@ -115,16 +115,16 @@ class CockpitApp(GraphModeMixin, App):
         Binding("up",           "scroll_up",     "↑",       show=False),
         Binding("pagedown",     "page_down",     "PgDn",    show=False),
         Binding("pageup",       "page_up",       "PgUp",    show=False),
-        Binding("tab",          "cycle_pane",    "Tab",     show=False),
+        Binding("tab",          "cycle_pane",    "Tab"),
         Binding("s",            "switch",        "Sw"),
         Binding("a",            "ack",           "Ack"),
         Binding("shift+c",      "close",         "Cl",  key_display="C"),
         Binding("x",            "archive",       "Ar"),
         Binding("d",            "decommission",  "Dc",  show=False),
-        Binding("slash",        "filter",        "Flt", show=False),
-        Binding("f",            "focus_pane",    "Foc", show=False),
-        Binding("t",            "tail_toggle",   "Tl",  show=False),
-        Binding("g",            "toggle_graph",  "Gr",  show=False),
+        Binding("slash",        "filter",        "Flt"),
+        Binding("f",            "focus_pane",    "Foc"),
+        Binding("t",            "tail_toggle",   "Tl"),
+        Binding("g",            "toggle_graph",  "Gr"),
     ]
 
     CSS = """
