@@ -13,8 +13,6 @@ import os
 import re
 import subprocess
 import sys
-import threading
-
 from juggle_hooks_config import (
     _record_error_safe,
     _get_session_id,
@@ -40,27 +38,6 @@ _DESTRUCTIVE_KEYWORDS = [
     "drop", "destroy", "push to main", "push to master",
 ]
 
-_FINANCE_KEYWORDS = re.compile(
-    r"\$|dollar|account|routing|payment|tax|irs|refund|balance|transfer|invest|fund|\bira\b|hsa|401k|income|wage|salary|credit|debit",
-    re.IGNORECASE,
-)
-_IDENTITY_KEYWORDS = re.compile(
-    r"ssn|license|passport|\bdob\b|date of birth|social security|id number|\bein\b|\btin\b|driver",
-    re.IGNORECASE,
-)
-_ACCOMPLISHMENT_KEYWORDS = re.compile(
-    r"\b(filed|completed|finished|done|submitted|launched|shipped|achieved|accomplished)\b",
-    re.IGNORECASE,
-)
-_PREFERENCE_KEYWORDS = re.compile(
-    r"\b(prefer|always|never|don't|do not|remember|stop|start|like|dislike|want|need)\b",
-    re.IGNORECASE,
-)
-
-_CORRECTION_PATTERNS = re.compile(
-    r"\b(actually|no it\'s|no,? it\'s|wrong,? it\'s|should be|i meant|to clarify|the correct|it should|correction)\b",
-    re.IGNORECASE,
-)
 
 # Patterns indicating the orchestrator asked for permission instead of acting.
 _PERMISSION_ASKING_PATTERNS = [
@@ -72,43 +49,6 @@ _PERMISSION_ASKING_PATTERNS = [
     r"do you want me to",
 ]
 
-
-def _classify_context(text: str) -> str:
-    """Classify text into a Hindsight context tag."""
-    if _ACCOMPLISHMENT_KEYWORDS.search(text):
-        return "accomplishment"
-    if _PREFERENCE_KEYWORDS.search(text):
-        return "preference"
-    if _IDENTITY_KEYWORDS.search(text):
-        return "identity"
-    if _FINANCE_KEYWORDS.search(text):
-        return "finance"
-    return "conversation"
-
-
-def _retain_conversation_turn(
-    role: str, content: str, topic: str, context_override: str | None = None
-) -> None:
-    """Fire-and-forget: retain a conversation turn to Hindsight."""
-    if len(content.strip()) < 20:
-        return
-    try:
-        from juggle_hindsight import HindsightClient
-
-        client = HindsightClient.from_config()
-        if client is None:
-            return
-        text = f"[{topic}] ({role}) {content}"
-        if len(text) > 10_000:
-            text = text[:10_000]
-        context = (
-            context_override
-            if context_override is not None
-            else _classify_context(content)
-        )
-        client.retain(text, context=context)
-    except Exception:
-        pass
 
 
 def get_classification_candidates(threads: list[dict]) -> list[dict]:
@@ -243,16 +183,6 @@ def handle_user_prompt_submit(data: dict) -> None:
             thread_id = db.get_current_thread()
             if thread_id is not None:
                 db.add_message(thread_id, "user", prompt)
-                thread = db.get_thread(thread_id)
-                topic = thread.get("topic", "") if thread else ""
-                forced_ctx = (
-                    "preferences" if _CORRECTION_PATTERNS.search(prompt) else None
-                )
-                threading.Thread(
-                    target=_retain_conversation_turn,
-                    args=("user", prompt, topic, forced_ctx),
-                    daemon=True,
-                ).start()
     except Exception as exc:
         print(f"[juggle] WARNING: UserPromptSubmit error (fail-open): {exc}", file=sys.stderr)
         _record_error_safe(exc, "juggle_hooks.UserPromptSubmit")
@@ -280,15 +210,6 @@ def handle_stop(data: dict, scan_class_b_fn) -> None:
                     thread_id,
                     len(last_msg),
                 )
-
-                # Auto-retain assistant response to Hindsight
-                thread = db.get_thread(thread_id)
-                topic = thread.get("topic", "") if thread else ""
-                threading.Thread(
-                    target=_retain_conversation_turn,
-                    args=("assistant", last_msg, topic),
-                    daemon=True,
-                ).start()
 
                 # Violation: orchestrator asked for permission instead of acting
                 if any(

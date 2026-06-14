@@ -40,8 +40,6 @@ from juggle_hooks_prompt import (  # noqa: F401
     handle_user_prompt_submit,
     auto_approve_blocked_agents,
     get_classification_candidates,
-    _classify_context,
-    _retain_conversation_turn,
     _autopilot_context,
 )
 from juggle_hooks_checkpoint import (  # noqa: F401

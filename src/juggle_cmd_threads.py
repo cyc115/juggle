@@ -23,8 +23,6 @@ from juggle_context import get_thread_state
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
 from juggle_settings import get_settings as _get_settings
 
-MIN_REFLECT_MSG_DELTA = 5  # min new messages since last reflect before re-firing
-
 
 def _main_repo_root() -> _Path:
     """The MAIN worktree root, even when this module is imported from a linked
@@ -260,55 +258,9 @@ def cmd_create_thread(args):
     # Project assignment — async, fail-silent, never blocks
     assign_project_background(get_db(), thread_uuid, args.topic)
 
-    # Auto-recall: load memory context in background; joined so process doesn't exit first.
-    def _auto_recall():
-        from juggle_cli_common import _get_hindsight_client
-
-        client = _get_hindsight_client()
-        if client is None:
-            return
-        db2 = get_db()
-        current_thread = db2.get_thread(thread_uuid)
-
-        # Gate 1: skip reflect for internal/agent threads (show_in_list=0)
-        if not current_thread or not current_thread.get("show_in_list", 1):
-            _log.debug("skipping reflect for internal thread %s", thread_uuid)
-            db2.update_thread(thread_uuid, memory_loaded=1)
-            return
-
-        # Gate 2: skip if not enough new messages since last reflect
-        last_reflect = int(current_thread.get("last_reflect_msg_count") or 0)
-        msg_count = int(current_thread.get("summarized_msg_count") or 0)
-        if last_reflect != 0 and (msg_count - last_reflect) < MIN_REFLECT_MSG_DELTA:
-            _log.debug(
-                "skipping reflect for thread %s (delta=%d < %d)",
-                thread_uuid,
-                msg_count - last_reflect,
-                MIN_REFLECT_MSG_DELTA,
-            )
-            return
-
-        result = client.reflect(args.topic)
-        if result:
-            db2.update_thread(
-                thread_uuid,
-                memory_context=result,
-                memory_loaded=1,
-                last_reflect_msg_count=msg_count,
-            )
-        else:
-            db2.update_thread(
-                thread_uuid,
-                memory_loaded=1,
-                last_reflect_msg_count=msg_count,
-            )
-
-    t = threading.Thread(target=_auto_recall, daemon=False)
-    t.start()
-    t.join(timeout=10)
 
 
-def _render_briefing(thread: dict, memories: list, db) -> str:
+def _render_briefing(thread: dict, db) -> str:
     """Render a structured context briefing for a thread. Template rendering — no LLM call."""
     from juggle_cli_common import _humanize_dt
 
@@ -336,19 +288,6 @@ def _render_briefing(thread: dict, memories: list, db) -> str:
         lines.append("New thread — no context yet.")
         lines.append("")
         return "\n".join(lines)
-
-    # ── WHY ─────────────────────────────────────────────────────────────────
-    summary = (thread.get("summary") or "").strip()
-    lines.append("")
-    lines.append("🎯 WHY")
-    if summary:
-        for para in summary.split("\n"):
-            lines.append(f"  {para}")
-    else:
-        lines.append("  No summary yet.")
-    # Blend up to 2 Hindsight memories
-    for mem in memories[:2]:
-        lines.append(f"  🧠 {mem}")
 
     # ── WHAT CHANGED ─────────────────────────────────────────────────────────
     lines.append("")
@@ -436,12 +375,7 @@ def cmd_switch_thread(args):
     if thread.get("status") == "done" and thread.get("agent_result"):
         db.update_thread(thread_uuid, reviewed=1)
 
-    # Hardcoded recall — fires on every switch regardless of LLM behavior
-    from juggle_context import _recall_for_thread
-
-    memories = _recall_for_thread(thread["topic"])
-
-    print(_render_briefing(thread, memories, db))
+    print(_render_briefing(thread, db))
 
 
 def cmd_update_meta(args):
@@ -485,24 +419,6 @@ def cmd_update_meta(args):
     label = thread.get("user_label") or thread.get("label") or args.thread_id
     print(f"Updated metadata for Thread {label}.")
 
-
-def cmd_update_summary(args):
-    db = get_db()
-    thread_uuid = _resolve_thread(db, args.thread_id)
-    if not db.get_thread(thread_uuid):
-        print(f"Error: Thread {args.thread_id} not found.")
-        sys.exit(1)
-    summary = args.summary
-    # Truncate at word boundary if over configured max chars
-    _max_chars = _get_settings()["summary_max_chars"]
-    if len(summary) > _max_chars:
-        summary = summary[:_max_chars].rsplit(" ", 1)[0]
-    db.update_thread(thread_uuid, summary=summary)
-    updated = db.get_thread(thread_uuid)
-    label = (
-        updated.get("user_label") or updated.get("label") if updated else None
-    ) or args.thread_id
-    print(f"Summary updated for Thread {label}.")
 
 
 def cmd_close_thread(args):

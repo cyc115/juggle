@@ -71,10 +71,10 @@ class ThreadsMixin:
                 """
                 INSERT INTO threads
                   (id, user_label, session_id, topic, status,
-                   summary, key_decisions, open_questions,
+                   key_decisions, open_questions,
                    last_user_intent, agent_task_id, agent_result,
                    show_in_list, summarized_msg_count, created_at, last_active, last_active_at)
-                VALUES (?, ?, ?, ?, 'active', '', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?)
+                VALUES (?, ?, ?, ?, 'active', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?)
                 """,
                 (new_id, user_label, session_id, topic, now_iso, now_iso, now_min),
             )

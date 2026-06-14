@@ -25,13 +25,11 @@ def test_tier1_active_thread_renders_full_block(db):
     tid = db.create_thread("Cockpit refactor", session_id="sessA")
     db.update_thread(
         tid,
-        summary="Refactored TUI with new layout. PR merged.",
         key_decisions=json.dumps(["2026-04-16 11:00: Chose Rich over Textual"]),
     )
     db.set_current_thread(tid)
     out = _build(db)
     assert "[A] 🟢 active | Cockpit refactor" in out
-    assert "Summary: Refactored TUI" in out
     assert "Key decisions:" in out
     assert "Chose Rich over Textual" in out
 
@@ -95,7 +93,7 @@ def test_notifications_from_other_sessions_excluded(db):
 def test_timestamps_are_minute_precision(db):
     tid = db.create_thread("t", session_id="sessA")
     db.update_thread(
-        tid, summary="x", key_decisions=json.dumps(["2026-04-17 14:32:59: Bad"])
+        tid, key_decisions=json.dumps(["2026-04-17 14:32:59: Bad"])
     )
     out = _build(db)
     # No seconds should leak through

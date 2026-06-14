@@ -7,7 +7,6 @@ import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from threading import Thread
-import time
 
 import pytest
 
@@ -117,39 +116,6 @@ def setup_thread(env):
     return "B"  # fallback
 
 
-def test_recall_stores_memory_context(env):
-    label = setup_thread(env)
-    r = run_cli(["recall", label, "test query"], env)
-    assert r.returncode == 0
-    assert "Mike prefers TDD" in r.stdout
-
-
-def test_recall_if_cold_first_time(env):
-    import sqlite3
-
-    label = setup_thread(env)
-    # create-thread auto-recalls; reset so we can test recall-if-cold triggers
-    db_path = env["_JUGGLE_TEST_DB"]
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            "UPDATE threads SET memory_loaded = 0, memory_context = '' WHERE user_label = ?",
-            (label.upper(),),
-        )
-        conn.commit()
-    r = run_cli(["recall-if-cold", label, "test query"], env)
-    assert r.returncode == 0
-    assert "Mike prefers TDD" in r.stdout
-
-
-def test_recall_if_cold_second_time_is_noop(env):
-    label = setup_thread(env)
-    # First call triggers recall
-    run_cli(["recall", label, "test query"], env)
-    # Second call should be no-op
-    r = run_cli(["recall-if-cold", label, "same query"], env)
-    assert r.returncode == 0
-    assert r.stdout.strip() == ""  # no-op, already loaded
-
 
 def test_retain_success(env):
     label = setup_thread(env)
@@ -165,23 +131,6 @@ def test_retain_with_context(env):
     )
     assert r.returncode == 0
 
-
-def test_recall_disabled(tmp_path):
-    """When hindsight is disabled, recall returns empty."""
-    config = {"hindsight": {"enabled": False}}
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps(config))
-    db_path = tmp_path / "test.db"
-    e = {
-        **os.environ,
-        "_JUGGLE_TEST_DB": str(db_path),
-        "_JUGGLE_CONFIG_PATH": str(config_path),
-    }
-    run_cli(["start"], e)
-    run_cli(["create-thread", "test"], e)
-    r = run_cli(["recall", "B", "anything"], e)
-    assert r.returncode == 0
-    assert r.stdout.strip() == ""
 
 
 def test_retain_disabled(tmp_path):
@@ -201,19 +150,3 @@ def test_retain_disabled(tmp_path):
     assert r.returncode == 0
 
 
-def test_create_thread_auto_recalls(env):
-    """Creating a thread should auto-recall and store memory_context."""
-    run_cli(["start"], env)
-    r = run_cli(["create-thread", "fix the send_task bug"], env)
-    assert r.returncode == 0
-    # Verify memory was loaded by checking recall-if-cold is a no-op
-    # The label should be in the create output
-    label = None
-    for word in r.stdout.split():
-        if len(word) == 2 and word[:-1].isalpha() and word[-1] in ":.":
-            label = word[0]
-            break
-    assert label is not None
-    time.sleep(1)  # wait for background recall thread
-    r2 = run_cli(["recall-if-cold", label, "anything"], env)
-    assert r2.stdout.strip() == ""  # already loaded from create-thread

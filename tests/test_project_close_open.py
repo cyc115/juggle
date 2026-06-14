@@ -73,14 +73,6 @@ def test_close_project_hides_threads(tmp_path):
     assert db.get_thread(tid)["show_in_list"] == 0
 
 
-def test_close_project_writes_thread_summary(tmp_path):
-    db = make_db(tmp_path)
-    pid = db.create_project(name="Work", objective="Do work")
-    tid = db.create_thread("topic", session_id="s1")
-    db.update_thread(tid, project_id=pid)
-    db.close_project(pid, "project summary", {tid: "my thread summary"})
-    assert db.get_thread(tid)["summary"] == "my thread summary"
-
 
 def test_close_project_inbox_guard_raises(tmp_path):
     db = make_db(tmp_path)

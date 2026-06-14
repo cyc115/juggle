@@ -10,9 +10,6 @@ juggle_cmd_misc, juggle_cmd_research, juggle_cmd_projects, schedule modules).
 from juggle_cmd_context import (
     cmd_get_context,
     cmd_init_db,
-    cmd_recall,
-    cmd_recall_bg,
-    cmd_recall_if_cold,
     cmd_retain,
     cmd_grep_vault,
     cmd_digest,
@@ -56,20 +53,6 @@ def register(subparsers, *, vault_path_default: str) -> None:
     p_init = subparsers.add_parser("init-db", help="Initialize DB schema")
     p_init.set_defaults(func=cmd_init_db)
 
-    # recall
-    p_recall = subparsers.add_parser("recall", help="Recall memories from Hindsight")
-    p_recall.add_argument("thread_id", help="Thread ID or label")
-    p_recall.add_argument("query", help="Query to recall memories for")
-    p_recall.set_defaults(func=cmd_recall)
-
-    # recall-bg
-    p_recall_bg = subparsers.add_parser(
-        "recall-bg", help="Fire reflect async, return immediately"
-    )
-    p_recall_bg.add_argument("thread_id")
-    p_recall_bg.add_argument("query")
-    p_recall_bg.set_defaults(func=cmd_recall_bg)
-
     # agent tool-usage report (right-size the deny block)
     p_agent_tools = subparsers.add_parser(
         "agent-tools", help="Report per-agent tool usage to right-size the deny block"
@@ -93,14 +76,6 @@ def register(subparsers, *, vault_path_default: str) -> None:
     p_sh_reset = subparsers.add_parser("selfheal-reset-diagnosing", help="Reset stuck diagnosing->open")
     p_sh_reset.add_argument("id", type=int, help="error_events.id")
     p_sh_reset.set_defaults(func=_cmd_selfheal_reset_diagnosing)
-
-    # recall-if-cold
-    p_recall_cold = subparsers.add_parser(
-        "recall-if-cold", help="Recall only if thread is cold"
-    )
-    p_recall_cold.add_argument("thread_id", help="Thread ID or label")
-    p_recall_cold.add_argument("query", help="Query to recall memories for")
-    p_recall_cold.set_defaults(func=cmd_recall_if_cold)
 
     # grep-vault
     p_grep = subparsers.add_parser(

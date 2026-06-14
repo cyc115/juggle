@@ -12,7 +12,6 @@ from juggle_cli_common import (
     DB_PATH,
     _get_hindsight_client,
     _humanize_dt,
-    _resolve_thread,
     get_db,
 )
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
@@ -32,66 +31,6 @@ def cmd_init_db(_):
     db = get_db()
     db.init_db()
     print("DB initialized.")
-
-
-def cmd_recall(args):
-    """Recall memories from Hindsight for a thread."""
-    client = _get_hindsight_client()
-    if client is None:
-        return  # disabled or unconfigured
-
-    db = get_db()
-    thread_uuid = _resolve_thread(db, args.thread_id)
-    result = client.reflect(args.query)
-
-    if result:
-        db.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
-        print(result)
-    else:
-        db.update_thread(thread_uuid, memory_loaded=1)
-
-
-def cmd_recall_if_cold(args):
-    """Recall only if thread hasn't loaded memory yet."""
-    db = get_db()
-    thread_uuid = _resolve_thread(db, args.thread_id)
-    thread = db.get_thread(thread_uuid)
-    if not thread:
-        print(f"Error: Thread {args.thread_id} not found.")
-        sys.exit(1)
-    if thread.get("memory_loaded", 0):
-        return  # already loaded, no-op
-
-    client = _get_hindsight_client()
-    if client is None:
-        return
-
-    result = client.reflect(args.query)
-    if result:
-        db.update_thread(thread_uuid, memory_context=result, memory_loaded=1)
-        print(result)
-    else:
-        db.update_thread(thread_uuid, memory_loaded=1)
-        print("[recall: no results found]")
-
-
-def cmd_recall_bg(args):
-    """Fire recall as a detached background process. Returns immediately."""
-    import subprocess
-
-    subprocess.Popen(
-        [
-            sys.executable,
-            str(Path(__file__).parent / "juggle_cli.py"),
-            "recall",
-            args.thread_id,
-            args.query,
-        ],
-        start_new_session=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    print(f"Reflect started in background for {args.thread_id}.")
 
 
 def cmd_retain(args):
@@ -264,17 +203,6 @@ def cmd_digest(args):
             f"  {dispatched} dispatched  •  {completed} completed  •  "
             f"{running} running  •  {failed} failed"
         )
-
-    # Hindsight reflect (optional, 30s timeout)
-    try:
-        client = _get_hindsight_client()
-        if client:
-            reflection = client.reflect("juggle activity summary", timeout=30)
-            if reflection:
-                lines.append("\n🧠 HINDSIGHT")
-                lines.append(f"  {reflection}")
-    except Exception:
-        pass  # skip silently
 
     output = "\n".join(lines) + "\n"
     print(output)

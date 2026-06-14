@@ -11,7 +11,6 @@ time so test monkeypatches on _com.<symbol> take effect.
 
 import json
 import sys
-import threading
 from datetime import datetime, timezone
 
 import juggle_cmd_agents_common as _com
@@ -102,27 +101,7 @@ def cmd_complete_agent(args):
         db.add_message(thread_uuid, role="assistant", content=args.result_summary)
     close_adhoc_run(db, thread_uuid, args.result_summary)  # ledger (ad-hoc; graph→topic)
 
-    # 3. Auto-generate summary if the thread has none yet
-    if not (thread.get("summary") or "").strip():
-        exchange = db.get_last_exchange(thread_uuid)
-        raw_last_user = exchange.get("last_user") or ""
-        is_junk = (
-            raw_last_user.startswith("<task-notification")
-            or "task-id" in raw_last_user
-            or raw_last_user.strip().startswith("/")
-        )
-        if not is_junk:
-            last_q = _com._last_sentences(raw_last_user, max_chars=80)
-            last_a = _com._last_sentences(exchange.get("last_assistant") or "", max_chars=80)
-            if last_q or last_a:
-                auto_summary = (
-                    f"{last_q} -> {last_a}"
-                    if (last_q and last_a)
-                    else (last_q or last_a)
-                )
-                db.update_thread(thread_uuid, summary=auto_summary)
-
-    # 4. Transition thread to closed
+    # 3. Transition thread to closed
     db.set_thread_status(thread_uuid, "closed")
 
     # Resolve agent before step 5 (needed for role check below)
@@ -191,24 +170,6 @@ def cmd_complete_agent(args):
         db, thread_uuid, ft_success, getattr(args, "handoff", None), session_id,
         verify_failed=verify_failed,
     )
-
-    # 6c. Optional retain text → Hindsight
-    retain_text = getattr(args, "retain_text", None)
-    if retain_text:
-
-        def _do_retain(text, topic):
-            client = _com._get_hindsight_client()
-            if client:
-                try:
-                    client.retain(f"[{topic}] {text}", context="learnings")
-                except Exception:
-                    pass
-
-        threading.Thread(
-            target=_do_retain,
-            args=(retain_text, thread.get("topic", "")),
-            daemon=True,
-        ).start()
 
     # Auto-dismiss pre-existing action items (not ones just created from open_questions)
     for item_id in items_to_dismiss:

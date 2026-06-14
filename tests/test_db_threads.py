@@ -91,9 +91,8 @@ def test_get_all_threads(db):
 
 def test_update_thread(db):
     tid = db.create_thread("My topic", session_id="s1")
-    db.update_thread(tid, summary="Updated summary", status="background")
+    db.update_thread(tid, status="background")
     t = db.get_thread(tid)
-    assert t["summary"] == "Updated summary"
     assert t["status"] == "background"
 
 

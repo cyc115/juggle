@@ -11,7 +11,6 @@ from juggle_cmd_threads import (
     cmd_create_thread,
     cmd_switch_thread,
     cmd_update_meta,
-    cmd_update_summary,
     cmd_close_thread,
     cmd_show_topics,
     cmd_get_archive_candidates,
@@ -66,12 +65,6 @@ def register(subparsers) -> None:
         "--resolve-question", dest="resolve_question", default=None, metavar="TEXT"
     )
     p_meta.set_defaults(func=cmd_update_meta)
-
-    # update-summary
-    p_summary = subparsers.add_parser("update-summary", help="Update thread summary")
-    p_summary.add_argument("thread_id", help="Thread ID")
-    p_summary.add_argument("summary", help="New summary text")
-    p_summary.set_defaults(func=cmd_update_summary)
 
     # close-thread
     p_close = subparsers.add_parser("close-thread", help="Close a thread")

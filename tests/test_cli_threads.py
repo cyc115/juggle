@@ -112,17 +112,6 @@ def test_update_thread_meta(started_db):
     assert "Use SQLite" in decisions
 
 
-def test_update_summary(started_db):
-    db_path, general_tid = started_db
-    sys.path.insert(0, SRC_DIR)
-    from juggle_db import JuggleDB
-
-    db = JuggleDB(str(db_path))
-    db.update_thread(general_tid, summary="We decided to use juggle.")
-    t = db.get_thread(general_tid)
-    assert t is not None
-    assert t["summary"] == "We decided to use juggle."
-
 
 def test_close_thread(started_db):
     db_path, general_tid = started_db

@@ -39,7 +39,7 @@ def register(subparsers) -> None:
         dest="retain_text",
         default=None,
         metavar="TEXT",
-        help="Explicit retain text (key decisions, personal details, non-obvious learnings)",
+        help="Retain text (accepted but inert — auto Hindsight writes removed)",
     )
     p_complete.add_argument(
         "--open-questions",

@@ -195,14 +195,12 @@ def test_build_hydration_contains_objective_handoffs_prompt_contract():
     assert "--handoff" in out  # completion contract instruction
 
 
-def test_hydration_never_uses_thread_summary(db):
-    """DA M4: dependent TOPIC prompts hydrate from dep-TOPIC handoffs, NEVER the
-    dep thread's 80-char summary. (adapted to topics, R9 2026-06-11)"""
+def test_hydration_uses_topic_handoff_not_junk(db):
+    """DA M4: dep TOPIC prompts hydrate from dep-TOPIC handoffs only."""
     _mk_topic(db, "a")
     _mk_topic(db, "b", ready=False)
-    _dep_topic(db, "b", "a")  # b derives on a
+    _dep_topic(db, "b", "a")  # b depends on a
     tid = db.create_thread("dep thread", session_id="s")
-    db.update_thread(tid, summary="SUMMARY-JUNK-MUST-NOT-LEAK")
     tp.set_topic_thread(db, "a", tid)
     _verify_topic(db, "a", handoff="real handoff content")
     tp.recompute_topic_ready(db, "INBOX")  # b → ready
@@ -214,7 +212,6 @@ def test_hydration_never_uses_thread_summary(db):
     (_, prompt, topic_id), = fake.calls
     assert topic_id == "b"
     assert "real handoff content" in prompt
-    assert "SUMMARY-JUNK-MUST-NOT-LEAK" not in prompt
 
 
 # ── graph_tick orchestration ───────────────────────────────────────────────────

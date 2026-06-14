@@ -82,29 +82,3 @@ def test_migration_preserves_existing_threads(tmp_path):
 
 
 
-def test_migration_adds_last_reflect_msg_count(tmp_path):
-    """Migration 23: last_reflect_msg_count column exists with default 0."""
-    d = JuggleDB(str(tmp_path / "migrate_test.db"))
-    d.init_db()
-    with d._connect() as conn:
-        cols = [
-            r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()
-        ]
-    assert "last_reflect_msg_count" in cols
-
-    # New threads default to 0
-    tid = d.create_thread("Test topic", session_id="")
-    t = d.get_thread(tid)
-    assert (t.get("last_reflect_msg_count") or 0) == 0
-
-
-def test_migration_last_reflect_msg_count_idempotent(tmp_path):
-    """Calling init_db() twice doesn't fail on the column-already-exists case."""
-    d = JuggleDB(str(tmp_path / "idempotent_test.db"))
-    d.init_db()
-    d.init_db()  # second call must not raise
-    with d._connect() as conn:
-        cols = [
-            r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()
-        ]
-    assert "last_reflect_msg_count" in cols

@@ -130,19 +130,8 @@ def test_no_recent_conversation_block(active_db):
     assert "Recent conversation" not in ctx
 
 
-def test_summary_appears_under_topic(active_db):
-    """Thread summary is shown inline under the topic label in the Topics list."""
-    active_db.update_thread(
-        active_db.get_current_thread(), summary="We discussed the auth flow."
-    )
-    ctx = ContextBuilder(active_db).build()
-    # Articles stripped in v2 renderer: "the auth flow" → "auth flow"
-    assert "Summary: We discussed" in ctx
-    assert "auth flow" in ctx
-
-
 def test_no_summary_line_when_empty(active_db):
-    """No 'Summary:' line is emitted when the thread has no summary."""
+    """No 'Summary:' line is emitted (column removed in migration 41)."""
     ctx = ContextBuilder(active_db).build()
     assert "Summary:" not in ctx
 
@@ -200,14 +189,6 @@ def test_open_questions_in_tier1_block(active_db):
     assert "Open questions:" in ctx
 
 
-def test_summary_for_multiple_threads(active_db):
-    """Summaries for all threads (including non-current) appear in the Topics list."""
-    tid_b = active_db.create_thread("Topic B", session_id="s1")
-    active_db.update_thread(active_db.get_current_thread(), summary="Summary for A")
-    active_db.update_thread(tid_b, summary="Summary for B")
-    ctx = ContextBuilder(active_db).build()
-    assert "Summary: Summary for A" in ctx
-    assert "Summary: Summary for B" in ctx
 
 
 def test_running_thread_shows_in_active(active_db):

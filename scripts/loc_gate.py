@@ -40,12 +40,11 @@ GRANDFATHERED: dict[str, int] = {
     # juggle_hooks.py Phase 2.5: split into hooks sub-modules (shim now 117 lines, removed).
     # Two sub-modules exceed 300 and are grandfathered below their current size:
     "src/juggle_hooks_tooluse.py": 334,   # PreToolUse+PostToolUse handlers; target ≤300
-    "src/juggle_hooks_prompt.py": 326,    # lowered 350→326 (Ph4: autopilot directive → juggle_hooks_autopilot)
     "src/juggle_tmux.py": 839,
     "src/schedules/autofix.py": 823,
     "src/juggle_cmd_projects.py": 735,  # lowered from 737 (Phase 1.2 llm consolidation)
-    "src/juggle_cmd_threads.py": 695,
-    "src/juggle_context.py": 353,
+    "src/juggle_cmd_threads.py": 608,
+    "src/juggle_context.py": 345,
     "src/schedules/reflect.py": 582,  # 545→582: per-section cost-cap enforcement (COST_CAP $1.00 / SECTION_CAP $0.35) merged from origin/main 80780d4 during rebase
     "src/juggle_cockpit_view.py": 462,  # 460→462 (2026-06-11: narrow-row wrap feature); prior: lowered 499→460 (Ph4: static renders → juggle_cockpit_static)
     "src/juggle_scheduler.py": 494,
@@ -53,13 +52,15 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_settings.py": 460,
     "src/schedules/dogfood.py": 406,
     "src/juggle_cmd_research.py": 392,
-    "src/juggle_cmd_context.py": 370,
+    # src/juggle_cmd_context.py removed: shrank to 298 (recall commands deleted)
     # src/schedules/common.py (ex juggle_schedule_common) removed 2026-06-10: shrank to 297 (Phase 1.2)
     "scripts/talkback": 415,
     # 2026-06-11 bug J fix: added _dispatch_flat_node_fallback() for legacy node-only graphs
     "src/juggle_graph_dispatch.py": 386,
     # 2026-06-13 incident guards (G1/G3/G4a) + topic CRUD; reconcile split out
     "src/dbops/db_topics.py": 350,
+    # migration 41 (drop Hindsight cols) added run_migration_41(); split candidate
+    "src/dbops/migrations_recent.py": 361,
 }
 
 

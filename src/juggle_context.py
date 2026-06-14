@@ -11,7 +11,6 @@ from juggle_settings import get_settings as _get_settings
 from juggle_context_startup import (  # noqa: F401 — re-exported public API
     _auto_archive_closed_threads,
     _get_juggle_version,
-    _recall_for_thread,
     build_startup_output,
     get_thread_state,
     render_topics_tree,
@@ -19,9 +18,6 @@ from juggle_context_startup import (  # noqa: F401 — re-exported public API
 
 # Hard cap derived from settings: ~2000 tokens => ~8000 chars
 _CHAR_LIMIT: int = _get_settings()["context_injection_char_limit"]
-
-# Max chars for a non-current thread's summary teaser
-_TEASER_CHARS: int = _get_settings()["context_teaser_chars"]
 
 # --------------------------------------------------------------------------
 # Tier-based renderer helpers
@@ -92,10 +88,6 @@ def _render_tier1(t: dict, db) -> list[str]:
     title = t.get("title") or t.get("topic") or "(untitled)"
     task_tag = _graph_task_tag(db, t["id"])
     lines = [f"[{label}] {emoji} {state} | {_strip_articles(title)}{task_tag}"]
-
-    summary = _strip_articles((t.get("summary") or "").strip())
-    if summary:
-        lines.append(f"Summary: {summary}")
 
     # Open questions
     oq_raw = t.get("open_questions") or "[]"

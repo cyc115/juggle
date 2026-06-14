@@ -105,23 +105,6 @@ def _get_juggle_version() -> str:
         return "?"
 
 
-def _recall_for_thread(topic: str) -> list:
-    """Return up to 2 Hindsight snippet lines for a topic. Empty list on any failure."""
-    try:
-        from juggle_hindsight import HindsightClient
-        from juggle_cli_common import JUGGLE_CONFIG_PATH
-
-        client = HindsightClient.from_config(str(JUGGLE_CONFIG_PATH))
-        if client is None:
-            return []
-        raw = client.recall(topic, max_tokens=512)
-        if not raw:
-            return []
-        lines = [ln.lstrip("- ").strip() for ln in raw.splitlines() if ln.strip()]
-        return lines[:2]
-    except Exception:
-        return []
-
 
 def render_topics_tree(db: JuggleDB) -> str:
     """Render the topics tree as a string. Returns 'No topics.' if no visible threads."""
@@ -190,10 +173,6 @@ def render_topics_tree(db: JuggleDB) -> str:
         if state_suffix:
             header = f"{header}  {state_suffix}"
         output_lines.append(header)
-
-        summary = (t.get("summary") or "").strip()
-        if summary:
-            output_lines.append(f"{vert}├── Summary: {summary}")
 
         key_decisions_raw = t.get("key_decisions") or "[]"
         if isinstance(key_decisions_raw, str):
@@ -265,7 +244,7 @@ def _auto_archive_closed_threads(db: JuggleDB) -> int:
 
 
 def build_startup_output(db: JuggleDB) -> str:
-    """Full enriched startup string: topics tree + per-thread Hindsight recalls.
+    """Full enriched startup string: topics tree.
 
     Called by cmd_start (when threads exist) and handle_session_start (resume/compact).
     """

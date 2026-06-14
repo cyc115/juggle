@@ -22,10 +22,10 @@ def _insert_raw(db, **cols):
     with db._connect() as conn:
         conn.execute(
             "INSERT INTO threads (id, session_id, topic, status, "
-            "summary, key_decisions, open_questions, last_user_intent, "
+            "key_decisions, open_questions, last_user_intent, "
             "agent_task_id, agent_result, show_in_list, summarized_msg_count, "
             "created_at, last_active) VALUES "
-            "(?, '', ?, ?, '', '[]', ?, '', NULL, ?, 1, 0, ?, ?)",
+            "(?, '', ?, ?, '[]', ?, '', NULL, ?, 1, 0, ?, ?)",
             (
                 tid,
                 cols.get("topic", "t"),

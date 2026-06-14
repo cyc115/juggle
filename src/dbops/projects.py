@@ -98,10 +98,9 @@ class ProjectsMixin:
                 (now, project_summary, project_id),
             )
             for tid in thread_ids:
-                summary = thread_summaries.get(tid, "")
                 conn.execute(
-                    "UPDATE threads SET show_in_list=0, summary=? WHERE id=?",
-                    (summary, tid),
+                    "UPDATE threads SET show_in_list=0 WHERE id=?",
+                    (tid,),
                 )
             if thread_ids:
                 placeholders = ",".join("?" * len(thread_ids))
