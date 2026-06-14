@@ -30,6 +30,16 @@ def _is_source_stale(recorded_mtime: float, source_path: Path) -> bool:
         return False
 
 
+def should_exit_for_reload(stale: bool, supervised: bool) -> bool:
+    """Pure decision: should the daemon sys.exit() to trigger a supervisor restart?
+
+    Only True when source is stale AND we are running under a supervisor (e.g.
+    launchd KeepAlive) that will restart us.  Without a supervisor, exiting is
+    permanent — so unsupervised daemons must continue the loop instead.
+    """
+    return stale and supervised
+
+
 def should_hot_restart(
     baseline_mtimes: dict[str, float],
     current_mtimes: dict[str, float],

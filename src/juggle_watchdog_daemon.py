@@ -41,9 +41,11 @@ from juggle_watchdog import (
 _WATCHDOG_SRC = Path(__file__).parent / "juggle_watchdog.py"
 
 _POLL_INTERVAL = int(os.environ.get("JUGGLE_WATCHDOG_INTERVAL", "30"))
+_SUPERVISED = os.environ.get("JUGGLE_WATCHDOG_SUPERVISED", "") == "1"
 
 # Single authoritative pidfile — no more duplicate config_dir/watchdog.pid
 SINGLETON_PID_FILE = Path.home() / ".juggle" / "watchdog.pid"
+_JUGGLE_DIR = Path.home() / ".juggle"
 
 
 def _write_singleton_pid():
@@ -53,6 +55,39 @@ def _write_singleton_pid():
 
 def _cleanup_singleton_pid():
     daemon_pidfile.cleanup_singleton_pid(SINGLETON_PID_FILE)
+
+
+def prune_stale_watchdog_pidfiles(juggle_dir: Path | None = None) -> None:
+    """Remove watchdog-*.pid files whose recorded PID is no longer alive.
+
+    Keeps the current process's pidfile and any file belonging to a live PID.
+    Only touches files matching the watchdog-*.pid glob — never monitor.pid or
+    other non-watchdog files.
+    """
+    directory = juggle_dir if juggle_dir is not None else _JUGGLE_DIR
+    for pidfile in directory.glob("watchdog-*.pid"):
+        try:
+            pid = int(pidfile.read_text().strip())
+        except (ValueError, OSError):
+            # Corrupt or unreadable — treat as stale
+            try:
+                pidfile.unlink()
+            except OSError:
+                pass
+            continue
+        # kill -0: check if process is alive without sending a real signal
+        try:
+            os.kill(pid, 0)
+            # Process alive — keep the file
+        except (ProcessLookupError, PermissionError):
+            # ProcessLookupError: no such process → stale
+            # PermissionError: exists but we can't signal it (still alive)
+            if isinstance(sys.exc_info()[1], ProcessLookupError):
+                try:
+                    pidfile.unlink()
+                    _log.info("Pruned stale watchdog pidfile %s (PID %d gone)", pidfile.name, pid)
+                except OSError:
+                    pass
 
 
 _log = logging.getLogger("juggle-watchdog")
@@ -226,8 +261,16 @@ def _set_orchestrator_preamble() -> None:
 
 
 def main() -> None:
+    from juggle_watchdog_restart import should_exit_for_reload
+
     _set_orchestrator_preamble()
     _setup_logging()
+
+    mode = "supervised (launchd)" if _SUPERVISED else "unsupervised"
+    _log.info("Watchdog starting (PID=%d, interval=%ds, mode=%s)",
+              os.getpid(), _POLL_INTERVAL, mode)
+
+    prune_stale_watchdog_pidfiles()
 
     _kill_existing_watchdog_from_pidfile(SINGLETON_PID_FILE)
     _write_singleton_pid()
@@ -242,16 +285,29 @@ def main() -> None:
         db.cleanup_watchdog_events()
 
         mgr = JuggleTmuxManager()
-        _log.info("Watchdog started (PID=%d, interval=%ds)", os.getpid(), _POLL_INTERVAL)
+        _log.info("Watchdog ready (PID=%d, interval=%ds, supervised=%s)",
+                  os.getpid(), _POLL_INTERVAL, _SUPERVISED)
 
         _src_mtime = _WATCHDOG_SRC.stat().st_mtime if _WATCHDOG_SRC.exists() else 0.0
 
         while _running:
-            if _is_source_stale(_src_mtime, _WATCHDOG_SRC):
-                _log.warning(
-                    "Watchdog: juggle_watchdog.py updated — exiting for supervisor restart"
-                )
-                sys.exit(0)
+            new_mtime = _WATCHDOG_SRC.stat().st_mtime if _WATCHDOG_SRC.exists() else 0.0
+            stale = new_mtime > _src_mtime
+            if stale:
+                if should_exit_for_reload(stale=True, supervised=_SUPERVISED):
+                    _log.warning(
+                        "Watchdog: source changed (%s mtime %.3f → %.3f) — "
+                        "exiting for launchd restart",
+                        _WATCHDOG_SRC.name, _src_mtime, new_mtime,
+                    )
+                    sys.exit(0)
+                else:
+                    _log.warning(
+                        "Watchdog: source changed (%s mtime %.3f → %.3f) — "
+                        "unsupervised, continuing without restart",
+                        _WATCHDOG_SRC.name, _src_mtime, new_mtime,
+                    )
+                    _src_mtime = new_mtime  # re-baseline to avoid spam
             try:
                 _poll_once(db, mgr)
             except Exception as exc:
