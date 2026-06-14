@@ -133,6 +133,9 @@ def test_g2_allows_shared_db_from_orchestrator(monkeypatch, tmp_path):
                         (tmp_path / "shared.db").resolve())
     monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
     monkeypatch.delenv("JUGGLE_AGENT_WORKTREE", raising=False)
+    # CWD may contain 'juggle-juggle-' when tests run from a worktree during
+    # integrate — patch is_agent_context so the guard sees orchestrator context.
+    monkeypatch.setattr(gg, "is_agent_context", lambda: False)
     gg.assert_migration_allowed(str(tmp_path / "shared.db"))
 
 
