@@ -141,6 +141,41 @@ def test_g2_allows_shared_db_from_orchestrator(monkeypatch, tmp_path):
     gg.assert_migration_allowed(str(tmp_path / "shared.db"))
 
 
+def test_g2_orchestrator_marker_wins_over_cwd_and_agent_flag(monkeypatch, tmp_path):
+    """2026-06-13 watchdog-g2-crashloop: JUGGLE_ORCHESTRATOR=1 must override
+    cwd heuristic AND JUGGLE_IS_AGENT=1 — watchdog spawned from worktree cwd."""
+    monkeypatch.setattr(gg, "SHARED_PROD_DB", (tmp_path / "shared.db").resolve())
+    # Simulate worst case: agent env flag set AND cwd is a juggle worktree
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.setenv("JUGGLE_ORCHESTRATOR", "1")
+    monkeypatch.chdir(tmp_path / "..")  # chdir to non-worktree parent first
+    # Patch cwd to look like a worktree even with chdir neutralized
+    monkeypatch.setattr(gg.Path, "cwd", classmethod(lambda cls: Path("/tmp/juggle-juggle-ABC")))
+    # With orchestrator marker: must NOT be agent context
+    assert gg.is_agent_context() is False
+
+
+def test_g2_orchestrator_marker_allows_shared_db_migration(monkeypatch, tmp_path):
+    """2026-06-13 watchdog-g2-crashloop: assert_migration_allowed must not raise
+    for shared DB when JUGGLE_ORCHESTRATOR=1, even with agent env + worktree cwd."""
+    monkeypatch.setattr(gg, "SHARED_PROD_DB", (tmp_path / "shared.db").resolve())
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.setenv("JUGGLE_ORCHESTRATOR", "1")
+    monkeypatch.setattr(gg.Path, "cwd", classmethod(lambda cls: Path("/tmp/juggle-juggle-XYZ")))
+    # Must not raise — orchestrator is authoritative
+    gg.assert_migration_allowed(str(tmp_path / "shared.db"))
+
+
+def test_g2_agent_refusal_still_enforced_without_orchestrator_marker(monkeypatch, tmp_path):
+    """2026-06-13 watchdog-g2-crashloop: removing JUGGLE_ORCHESTRATOR must keep
+    the agent-refusal guard active (no regression)."""
+    monkeypatch.setattr(gg, "SHARED_PROD_DB", (tmp_path / "shared.db").resolve())
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.delenv("JUGGLE_ORCHESTRATOR", raising=False)
+    with pytest.raises(gg.SharedDBMigrationRefused):
+        gg.assert_migration_allowed(str(tmp_path / "shared.db"))
+
+
 # ---------------------------------------------------------------------------
 # G3 — claimable invariant (no empty/blocked topic promoted to ready)
 # ---------------------------------------------------------------------------

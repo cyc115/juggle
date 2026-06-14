@@ -207,7 +207,26 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
         _log.exception("Watchdog: graph dispatch tick failed — continuing")
 
 
+def _set_orchestrator_preamble() -> None:
+    """Mark this process as the orchestrator and chdir to a stable non-worktree dir.
+
+    Must be called at the very top of main() before any DB access.  Belt-and-
+    suspenders against G2 (is_agent_context cwd heuristic): the watchdog may be
+    spawned while the launching shell's cwd is inside a juggle worktree
+    (/tmp/juggle-juggle-*), which would cause SharedDBMigrationRefused on
+    init_db().  JUGGLE_ORCHESTRATOR=1 is the authoritative override; the chdir
+    is a second line of defence in case the env var is somehow unset.
+    """
+    os.environ["JUGGLE_ORCHESTRATOR"] = "1"
+    safe_dir = DB_PATH.parent  # ~/.juggle — always stable, never a worktree
+    try:
+        os.chdir(safe_dir)
+    except OSError:
+        pass  # non-fatal; env marker is the primary guard
+
+
 def main() -> None:
+    _set_orchestrator_preamble()
     _setup_logging()
 
     _kill_existing_watchdog_from_pidfile(SINGLETON_PID_FILE)

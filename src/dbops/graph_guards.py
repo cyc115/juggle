@@ -97,12 +97,20 @@ def topic_is_merged(db, topic_id: str, *, main: str = "main") -> bool:
 def is_agent_context() -> bool:
     """True when running inside a dispatched AGENT / worktree process.
 
-    Two signals, either sufficient:
+    JUGGLE_ORCHESTRATOR=1 is the authoritative orchestrator/watchdog identity
+    flag. It wins over ALL other signals (cwd heuristic, JUGGLE_IS_AGENT) so the
+    watchdog daemon — which may be spawned while cwd is inside a juggle worktree
+    — is never mistaken for an agent. Only orchestrator/daemon code sets this.
+
+    Two agent signals, either sufficient (when orchestrator marker absent):
       * ``JUGGLE_IS_AGENT=1`` — exported by juggle_harness into every dispatched
         agent's env (the authoritative, harness-independent identity flag).
       * cwd under a ``juggle-juggle-*`` worktree tmp dir — defence in depth for
         any agent spawned outside the harness env prefix.
     """
+    # Orchestrator marker wins unconditionally — watchdog/daemon sets this.
+    if os.environ.get("JUGGLE_ORCHESTRATOR") == "1":
+        return False
     if os.environ.get("JUGGLE_IS_AGENT") == "1":
         return True
     if os.environ.get("JUGGLE_AGENT_WORKTREE"):
