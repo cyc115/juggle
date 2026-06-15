@@ -97,25 +97,48 @@ def cmd_doctor(args) -> int:
         # Migration 39 (node->task rename): a node-era DB still carries the old
         # graph_nodes table; init_db's run_migrations reconciles it into graph_tasks.
         node_era = "graph_nodes" in tables
-        if stale or node_era:
-            reason = []
-            if stale:
-                reason.append("Migrations 17–19 (dropped domain column + domain tables)")
-            if node_era:
-                reason.append("Migration 39 (graph_nodes -> graph_tasks rename)")
-            label = "; ".join(reason)
-            if not dry:
-                JuggleDB(DB_PATH).init_db()
-                print(f"db: ran {label}")
-            else:
-                print(f"db: would run {label}")
+        legacy_notes = []
+        if stale:
+            legacy_notes.append("Migrations 17–19 (dropped domain column + domain tables)")
+        if node_era:
+            legacy_notes.append("Migration 39 (graph_nodes -> graph_tasks rename)")
+
+        # Always run the idempotent migration pass so new additive migrations
+        # (e.g. Migration 42 graph_topics.is_mirror) apply even when the base
+        # schema already looks current. Each migration self-guards against
+        # duplicate-column errors.
+        if not dry:
+            JuggleDB(DB_PATH).init_db()
+            if legacy_notes:
+                print(f"db: ran {'; '.join(legacy_notes)}")
+            print("db: ran idempotent migration pass")
         else:
-            print("db: schema already on 1.21.0")
+            msg = "; ".join(legacy_notes) if legacy_notes else "idempotent migration pass"
+            print(f"db: would run {msg}")
     else:
         print(f"db: {DB_PATH} does not exist — will be created on first juggle command")
         return 0
 
-    # 3. Reconcile graph topic states (repair drift between task tier + topic tier)
+    # 3. Backfill: NULL user_label for archived/closed threads (idempotent).
+    # Thread-label recycling (merged 2026-06-15) NULLs labels on future
+    # archive/close, but existing rows still hold their labels.
+    if not dry:
+        conn = sqlite3.connect(str(DB_PATH))
+        cur = conn.execute(
+            "UPDATE threads SET user_label = NULL"
+            " WHERE status IN ('archived','closed') AND user_label IS NOT NULL"
+        )
+        n_backfill = cur.rowcount
+        conn.commit()
+        conn.close()
+        if n_backfill:
+            print(f"label backfill: cleared {n_backfill} archived/closed thread label(s)")
+        else:
+            print("label backfill: no archived/closed labels to clear")
+    else:
+        print("label backfill: (dry-run — skipped)")
+
+    # 4. Reconcile graph topic states (repair drift between task tier + topic tier)
     from dbops import db_topics as dbt
 
     db_instance = JuggleDB(DB_PATH)
@@ -138,7 +161,7 @@ def cmd_doctor(args) -> int:
     else:
         print("graph reconcile: all topics consistent")
 
-    # 4. Backfill mirror topics (graph-mirrors-threads, 2026-06-14).
+    # 5. Backfill mirror topics (graph-mirrors-threads, 2026-06-14).
     # Idempotent: safe to run on every doctor invocation. G2-safe: doctor runs
     # as the orchestrator, never from an agent/worktree context.
     if not dry:
