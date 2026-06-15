@@ -1,18 +1,17 @@
 """Tests for watchdog daemon fixes: supervised-reload guard, pidfile prune,
-launchd plist validity.
+cockpit-supervision design.
 
 Regression pin: 2026-06-14 watchdog-stay-alive.
   - Unsupervised daemon must NOT sys.exit on source staleness (it dies permanently).
   - Dead-PID watchdog-*.pid files must be pruned on startup.
-  - launchd plist must be structurally valid with KeepAlive + RunAtLoad.
+  - Watchdog is cockpit-supervised (not launchd); plist is absent.
 """
 from __future__ import annotations
 
 import os
-import plistlib
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -101,58 +100,48 @@ def test_prune_stale_watchdog_pidfiles_handles_corrupt_pidfile(tmp_path):
     assert not bad.exists(), "corrupt watchdog pidfile must be pruned"
 
 
-# ── 3. launchd plist ─────────────────────────────────────────────────────────
-
-_PLIST_PATH = Path(__file__).resolve().parent.parent / "deploy" / "com.juggle.watchdog.plist"
-
-
-def test_plist_file_exists():
-    """launchd plist must exist at deploy/com.juggle.watchdog.plist."""
-    assert _PLIST_PATH.exists(), f"plist not found at {_PLIST_PATH}"
+# ── 3. Cockpit-supervisor design pins (2026-06-14: launchd removed) ──────────
+# launchd plist removed: watchdog is now a child of the cockpit process.
+# These pins verify the new design contract.
 
 
-def test_plist_parses_and_has_keepalive():
-    """Plist must parse with plistlib and have KeepAlive=true."""
-    with open(_PLIST_PATH, "rb") as f:
-        data = plistlib.load(f)
-    assert data.get("KeepAlive") is True, "KeepAlive must be True"
+def test_launchd_plist_absent():
+    """Regression pin (2026-06-14): launchd plist must NOT exist — watchdog is cockpit-supervised."""
+    plist_path = Path(__file__).resolve().parent.parent / "deploy" / "com.juggle.watchdog.plist"
+    assert not plist_path.exists(), (
+        "launchd plist found — it was intentionally removed. "
+        "Watchdog is now a cockpit child process, not a launchd service."
+    )
 
 
-def test_plist_has_run_at_load():
-    """Plist must have RunAtLoad=true."""
-    with open(_PLIST_PATH, "rb") as f:
-        data = plistlib.load(f)
-    assert data.get("RunAtLoad") is True, "RunAtLoad must be True"
+def test_should_exit_supervisor_gone_contract():
+    """Regression pin: supervisor-gone check must be a pure function in the daemon."""
+    from juggle_watchdog_daemon import should_exit_supervisor_gone
+    assert should_exit_supervisor_gone(supervisor_pid_alive=False) is True
+    assert should_exit_supervisor_gone(supervisor_pid_alive=True) is False
 
 
-def test_plist_program_arguments_uses_uv():
-    """ProgramArguments must invoke the daemon via uv run python."""
-    with open(_PLIST_PATH, "rb") as f:
-        data = plistlib.load(f)
-    args = data.get("ProgramArguments", [])
-    args_str = " ".join(args)
-    assert "uv" in args_str, "ProgramArguments must use uv"
-    assert "juggle_watchdog_daemon" in args_str or "juggle-agent-watchdog" in args_str, \
-        "ProgramArguments must reference the daemon"
+def test_start_watchdog_child_no_setsid(tmp_path, monkeypatch):
+    """Regression pin (2026-06-14): watchdog must be a cockpit child (no start_new_session)."""
+    from juggle_watchdog_health import start_watchdog_child
 
+    mock_proc = MagicMock()
+    mock_proc.pid = 55555
+    captured = {}
 
-def test_plist_has_supervised_env():
-    """Plist EnvironmentVariables must set JUGGLE_WATCHDOG_SUPERVISED=1."""
-    with open(_PLIST_PATH, "rb") as f:
-        data = plistlib.load(f)
-    env = data.get("EnvironmentVariables", {})
-    assert env.get("JUGGLE_WATCHDOG_SUPERVISED") == "1", \
-        "EnvironmentVariables must include JUGGLE_WATCHDOG_SUPERVISED=1"
-    assert env.get("JUGGLE_ORCHESTRATOR") == "1", \
-        "EnvironmentVariables must include JUGGLE_ORCHESTRATOR=1"
+    def fake_popen(cmd, **kwargs):
+        captured.update(kwargs)
+        return mock_proc
 
+    monkeypatch.setattr("subprocess.Popen", fake_popen)
 
-def test_plist_has_log_paths():
-    """Plist must define StandardOutPath and StandardErrorPath."""
-    with open(_PLIST_PATH, "rb") as f:
-        data = plistlib.load(f)
-    assert "StandardOutPath" in data, "StandardOutPath missing"
-    assert "StandardErrorPath" in data, "StandardErrorPath missing"
-    # Both should point to the juggle log dir
-    assert "juggle" in data["StandardOutPath"].lower() or \
-           "watchdog" in data["StandardOutPath"].lower()
+    start_watchdog_child(
+        pid_file=tmp_path / "watchdog.pid",
+        heartbeat_path=tmp_path / "heartbeat",
+        log_path=tmp_path / "watchdog.log",
+        repo_root=tmp_path,
+    )
+
+    assert captured.get("start_new_session") is not True, (
+        "start_new_session must not be True — watchdog dies with cockpit"
+    )

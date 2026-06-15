@@ -42,6 +42,27 @@ _WATCHDOG_SRC = Path(__file__).parent / "juggle_watchdog.py"
 
 _POLL_INTERVAL = int(os.environ.get("JUGGLE_WATCHDOG_INTERVAL", "30"))
 _SUPERVISED = os.environ.get("JUGGLE_WATCHDOG_SUPERVISED", "") == "1"
+_SUPERVISOR_PID: int | None = None
+try:
+    _spid = os.environ.get("JUGGLE_SUPERVISOR_PID")
+    if _spid:
+        _SUPERVISOR_PID = int(_spid)
+except (TypeError, ValueError):
+    pass
+
+
+def should_exit_supervisor_gone(supervisor_pid_alive: bool) -> bool:
+    """Return True when the supervising cockpit process is gone."""
+    return not supervisor_pid_alive
+
+
+def _is_pid_alive_local(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
 
 # Single authoritative pidfile — no more duplicate config_dir/watchdog.pid
 SINGLETON_PID_FILE = Path.home() / ".juggle" / "watchdog.pid"
@@ -297,7 +318,7 @@ def main() -> None:
                 if should_exit_for_reload(stale=True, supervised=_SUPERVISED):
                     _log.warning(
                         "Watchdog: source changed (%s mtime %.3f → %.3f) — "
-                        "exiting for launchd restart",
+                        "exiting for cockpit restart",
                         _WATCHDOG_SRC.name, _src_mtime, new_mtime,
                     )
                     sys.exit(0)
@@ -308,6 +329,13 @@ def main() -> None:
                         _WATCHDOG_SRC.name, _src_mtime, new_mtime,
                     )
                     _src_mtime = new_mtime  # re-baseline to avoid spam
+            if _SUPERVISOR_PID is not None:
+                if should_exit_supervisor_gone(_is_pid_alive_local(_SUPERVISOR_PID)):
+                    _log.info(
+                        "Watchdog: supervisor PID=%d gone — exiting cleanly",
+                        _SUPERVISOR_PID,
+                    )
+                    break
             try:
                 _poll_once(db, mgr)
             except Exception as exc:

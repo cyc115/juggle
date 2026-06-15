@@ -129,6 +129,9 @@ class CockpitApp(GraphModeMixin, App):
     ]
 
     CSS = """
+    Screen {
+        layers: base overlay;
+    }
     #layout {
         layout: horizontal;
         height: 1fr;
@@ -150,6 +153,19 @@ class CockpitApp(GraphModeMixin, App):
     }
     #agents {
         height: 100%;
+    }
+    Footer {
+        layer: base;
+    }
+    #wd-status {
+        layer: overlay;
+        dock: bottom;
+        width: 8;
+        height: 1;
+        offset: 0 -1;
+        background: $panel;
+        color: $success;
+        content-align: right middle;
     }
     """
 
@@ -182,6 +198,7 @@ class CockpitApp(GraphModeMixin, App):
             pass
         # Graph-mode view state (lower-right panel swaps Notifications ⇄ Graph).
         self._graph_state_init()
+        self._watchdog_proc: "subprocess.Popen | None" = None
 
     def exit(self, result=None, return_code: int = 0, message=None) -> None:
         """Persist column widths before handing off to Textual's exit machinery.
@@ -230,6 +247,7 @@ class CockpitApp(GraphModeMixin, App):
                 yield HSplitter("upper", "notifications")
                 yield Static("", id="notifications")
         yield Footer(compact=True)
+        yield Static("", id="wd-status")
 
     def on_mount(self) -> None:
         self.title = "Juggle"
@@ -259,6 +277,73 @@ class CockpitApp(GraphModeMixin, App):
 
         self._check_tmux_mouse()
         self.set_interval(REFRESH_INTERVAL, self._refresh)
+        self._start_watchdog_child()
+        self.set_interval(15.0, self._check_watchdog_health)
+        import atexit
+        atexit.register(self._stop_watchdog)
+
+    def _start_watchdog_child(self) -> None:
+        try:
+            from juggle_watchdog_health import start_watchdog_child, SINGLETON_PID_FILE, HEARTBEAT_PATH, _LOG_PATH
+            proc = start_watchdog_child(
+                pid_file=SINGLETON_PID_FILE,
+                heartbeat_path=HEARTBEAT_PATH,
+                log_path=_LOG_PATH,
+                supervisor_pid=os.getpid(),
+            )
+            if proc is not None:
+                self._watchdog_proc = proc
+        except Exception:
+            pass
+        self._update_watchdog_status()
+
+    def _stop_watchdog(self) -> None:
+        proc = self._watchdog_proc
+        if proc is None or proc.returncode is not None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=3)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        self._watchdog_proc = None
+
+    def on_unmount(self) -> None:
+        self._stop_watchdog()
+
+    def _check_watchdog_health(self) -> None:
+        try:
+            from juggle_watchdog_health import (
+                watchdog_needs_start, SINGLETON_PID_FILE, HEARTBEAT_PATH,
+                _is_pid_alive, read_heartbeat_age,
+            )
+            pid_alive = False
+            if SINGLETON_PID_FILE.exists():
+                try:
+                    pid = int(SINGLETON_PID_FILE.read_text().strip())
+                    pid_alive = _is_pid_alive(pid)
+                except (ValueError, OSError):
+                    pass
+            age = read_heartbeat_age(HEARTBEAT_PATH)
+            if watchdog_needs_start(pid_alive, age):
+                self._start_watchdog_child()
+        except Exception:
+            pass
+        self._update_watchdog_status()
+
+    def _update_watchdog_status(self) -> None:
+        try:
+            from juggle_watchdog_health import is_watchdog_alive
+            alive = is_watchdog_alive()
+            dot = "● wd" if alive else "○ wd"
+            widget = self.query_one("#wd-status", Static)
+            widget.update(dot)
+            widget.styles.color = "green" if alive else "red"
+        except Exception:
+            pass
 
     def _check_tmux_mouse(self) -> None:
         """Warn if running inside tmux with mouse mode disabled."""

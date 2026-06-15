@@ -201,7 +201,7 @@ def cmd_start(_):
 
     # Auto-start talkback if enabled in config
     _maybe_start_talkback()
-    _start_watchdog()
+    # Watchdog is now owned/supervised by the cockpit (started on cockpit mount).
 
     ver = _get_version()
     threads = db.get_all_threads()

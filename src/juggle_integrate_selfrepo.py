@@ -26,12 +26,12 @@ def _restart_juggle_daemons() -> None:
     re-spawns it via Claude Code's Monitor tool.
     """
     try:
-        from juggle_cmd_threads import _start_watchdog, _maybe_start_talkback
-        _start_watchdog()
+        from juggle_cmd_threads import _maybe_start_talkback
+        # Watchdog is owned by the cockpit — no restart needed here.
         _maybe_start_talkback()
     except Exception as e:
         print(
-            f"[juggle] WARNING: watchdog restart after self-integrate failed: {e}",
+            f"[juggle] WARNING: talkback restart after self-integrate failed: {e}",
             file=sys.stderr,
         )
     # Kill stale monitor (VZ singleton hygiene) — next /juggle:start re-spawns it
