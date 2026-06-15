@@ -61,6 +61,8 @@ GRANDFATHERED: dict[str, int] = {
     "src/dbops/db_topics.py": 350,
     # migration 41 (drop Hindsight cols) added run_migration_41(); split candidate
     "src/dbops/migrations_recent.py": 361,
+    # 2026-06-14 direct-mode bugs: +retry logic +HEAD validation +graphify clean
+    "src/juggle_cmd_integrate.py": 325,
 }
 
 
