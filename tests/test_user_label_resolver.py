@@ -24,15 +24,21 @@ def test_next_excel_label_two_letter_sequence():
     assert _next_excel_label(used) == "AC"
 
 
-def test_labels_are_not_reassigned_after_archive(db):
+def test_labels_are_recycled_after_archive(db):
+    """Archived thread labels ARE recycled — B is reused when available.
+
+    2026-06-15: changed from 'labels are permanent' to 'labels recycle' to
+    prevent the 702-label hard cap from blocking thread creation in long-lived
+    projects.
+    """
     ids = [db.create_thread(f"t{i}", session_id="s") for i in range(3)]
     labels_initial = [db.get_thread(i)["user_label"] for i in ids]
     assert labels_initial == ["A", "B", "C"]
-    # Archive B
+    # Archive B → its label is freed
     db.archive_thread(ids[1])
-    # Next create should get D, not B
+    # Next create should recycle B (first available)
     new_id = db.create_thread("new", session_id="s")
-    assert db.get_thread(new_id)["user_label"] == "D"
+    assert db.get_thread(new_id)["user_label"] == "B"
 
 
 def test_resolve_thread_accepts_label(db):

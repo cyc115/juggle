@@ -155,27 +155,32 @@ def test_unarchive_thread_sets_status_active(db):
 
 
 def test_unarchive_thread_returns_user_label(db):
-    """unarchive_thread return value is the thread's user_label."""
+    """unarchive_thread return value matches the thread's (new) user_label."""
     tid = db.create_thread("Topic A", session_id="s1")
     db.archive_thread(tid)
     returned_label = db.unarchive_thread(tid)
     t = db.get_thread(tid)
     assert returned_label == t["user_label"]
+    assert t["user_label"] is not None
 
 
 def test_unarchive_thread_full_cycle(db):
-    """create → archive → unarchive produces expected state."""
+    """create → archive → unarchive produces expected state.
+
+    2026-06-15: archive now CLEARS user_label for recycling; unarchive assigns
+    a fresh label from the available pool.
+    """
     tid = db.create_thread("Topic A", session_id="s1")
     assert db.get_thread(tid)["user_label"] == "A"
 
     db.archive_thread(tid)
     t = db.get_thread(tid)
     assert t["status"] == "archived"
-    assert t["user_label"] == "A"  # preserved
+    assert t["user_label"] is None  # cleared for recycling
     assert t["show_in_list"] == 0
 
     db.unarchive_thread(tid)
     t = db.get_thread(tid)
     assert t["status"] == "active"
     assert t["show_in_list"] == 1
-    assert t["user_label"] == "A"  # still preserved
+    assert t["user_label"] is not None  # fresh label assigned

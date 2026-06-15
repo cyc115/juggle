@@ -62,6 +62,7 @@ class ThreadsMixin:
                 row["user_label"]
                 for row in conn.execute(
                     "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
+                    " AND status NOT IN ('archived', 'closed')"
                 ).fetchall()
             }
             user_label = _next_excel_label(used_labels)
@@ -91,11 +92,19 @@ class ThreadsMixin:
                 return None
             return dict(row)
 
-    def get_thread_by_user_label(self, label: str) -> dict | None:
-        """Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive. Prefers UUID ids over legacy non-UUID ids."""
+    def get_thread_by_user_label(self, label: str | None) -> dict | None:
+        """Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive.
+
+        Prefers non-archived/closed threads so that recycled labels resolve to
+        the current active holder, not the archived original.
+        Returns None if label is None or not found.
+        """
+        if not label:
+            return None
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM threads WHERE user_label = ? ORDER BY "
+                "CASE WHEN status NOT IN ('archived', 'closed') THEN 0 ELSE 1 END, "
                 "CASE WHEN length(id) = 36 AND id LIKE '%-%-%-%-%' THEN 0 ELSE 1 END, "
                 "last_active_at DESC LIMIT 1",
                 (label.upper(),),
@@ -113,6 +122,10 @@ class ThreadsMixin:
 
         if not kwargs:
             return
+        # Recycle user_label when a thread is archived or closed so the label
+        # becomes available for the next active thread.
+        if kwargs.get("status") in ("archived", "closed"):
+            kwargs.setdefault("user_label", None)
         # Serialize list values to JSON
         for key, val in kwargs.items():
             if isinstance(val, list):
@@ -144,10 +157,17 @@ class ThreadsMixin:
             )
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
-            conn.execute(
-                "UPDATE threads SET status = ?, last_active_at = ? WHERE id = ?",
-                (status, now, thread_id),
-            )
+            if status in ("archived", "closed"):
+                conn.execute(
+                    "UPDATE threads SET status = ?, user_label = NULL, "
+                    "last_active_at = ? WHERE id = ?",
+                    (status, now, thread_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE threads SET status = ?, last_active_at = ? WHERE id = ?",
+                    (status, now, thread_id),
+                )
             conn.commit()
 
     def touch_last_active(self, thread_id: str) -> None:
@@ -172,28 +192,38 @@ class ThreadsMixin:
     # ---------------------------------------------------------------
 
     def archive_thread(self, thread_id: str):
-        """Set status='archived', show_in_list=0. Preserves user_label."""
+        """Set status='archived', show_in_list=0. Clears user_label so it can
+        be recycled by the next active thread."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             conn.execute(
                 "UPDATE threads SET status = 'archived', "
-                "show_in_list = 0, last_active_at = ? WHERE id = ?",
+                "show_in_list = 0, user_label = NULL, last_active_at = ? WHERE id = ?",
                 (now, thread_id),
             )
             conn.commit()
 
     def unarchive_thread(self, thread_id: str) -> str:
-        """Unarchive: status=active, show_in_list=1, user_label preserved."""
+        """Unarchive: status=active, show_in_list=1. Assigns a fresh label since
+        the label was cleared on archive to allow recycling."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
+            used_labels = {
+                row["user_label"]
+                for row in conn.execute(
+                    "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
+                    " AND status NOT IN ('archived', 'closed') AND id != ?"
+                    , (thread_id,)
+                ).fetchall()
+            }
+            new_label = _next_excel_label(used_labels)
             conn.execute(
                 "UPDATE threads SET status = 'active', show_in_list = 1, "
-                "last_active_at = ? WHERE id = ?",
-                (now, thread_id),
+                "user_label = ?, last_active_at = ? WHERE id = ?",
+                (new_label, now, thread_id),
             )
             conn.commit()
-        thread = self.get_thread(thread_id)
-        return thread.get("user_label") or thread_id[:8] if thread else thread_id[:8]
+        return new_label
 
     # ---------------------------------------------------------------
     # Stale / archive-candidate queries

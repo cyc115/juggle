@@ -177,25 +177,81 @@ def test_get_all_threads_includes_id_and_user_label(db):
     assert threads[0]["user_label"] == "A"
 
 
-def test_archive_thread_preserves_user_label(db):
-    """archive_thread sets status='archived' and preserves user_label."""
+def test_archive_thread_clears_user_label(db):
+    """archive_thread sets status='archived', clears user_label for recycling.
+
+    Regression pin: 2026-06-15 — labels must be freed on archive so the 702-label
+    cap is never exhausted in long-lived projects.
+    """
     tid = db.create_thread("Topic A", session_id="s1")
     db.archive_thread(tid)
     thread = db.get_thread(tid)
     assert thread["status"] == "archived"
-    assert thread["user_label"] == "A"
+    assert thread["user_label"] is None  # freed for recycling
     assert thread["show_in_list"] == 0
 
 
-def test_user_label_not_recycled_after_archive(db):
-    """user_label is permanent — archiving thread A does not free 'A' for reuse."""
+def test_user_label_recycled_after_archive(db):
+    """Labels from archived threads are recycled — 'A' is reused after archiving.
+
+    Regression pin: 2026-06-15 — 702-label hard cap blocked new threads because
+    archived/closed threads permanently reserved labels. Fix: used_labels query
+    excludes archived/closed threads so their labels become available again.
+    """
     tid_a = db.create_thread("First", session_id="s1")
     assert db.get_thread(tid_a)["user_label"] == "A"
 
     db.archive_thread(tid_a)
 
     tid_b = db.create_thread("Second", session_id="s1")
-    assert db.get_thread(tid_b)["user_label"] == "B"  # B, not A
+    assert db.get_thread(tid_b)["user_label"] == "A"  # A recycled, not B
+
+
+def test_user_label_recycled_after_close(db):
+    """Labels from closed threads are also recycled.
+
+    Regression pin: 2026-06-15 — same fix covers 'closed' status.
+    """
+    tid_a = db.create_thread("First", session_id="s1")
+    assert db.get_thread(tid_a)["user_label"] == "A"
+
+    db.update_thread(tid_a, status="closed")
+
+    tid_b = db.create_thread("Second", session_id="s1")
+    assert db.get_thread(tid_b)["user_label"] == "A"  # A recycled
+
+
+def test_two_active_threads_never_share_label(db):
+    """Two non-archived/non-closed threads always get distinct labels.
+
+    Regression pin: 2026-06-15 — recycling must not assign the same label to
+    two simultaneously active threads.
+    """
+    tid_a = db.create_thread("First", session_id="s1")
+    tid_b = db.create_thread("Second", session_id="s1")
+    label_a = db.get_thread(tid_a)["user_label"]
+    label_b = db.get_thread(tid_b)["user_label"]
+    assert label_a != label_b, f"both got label {label_a!r}"
+
+
+def test_get_thread_by_user_label_prefers_active_after_recycle(db):
+    """get_thread_by_user_label returns the active (non-archived) holder of a
+    recycled label, not the archived one.
+
+    Regression pin: 2026-06-15 — label lookup must be deterministic after recycle.
+    """
+    tid_a = db.create_thread("Original", session_id="s1")
+    assert db.get_thread(tid_a)["user_label"] == "A"
+    db.archive_thread(tid_a)
+
+    tid_b = db.create_thread("New holder", session_id="s1")
+    assert db.get_thread(tid_b)["user_label"] == "A"
+
+    resolved = db.get_thread_by_user_label("A")
+    assert resolved is not None
+    assert resolved["id"] == tid_b, (
+        f"expected active thread {tid_b[:8]}, got {resolved['id'][:8]}"
+    )
 
 
 # ------------------------------------------------------------------
