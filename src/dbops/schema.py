@@ -291,3 +291,26 @@ def _is_junk_message(content: str) -> bool:
         or "<tool_uses>" in content
         or content.strip().startswith("/")
     )
+
+
+# Structural markers that identify orchestrator-generated chatter: autopilot
+# status cards, JUGGLE ACTIVE context blocks, loop-tick headers, and status
+# dump section headings.  Content containing any of these is never a legitimate
+# user topic and must not spawn a new thread.
+_ORCHESTRATOR_CHATTER_MARKERS: tuple[str, ...] = (
+    "--- AUTOPILOT MODE:",          # autopilot directive header
+    "# Autonomous loop tick",        # orchestrator loop-tick output
+    "--- JUGGLE ACTIVE",             # JUGGLE ACTIVE context block marker
+    "# Active Threads",              # status dump section heading
+    "# Notifications (this session)",  # status dump section heading
+    "--- END JUGGLE ---",            # context block footer
+)
+
+
+def is_auto_topic_eligible(content: str) -> bool:
+    """Return True if content is a legitimate topic for automatic thread creation.
+
+    Returns False for orchestrator-generated chatter (autopilot status cards,
+    JUGGLE ACTIVE blocks, loop-tick headers) so those never spawn junk threads.
+    """
+    return not any(marker in content for marker in _ORCHESTRATOR_CHATTER_MARKERS)

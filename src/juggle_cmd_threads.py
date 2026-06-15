@@ -22,6 +22,7 @@ from juggle_cli_common import (
 from juggle_context import get_thread_state
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
 from juggle_settings import get_settings as _get_settings
+from dbops.schema import is_auto_topic_eligible
 
 
 def _main_repo_root() -> _Path:
@@ -243,6 +244,12 @@ def cmd_stop(_):
 
 
 def cmd_create_thread(args):
+    if not is_auto_topic_eligible(args.topic):
+        print(
+            f"[juggle] Skipped: topic looks like orchestrator chatter and will not create a thread.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     db = get_db()
     thread_uuid = db.create_thread(args.topic, session_id="")
     db.set_current_thread(thread_uuid)
@@ -257,6 +264,30 @@ def cmd_create_thread(args):
     ).start()
     # Project assignment — async, fail-silent, never blocks
     assign_project_background(get_db(), thread_uuid, args.topic)
+
+
+def close_junk_threads(db) -> list[dict]:
+    """Close auto-created junk threads that have no real messages and no worktree.
+
+    A thread is junk when its original topic contains an orchestrator-chatter
+    marker (AUTOPILOT MODE, JUGGLE ACTIVE, loop-tick headers, etc.) AND it has
+    no real user messages and no worktree attached.  Returns list of closed thread
+    dicts so callers can report what was cleaned up.
+    """
+    closed: list[dict] = []
+    for thread in db.get_all_threads():
+        if thread.get("status") in ("archived", "closed", "done"):
+            continue
+        topic = thread.get("topic") or ""
+        if is_auto_topic_eligible(topic):
+            continue  # not chatter — leave it alone
+        if thread.get("worktree_path"):
+            continue  # real work was done
+        if db.get_message_count(thread["id"], exclude_junk=True) > 0:
+            continue  # real messages exist
+        db.set_thread_status(thread["id"], "closed")
+        closed.append(thread)
+    return closed
 
 
 
