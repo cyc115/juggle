@@ -557,3 +557,131 @@ def test_cmd_integrate_exits_nonzero_on_failure(tmp_path):
                 with pytest.raises(SystemExit) as exc:
                     cmd_integrate(args)
     assert exc.value.code == 1
+
+
+# ── Regression pins: direct-mode main-un-merged bugs (2026-06-14) ────────────
+
+def test_integrate_direct_graphify_untracked_new_file_blocks_merge_pin(git_repo_with_remote, tmp_path):
+    """Regression pin (2026-06-14): graphify watch writes a NEW file to
+    graphify-out/ in main_repo_path (untracked, not yet in main HEAD). The
+    feature branch ALSO adds that same file as a tracked commit. git checkout
+    -- graphify-out/ does NOT remove untracked files → ff-merge fails with
+    'untracked working tree file would be overwritten'. Fix: also run
+    git clean -fd -- graphify-out/ before the merge."""
+    from juggle_cmd_integrate import _run_integrate
+
+    local, remote = git_repo_with_remote
+    wt = _make_worktree(local, str(tmp_path), "GU")
+
+    # Feature branch adds a NEW tracked file in graphify-out/
+    graphify_dir = Path(wt) / "graphify-out"
+    graphify_dir.mkdir()
+    (graphify_dir / ".graphify_chunk_03.json").write_text('{"chunk": 3}')
+    subprocess.run(["git", "-C", wt, "add", "graphify-out/"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", wt, "commit", "-m", "feat: add chunk_03"], check=True, capture_output=True)
+
+    # Simulate graphify watch: same file created in MAIN working tree (untracked)
+    main_graphify_dir = Path(local) / "graphify-out"
+    main_graphify_dir.mkdir(exist_ok=True)
+    (main_graphify_dir / ".graphify_chunk_03.json").write_text('{"chunk": "stale"}')
+
+    thread = {"id": "t-gu", "worktree_path": wt,
+              "worktree_branch": "cyc_GU", "main_repo_path": local}
+    db = _make_db()
+
+    with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "direct", "test_cmd": ""}):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok, msg = _run_integrate(thread, db)
+
+    assert ok, f"integrate failed due to untracked graphify-out/ file: {msg}"
+    # The feature branch's committed file should be present in main now
+    assert (Path(local) / "graphify-out" / ".graphify_chunk_03.json").exists()
+    # Verify remote was updated (direct push)
+    remote_log = subprocess.run(
+        ["git", "-C", remote, "log", "--oneline", "-1"],
+        capture_output=True, text=True,
+    ).stdout
+    assert "chunk_03" in remote_log
+
+
+def test_integrate_direct_main_checked_out_on_wrong_branch_fails_loudly_pin(git_repo_with_remote, tmp_path):
+    """Regression pin (2026-06-14, ZA incident): if main_repo_path's HEAD is on
+    a branch other than the expected main branch, integrate must fail loudly
+    before attempting any merge — not silently push the wrong branch or no-op."""
+    from juggle_cmd_integrate import _run_integrate
+
+    local, remote = git_repo_with_remote
+    wt = _make_worktree(local, str(tmp_path), "WB")
+    _add_commit(wt, "feat.py", "y = 2\n", "feat: add feature")
+
+    main_sha_before = subprocess.run(
+        ["git", "-C", local, "rev-parse", "main"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+
+    # Put main repo's HEAD on a non-main branch (simulates ZA external state)
+    subprocess.run(
+        ["git", "-C", local, "checkout", "-b", "stray-branch"],
+        check=True, capture_output=True,
+    )
+
+    thread = {"id": "t-wb", "worktree_path": wt,
+              "worktree_branch": "cyc_WB", "main_repo_path": local}
+    db = _make_db()
+
+    with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "direct", "test_cmd": ""}):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            ok, msg = _run_integrate(thread, db)
+
+    assert not ok, "integrate should fail when main_repo is on the wrong branch"
+    assert "stray-branch" in msg or "main" in msg.lower(), f"error msg should name the problem branch: {msg}"
+    # main must be un-touched
+    main_sha_after = subprocess.run(
+        ["git", "-C", local, "rev-parse", "main"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    assert main_sha_after == main_sha_before, "main was advanced despite wrong HEAD branch"
+    db.add_action_item.assert_called_once()
+
+
+def test_integrate_direct_test_retry_merges_on_transient_failure_pin(git_repo_with_remote, tmp_path):
+    """Regression pin (2026-06-14): spurious single test_cmd failure (pytest
+    flake under load) left main un-merged. Fix: retry test_cmd once; only
+    abort if both attempts fail."""
+    from juggle_cmd_integrate import _run_integrate
+
+    local, remote = git_repo_with_remote
+    wt = _make_worktree(local, str(tmp_path), "RT")
+    _add_commit(wt, "feat.py", "y = 2\n", "feat: add feature")
+
+    # Script that fails on first invocation, succeeds on second
+    counter_file = tmp_path / "count.txt"
+    counter_file.write_text("0")
+    script = tmp_path / "flaky_test.sh"
+    script.write_text(
+        f"#!/bin/sh\n"
+        f"n=$(cat {counter_file}); n=$((n+1)); echo $n > {counter_file}\n"
+        f"if [ $n -le 1 ]; then exit 1; fi\n"
+        f"exit 0\n"
+    )
+    script.chmod(0o755)
+
+    thread = {"id": "t-rt", "worktree_path": wt,
+              "worktree_branch": "cyc_RT", "main_repo_path": local}
+    db = _make_db()
+
+    with patch("juggle_cmd_integrate.get_repo_config",
+               return_value={"push_mode": "direct", "test_cmd": str(script)}):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok, msg = _run_integrate(thread, db)
+
+    assert ok, f"integrate should succeed after test retry: {msg}"
+    assert int(counter_file.read_text().strip()) == 2, "test_cmd should be invoked exactly twice"
+    # Verify merge + push
+    remote_log = subprocess.run(
+        ["git", "-C", remote, "log", "--oneline", "-1"],
+        capture_output=True, text=True,
+    ).stdout
+    assert "add feature" in remote_log

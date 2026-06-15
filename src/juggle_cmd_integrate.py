@@ -166,6 +166,12 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
                 test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
             )
             if result.returncode != 0:
+                # One retry for transient flakes (pilot/Textual tests flake under
+                # load). Only abort if both attempts fail.
+                result = subprocess.run(
+                    test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
+                )
+            if result.returncode != 0:
                 return _fail(
                     f"Tests failed (exit {result.returncode}) for {worktree_branch}. "
                     f"No merge performed. "
@@ -181,11 +187,23 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         if not v_ok:
             return _fail(v_reason)
 
-        # ── 6. Resolve local main branch name ────────────────────────────────
+        # ── 6. Resolve local main branch name + validate HEAD ────────────────
         local_main = subprocess.run(
             ["git", "-C", main_repo_path, "symbolic-ref", "--short", "HEAD"],
             capture_output=True, text=True,
         ).stdout.strip() or "main"
+
+        # Derive expected branch name from the rebase target (origin/main →
+        # main, origin/master → master, etc.) and fail loudly if the main
+        # working tree is on the wrong branch. This catches external state
+        # where main was left checked out on a feature branch (2026-06-14 ZA
+        # incident) before silently merging into or pushing the wrong branch.
+        expected_main = rebase_onto.split("/")[-1]  # "origin/main" → "main"
+        if local_main != expected_main:
+            return _fail(
+                f"main_repo_path HEAD is on '{local_main}', expected '{expected_main}'. "
+                f"Check out '{expected_main}' in {main_repo_path} and re-run integrate."
+            )
 
         # ── 7. Merge + push (mode-dependent) ─────────────────────────────────
         if push_mode == "pr":
@@ -211,10 +229,19 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         # The graphify watch hook regenerates tracked files in graphify-out/ on
         # every commit; if the agent's branch also updated them, git merge
         # --ff-only fails with "local changes would be overwritten" (2026-06-11
-        # bug G). Discarding is safe: graphify regenerates them on demand.
+        # bug G). Also clean untracked files: if the feature branch adds a NEW
+        # graphify-out/ file (e.g. .graphify_chunk_03.json) and graphify watch
+        # has already written it as an untracked file in main, git merge
+        # --ff-only fails with "untracked working tree file would be overwritten"
+        # — git checkout -- does NOT remove untracked files (2026-06-14 bug).
+        # Discarding is safe: graphify regenerates all files on demand.
         if Path(main_repo_path, "graphify-out").exists():
             subprocess.run(
                 ["git", "-C", main_repo_path, "checkout", "--", "graphify-out/"],
+                capture_output=True, text=True,
+            )
+            subprocess.run(
+                ["git", "-C", main_repo_path, "clean", "-fd", "--", "graphify-out/"],
                 capture_output=True, text=True,
             )
 
