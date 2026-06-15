@@ -70,12 +70,18 @@ def cmd_get_agent(args):
                 continue
             if candidate.get("harness") != requested_harness:
                 continue  # harness mismatch — spawn fresh on correct harness
-            if mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
-                # Reset pane cwd so a stranded agent starts clean
-                reset_dir = target_repo or os.path.expanduser("~")
-                mgr._run_tmux("send-keys", "-t", candidate["pane_id"], f"cd {reset_dir}", "Enter")
-                agent = candidate
-                break
+            if not mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
+                continue
+            # CAS assign: only succeeds if the agent is still idle+unassigned at commit
+            # time. Guards against TOCTOU races where two concurrent get-agent calls
+            # both read the same idle agent; the loser's CAS returns False → tries next.
+            if not db.cas_assign_agent(candidate["id"], thread_uuid):
+                continue  # agent taken by a concurrent caller — try next candidate
+            # Reset pane cwd so a stranded agent starts clean
+            reset_dir = target_repo or os.path.expanduser("~")
+            mgr._run_tmux("send-keys", "-t", candidate["pane_id"], f"cd {reset_dir}", "Enter")
+            agent = candidate
+            break
     is_new = agent is None
 
     if is_new:
@@ -91,17 +97,27 @@ def cmd_get_agent(args):
         except (RuntimeError, ValueError) as e:
             print(f"Error: {e}")
             sys.exit(1)
+        now = datetime.now(timezone.utc).isoformat()
+        _update_kw: dict = dict(
+            status="busy", assigned_thread=thread_uuid, last_active=now, busy_since=now
+        )
+        _model_arg = getattr(args, "model", None)
+        if _model_arg:
+            _update_kw["model"] = _model_arg
+        if explicit_repo:
+            _update_kw["repo_path"] = target_repo
+        db.update_agent(agent["id"], **_update_kw)
+    else:
+        # Reused agent: CAS already set status+assigned_thread; apply supplemental fields
+        _extra: dict = {}
+        _model_arg = getattr(args, "model", None)
+        if _model_arg:
+            _extra["model"] = _model_arg
+        if explicit_repo:
+            _extra["repo_path"] = target_repo
+        if _extra:
+            db.update_agent(agent["id"], **_extra)
 
-    now = datetime.now(timezone.utc).isoformat()
-    _update_kw: dict = dict(
-        status="busy", assigned_thread=thread_uuid, last_active=now, busy_since=now
-    )
-    _model_arg = getattr(args, "model", None)
-    if _model_arg:
-        _update_kw["model"] = _model_arg
-    if explicit_repo:
-        _update_kw["repo_path"] = target_repo
-    db.update_agent(agent["id"], **_update_kw)
     db.update_thread(thread_uuid, status="background")
 
     suffix = " new" if is_new else ""

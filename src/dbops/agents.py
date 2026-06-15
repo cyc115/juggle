@@ -94,16 +94,18 @@ class AgentsMixin:
 
         Ties broken by most recent last_active.
         Returns None if no idle agents exist.
+        Only considers agents with status='idle' AND assigned_thread IS NULL.
         """
-        idle = [a for a in self.get_all_agents() if a["status"] == "idle"]
+        idle = [
+            a for a in self.get_all_agents()
+            if a["status"] == "idle" and a.get("assigned_thread") is None
+        ]
         if not idle:
             return None
 
         def _score(agent: dict) -> tuple:
             context = json.loads(agent.get("context_threads") or "[]")
             s = 0
-            if agent.get("assigned_thread") == thread_id:
-                s += 3
             if thread_id in context:
                 s += 2
             if role and agent["role"] == role:
@@ -117,22 +119,23 @@ class AgentsMixin:
     ) -> list[dict]:
         """Return all idle agents sorted by best-first scoring.
 
-        Uses the same scoring as get_best_agent:
-          +3 if agent is currently assigned to this thread
+        Scoring:
           +2 if thread_id is in agent's context_threads
           +1 if agent's role matches the requested role
         Ties broken by most recent last_active.
         Returns empty list if no idle agents exist.
+        Only considers agents with status='idle' AND assigned_thread IS NULL.
         """
-        idle = [a for a in self.get_all_agents() if a["status"] == "idle"]
+        idle = [
+            a for a in self.get_all_agents()
+            if a["status"] == "idle" and a.get("assigned_thread") is None
+        ]
         if not idle:
             return []
 
         def _score(agent: dict) -> tuple:
             context = json.loads(agent.get("context_threads") or "[]")
             s = 0
-            if agent.get("assigned_thread") == thread_id:
-                s += 3
             if thread_id in context:
                 s += 2
             if role and agent["role"] == role:
@@ -140,6 +143,27 @@ class AgentsMixin:
             return (s, agent["last_active"])
 
         return sorted(idle, key=_score, reverse=True)
+
+    def cas_assign_agent(self, agent_id: str, thread_id: str) -> bool:
+        """Atomically assign an agent to a thread using a guarded UPDATE.
+
+        Only succeeds when the agent row still has status='idle' AND
+        assigned_thread IS NULL at commit time.  Returns True on success,
+        False if another caller already took the agent (rowcount == 0).
+        Callers that receive False must spawn a fresh agent instead.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE agents
+                   SET status='busy', assigned_thread=?, last_active=?, busy_since=?
+                 WHERE id=? AND status='idle' AND assigned_thread IS NULL
+                """,
+                (thread_id, now, now, agent_id),
+            )
+            conn.commit()
+        return cur.rowcount > 0
 
     def get_agent_by_thread(self, thread_id: str) -> dict | None:
         with self._connect() as conn:
