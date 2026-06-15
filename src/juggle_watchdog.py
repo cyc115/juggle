@@ -77,6 +77,27 @@ _BOX_TOP_RE = re.compile(r"^╭─+╮\s*$")
 # Sentinel: caller did not supply last_send_task_at, so backward-compat applies.
 _NO_DISPATCH_INFO: object = object()
 
+# Context-recycle threshold: alive agents above this fraction get decommissioned
+# and replaced with a fresh agent instead of nudged.
+# Overridable via env var JUGGLE_AGENT_CONTEXT_RECYCLE_PCT (e.g. "0.75").
+_CONTEXT_RECYCLE_THRESHOLD: float = float(
+    os.environ.get("JUGGLE_AGENT_CONTEXT_RECYCLE_PCT", "0.80")
+)
+
+# Matches the CC pane footer context usage: e.g. "Sonnet 4.6(164.0k/200.0k)"
+_CTX_USAGE_RE = re.compile(r"\((\d+(?:\.\d+)?)(k?)/(\d+(?:\.\d+)?)(k?)\)")
+
+# Matches CC thinking spinner: timer pattern "(26s ·" / "(6m 17s ·" or known
+# thinking-word synonyms. Timer detection is generic; synonyms are a fallback.
+_THINKING_RE = re.compile(
+    r"(?:"
+    r"\(\d+(?:m \d+)?s[\s\xb7]"  # (26s · or (6m 17s · (U+00B7 middle dot)
+    r"|\bThinking\b"
+    r"|\b(?:Befuddling|Burrowing|Saut[eé]ed|Cooked|Churned|Brewed|Baked|Crunched?"
+    r"|Garnishing|Newspapering|Stewing|Billowing|Sprouting|Warping)\b"
+    r")"
+)
+
 # Grace period before a never-tasked agent can be decommissioned.
 # Overridable via juggle_settings key "agent_boot_grace_secs".
 _BOOT_GRACE_SECS: float = 120.0
@@ -139,6 +160,53 @@ def _hash_tail(content: str, lines: int = 10) -> str:
 
 def _has_execution_markers(tail: str) -> bool:
     return any(m in tail for m in _EXECUTION_MARKERS)
+
+
+def _parse_context_pct(content: str) -> float | None:
+    """Parse context usage fraction from a CC pane footer.
+
+    Matches patterns like 'Sonnet 4.6(164.0k/200.0k)'.
+    Returns float in [0, 1], or None if not parseable.
+    """
+    m = _CTX_USAGE_RE.search(content)
+    if not m:
+        return None
+    used_val, used_k, total_val, total_k = m.groups()
+    used = float(used_val) * (1000.0 if used_k else 1.0)
+    total = float(total_val) * (1000.0 if total_k else 1.0)
+    if total == 0:
+        return None
+    return used / total
+
+
+def _has_active_spinner(content: str) -> bool:
+    """Return True if content shows a CC active-thinking spinner or timer."""
+    return bool(_THINKING_RE.search(content))
+
+
+def recovery_action(
+    *,
+    context_pct: float | None,
+    has_active_spinner: bool,
+    is_dead: bool,
+    never_fired: bool,
+    context_recycle_threshold: float = _CONTEXT_RECYCLE_THRESHOLD,
+) -> str:
+    """Pure decision function: given parsed pane signals, return the recovery action.
+
+    Returns one of:
+      "respawn" — pane gone or never launched; decommission + spawn fresh
+      "none"    — agent is actively working (spinner visible); leave it alone
+      "recycle" — alive but context above threshold; decommission + spawn fresh
+      "nudge"   — alive, low context; send continue instruction
+    """
+    if is_dead or never_fired:
+        return "respawn"
+    if has_active_spinner:
+        return "none"
+    if context_pct is not None and context_pct >= context_recycle_threshold:
+        return "recycle"
+    return "nudge"
 
 
 def _has_box_top(content: str) -> bool:
@@ -209,7 +277,7 @@ def classify_pane_state(
     ):
         return "stuck", None
 
-    if "Thinking" in tail or stalled_for < 60:
+    if _has_active_spinner(tail) or stalled_for < 60:
         return "quiet", None
 
     if last_send_task_at is not _NO_DISPATCH_INFO and last_send_task_at is None:
@@ -508,8 +576,29 @@ def execute_recovery(
                     )
                     db.update_agent(agent_id, status="idle", assigned_thread=None)
                     return
-            nudge_and_notify(db, mgr, live, pane_content)
-            return
+            ctx_pct = _parse_context_pct(pane_content)
+            active = _has_active_spinner(pane_content)
+            action = recovery_action(
+                context_pct=ctx_pct,
+                has_active_spinner=active,
+                is_dead=False,
+                never_fired=False,
+            )
+            if action == "recycle":
+                _log.warning(
+                    "Watchdog: alive_slow at high context (%.0f%%) — recycling to fresh agent",
+                    ctx_pct * 100,  # type: ignore[operator]
+                )
+                # fall through to decommission + re-dispatch below
+            elif action == "none":
+                _log.info(
+                    "Watchdog: alive_slow with active spinner — leaving agent %s alone",
+                    agent_id[:8],
+                )
+                return
+            else:
+                nudge_and_notify(db, mgr, live, pane_content)
+                return
 
     thread_id = live.get("assigned_thread")
     role = live.get("role", "researcher")

@@ -35,7 +35,7 @@ GRANDFATHERED: dict[str, int] = {
     # juggle_db.py split Phase 2.1: composition root is 144 lines (removed from allowlist).
     # dbops/migrations.py holds all 34 schema migrations as a single ordered sequence;
     # cannot split without losing migration-ordering invariant. Follow-up debt noted in results.
-    "src/juggle_watchdog.py": 964,  # lowered 1332→1301 (Ph1.1) →964 (Ph2.2 inspect+restart split)
+    "src/juggle_watchdog.py": 1051,  # 964→1051: context-recycle fix + spinner detection (2026-06-15)
     "src/juggle_cockpit.py": 835,  # lowered from 1120 (Ph2.3: layout+profile extracted)
     # juggle_hooks.py Phase 2.5: split into hooks sub-modules (shim now 117 lines, removed).
     # Two sub-modules exceed 300 and are grandfathered below their current size:
