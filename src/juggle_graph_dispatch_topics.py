@@ -31,7 +31,7 @@ def claim_topic(db, topic_id: str) -> bool:
     with db._connect() as conn:
         cur = conn.execute(
             "UPDATE graph_topics SET state='dispatching', updated_at=? "
-            "WHERE id=? AND state='ready'",
+            "WHERE id=? AND state='ready' AND COALESCE(is_mirror,0)=0",
             (_now(), topic_id),
         )
         conn.commit()

@@ -44,6 +44,11 @@ def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
             f"{topic['state']!r} got event {event!r}"
         )
     new_state = _TRANSITIONS[key]
+    if topic.get("is_mirror"):
+        raise ValueError(
+            f"mirror topic {topic_id!r} cannot be execution-transitioned "
+            f"(is_mirror=1); mirror state is managed by db_mirror reflection writes only"
+        )
     if new_state == "verified" and not _verified_allowed(db, topic_id):
         raise UnmergedVerifyRefused(
             f"refusing to verify topic {topic_id!r}: its work is not merged into "
@@ -209,7 +214,7 @@ def recompute_topic_ready(db, project_id) -> list[str]:
         with _cx(db) as conn:
             cur = conn.execute(
                 "UPDATE graph_topics SET state='ready', updated_at=? "
-                "WHERE id=? AND state='pending'",
+                "WHERE id=? AND state='pending' AND COALESCE(is_mirror,0)=0",
                 (_now(), tid),
             )
         if cur.rowcount == 1:

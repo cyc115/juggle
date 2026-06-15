@@ -501,3 +501,188 @@ class TestCockpitProgressCount:
 
         assert "14/14" in out, f"expected 14/14 in output, got: {out[:300]}"
         assert "19" not in out or "14/14" in out  # total should be 14, not 19
+
+
+# ---------------------------------------------------------------------------
+# Defense-in-depth: mirror claim/promote/dispatch guards
+# Regression pin: 2026-06-15 — stale watchdog code promoted/claimed a mirror
+# node → it reached failed-verify. Single eligibility-filter defense not enough.
+# ---------------------------------------------------------------------------
+
+def _mirror_pending_with_task(db, project_id="P1"):
+    """Create an is_mirror=1 topic in 'pending' state with one dispatchable task.
+
+    This simulates a mirror that WOULD be eligible for promotion if not for the
+    is_mirror flag — used to prove the SQL-level guards reject it independently.
+    """
+    from dbops.db_mirror import mirror_upsert_thread
+    from dbops.db_graph import create_task
+
+    tid = _thread(db, project_id=project_id, status="idle")  # idle → pending mirror
+    mirror_id = mirror_upsert_thread(db, tid, project_id)
+
+    # Force mirror to 'pending' (idle maps to pending already, but be explicit)
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE graph_topics SET state='pending' WHERE id=? AND is_mirror=1",
+            (mirror_id,)
+        )
+        conn.commit()
+
+    # Give it a dispatchable task so it would pass the "has task" eligibility gate
+    task_id = f"task-{mirror_id}"
+    create_task(db, task_id=task_id, project_id=project_id,
+                title="phantom task", prompt="do nothing")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE graph_tasks SET topic_id=? WHERE id=?", (mirror_id, task_id)
+        )
+        conn.commit()
+
+    return mirror_id, tid
+
+
+class TestMirrorClaimGuard:
+    """Defense-in-depth: mirror nodes must be refused by EVERY execution-transition
+    SQL, independently of the eligibility filter.
+
+    2026-06-15 incident: stale watchdog (pre-filter code) promoted/claimed a mirror
+    node → it reached failed-verify state.
+    """
+
+    def test_recompute_cas_update_refuses_mirror(self, db, monkeypatch):
+        """recompute_topic_ready's CAS UPDATE refuses is_mirror=1 even when
+        topic_ready_eligible (the first-line filter) is bypassed.
+
+        Simulates the stale-code scenario: eligibility filter omitted (monkeypatched
+        to return the mirror id directly) → CAS UPDATE is the last-resort guard.
+
+        2026-06-15 regression pin: single-filter defense insufficient.
+        """
+        import dbops.db_topics as dt
+
+        _project(db)
+        mirror_id, _ = _mirror_pending_with_task(db)
+
+        # Bypass the eligibility filter: pretend it returned the mirror id
+        monkeypatch.setattr(dt, "topic_ready_eligible", lambda db_, pid: [mirror_id])
+
+        promoted = dt.recompute_topic_ready(db, "P1")
+
+        assert mirror_id not in promoted, "mirror must NOT be promoted even when eligibility filter bypassed"
+
+        with db._connect() as conn:
+            row = conn.execute(
+                "SELECT state FROM graph_topics WHERE id=?", (mirror_id,)
+            ).fetchone()
+        assert row["state"] == "pending", "mirror must remain 'pending'"
+
+    def test_recompute_topic_ready_promotes_real_not_mirror(self, db):
+        """recompute_topic_ready promotes real pending topics but NOT mirror topics.
+
+        2026-06-15 regression pin: mirror topics must stay 'pending' regardless of
+        the eligibility filter's is_mirror guard.
+        """
+        from dbops.db_topics import create_topic, recompute_topic_ready
+        from dbops.db_graph import create_task
+
+        _project(db)
+        mirror_id, _ = _mirror_pending_with_task(db)
+
+        # Also create a real pending topic with a task (should be promoted)
+        create_topic(db, topic_id="T-real", project_id="P1", title="Real task")
+        create_task(db, task_id="task-real", project_id="P1",
+                    title="real task", prompt="do real work")
+        with db._connect() as conn:
+            conn.execute("UPDATE graph_tasks SET topic_id='T-real' WHERE id='task-real'")
+            conn.commit()
+
+        promoted = recompute_topic_ready(db, "P1")
+
+        assert "T-real" in promoted, "real pending topic must be promoted"
+        assert mirror_id not in promoted, "mirror topic must NOT be promoted"
+
+        with db._connect() as conn:
+            mirror_row = conn.execute(
+                "SELECT state FROM graph_topics WHERE id=?", (mirror_id,)
+            ).fetchone()
+        assert mirror_row["state"] == "pending", "mirror state must remain 'pending'"
+
+    def test_claim_topic_refuses_mirror(self, db):
+        """claim_topic returns False (rowcount 0) for a mirror topic.
+
+        Even if a mirror somehow reached 'ready', the atomic claim SQL must refuse it.
+        """
+        import juggle_graph_dispatch as gd
+
+        _project(db)
+        mirror_id, _ = _mirror_pending_with_task(db)
+
+        # Force mirror to 'ready' to make it look claimable
+        with db._connect() as conn:
+            conn.execute(
+                "UPDATE graph_topics SET state='ready' WHERE id=? AND is_mirror=1",
+                (mirror_id,)
+            )
+            conn.commit()
+
+        result = gd.claim_topic(db, mirror_id)
+
+        assert result is False, "claim_topic must refuse is_mirror=1 topic (return False)"
+
+        with db._connect() as conn:
+            row = conn.execute(
+                "SELECT state FROM graph_topics WHERE id=?", (mirror_id,)
+            ).fetchone()
+        assert row["state"] == "ready", "mirror state must remain 'ready' (not promoted to dispatching)"
+
+    def test_topic_transition_refuses_mirror(self, db):
+        """topic_transition raises ValueError for is_mirror=1 topics.
+
+        Covers all other execution transitions (dispatch, running, integrating, verify).
+        """
+        from dbops.db_topics import topic_transition
+
+        _project(db)
+        mirror_id, _ = _mirror_pending_with_task(db)
+
+        with pytest.raises(ValueError, match="mirror"):
+            topic_transition(db, mirror_id, "deps_ready")
+
+        with db._connect() as conn:
+            row = conn.execute(
+                "SELECT state FROM graph_topics WHERE id=?", (mirror_id,)
+            ).fetchone()
+        assert row["state"] == "pending", "mirror state must not change via topic_transition"
+
+    def test_mirror_reflection_writes_still_work(self, db):
+        """mirror_upsert_thread can still update a mirror node's state (reflection).
+
+        Regression: the claim guards must NOT block legitimate mirror reflection
+        writes from db_mirror — those use direct SQL, not topic_transition.
+        """
+        from dbops.db_mirror import mirror_upsert_thread
+
+        _project(db)
+        tid = _thread(db, project_id="P1", status="idle")  # idle → pending
+        mirror_id = mirror_upsert_thread(db, tid, "P1")
+
+        with db._connect() as conn:
+            row = conn.execute("SELECT state FROM graph_topics WHERE id=?", (mirror_id,)).fetchone()
+        assert row["state"] == "pending"
+
+        # Thread goes active → mirror should reflect 'running'
+        db.update_thread(tid, status="active")
+        mirror_upsert_thread(db, tid, "P1")
+
+        with db._connect() as conn:
+            row = conn.execute("SELECT state FROM graph_topics WHERE id=?", (mirror_id,)).fetchone()
+        assert row["state"] == "running", "mirror reflection must update state to 'running'"
+
+        # Thread done → mirror should reflect 'verified'
+        db.update_thread(tid, status="done")
+        mirror_upsert_thread(db, tid, "P1")
+
+        with db._connect() as conn:
+            row = conn.execute("SELECT state FROM graph_topics WHERE id=?", (mirror_id,)).fetchone()
+        assert row["state"] == "verified", "mirror reflection must update state to 'verified'"
