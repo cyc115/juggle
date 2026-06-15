@@ -25,6 +25,8 @@
         <string>1</string>
         <key>JUGGLE_WATCHDOG_SUPERVISED</key>
         <string>1</string>
+        <key>PATH</key>
+        <string>/Users/mikechen/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
     </dict>
 
     <key>KeepAlive</key>

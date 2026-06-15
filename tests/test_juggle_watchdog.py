@@ -1,5 +1,6 @@
 """Regression tests — stale-code detection and cold-start cascade dedup."""
 
+import plistlib
 import sys
 import time
 from pathlib import Path
@@ -297,3 +298,19 @@ def test_cascade_cleared_on_successful_recovery(tmp_path):
         and "COLD-START-FAILED" in it.get("message", "")
     ]
     assert len(remaining_cold_start) == 0
+
+
+# ---------------------------------------------------------------------------
+# Regression: launchd plist must expose uv on PATH (2026-06-14: crash-loop)
+# ---------------------------------------------------------------------------
+
+
+def test_plist_path_includes_uv_dir():
+    """plist EnvironmentVariables.PATH must include uv's install dir so launchd can find it."""
+    plist_path = Path(__file__).parent.parent / "deploy" / "com.juggle.watchdog.plist"
+    with plist_path.open("rb") as f:
+        data = plistlib.load(f)
+    env_path = data.get("EnvironmentVariables", {}).get("PATH", "")
+    assert "/Users/mikechen/.local/bin" in env_path, (
+        f"launchd PATH missing uv dir; got: {env_path!r}"
+    )
