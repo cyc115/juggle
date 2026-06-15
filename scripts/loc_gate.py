@@ -43,7 +43,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_tmux.py": 839,
     "src/schedules/autofix.py": 823,
     "src/juggle_cmd_projects.py": 735,  # lowered from 737 (Phase 1.2 llm consolidation)
-    "src/juggle_cmd_threads.py": 608,
+    "src/juggle_cmd_threads.py": 639,  # +31: close_junk_threads + chatter guard (2026-06-15)
     "src/juggle_context.py": 345,
     "src/schedules/reflect.py": 582,  # 545→582: per-section cost-cap enforcement (COST_CAP $1.00 / SECTION_CAP $0.35) merged from origin/main 80780d4 during rebase
     "src/juggle_cockpit_view.py": 462,  # 460→462 (2026-06-11: narrow-row wrap feature); prior: lowered 499→460 (Ph4: static renders → juggle_cockpit_static)
@@ -63,6 +63,8 @@ GRANDFATHERED: dict[str, int] = {
     "src/dbops/migrations_recent.py": 361,
     # 2026-06-14 direct-mode bugs: +retry logic +HEAD validation +graphify clean
     "src/juggle_cmd_integrate.py": 325,
+    # 2026-06-15 junk-thread guard: is_auto_topic_eligible + _ORCHESTRATOR_CHATTER_MARKERS
+    "src/dbops/schema.py": 316,
 }
 
 
