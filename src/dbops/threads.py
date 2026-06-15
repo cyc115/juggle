@@ -7,6 +7,7 @@ Must not own: message content, project assignment, agent pool, notifications.
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 
@@ -68,19 +69,35 @@ class ThreadsMixin:
             user_label = _next_excel_label(used_labels)
             now_iso = datetime.now(timezone.utc).isoformat()
             now_min = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-            conn.execute(
-                """
-                INSERT INTO threads
-                  (id, user_label, session_id, topic, status,
-                   key_decisions, open_questions,
-                   last_user_intent, agent_task_id, agent_result,
-                   show_in_list, summarized_msg_count, created_at, last_active, last_active_at)
-                VALUES (?, ?, ?, ?, 'active', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?)
-                """,
-                (new_id, user_label, session_id, topic, now_iso, now_iso, now_min),
+            # Retry up to 3 times in case a stale archived/closed row still
+            # physically holds the chosen label (pre-fix accumulation).
+            for _attempt in range(3):
+                try:
+                    conn.execute(
+                        """
+                        INSERT INTO threads
+                          (id, user_label, session_id, topic, status,
+                           key_decisions, open_questions,
+                           last_user_intent, agent_task_id, agent_result,
+                           show_in_list, summarized_msg_count, created_at, last_active, last_active_at)
+                        VALUES (?, ?, ?, ?, 'active', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?)
+                        """,
+                        (new_id, user_label, session_id, topic, now_iso, now_iso, now_min),
+                    )
+                    conn.commit()
+                    return new_id
+                except sqlite3.IntegrityError as exc:
+                    if "user_label" not in str(exc):
+                        raise
+                    # Stale archived/closed row holds this label; clear it and retry.
+                    conn.execute(
+                        "UPDATE threads SET user_label = NULL"
+                        " WHERE user_label = ? AND status IN ('archived', 'closed')",
+                        (user_label,),
+                    )
+            raise RuntimeError(
+                f"create_thread: could not assign label {user_label!r} after retries"
             )
-            conn.commit()
-            return new_id
 
     def get_thread(self, thread_id: str) -> dict | None:
         """Look up a thread by its UUID `id`. Returns None if not found."""
