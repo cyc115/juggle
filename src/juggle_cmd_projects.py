@@ -49,6 +49,11 @@ def assign_project_background(
                     db.update_thread(thread_uuid, project_id=project_id, assigned_by="auto",
                                      assigned_confidence=confidence)
                     log.info("assign_project_background: %s -> %s", thread_uuid[:8], project_id)
+                    try:
+                        from dbops.db_mirror import mirror_upsert_thread
+                        mirror_upsert_thread(db, thread_uuid, project_id)
+                    except Exception as me:
+                        log.warning("assign_project_background: mirror upsert failed: %s", me)
                 else:
                     db.update_thread(thread_uuid, assigned_confidence=confidence)
             except Exception as e:
@@ -62,10 +67,11 @@ def assign_project_background(
         "import sys; sys.path.insert(0, {src!r}); "
         "from juggle_db import JuggleDB, DB_PATH; "
         "from juggle_cmd_projects import infer_project_id, INBOX_PROJECT_ID; "
+        "from dbops.db_mirror import mirror_upsert_thread; "
         "db = JuggleDB(str(DB_PATH)); "
         "projects = db.get_active_projects(); "
         "pid, conf = infer_project_id({topic!r}, projects, db=db); "
-        "pid != INBOX_PROJECT_ID and db.update_thread({thread_uuid!r}, project_id=pid, assigned_by='auto', assigned_confidence=conf) "
+        "pid != INBOX_PROJECT_ID and (db.update_thread({thread_uuid!r}, project_id=pid, assigned_by='auto', assigned_confidence=conf) or True) and mirror_upsert_thread(db, {thread_uuid!r}, pid) "
         "or db.update_thread({thread_uuid!r}, assigned_confidence=conf)"
     ).format(src=str(SRC_DIR), topic=topic, thread_uuid=thread_uuid)
 
@@ -178,6 +184,14 @@ def _assign_thread_to_project(
         return
     old_project = t.get("project_id", INBOX_PROJECT_ID)
     db.update_thread(thread_uuid, project_id=project_id, assigned_by=assigned_by)
+    try:
+        from dbops.db_mirror import mirror_delete_thread, mirror_upsert_thread
+        if project_id != INBOX_PROJECT_ID:
+            mirror_upsert_thread(db, thread_uuid, project_id)
+        else:
+            mirror_delete_thread(db, thread_uuid)
+    except Exception as e:
+        log.warning("_assign_thread_to_project: mirror op failed: %s", e)
     if old_project != project_id and old_project != INBOX_PROJECT_ID:
         db.mark_project_dirty(old_project)
         threading.Thread(
@@ -185,6 +199,15 @@ def _assign_thread_to_project(
             args=(db, old_project),
             daemon=True,
         ).start()
+
+
+def _init_project_mirror(db, project_id: str) -> None:
+    """Activate mirror machinery for a newly created project (no-op if empty)."""
+    try:
+        from dbops.db_mirror import backfill_mirror_topics
+        backfill_mirror_topics(db)
+    except Exception as e:
+        log.warning("_init_project_mirror: backfill failed for %s: %s", project_id, e)
 
 
 def synth_project(db, project_id: str, force: bool = False) -> str | None:
@@ -635,6 +658,7 @@ def cmd_project_create(args):
             success_criteria=json.dumps(criteria), out_of_scope=args.out_of_scope or "",
         )
         print(f"Created project {pid}: {args.name}")
+        _init_project_mirror(db, pid)
         return
     _run_project_coach(db)
 
@@ -726,6 +750,7 @@ def _confirm_and_save(db, data: dict) -> None:
             out_of_scope=data.get("out_of_scope", ""),
         )
         print(f"\nCreated project {pid}: {data['name']}")
+        _init_project_mirror(db, pid)
     elif answer == "edit":
         print("Press Enter to keep current value.")
         data["name"] = input(f"Name [{data['name']}]: ").strip() or data["name"]

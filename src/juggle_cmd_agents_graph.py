@@ -96,6 +96,8 @@ def check_task_guard(db, thread_uuid, *, force: bool) -> str | None:
         topic = None  # pre-migration DB
     bound = topic or _task_for_thread(db, thread_uuid)  # legacy task fallback
     if bound:
+        if bound.get("is_mirror"):
+            return None  # mirror tracker topics are never a dispatch conflict
         if bound["state"] not in db_graph.TICK_OWNED_STATES:
             return None  # operator territory — DA B5 unchanged
         kind = "topic" if topic else "task"

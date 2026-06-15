@@ -30,6 +30,7 @@ class GraphTask:
     user_label: str | None = None
     tasks_done: "int | None" = None
     tasks_total: "int | None" = None
+    is_mirror: bool = False
 
 
 @dataclass

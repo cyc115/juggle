@@ -238,3 +238,21 @@ def apply_graph_migrations(conn: sqlite3.Connection) -> None:
                   len(rows))
     except sqlite3.OperationalError as e:
         _log.warning("Migration 37 (graph_topics) skipped: %s", e)
+
+    migrate_is_mirror(conn)
+
+
+def migrate_is_mirror(conn: sqlite3.Connection) -> None:
+    """Migration 42 (2026-06-14, T-mirror): add is_mirror to graph_topics.
+
+    Additive + idempotent: ALTER TABLE ADD COLUMN raises on a duplicate column
+    name which we catch and swallow. Existing rows get is_mirror=0 via DEFAULT.
+    """
+    try:
+        conn.execute(
+            "ALTER TABLE graph_topics ADD COLUMN is_mirror INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.commit()
+        _log.info("Migration 42: graph_topics.is_mirror column added")
+    except sqlite3.OperationalError as e:
+        _log.debug("Migration 42 (graph_topics.is_mirror) skipped: %s", e)

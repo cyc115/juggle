@@ -93,13 +93,16 @@ def _cell_text(
     if getattr(task, "tasks_total", None):
         suffix = f" {task.tasks_done}/{task.tasks_total}" + suffix
 
+    is_mirror = getattr(task, "is_mirror", False)
     prefix = f"{idx:>{idx_w}} {glyph} "
     budget = max(3, cell_w - len(prefix) - len(suffix))
-    name = task.id if len(task.id) <= budget else task.id[: max(1, budget - 1)] + "…"
+    raw_name = task.id if len(task.id) <= budget else task.id[: max(1, budget - 1)] + "…"
+    name = f"~{raw_name}" if is_mirror else raw_name
     label = f"{prefix}{name}{suffix}"
     style = Style(
-        color=_STATE_COLORS.get(task.state, "white"),
-        bold=(task.state in _RUNNING_STATES),
+        color="grey50" if is_mirror else _STATE_COLORS.get(task.state, "white"),
+        dim=is_mirror,
+        bold=(not is_mirror and task.state in _RUNNING_STATES),
         reverse=selected,
     )
     return Text(label, style=style, no_wrap=True, overflow="ellipsis")
@@ -123,9 +126,10 @@ def _graph_section(
     if not tasks:
         return [Text(f"{project_id}: no graph tasks yet", style=Style(dim=True))]
 
-    counts = counts_from_states([n.state for n in tasks])
+    real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
+    counts = counts_from_states([n.state for n in real_tasks])
     header = Text(
-        f"{project_id}  {_progress_bar(tasks)}  {format_progress(counts)}",
+        f"{project_id}  {_progress_bar(real_tasks)}  {format_progress(counts)}",
         style=Style(bold=True),
     )
 
@@ -194,9 +198,10 @@ def build_graph_panel(
         body = Text(f"{project_id}: no graph tasks yet", style=Style(dim=True))
         return Panel(body, title=title, border_style="grey50")
 
-    counts = counts_from_states([n.state for n in tasks])
+    real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
+    counts = counts_from_states([n.state for n in real_tasks])
     header = Text(
-        f"{project_id}  {_progress_bar(tasks)}  {format_progress(counts)}",
+        f"{project_id}  {_progress_bar(real_tasks)}  {format_progress(counts)}",
         style=Style(bold=True),
     )
 

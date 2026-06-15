@@ -184,6 +184,7 @@ def topic_ready_eligible(db, project_id) -> list[str]:
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT t.id FROM graph_topics t WHERE t.project_id=? "
+            "AND COALESCE(t.is_mirror, 0) = 0 "
             "AND t.state='pending' AND NOT EXISTS ("
             "  SELECT 1 FROM graph_edges e"
             "  JOIN graph_tasks n ON n.id = e.task_id"
@@ -313,7 +314,9 @@ def topic_counts(db, project_id) -> dict | None:
     try:
         with db._connect() as conn:
             rows = conn.execute(
-                "SELECT state FROM graph_topics WHERE project_id=?", (project_id,)
+                "SELECT state FROM graph_topics "
+                "WHERE project_id=? AND COALESCE(is_mirror, 0) = 0",
+                (project_id,)
             ).fetchall()
     except Exception:
         return None  # pre-migration DB

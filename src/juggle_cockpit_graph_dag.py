@@ -81,7 +81,8 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
         # G6: join the bound thread's user_label so the panel renders the human
         # code (e.g. 'XW') instead of falling back to the raw UUID prefix.
         topic_rows = conn.execute(
-            "SELECT gt.id, gt.title, gt.state, gt.thread_id, t.user_label "
+            "SELECT gt.id, gt.title, gt.state, gt.thread_id, t.user_label, "
+            "COALESCE(gt.is_mirror, 0) AS is_mirror "
             "FROM graph_topics gt LEFT JOIN threads t ON gt.thread_id = t.id "
             "WHERE gt.project_id=? ORDER BY gt.created_at, gt.id",
             (pid,),
@@ -153,6 +154,7 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
             user_label=r["user_label"],
             tasks_done=done or None,
             tasks_total=total or None,
+            is_mirror=bool(r["is_mirror"]),
         ))
 
     return GraphDag(project_id=pid, tasks=tasks, edges=edges, member_tasks=member_tasks)

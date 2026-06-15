@@ -138,4 +138,17 @@ def cmd_doctor(args) -> int:
     else:
         print("graph reconcile: all topics consistent")
 
+    # 4. Backfill mirror topics (graph-mirrors-threads, 2026-06-14).
+    # Idempotent: safe to run on every doctor invocation. G2-safe: doctor runs
+    # as the orchestrator, never from an agent/worktree context.
+    if not dry:
+        try:
+            from dbops.db_mirror import backfill_mirror_topics
+            n_mirrors = backfill_mirror_topics(db_instance)
+            print(f"mirror backfill: {n_mirrors} thread(s) processed")
+        except Exception as e:
+            print(f"mirror backfill: skipped ({e})")
+    else:
+        print("mirror backfill: (dry-run — skipped)")
+
     return 0

@@ -535,6 +535,12 @@ def cmd_archive_thread(args):
         sys.exit(1)
     label = thread.get("user_label") or thread.get("label") or args.thread_id
     db.archive_thread(thread_uuid)
+    try:
+        from dbops.db_mirror import mirror_delete_thread
+        mirror_delete_thread(db, thread_uuid)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("cmd_archive_thread: mirror delete failed: %s", e)
 
     # Decommission agents still assigned to this thread
     sys.path.insert(0, str(SRC_DIR))
