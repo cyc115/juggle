@@ -249,14 +249,21 @@ def _merged_repo() -> str:
 
 def _bind_running_topic(db, topic_id, session="sessA", *, merged=False):
     tid = db.create_thread("t", session_id=session)
-    # G1 (2026-06-13): a topic verifies only when merged. Use a real merged repo
-    # when the test expects verification; a fake path otherwise.
-    branch, repo = ("main", _merged_repo()) if merged else ("cyc_x", "/tmp/repo")
+    # T-verified-merged-sha: a topic verifies only via a recorded merged_sha that
+    # is an ancestor of main. Use a real repo + record main's HEAD when the test
+    # expects verification; a fake path with no merged_sha otherwise.
+    branch, repo = ("cyc_x", _merged_repo()) if merged else ("cyc_x", "/tmp/repo")
     db.update_thread(tid, agent_task_id="task-1", status="running",
                      worktree_path="/tmp/wt", worktree_branch=branch,
                      main_repo_path=repo)
     db._set_session_key_external("session_id", session)
     tp.set_topic_thread(db, topic_id, tid)
+    if merged:
+        import subprocess
+        sha = subprocess.run(["git", "-C", repo, "rev-parse", "main"],
+                             capture_output=True, text=True)
+        if sha.returncode == 0 and sha.stdout.strip():
+            tp.set_topic_merged_sha(db, topic_id, sha.stdout.strip())
     for ev in ("deps_ready", "claim", "dispatch"):
         tp.topic_transition(db, topic_id, ev)
     return tid

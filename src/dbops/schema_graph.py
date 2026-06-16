@@ -45,5 +45,6 @@ CREATE TABLE IF NOT EXISTS graph_topics (
   handoff     TEXT,
   diffstat    TEXT,
   verified_at TEXT,
+  merged_sha  TEXT,
   created_at  TEXT NOT NULL, updated_at TEXT NOT NULL);
 """

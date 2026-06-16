@@ -115,9 +115,20 @@ def _complete_topic(db, topic_id, handoff, *, fail_task=None, merged=True):
     assert topic["thread_id"], f"topic {topic_id} has no bound thread"
     if merged:
         thread = db.get_thread(topic["thread_id"]) or {}
-        if not (thread.get("main_repo_path") or "").strip():
-            db.update_thread(topic["thread_id"], worktree_branch="main",
-                             main_repo_path=_merged_repo())
+        repo = (thread.get("main_repo_path") or "").strip()
+        if not repo:
+            repo = _merged_repo()
+            db.update_thread(topic["thread_id"], worktree_branch="cyc_x",
+                             main_repo_path=repo)
+        # T-verified-merged-sha single gate: record main's HEAD (trivially an
+        # ancestor of main) as the topic's merged_sha so it may verify. Fail-soft
+        # on a non-repo path (deliberately-failed-integrate tests use a dummy).
+        sha = subprocess.run(
+            ["git", "-C", repo, "rev-parse", "main"],
+            capture_output=True, text=True,
+        )
+        if sha.returncode == 0 and sha.stdout.strip():
+            tp.set_topic_merged_sha(db, topic_id, sha.stdout.strip())
     cmd_complete_agent(argparse.Namespace(
         thread_id=topic["thread_id"],
         result_summary=f"{topic_id} complete",

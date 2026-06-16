@@ -578,14 +578,20 @@ def _merged_repo() -> str:
 
 
 def _bind_merged_topic(db, tid):
-    """G1 (2026-06-13): bind tid to a thread on a merged repo so it may verify."""
+    """T-verified-merged-sha: bind tid to a thread on a repo and record main's
+    HEAD as merged_sha so it may verify under the single gate."""
+    import subprocess
     existing = tp.get_topic(db, tid)
     thread_id = existing["thread_id"] if existing else None
     if not thread_id:
         thread_id = db.create_thread("merge", session_id="s")
         tp.set_topic_thread(db, tid, thread_id)
-    db.update_thread(thread_id, worktree_branch="main",
-                     main_repo_path=_merged_repo())
+    repo = _merged_repo()
+    db.update_thread(thread_id, worktree_branch="cyc_x", main_repo_path=repo)
+    sha = subprocess.run(["git", "-C", repo, "rev-parse", "main"],
+                         capture_output=True, text=True)
+    if sha.returncode == 0 and sha.stdout.strip():
+        tp.set_topic_merged_sha(db, tid, sha.stdout.strip())
 
 
 def _verify_topic(db, tid, handoff=None):

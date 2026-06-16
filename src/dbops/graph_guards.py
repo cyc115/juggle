@@ -44,49 +44,77 @@ def _git_ok(args: list[str], cwd: str) -> bool:
 
 
 def branch_merged_to_main(repo: str, branch: str, *, main: str = "main") -> bool:
-    """True iff ``branch`` is an ancestor of ``main`` in ``repo``.
+    """True iff ``branch`` is a LIVE ref that is an ancestor of ``main``.
 
-    A missing branch (already merged + deleted by integrate, which clears
-    worktree_branch) is treated as merged: the branch ref is gone precisely
-    because integrate landed it. A repo we cannot inspect is NOT merged
-    (fail-closed — better to keep a topic pre-verified than mark it done).
+    Strictly fail-closed (T-verified-merged-sha, 2026-06-16): the old
+    "no branch → merged" and "branch ref gone → merged" fail-open paths caused
+    false-verified 3× and are REMOVED. A missing/empty branch, a deleted branch
+    ref, or an uninspectable repo all return False. The authoritative
+    verified-gate is now ``sha_is_ancestor`` over a recorded ``merged_sha``;
+    this helper is retained only as a pure git-ancestry predicate.
     """
     if not repo or not Path(repo).exists():
         return False
     if not branch:
-        # Fail-closed: no recorded branch means nothing proven merged to main.
-        # A topic may only verify when its branch is a proven ancestor of main.
         return False
-    # Branch ref gone → integrate deleted it after a successful merge.
     if not _git_ok(["rev-parse", "--verify", branch], repo):
-        return _git_ok(["rev-parse", "--verify", main], repo)
+        return False  # branch ref gone — NOT proof of merge (fail-closed)
     return _git_ok(["merge-base", "--is-ancestor", branch, main], repo)
 
 
-def topic_is_merged(db, topic_id: str, *, main: str = "main") -> bool:
-    """G1: is the topic's work merged into ``main``?
+def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
+    """True iff commit ``sha`` exists in ``repo`` and is an ancestor of ``main``.
 
-    Resolves the topic's bound thread → (worktree_branch, main_repo_path) and
-    asks git. Topics with no bound thread/repo cannot be proven merged and are
-    NOT considered merged (fail-closed).
+    The single source of truth for 'verified ⟺ merged'. Fail-closed on a
+    missing repo / empty sha / git error.
+    """
+    if not repo or not sha or not Path(repo).exists():
+        return False
+    return _git_ok(["merge-base", "--is-ancestor", sha, main], repo)
+
+
+def _resolve_topic_repo(db, topic: dict) -> str:
+    """Resolve the repo that holds ``main`` for this topic's merged_sha check.
+
+    Primary: the bound thread's main_repo_path. Fallback: juggle's own repo —
+    integrate clears main_repo_path on success, but a recorded merged_sha for a
+    self-repo topic must still be checkable afterward (and on orphan recovery).
+    """
+    thread_id = topic.get("thread_id")
+    if thread_id:
+        try:
+            thread = db.get_thread(thread_id) or {}
+        except Exception:
+            thread = {}
+        repo = (thread.get("main_repo_path") or "").strip()
+        if repo:
+            return repo
+    try:
+        from juggle_cli_common import SRC_DIR
+        return str(Path(SRC_DIR).parent.resolve())
+    except Exception:
+        return ""
+
+
+def topic_is_merged(db, topic_id: str, *, main: str = "main") -> bool:
+    """G1 single gate: a topic is merged IFF it has a recorded ``merged_sha``
+    that is an ancestor of ``main``. Nothing else.
+
+    No branch-ref heuristics, no fail-open: a NULL merged_sha is never merged,
+    closing the empty-branch / branch-gone / orphan-bypass holes at the source.
     """
     from dbops import db_topics
 
     topic = db_topics.get_topic(db, topic_id)
     if topic is None:
         return False
-    thread_id = topic.get("thread_id")
-    if not thread_id:
+    sha = (topic.get("merged_sha") or "").strip()
+    if not sha:
         return False
-    try:
-        thread = db.get_thread(thread_id) or {}
-    except Exception:
-        thread = {}
-    repo = (thread.get("main_repo_path") or "").strip()
-    branch = (thread.get("worktree_branch") or "").strip()
+    repo = _resolve_topic_repo(db, topic)
     if not repo:
         return False
-    return branch_merged_to_main(repo, branch, main=main)
+    return sha_is_ancestor(repo, sha, main=main)
 
 
 # ---------------------------------------------------------------------------

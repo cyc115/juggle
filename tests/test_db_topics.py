@@ -38,15 +38,16 @@ def _task(db, nid, topic_id, deps=()):
 
 
 def _bind_merged(db, topic_id, tmp_path):
-    """G1 (2026-06-13): topic→verified requires a branch merged to main. Bind the
-    topic to a thread on a merged repo so the verify path stays reachable."""
+    """T-verified-merged-sha: topic→verified requires a recorded merged_sha that
+    is an ancestor of main. Bind the topic to a thread on a repo and record
+    main's HEAD so the verify path stays reachable under the single gate."""
     import subprocess
     repo = tmp_path / f"repo_{topic_id}"
     repo.mkdir()
 
     def _git(*a):
-        subprocess.run(["git", "-C", str(repo), *a], check=True,
-                       capture_output=True, text=True)
+        return subprocess.run(["git", "-C", str(repo), *a], check=True,
+                              capture_output=True, text=True)
 
     _git("init", "-q", "-b", "main")
     _git("config", "user.email", "t@t.t")
@@ -54,9 +55,11 @@ def _bind_merged(db, topic_id, tmp_path):
     (repo / "f.txt").write_text("base\n")
     _git("add", ".")
     _git("commit", "-qm", "base")
+    main_sha = _git("rev-parse", "main").stdout.strip()
     thread_id = db.create_thread(topic="w", session_id="s")
-    db.update_thread(thread_id, worktree_branch="main", main_repo_path=str(repo))
+    db.update_thread(thread_id, worktree_branch="cyc_x", main_repo_path=str(repo))
     t.set_topic_thread(db, topic_id, thread_id)
+    t.set_topic_merged_sha(db, topic_id, main_sha)
 
 
 def test_topic_uses_task_state_machine(db):

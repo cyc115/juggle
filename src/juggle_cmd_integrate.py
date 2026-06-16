@@ -22,6 +22,26 @@ def _graph_task_for_thread(db, thread_uuid: str) -> dict | None:
         return None
 
 
+def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
+    """Record the merged commit (``ref`` tip, now on main) on the topic bound to
+    this thread (T-verified-merged-sha). The single source of truth for the
+    verified gate. Fail-soft: best-effort provenance, never blocks integrate.
+    """
+    try:
+        from dbops import db_topics
+        topic = db_topics.get_topic_by_thread(db, thread_uuid)
+        if not topic:
+            return
+        sha = subprocess.run(
+            ["git", "-C", repo, "rev-parse", ref],
+            capture_output=True, text=True,
+        )
+        if sha.returncode == 0 and sha.stdout.strip():
+            db_topics.set_topic_merged_sha(db, topic["id"], sha.stdout.strip())
+    except Exception:
+        pass
+
+
 # ── Self-repo daemon restart (juggle_integrate_selfrepo; name kept here so
 # tests patching juggle_cmd_integrate._restart_juggle_daemons keep working) ──
 
@@ -124,6 +144,9 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         )
 
         if ahead_count == 0:
+            # Already merged: the branch tip is an ancestor of main. Record it
+            # as merged_sha BEFORE deleting the branch ref.
+            _record_merged_sha(db, thread_uuid, main_repo_path, worktree_branch)
             subprocess.run(
                 ["git", "-C", main_repo_path, "worktree", "remove", "--force", worktree_path],
                 capture_output=True, text=True,
@@ -252,6 +275,11 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         )
         if result.returncode != 0:
             return _fail(f"FF-merge of {worktree_branch} failed: {result.stderr.strip()}")
+
+        # Record the merged commit (local main tip == branch tip) as the topic's
+        # merged_sha — the single source of truth for the verified gate — BEFORE
+        # worktree fields are cleared below.
+        _record_merged_sha(db, thread_uuid, main_repo_path, local_main)
 
         if push_mode == "direct":
             push_result = subprocess.run(

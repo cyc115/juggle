@@ -104,6 +104,13 @@ def test_g1_verify_allowed_when_branch_merged(db, tmp_path):
     _git(repo, "checkout", "-q", "main")
     _git(repo, "merge", "-q", "--no-ff", "-m", "merge", "cyc_XU")
     _bind_topic_to_branch(db, pid, "T-feat", repo, "cyc_XU")
+    # T-verified-merged-sha single gate: record the merged branch tip (now an
+    # ancestor of main) as the topic's merged_sha.
+    sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "cyc_XU"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    t.set_topic_merged_sha(db, "T-feat", sha)
 
     assert t.topic_transition(db, "T-feat", "integrate_ok") == "verified"
 
