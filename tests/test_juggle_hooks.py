@@ -321,8 +321,13 @@ def test_post_tool_use_forbidden_tool_warns(active_db, monkeypatch):
     import sys as _sys
     import json
     import juggle_hooks
+    import juggle_hooks_config
 
     importlib.reload(juggle_hooks)
+    # Point is_active() at the isolated active DB (test isolation: must never
+    # fall through to the production DB, which the conftest guard now blocks).
+    monkeypatch.setattr(juggle_hooks_config, "DB_PATH", active_db.db_path)
+    monkeypatch.setattr(juggle_hooks, "DB_PATH", active_db.db_path)
 
     data = {"tool_name": "Read", "tool_input": {}, "tool_response": ""}
 

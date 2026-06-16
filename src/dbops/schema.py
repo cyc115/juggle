@@ -8,6 +8,7 @@ Must not own: any JuggleDB method, any connection logic, any business logic.
 from __future__ import annotations
 
 import logging
+import os
 import string
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +21,22 @@ MAX_THREADS: int = _get_settings()["max_threads"]
 MAX_BACKGROUND_AGENTS: int = _get_settings()["max_agents"]
 
 DEFAULT_DATA_DIR = Path(_get_settings()["paths"]["data_dir"])
-DB_PATH = DEFAULT_DATA_DIR / "juggle.db"
+
+# DB path override: `JUGGLE_DB_PATH` lets tests (and any out-of-tree run) point
+# at an isolated DB so they can NEVER pollute the production DB. Default is
+# unchanged when the env var is unset (2026-06-16 isolation incident fix).
+JUGGLE_DB_PATH_ENV = "JUGGLE_DB_PATH"
+
+
+def _resolve_db_path() -> Path:
+    """Resolve the DB path, honoring `JUGGLE_DB_PATH`; default unchanged."""
+    env = os.environ.get(JUGGLE_DB_PATH_ENV)
+    if env:
+        return Path(env).expanduser()
+    return DEFAULT_DATA_DIR / "juggle.db"
+
+
+DB_PATH = _resolve_db_path()
 
 INBOX_PROJECT_ID = "INBOX"
 
