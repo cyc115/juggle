@@ -54,10 +54,9 @@ def branch_merged_to_main(repo: str, branch: str, *, main: str = "main") -> bool
     if not repo or not Path(repo).exists():
         return False
     if not branch:
-        # No branch bound. If main exists the safest read is "merged": either
-        # integrate already landed + cleaned the branch, or the topic carried no
-        # branch work. Either way there is nothing unmerged to gate.
-        return _git_ok(["rev-parse", "--verify", main], repo)
+        # Fail-closed: no recorded branch means nothing proven merged to main.
+        # A topic may only verify when its branch is a proven ancestor of main.
+        return False
     # Branch ref gone → integrate deleted it after a successful merge.
     if not _git_ok(["rev-parse", "--verify", branch], repo):
         return _git_ok(["rev-parse", "--verify", main], repo)
