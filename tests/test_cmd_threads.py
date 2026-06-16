@@ -243,12 +243,29 @@ def test_start_watchdog_pkill_called(monkeypatch, tmp_path):
     monkeypatch.setattr(_sp, "run", fake_run)
     monkeypatch.setattr(_os, "kill", lambda *a: None)
 
+    # Process-scope isolation (T-watchdog-test-proc-scope, 2026-06-16): NEVER let
+    # this test launch a REAL watchdog. The unmocked Popen used to leak a live
+    # worktree daemon that then killed the host canonical watchdog during the
+    # harness-gate full-suite run. Mock Popen so no host process is ever spawned.
+    popen_calls = []
+
+    class _FakeProc:
+        pid = 999999
+
+    def fake_popen(cmd, **kwargs):
+        popen_calls.append(cmd)
+        return _FakeProc()
+
+    monkeypatch.setattr(_sp, "Popen", fake_popen)
+
     # Mock pidfile path
     from juggle_cmd_threads import _start_watchdog, _watchdog_pid_file
     monkeypatch.setattr("juggle_cmd_threads._watchdog_pid_file", lambda: tmp_path / "watchdog.pid")
 
     _start_watchdog()
     assert len(pkill_calls) >= 1, f"Expected at least 1 pkill call, got {len(pkill_calls)}"
+    # The launch path must have gone through the MOCK — no real watchdog spawned.
+    assert popen_calls, "expected the watchdog launch to be invoked (via mocked Popen)"
 
 
 def test_start_watchdog_idempotent(monkeypatch, tmp_path):
@@ -261,7 +278,11 @@ def test_start_watchdog_idempotent(monkeypatch, tmp_path):
     def fake_run(cmd, **kwargs):
         return _sp.CompletedProcess(cmd, 0)
 
+    class _FakeProc:
+        pid = 999998
+
     monkeypatch.setattr(_sp, "run", fake_run)
+    monkeypatch.setattr(_sp, "Popen", lambda *a, **k: _FakeProc())  # no real launch
     monkeypatch.setattr(_os, "kill", lambda *a: None)
 
     from juggle_cmd_threads import _start_watchdog
