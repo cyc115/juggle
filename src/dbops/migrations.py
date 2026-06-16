@@ -79,8 +79,10 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError as e:
             _log.warning("Migration 3 skipped: %s", e)
 
-    # Migration 4 (new DBs): add label if missing
-    if "label" not in cols and "id" in cols:
+    # Migration 4 (new DBs): add label if missing.
+    # Guard: once user_label exists (Migration 14+) the label column is dead —
+    # skip to prevent the M4→M16 oscillation that fires _next_excel_label.
+    if "label" not in cols and "id" in cols and "user_label" not in cols:
         try:
             conn.execute("ALTER TABLE threads ADD COLUMN label TEXT")
         except sqlite3.OperationalError as e:

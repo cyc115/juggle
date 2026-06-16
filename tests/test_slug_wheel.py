@@ -184,3 +184,90 @@ def test_counter_monotonic_across_deletes(db):
     c = db.create_thread("c", session_id="s")  # seq=2 -> 'AC', seq -> 3
     assert _get_seq(db) == 3
     assert _label(db, c) == "AC"
+
+
+# ---------------------------------------------------------------------------
+# 7. Allocation succeeds with >676 closed threads holding labels.
+#    (Regression pin: _next_excel_label raised once 702 persisted labels
+#     existed; _next_wheel_slug must only skip LIVE holders.)
+# ---------------------------------------------------------------------------
+def test_allocation_succeeds_with_many_closed_threads(db):
+    """Wheel allocation works even when >676 closed threads hold labels.
+
+    2026-06-16: add-task / init_db path triggered _next_excel_label which
+    raised 'All 702 user labels in use' once 702 persisted labels existed.
+    _next_wheel_slug skips ONLY live ('active'/'running') slugs, so it
+    tolerates arbitrarily many closed-thread labels.
+    """
+    # Seed 700 closed threads — fills most two-letter wheel positions.
+    for i in range(700):
+        tid = db.create_thread(f"seed-{i}", session_id="s")
+        db.set_thread_status(tid, "closed")
+
+    # Allocation must succeed: the wheel finds a free live slot.
+    new_tid = db.create_thread("live-new", session_id="s")
+    label = db.get_thread(new_tid)["user_label"]
+    assert label is not None
+    assert len(label) == 2 and label.isalpha()
+
+    # A second new thread must also succeed.
+    new_tid2 = db.create_thread("live-new2", session_id="s")
+    label2 = db.get_thread(new_tid2)["user_label"]
+    assert label2 is not None
+    assert label2 != label  # distinct slugs for distinct live threads
+
+
+def test_init_db_idempotent_with_all_702_labels_used(tmp_path, monkeypatch):
+    """A second init_db must not raise when all 702 Excel labels are in use.
+
+    2026-06-16: Migration 4 re-added the dead 'label' column after Migration 16
+    dropped it.  On the next init_db Migration 16 re-ran _next_excel_label
+    against 702 persisted labels (A-Z + AA-ZZ), raising 'All 702 user labels
+    in use' on a thread with NULL user_label.
+
+    Fixed by guarding Migration 4 so it skips when user_label already exists.
+    """
+    import string
+    import uuid
+    from datetime import datetime, timezone
+
+    import dbops.threads as _t
+    monkeypatch.setattr(_t, "MAX_THREADS", 100000)
+
+    d = JuggleDB(str(tmp_path / "test.db"))
+    d.init_db()
+
+    # Build the complete 702-slot Excel label set: A-Z + AA-ZZ.
+    letters = string.ascii_uppercase
+    excel_labels = list(letters)
+    for a in letters:
+        for b in letters:
+            excel_labels.append(a + b)
+
+    now = datetime.now(timezone.utc).isoformat()
+    with d._connect() as conn:
+        for lbl in excel_labels:
+            conn.execute(
+                "INSERT INTO threads(id, user_label, session_id, topic, status, "
+                "created_at, last_active, last_active_at) VALUES (?,?,?,?,?,?,?,?)",
+                (str(uuid.uuid4()), lbl, "s", "t", "closed", now, now, now),
+            )
+        # One thread with NULL user_label — the victim that triggers the backfill.
+        conn.execute(
+            "INSERT INTO threads(id, user_label, session_id, topic, status, "
+            "created_at, last_active, last_active_at) VALUES (?,NULL,?,?,?,?,?,?)",
+            (str(uuid.uuid4()), "s", "extra", "closed", now, now, now),
+        )
+        conn.commit()
+
+    # Second init_db (what juggle graph add-task calls): M4 adds 'label' back,
+    # M16 sees it and tries to backfill the NULL row — must not raise.
+    d.init_db()  # was: ValueError('All 702 user labels in use')
+
+    # 'label' column must be gone.
+    with d._connect() as conn:
+        cols = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+        }
+    assert "label" not in cols

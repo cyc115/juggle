@@ -7,7 +7,21 @@ Safe to run multiple times (idempotent). Run via:
 import json
 from datetime import datetime, timezone
 
-from juggle_db import JuggleDB, _next_excel_label
+from juggle_db import JuggleDB
+
+
+def _next_wheel_slug_for_backfill(used: set) -> str:
+    """Return the first unused two-letter slug (AA..ZZ, 676 slots).
+
+    Replaces _next_excel_label in the backfill path so it tolerates >702
+    persisted labels without raising.  Closed/archived threads that already
+    hold a two-letter slug are NOT re-assigned (used is the skip-set).
+    """
+    for i in range(676):
+        s = chr(ord("A") + i // 26) + chr(ord("A") + i % 26)
+        if s not in used:
+            return s
+    raise ValueError("All 676 wheel slugs exhausted — too many active threads")
 
 
 def migrate(db: JuggleDB) -> dict:
@@ -119,7 +133,7 @@ def migrate(db: JuggleDB) -> dict:
         used = {r["user_label"] for r in rows if r["user_label"]}
         for r in rows:
             if not r["user_label"]:
-                lbl = _next_excel_label(used)
+                lbl = _next_wheel_slug_for_backfill(used)
                 conn.execute(
                     "UPDATE threads SET user_label = ? WHERE id = ?",
                     (lbl, r["id"]),
