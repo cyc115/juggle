@@ -29,7 +29,7 @@ def test_tier1_active_thread_renders_full_block(db):
     )
     db.set_current_thread(tid)
     out = _build(db)
-    assert "[A] 🟢 active | Cockpit refactor" in out
+    assert "[AA] 🟢 active | Cockpit refactor" in out
     assert "Key decisions:" in out
     assert "Chose Rich over Textual" in out
 
@@ -38,17 +38,17 @@ def test_tier1_running_thread_renders_full(db):
     tid = db.create_thread("Worker", session_id="sessA")
     db.set_thread_status(tid, "running")
     out = _build(db)
-    assert "[A] 🏃 running | Worker" in out
+    assert "[AA] 🏃 running | Worker" in out
 
 
 def test_tier2_closed_thread_within_ttl_one_line(db):
     tid = db.create_thread("tax-submit", session_id="sessA")
     db.set_thread_status(tid, "closed")
     out = _build(db)
-    assert "[A] ✅ closed  | tax-submit" in out
+    assert "[AA] ✅ closed  | tax-submit" in out
     # Tier 2 should NOT include Summary/Key decisions/Q&A block for closed threads
     lines = out.splitlines()
-    idx = next(i for i, ln in enumerate(lines) if "[A] ✅ closed" in ln)
+    idx = next(i for i, ln in enumerate(lines) if "[AA] ✅ closed" in ln)
     # Next non-empty line must not start with "Summary:"
     for nxt in lines[idx + 1 : idx + 3]:
         assert not nxt.lstrip().startswith("Summary:")
@@ -58,7 +58,7 @@ def test_tier3_archived_thread_omitted(db):
     tid = db.create_thread("old", session_id="sessA")
     db.archive_thread(tid)
     out = _build(db)
-    assert "archived" not in out.lower() or "[A]" not in out  # not injected
+    assert "archived" not in out.lower() or "[AA]" not in out  # not injected
 
 
 def test_action_items_rendered_at_top(db):
@@ -73,7 +73,7 @@ def test_action_items_rendered_at_top(db):
     assert "⚡" in out
     assert "HIGH" in out
     assert "push to prod pending" in out
-    assert "(thread: [A])" in out
+    assert "(thread: [AA])" in out
 
 
 def test_notifications_rendered_for_current_session(db):

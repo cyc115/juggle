@@ -553,14 +553,9 @@ def cmd_project_assign(args):
         sys.exit(1)
 
     for tid_input in thread_ids:
-        t = db.get_thread_by_user_label(tid_input)
-        if not t:
-            with db._connect() as conn:
-                row = conn.execute(
-                    "SELECT * FROM threads WHERE user_label=? OR id=?",
-                    (tid_input.upper(), tid_input),
-                ).fetchone()
-            t = dict(row) if row else None
+        # Slug resolution goes through the single chokepoint (newest-wins);
+        # fall back to a UUID match only.
+        t = db.get_thread_by_user_label(tid_input) or db.get_thread(tid_input)
         if not t:
             print(f"Thread not found: {tid_input}")
             continue

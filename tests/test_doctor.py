@@ -192,10 +192,10 @@ def test_doctor_dry_run_skips_init_db(tmp_path, monkeypatch, capsys):
     )
 
 
-def test_doctor_archived_label_backfill(tmp_path, monkeypatch):
-    """REGRESSION PIN (2026-06-15): archived/closed threads retain user_label
-    after the thread-label-recycling merge (only future archive/close NULLs them).
-    Doctor must backfill: NULL user_label for archived/closed threads. Idempotent."""
+def test_doctor_preserves_archived_labels(tmp_path, monkeypatch):
+    """T-slug-wheel: slugs are PERMANENT historical handles. Doctor must NOT
+    null user_label on archived/closed threads (the old recycling-by-erasure
+    backfill was removed). Idempotent: labels survive repeated doctor runs."""
     import juggle_cmd_doctor as doc
     import juggle_db
 
@@ -205,7 +205,7 @@ def test_doctor_archived_label_backfill(tmp_path, monkeypatch):
     conn = sqlite3.connect(str(db_path))
     conn.execute(
         "INSERT INTO threads (id, status, user_label) VALUES "
-        "('t1','archived','A'), ('t2','closed','B'), ('t3','active','C')"
+        "('t1','archived','AA'), ('t2','closed','AB'), ('t3','active','AC')"
     )
     conn.commit()
     conn.close()
@@ -222,15 +222,15 @@ def test_doctor_archived_label_backfill(tmp_path, monkeypatch):
     rows = {r[0]: r[1] for r in conn.execute("SELECT id, user_label FROM threads")}
     conn.close()
 
-    assert rows["t1"] is None, "archived thread label must be NULLed by backfill"
-    assert rows["t2"] is None, "closed thread label must be NULLed by backfill"
-    assert rows["t3"] == "C", "active thread label must be untouched"
+    assert rows["t1"] == "AA", "archived thread label must persist"
+    assert rows["t2"] == "AB", "closed thread label must persist"
+    assert rows["t3"] == "AC", "active thread label must be untouched"
 
-    # Idempotency: run again, same result
+    # Idempotency: run again, labels still intact
     assert doc.cmd_doctor(_Args()) == 0
     conn = sqlite3.connect(str(db_path))
     rows2 = {r[0]: r[1] for r in conn.execute("SELECT id, user_label FROM threads")}
     conn.close()
-    assert rows2["t1"] is None
-    assert rows2["t2"] is None
-    assert rows2["t3"] == "C"
+    assert rows2["t1"] == "AA"
+    assert rows2["t2"] == "AB"
+    assert rows2["t3"] == "AC"

@@ -96,7 +96,7 @@ class TestRestoreCheckpoint:
         result = juggle_hooks._restore_checkpoint(db)
 
         assert "Resuming after compaction" in result
-        assert "[A]" in result
+        assert "[AA]" in result
 
     def test_ignores_stale_checkpoint(self, tmp_db):
         db, cp_path = tmp_db

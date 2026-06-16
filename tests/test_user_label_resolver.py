@@ -24,26 +24,24 @@ def test_next_excel_label_two_letter_sequence():
     assert _next_excel_label(used) == "AC"
 
 
-def test_labels_are_recycled_after_archive(db):
-    """Archived thread labels ARE recycled — B is reused when available.
-
-    2026-06-15: changed from 'labels are permanent' to 'labels recycle' to
-    prevent the 702-label hard cap from blocking thread creation in long-lived
-    projects.
+def test_labels_persist_and_wheel_advances_after_archive(db):
+    """T-slug-wheel: archiving does NOT free a slug for immediate reuse. The
+    archived row keeps its slug; the wheel advances to the next free slot.
     """
     ids = [db.create_thread(f"t{i}", session_id="s") for i in range(3)]
     labels_initial = [db.get_thread(i)["user_label"] for i in ids]
-    assert labels_initial == ["A", "B", "C"]
-    # Archive B → its label is freed
+    assert labels_initial == ["AA", "AB", "AC"]
+    # Archive AB → its slug PERSISTS as a historical handle.
     db.archive_thread(ids[1])
-    # Next create should recycle B (first available)
+    assert db.get_thread(ids[1])["user_label"] == "AB"
+    # Next create advances the wheel (no recycle), landing on AD.
     new_id = db.create_thread("new", session_id="s")
-    assert db.get_thread(new_id)["user_label"] == "B"
+    assert db.get_thread(new_id)["user_label"] == "AD"
 
 
 def test_resolve_thread_accepts_label(db):
     tid = db.create_thread("t", session_id="s")
-    resolved = _resolve_thread(db, "A")
+    resolved = _resolve_thread(db, "AA")
     assert resolved == tid
 
 
@@ -56,7 +54,7 @@ def test_resolve_thread_accepts_6char_hex_prefix(db):
 
 def test_resolve_thread_case_insensitive_label(db):
     tid = db.create_thread("t", session_id="s")
-    assert _resolve_thread(db, "a") == tid
+    assert _resolve_thread(db, "aa") == tid
 
 
 def test_resolve_thread_accepts_full_uuid(db):

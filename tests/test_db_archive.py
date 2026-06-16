@@ -167,20 +167,21 @@ def test_unarchive_thread_returns_user_label(db):
 def test_unarchive_thread_full_cycle(db):
     """create → archive → unarchive produces expected state.
 
-    2026-06-15: archive now CLEARS user_label for recycling; unarchive assigns
-    a fresh label from the available pool.
+    T-slug-wheel: archive KEEPS the slug as a permanent handle; unarchive
+    reuses it when no live thread holds it.
     """
     tid = db.create_thread("Topic A", session_id="s1")
-    assert db.get_thread(tid)["user_label"] == "A"
+    slug = db.get_thread(tid)["user_label"]
+    assert slug == "AA"
 
     db.archive_thread(tid)
     t = db.get_thread(tid)
     assert t["status"] == "archived"
-    assert t["user_label"] is None  # cleared for recycling
+    assert t["user_label"] == slug  # slug persists on archive
     assert t["show_in_list"] == 0
 
     db.unarchive_thread(tid)
     t = db.get_thread(tid)
     assert t["status"] == "active"
     assert t["show_in_list"] == 1
-    assert t["user_label"] is not None  # fresh label assigned
+    assert t["user_label"] == slug  # original slug reused (no live conflict)

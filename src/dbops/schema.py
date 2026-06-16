@@ -253,6 +253,29 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# ---------------------------------------------------------------------------
+# Topic Slug Wheel (T-slug-wheel): reusable rotating two-letter handles.
+# ---------------------------------------------------------------------------
+WHEEL_SIZE = 676  # 26 * 26 two-letter slots (AA..ZZ)
+
+
+def _slug_from_wheel(seq: int) -> str:
+    """Map a wheel position to its two-letter slug.
+
+    i=0 -> 'AA', i=1 -> 'AB', ..., i=675 -> 'ZZ', then wraps to 'AA'.
+    """
+    i = seq % WHEEL_SIZE
+    return chr(ord("A") + i // 26) + chr(ord("A") + i % 26)
+
+
+def _wheel_index(slug: str | None) -> int | None:
+    """Inverse of _slug_from_wheel for a valid two-letter A-Z slug, else None."""
+    if not slug or len(slug) != 2 or not slug.isalpha():
+        return None
+    a, b = slug.upper()
+    return (ord(a) - ord("A")) * 26 + (ord(b) - ord("A"))
+
+
 def _next_excel_label(used: set) -> str:
     """Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ."""
     letters = string.ascii_uppercase

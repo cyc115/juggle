@@ -145,7 +145,7 @@ def test_topic_header_present(active_db):
 def test_current_thread_rendered_in_active(active_db):
     """Current thread appears in the Active Threads block."""
     ctx = ContextBuilder(active_db).build()
-    assert "[A] 🟢 active | Topic A" in ctx
+    assert "[AA] 🟢 active | Topic A" in ctx
 
 
 def test_done_thread_suffix(active_db):
@@ -162,7 +162,7 @@ def test_archived_thread_suffix(active_db):
     active_db.archive_thread(tid_b)
     ctx = ContextBuilder(active_db).build()
     # Archived threads are Tier 3 — omitted from context injection
-    assert "archived" not in ctx.lower() or "[B]" not in ctx
+    assert "archived" not in ctx.lower() or "[AB]" not in ctx
 
 
 def test_key_decisions_in_tier1_block(active_db):

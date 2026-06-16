@@ -119,24 +119,10 @@ def cmd_doctor(args) -> int:
         print(f"db: {DB_PATH} does not exist — will be created on first juggle command")
         return 0
 
-    # 3. Backfill: NULL user_label for archived/closed threads (idempotent).
-    # Thread-label recycling (merged 2026-06-15) NULLs labels on future
-    # archive/close, but existing rows still hold their labels.
-    if not dry:
-        conn = sqlite3.connect(str(DB_PATH))
-        cur = conn.execute(
-            "UPDATE threads SET user_label = NULL"
-            " WHERE status IN ('archived','closed') AND user_label IS NOT NULL"
-        )
-        n_backfill = cur.rowcount
-        conn.commit()
-        conn.close()
-        if n_backfill:
-            print(f"label backfill: cleared {n_backfill} archived/closed thread label(s)")
-        else:
-            print("label backfill: no archived/closed labels to clear")
-    else:
-        print("label backfill: (dry-run — skipped)")
+    # 3. Slug persistence (T-slug-wheel): slugs are PERMANENT historical handles
+    # and must NOT be nulled on close/archive. The old recycling-by-erasure
+    # backfill was removed; reuse is handled by the wheel's skip-live rule plus
+    # the partial unique index idx_threads_live_label. Nothing to backfill.
 
     # 4. Reconcile graph topic states (repair drift between task tier + topic tier)
     from dbops import db_topics as dbt

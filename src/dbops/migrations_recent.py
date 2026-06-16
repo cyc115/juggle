@@ -21,6 +21,7 @@ from dbops.schema import (
     CREATE_WATCHDOG_EVENTS,
     INBOX_PROJECT_ID,
     _now,
+    _wheel_index,
 )
 
 _log = logging.getLogger(__name__)
@@ -300,6 +301,71 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     # Migration 41: drop 4 dead Hindsight columns from threads.
     # NOT run against prod automatically — apply via `juggle doctor` on main.
     run_migration_41(conn)
+
+    # Migration 42 (T-slug-wheel): juggle_meta counter + slug-wheel indexes.
+    # MUST run after 41, which rebuilds `threads` and re-creates the OLD global
+    # unique index from a snapshot — we drop it here and install the partial /
+    # covering indexes the wheel relies on.
+    run_migration_slug_wheel(conn)
+
+
+def run_migration_slug_wheel(conn: sqlite3.Connection) -> None:
+    """Install the Topic Slug Wheel schema. Idempotent and guarded.
+
+    - juggle_meta(key, value) durable key/value table (holds label_seq).
+    - DROP the global unique index idx_threads_user_label.
+    - ADD partial unique idx_threads_live_label: no two LIVE topics share a slug.
+    - ADD covering idx_threads_label_created for newest-wins lookups.
+    - Seed label_seq from the highest in-use wheel position (or 0 if none).
+
+    DO NOT run against the shared production DB directly; apply via juggle doctor.
+    """
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS juggle_meta "
+            "(key TEXT PRIMARY KEY, value TEXT)"
+        )
+        conn.execute("DROP INDEX IF EXISTS idx_threads_user_label")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_threads_live_label "
+            "ON threads(user_label) "
+            "WHERE user_label IS NOT NULL AND status IN ('active','running')"
+        )
+        # Covering index for newest-wins lookup — only if created_at exists
+        # (defensive: some hand-rolled/legacy schemas may lack it).
+        tcols = {r[1] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
+        if "created_at" in tcols:
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_threads_label_created "
+                "ON threads(user_label, created_at)"
+            )
+        # Seed label_seq once, from the highest in-use two-letter wheel position.
+        row = conn.execute(
+            "SELECT value FROM juggle_meta WHERE key = 'label_seq'"
+        ).fetchone()
+        if row is None:
+            labels = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT user_label FROM threads "
+                    "WHERE user_label IS NOT NULL"
+                ).fetchall()
+            ]
+            max_idx = -1
+            for lbl in labels:
+                idx = _wheel_index(lbl)
+                if idx is not None and idx > max_idx:
+                    max_idx = idx
+            seed = max_idx + 1 if max_idx >= 0 else 0
+            conn.execute(
+                "INSERT OR IGNORE INTO juggle_meta(key, value) "
+                "VALUES ('label_seq', ?)",
+                (str(seed),),
+            )
+        conn.commit()
+        _log.info("Migration 42 (slug-wheel): juggle_meta + indexes installed")
+    except sqlite3.OperationalError as e:
+        _log.warning("Migration 42 (slug-wheel) skipped: %s", e)
 
 
 def run_migration_41(conn: sqlite3.Connection) -> None:

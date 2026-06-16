@@ -13,9 +13,10 @@ from datetime import datetime, timezone
 
 import dbops.schema as _schema
 from dbops.schema import (
+    WHEEL_SIZE,
     _get_settings,
     _is_junk_message,
-    _next_excel_label,
+    _slug_from_wheel,
     _thread_age_seconds,
 )
 
@@ -59,19 +60,14 @@ class ThreadsMixin:
                         "No immediate candidates — close or archive a thread manually."
                     )
             new_id = str(uuid.uuid4())
-            used_labels = {
-                row["user_label"]
-                for row in conn.execute(
-                    "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
-                    " AND status NOT IN ('archived', 'closed')"
-                ).fetchall()
-            }
-            user_label = _next_excel_label(used_labels)
             now_iso = datetime.now(timezone.utc).isoformat()
             now_min = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-            # Retry up to 3 times in case a stale archived/closed row still
-            # physically holds the chosen label (pre-fix accumulation).
+            # Allocate a slug from the rotating wheel (skip-live). The retry loop
+            # is a backstop: if a live holder raced onto the slug between alloc
+            # and INSERT, the partial unique index rejects it and we advance the
+            # wheel for another attempt.
             for _attempt in range(3):
+                user_label = self._next_wheel_slug(conn)
                 try:
                     conn.execute(
                         """
@@ -87,17 +83,46 @@ class ThreadsMixin:
                     conn.commit()
                     return new_id
                 except sqlite3.IntegrityError as exc:
-                    if "user_label" not in str(exc):
+                    if "user_label" not in str(exc) and "idx_threads_live_label" not in str(exc):
                         raise
-                    # Stale archived/closed row holds this label; clear it and retry.
-                    conn.execute(
-                        "UPDATE threads SET user_label = NULL"
-                        " WHERE user_label = ? AND status IN ('archived', 'closed')",
-                        (user_label,),
-                    )
+                    # A live holder raced onto this slug; loop advances the wheel.
+                    continue
             raise RuntimeError(
-                f"create_thread: could not assign label {user_label!r} after retries"
+                "create_thread: could not assign a slug after retries"
             )
+
+    def _next_wheel_slug(self, conn) -> str:
+        """Allocate the next slug off the wheel, skipping live-held slots.
+
+        Reads + increments the durable monotonic counter ``label_seq`` in
+        juggle_meta inside the caller's write transaction (SQLite serializes
+        writers). Advances past any slug currently held by a live thread
+        ('active'/'running'). Raises RuntimeError if the entire wheel is live.
+        """
+        row = conn.execute(
+            "SELECT value FROM juggle_meta WHERE key = 'label_seq'"
+        ).fetchone()
+        seq = int(row["value"]) if row and row["value"] is not None else 0
+        live = {
+            r["user_label"]
+            for r in conn.execute(
+                "SELECT user_label FROM threads WHERE user_label IS NOT NULL "
+                "AND status IN ('active','running')"
+            ).fetchall()
+        }
+        for _ in range(WHEEL_SIZE):
+            slug = _slug_from_wheel(seq)
+            seq += 1
+            if slug not in live:
+                conn.execute(
+                    "INSERT INTO juggle_meta(key, value) VALUES ('label_seq', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (str(seq),),
+                )
+                return slug
+        raise RuntimeError(
+            "slug wheel exhausted: all 676 slots held by live threads"
+        )
 
     def get_thread(self, thread_id: str) -> dict | None:
         """Look up a thread by its UUID `id`. Returns None if not found."""
@@ -110,21 +135,25 @@ class ThreadsMixin:
             return dict(row)
 
     def get_thread_by_user_label(self, label: str | None) -> dict | None:
-        """Look up a thread by its user_label (e.g. 'A', 'BC'). Case-insensitive.
+        """Resolve a user-typed slug to a thread — the SINGLE chokepoint.
 
-        Prefers non-archived/closed threads so that recycled labels resolve to
-        the current active holder, not the archived original.
-        Returns None if label is None or not found.
+        Newest-wins (T-slug-wheel): since slugs rotate and persist on closed/
+        archived rows, a reused slug always resolves to the NEWEST holder —
+        a live ('active'/'running') holder first, then the most recently
+        created terminal holder. Case-insensitive. Returns None if not found.
+
+        Every feature that maps a user-typed slug -> thread MUST route through
+        this function so reuse resolves consistently everywhere.
         """
         if not label:
             return None
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM threads WHERE user_label = ? ORDER BY "
-                "CASE WHEN status NOT IN ('archived', 'closed') THEN 0 ELSE 1 END, "
-                "CASE WHEN length(id) = 36 AND id LIKE '%-%-%-%-%' THEN 0 ELSE 1 END, "
-                "last_active_at DESC LIMIT 1",
-                (label.upper(),),
+                "SELECT * FROM threads WHERE user_label = ? COLLATE NOCASE "
+                "ORDER BY (CASE WHEN status IN ('active','running') THEN 0 ELSE 1 END), "
+                "created_at DESC "
+                "LIMIT 1",
+                (label,),
             ).fetchone()
         return dict(row) if row else None
 
@@ -139,10 +168,8 @@ class ThreadsMixin:
 
         if not kwargs:
             return
-        # Recycle user_label when a thread is archived or closed so the label
-        # becomes available for the next active thread.
-        if kwargs.get("status") in ("archived", "closed"):
-            kwargs.setdefault("user_label", None)
+        # T-slug-wheel: the slug PERSISTS on close/archive as a permanent
+        # historical handle — never null it here (no recycling-by-erasure).
         # Serialize list values to JSON
         for key, val in kwargs.items():
             if isinstance(val, list):
@@ -174,17 +201,12 @@ class ThreadsMixin:
             )
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
-            if status in ("archived", "closed"):
-                conn.execute(
-                    "UPDATE threads SET status = ?, user_label = NULL, "
-                    "last_active_at = ? WHERE id = ?",
-                    (status, now, thread_id),
-                )
-            else:
-                conn.execute(
-                    "UPDATE threads SET status = ?, last_active_at = ? WHERE id = ?",
-                    (status, now, thread_id),
-                )
+            # T-slug-wheel: the slug stays on the row through any terminal
+            # transition — it is a permanent historical handle.
+            conn.execute(
+                "UPDATE threads SET status = ?, last_active_at = ? WHERE id = ?",
+                (status, now, thread_id),
+            )
             conn.commit()
 
     def touch_last_active(self, thread_id: str) -> None:
@@ -209,31 +231,45 @@ class ThreadsMixin:
     # ---------------------------------------------------------------
 
     def archive_thread(self, thread_id: str):
-        """Set status='archived', show_in_list=0. Clears user_label so it can
-        be recycled by the next active thread."""
+        """Set status='archived', show_in_list=0.
+
+        T-slug-wheel: keeps user_label as a permanent historical handle (no
+        recycling-by-erasure). The slug becomes reusable by a newer thread via
+        the wheel's skip-live rule, not by nulling this row."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             conn.execute(
                 "UPDATE threads SET status = 'archived', "
-                "show_in_list = 0, user_label = NULL, last_active_at = ? WHERE id = ?",
+                "show_in_list = 0, last_active_at = ? WHERE id = ?",
                 (now, thread_id),
             )
             conn.commit()
 
     def unarchive_thread(self, thread_id: str) -> str:
-        """Unarchive: status=active, show_in_list=1. Assigns a fresh label since
-        the label was cleared on archive to allow recycling."""
+        """Unarchive: status=active, show_in_list=1.
+
+        T-slug-wheel: the archived row kept its slug, so reuse it when no LIVE
+        thread currently holds it; otherwise allocate a fresh slug off the wheel
+        to satisfy the partial unique 'no two live share a slug' invariant."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
-            used_labels = {
+            cur = conn.execute(
+                "SELECT user_label FROM threads WHERE id = ?", (thread_id,)
+            ).fetchone()
+            existing = cur["user_label"] if cur else None
+            live = {
                 row["user_label"]
                 for row in conn.execute(
                     "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
-                    " AND status NOT IN ('archived', 'closed') AND id != ?"
-                    , (thread_id,)
+                    " AND status IN ('active','running') AND id != ?",
+                    (thread_id,),
                 ).fetchall()
             }
-            new_label = _next_excel_label(used_labels)
+            new_label = (
+                existing
+                if existing and existing not in live
+                else self._next_wheel_slug(conn)
+            )
             conn.execute(
                 "UPDATE threads SET status = 'active', show_in_list = 1, "
                 "user_label = ?, last_active_at = ? WHERE id = ?",

@@ -52,11 +52,11 @@ def test_create_thread_returns_a(db):
 
 
 def test_create_thread_sequential(db):
-    """Sequential threads get sequential user_labels A, B."""
+    """Sequential threads get sequential wheel slugs AA, AB (T-slug-wheel)."""
     a = db.create_thread("Topic A", session_id="s1")
     b = db.create_thread("Topic B", session_id="s1")
-    assert db.get_thread(a)["user_label"] == "A"
-    assert db.get_thread(b)["user_label"] == "B"
+    assert db.get_thread(a)["user_label"] == "AA"
+    assert db.get_thread(b)["user_label"] == "AB"
 
 
 def test_create_thread_max_10(db):
@@ -124,20 +124,20 @@ def test_create_thread_returns_uuid(db):
     assert re.match(r"^[0-9a-f-]{36}$", tid), f"Expected UUID, got: {tid}"
 
 
-def test_create_thread_first_user_label_is_a(db):
-    """First thread created gets user_label 'A'."""
+def test_create_thread_first_user_label_is_aa(db):
+    """First thread created gets wheel slug 'AA' (T-slug-wheel)."""
     tid = db.create_thread("My topic", session_id="s1")
     thread = db.get_thread(tid)
     assert thread is not None
-    assert thread["user_label"] == "A"
+    assert thread["user_label"] == "AA"
 
 
-def test_create_thread_second_user_label_is_b(db):
-    """Second thread gets user_label 'B'."""
+def test_create_thread_second_user_label_is_ab(db):
+    """Second thread gets wheel slug 'AB' (T-slug-wheel)."""
     db.create_thread("First", session_id="s1")
     tid2 = db.create_thread("Second", session_id="s1")
     thread = db.get_thread(tid2)
-    assert thread["user_label"] == "B"
+    assert thread["user_label"] == "AB"
 
 
 def test_schema_has_id_and_user_label_not_label(db):
@@ -164,7 +164,7 @@ def test_get_thread_by_uuid(db):
     thread = db.get_thread(tid)
     assert thread is not None
     assert thread["id"] == tid
-    assert thread["user_label"] == "A"
+    assert thread["user_label"] == "AA"
     assert thread["topic"] == "My topic"
 
 
@@ -174,51 +174,47 @@ def test_get_all_threads_includes_id_and_user_label(db):
     threads = db.get_all_threads()
     assert len(threads) == 1
     assert threads[0]["id"] == tid
-    assert threads[0]["user_label"] == "A"
+    assert threads[0]["user_label"] == "AA"
 
 
-def test_archive_thread_clears_user_label(db):
-    """archive_thread sets status='archived', clears user_label for recycling.
+def test_archive_thread_keeps_user_label(db):
+    """archive_thread sets status='archived', KEEPS user_label (T-slug-wheel).
 
-    Regression pin: 2026-06-15 — labels must be freed on archive so the 702-label
-    cap is never exhausted in long-lived projects.
+    The slug is a permanent historical handle; reuse is handled by the wheel's
+    skip-live rule, not by erasing the row.
     """
     tid = db.create_thread("Topic A", session_id="s1")
+    slug = db.get_thread(tid)["user_label"]
     db.archive_thread(tid)
     thread = db.get_thread(tid)
     assert thread["status"] == "archived"
-    assert thread["user_label"] is None  # freed for recycling
+    assert thread["user_label"] == slug  # persists, not recycled-by-erasure
     assert thread["show_in_list"] == 0
 
 
-def test_user_label_recycled_after_archive(db):
-    """Labels from archived threads are recycled — 'A' is reused after archiving.
-
-    Regression pin: 2026-06-15 — 702-label hard cap blocked new threads because
-    archived/closed threads permanently reserved labels. Fix: used_labels query
-    excludes archived/closed threads so their labels become available again.
-    """
+def test_new_thread_advances_wheel_not_recycle_after_archive(db):
+    """T-slug-wheel: archiving does NOT free a slug for immediate reuse — the
+    wheel advances to the next slot, and the archived row keeps its slug."""
     tid_a = db.create_thread("First", session_id="s1")
-    assert db.get_thread(tid_a)["user_label"] == "A"
+    assert db.get_thread(tid_a)["user_label"] == "AA"
 
     db.archive_thread(tid_a)
 
     tid_b = db.create_thread("Second", session_id="s1")
-    assert db.get_thread(tid_b)["user_label"] == "A"  # A recycled, not B
+    assert db.get_thread(tid_b)["user_label"] == "AB"  # wheel advanced
+    assert db.get_thread(tid_a)["user_label"] == "AA"  # archived slug persists
 
 
-def test_user_label_recycled_after_close(db):
-    """Labels from closed threads are also recycled.
-
-    Regression pin: 2026-06-15 — same fix covers 'closed' status.
-    """
+def test_new_thread_advances_wheel_not_recycle_after_close(db):
+    """T-slug-wheel: same as archive — closing keeps the slug, wheel advances."""
     tid_a = db.create_thread("First", session_id="s1")
-    assert db.get_thread(tid_a)["user_label"] == "A"
+    assert db.get_thread(tid_a)["user_label"] == "AA"
 
     db.update_thread(tid_a, status="closed")
 
     tid_b = db.create_thread("Second", session_id="s1")
-    assert db.get_thread(tid_b)["user_label"] == "A"  # A recycled
+    assert db.get_thread(tid_b)["user_label"] == "AB"  # wheel advanced
+    assert db.get_thread(tid_a)["user_label"] == "AA"  # closed slug persists
 
 
 def test_two_active_threads_never_share_label(db):
@@ -234,23 +230,24 @@ def test_two_active_threads_never_share_label(db):
     assert label_a != label_b, f"both got label {label_a!r}"
 
 
-def test_get_thread_by_user_label_prefers_active_after_recycle(db):
-    """get_thread_by_user_label returns the active (non-archived) holder of a
-    recycled label, not the archived one.
-
-    Regression pin: 2026-06-15 — label lookup must be deterministic after recycle.
+def test_get_thread_by_user_label_newest_wins_after_reuse(db):
+    """get_thread_by_user_label resolves a reused slug to the NEWEST holder
+    (T-slug-wheel) — the live thread, not the archived original.
     """
     tid_a = db.create_thread("Original", session_id="s1")
-    assert db.get_thread(tid_a)["user_label"] == "A"
-    db.archive_thread(tid_a)
+    assert db.get_thread(tid_a)["user_label"] == "AA"
+    db.archive_thread(tid_a)  # keeps slug 'AA', but is terminal (not live)
 
-    tid_b = db.create_thread("New holder", session_id="s1")
-    assert db.get_thread(tid_b)["user_label"] == "A"
+    # A newer thread reuses slug 'AA' (forced onto the same slot).
+    tid_b = db.create_thread("New holder", session_id="s1")  # 'AB'
+    with db._connect() as conn:
+        conn.execute("UPDATE threads SET user_label = 'AA' WHERE id = ?", (tid_b,))
+        conn.commit()
 
-    resolved = db.get_thread_by_user_label("A")
+    resolved = db.get_thread_by_user_label("AA")
     assert resolved is not None
     assert resolved["id"] == tid_b, (
-        f"expected active thread {tid_b[:8]}, got {resolved['id'][:8]}"
+        f"expected live newest holder {tid_b[:8]}, got {resolved['id'][:8]}"
     )
 
 

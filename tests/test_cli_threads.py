@@ -71,7 +71,7 @@ def test_show_topics_empty(started_db):
     threads = db.get_all_threads()
     assert len(threads) == 1
     assert threads[0]["id"] == general_tid
-    assert threads[0]["user_label"] == "A"
+    assert threads[0]["user_label"] == "AA"
 
 
 def test_create_thread(started_db):
@@ -81,11 +81,11 @@ def test_create_thread(started_db):
 
     db = JuggleDB(str(db_path))
     tid = db.create_thread("New topic", session_id="")
-    # New thread should be a UUID, not "B"
+    # New thread should be a UUID, not the slug
     assert len(tid) > 1
     thread = db.get_thread(tid)
     assert thread is not None
-    assert thread["user_label"] == "B"
+    assert thread["user_label"] == "AB"  # second slug off the wheel
 
 
 def test_switch_thread(started_db):
@@ -168,7 +168,7 @@ def test_fail_agent(started_db):
 
 def test_set_summarized_count(started_db):
     db_path, general_tid = started_db
-    result = run_cli(["set-summarized-count", "A", "5"], db_path)
+    result = run_cli(["set-summarized-count", "AA", "5"], db_path)
     assert result.returncode == 0
     assert "5" in result.stdout
 
@@ -211,7 +211,7 @@ def test_get_messages_plain(started_db):
     db.add_message(general_tid, "user", "hello world")
     db.add_message(general_tid, "assistant", "hi there")
 
-    result = run_cli(["get-messages", "A", "--plain"], db_path)
+    result = run_cli(["get-messages", "AA", "--plain"], db_path)
     assert result.returncode == 0
     assert "user: hello world" in result.stdout
     assert "assistant: hi there" in result.stdout
@@ -225,9 +225,9 @@ def test_get_messages_plain(started_db):
 def test_archive_thread_cli(started_db):
     """archive-thread sets status=archived and prints confirmation."""
     db_path, general_tid = started_db
-    result = run_cli(["archive-thread", "A"], db_path)
+    result = run_cli(["archive-thread", "AA"], db_path)
     assert result.returncode == 0
-    assert "Thread A archived" in result.stdout
+    assert "Thread AA archived" in result.stdout
 
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
@@ -262,11 +262,11 @@ def test_get_archive_candidates_finds_done(started_db):
     db = JuggleDB(str(db_path))
     second_tid = db.create_thread("Second topic", session_id="")
     db.update_thread(second_tid, status="done")
-    # Current is general_tid (label A), second_tid is done → candidate
+    # Current is general_tid (slug AA), second_tid is done → candidate
 
     result = run_cli(["get-archive-candidates"], db_path)
     assert result.returncode == 0
-    assert "[B]" in result.stdout
+    assert "[AB]" in result.stdout
     assert "done" in result.stdout
 
 
@@ -282,7 +282,7 @@ def test_get_archive_candidates_excludes_archived(started_db):
 
     result = run_cli(["get-archive-candidates"], db_path)
     assert result.returncode == 0
-    assert "[B]" not in result.stdout
+    assert "[AB]" not in result.stdout
 
 
 # ------------------------------------------------------------------
@@ -351,8 +351,8 @@ def test_show_topics_hides_archived(started_db):
 
     result = run_cli(["show-topics"], db_path)
     assert result.returncode == 0
-    assert "[B]" not in result.stdout
-    assert "[A]" in result.stdout
+    assert "[AB]" not in result.stdout
+    assert "[AA]" in result.stdout
 
 
 # ------------------------------------------------------------------

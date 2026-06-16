@@ -52,8 +52,10 @@ def test_idempotent(db):
 
 def test_preserves_user_label(db):
     tid = db.create_thread("t", session_id="s")
+    slug = db.get_thread(tid)["user_label"]
     db.set_thread_status(tid, "closed")
     old = datetime.now(timezone.utc) - timedelta(seconds=86400 + 60)
     _set_last_active(db, tid, old)
     _auto_archive_closed_threads(db)
-    assert db.get_thread(tid)["user_label"] == "A"
+    # T-slug-wheel: slug persists through close + auto-archive.
+    assert db.get_thread(tid)["user_label"] == slug
