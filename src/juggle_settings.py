@@ -87,6 +87,14 @@ DEFAULTS: dict = {
             "- Stay within the research topic; no tangent deep-dives\n"
         ),
     },
+    # Integrate command options
+    "integrate": {
+        # "changed" = scope tests to branch-changed files (default).
+        # "full"    = always run the full test_cmd (old behaviour).
+        "test_scope": "changed",
+        # fnmatch globs (relative to repo root) always added to scoped runs.
+        "core_tests": [],
+    },
     # Cockpit Display
     "cockpit": {
         "refresh_interval_secs": 1.0,
