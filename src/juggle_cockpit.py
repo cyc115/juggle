@@ -58,6 +58,14 @@ from juggle_cockpit_modals import (
 from juggle_cockpit_widgets import HSplitter, Splitter
 from juggle_cockpit_graph_mode import GraphModeMixin
 from juggle_cockpit_title import _cockpit_subtitle, _get_version
+from juggle_watchdog_singleton import (
+    canonical_repo_path,
+    ensure_watchdog,
+    is_watchdog_alive as _lock_watchdog_alive,
+    read_lock_pid,
+    restart_watchdog,
+    toggle_watchdog,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +134,9 @@ class CockpitApp(GraphModeMixin, App):
         Binding("t",            "tail_toggle",   "Tl"),
         Binding("g",            "toggle_graph",  "Gr"),
         Binding("p",            "projects",      "Proj"),
+        Binding("w",            "watchdog_toggle",  "Wd"),
+        Binding("r",            "watchdog_restart", "Rwd"),
+        Binding("shift+w",      "watchdog_restart", "Rwd", show=False),
     ]
 
     CSS = """
@@ -173,7 +184,7 @@ class CockpitApp(GraphModeMixin, App):
     #wd-status {
         layer: overlay;
         dock: bottom;
-        width: 8;
+        width: 16;
         height: 1;
         offset: 0 -1;
         background: $panel;
@@ -211,7 +222,6 @@ class CockpitApp(GraphModeMixin, App):
             pass
         # Graph-mode view state (lower-right panel swaps Notifications ⇄ Graph).
         self._graph_state_init()
-        self._watchdog_proc: "subprocess.Popen | None" = None
 
     def exit(self, result=None, return_code: int = 0, message=None) -> None:
         """Persist column widths before handing off to Textual's exit machinery.
@@ -293,68 +303,56 @@ class CockpitApp(GraphModeMixin, App):
 
         self._check_tmux_mouse()
         self.set_interval(REFRESH_INTERVAL, self._refresh)
-        self._start_watchdog_child()
-        self.set_interval(15.0, self._check_watchdog_health)
-        import atexit
-        atexit.register(self._stop_watchdog)
+        # Cockpit is the lock-gated ensure-exists owner of ONE detached watchdog
+        # (T-cockpit-watchdog-owner). The singleton flock — not a child handle —
+        # owns singleton-ness, so the daemon survives cockpit exit. Re-ensure on
+        # an interval to self-heal a crashed daemon; NEVER kill it on close.
+        self._ensure_watchdog()
+        self.set_interval(15.0, self._ensure_watchdog)
 
-    def _start_watchdog_child(self) -> None:
+    def _watchdog_db_path(self) -> str:
+        return str(self._db.db_path)
+
+    def _ensure_watchdog(self) -> None:
         try:
-            from juggle_watchdog_health import start_watchdog_child, SINGLETON_PID_FILE, HEARTBEAT_PATH, _LOG_PATH
-            proc = start_watchdog_child(
-                pid_file=SINGLETON_PID_FILE,
-                heartbeat_path=HEARTBEAT_PATH,
-                log_path=_LOG_PATH,
-                supervisor_pid=os.getpid(),
+            ensure_watchdog(
+                self._watchdog_db_path(), repo_path=canonical_repo_path()
             )
-            if proc is not None:
-                self._watchdog_proc = proc
         except Exception:
             pass
         self._update_watchdog_status()
 
-    def _stop_watchdog(self) -> None:
-        proc = self._watchdog_proc
-        if proc is None or proc.returncode is not None:
-            return
+    def action_watchdog_toggle(self) -> None:
+        """W — toggle: stop a live watchdog, or start a detached one if none."""
         try:
-            proc.terminate()
-            proc.wait(timeout=3)
-        except Exception:
-            try:
-                proc.kill()
-            except Exception:
-                pass
-        self._watchdog_proc = None
-
-    def on_unmount(self) -> None:
-        self._stop_watchdog()
-
-    def _check_watchdog_health(self) -> None:
-        try:
-            from juggle_watchdog_health import (
-                watchdog_needs_start, SINGLETON_PID_FILE, HEARTBEAT_PATH,
-                _is_pid_alive, read_heartbeat_age,
+            action = toggle_watchdog(
+                self._watchdog_db_path(), repo_path=canonical_repo_path()
             )
-            pid_alive = False
-            if SINGLETON_PID_FILE.exists():
-                try:
-                    pid = int(SINGLETON_PID_FILE.read_text().strip())
-                    pid_alive = _is_pid_alive(pid)
-                except (ValueError, OSError):
-                    pass
-            age = read_heartbeat_age(HEARTBEAT_PATH)
-            if watchdog_needs_start(pid_alive, age):
-                self._start_watchdog_child()
-        except Exception:
-            pass
+            self.notify(f"watchdog {action}", timeout=4)
+        except Exception as e:
+            self.notify(f"watchdog toggle failed: {e}", severity="error")
+        self._update_watchdog_status()
+
+    def action_watchdog_restart(self) -> None:
+        """R / shift+W — kill + relaunch from canonical main (latest code)."""
+        try:
+            restart_watchdog(
+                self._watchdog_db_path(), repo_path=canonical_repo_path()
+            )
+            self.notify("watchdog restarted from main", timeout=4)
+        except Exception as e:
+            self.notify(f"watchdog restart failed: {e}", severity="error")
         self._update_watchdog_status()
 
     def _update_watchdog_status(self) -> None:
         try:
-            from juggle_watchdog_health import is_watchdog_alive
-            alive = is_watchdog_alive()
-            dot = "● wd" if alive else "○ wd"
+            db_path = self._watchdog_db_path()
+            alive = _lock_watchdog_alive(db_path)
+            if alive:
+                pid = read_lock_pid(db_path)
+                dot = f"● wd {pid}" if pid else "● wd"
+            else:
+                dot = "○ wd"
             widget = self.query_one("#wd-status", Static)
             widget.update(dot)
             widget.styles.color = "green" if alive else "red"

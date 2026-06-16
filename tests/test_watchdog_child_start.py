@@ -186,30 +186,25 @@ def test_should_exit_supervisor_gone_returns_false_when_alive():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cockpit_unmount_terminates_watchdog(tmp_path, monkeypatch):
-    """Cockpit on_unmount must terminate the watchdog child process."""
+async def test_cockpit_exit_does_not_kill_detached_watchdog(tmp_path, monkeypatch):
+    """T-cockpit-watchdog-owner: the watchdog is now a DETACHED daemon owned by
+    the singleton lock — closing the cockpit must NOT kill it (was: on_unmount
+    terminated a child process)."""
     from juggle_db import JuggleDB
-    from juggle_cockpit import CockpitApp
+    import juggle_cockpit
 
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db.init_db()
     db.set_active(True)
 
-    mock_proc = MagicMock()
-    mock_proc.returncode = None  # still running
-    mock_proc.wait = MagicMock(return_value=0)
+    stop_calls = []
+    monkeypatch.setattr(juggle_cockpit, "ensure_watchdog",
+                        lambda dbp, **kw: True, raising=False)
+    monkeypatch.setattr(juggle_cockpit, "stop_watchdog",
+                        lambda dbp, **kw: stop_calls.append(dbp), raising=False)
 
-    # Prevent actual Popen
-    monkeypatch.setattr(
-        "juggle_watchdog_health.start_watchdog_child",
-        lambda **kw: mock_proc,
-    )
-
-    app = CockpitApp(db_path=str(tmp_path / "juggle.db"))
+    app = juggle_cockpit.CockpitApp(db_path=str(tmp_path / "juggle.db"))
     async with app.run_test(size=(120, 40)) as pilot:
-        # Inject mock proc directly
-        app._watchdog_proc = mock_proc
         await pilot.pause(0.1)
 
-    # After exit, terminate must have been called
-    mock_proc.terminate.assert_called()
+    assert stop_calls == [], "cockpit exit must not stop the detached watchdog"
