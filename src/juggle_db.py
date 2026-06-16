@@ -90,7 +90,10 @@ class JuggleDB(
 
     def __init__(self, db_path=None):
         if db_path is None:
-            self.db_path = DB_PATH
+            # Honor JUGGLE_DB_PATH at call time so test isolation (which sets the
+            # env per-test) redirects bare JuggleDB() off the production DB.
+            from dbops.schema import _resolve_db_path
+            self.db_path = _resolve_db_path()
         else:
             self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

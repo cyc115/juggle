@@ -121,6 +121,10 @@ def _start_watchdog() -> None:
         _log.warning("Watchdog script not found at %s — skipping", script)
         return
 
+    # Sanction this launch: only the orchestrator entrypoint may start the prod
+    # watchdog (2026-06-16 incident — worktree/test daemons abort without this).
+    env = os.environ.copy()
+    env["JUGGLE_WATCHDOG_SANCTIONED"] = "1"
     with open(log_path, "a") as log_fh:
         proc = subprocess.Popen(
             [sys.executable, str(script)],
@@ -128,6 +132,7 @@ def _start_watchdog() -> None:
             stderr=log_fh,
             start_new_session=True,
             cwd=str(_main_repo_root()),
+            env=env,
         )
     # Persist the new PID so _stop_watchdog / the next _start_watchdog can find it.
     pid_file.write_text(str(proc.pid))

@@ -184,20 +184,22 @@ def cmd_set_watchdog(args):
 
 
 def cmd_stop_watchdog(_args):
-    """Send SIGTERM to the watchdog daemon if running."""
-    import os
-    import signal as _signal
-    from juggle_settings import get_settings
+    """Terminate EVERY running watchdog process — a freeze must freeze them all.
 
-    pid_file = Path(get_settings()["paths"]["config_dir"]) / "watchdog.pid"
-    if not pid_file.exists():
+    2026-06-16 incident: stopping only the recorded PID let a rogue watchdog
+    (started from a worktree) survive and keep ticking against the prod DB.
+    """
+    from juggle_settings import get_settings
+    from juggle_watchdog_singleton import terminate_all_watchdogs
+
+    # Best-effort cleanup of any recorded pidfiles (session-scoped + legacy).
+    config_dir = Path(get_settings()["paths"]["config_dir"])
+    for pid_file in [config_dir / "watchdog.pid", *config_dir.glob("watchdog-*.pid")]:
+        pid_file.unlink(missing_ok=True)
+
+    killed = terminate_all_watchdogs()
+    if killed:
+        print(f"Watchdog stopped ({len(killed)} process(es): "
+              f"{', '.join(str(p) for p in killed)}).")
+    else:
         print("Watchdog is not running.")
-        return
-    try:
-        pid = int(pid_file.read_text().strip())
-        os.kill(pid, _signal.SIGTERM)
-        pid_file.unlink(missing_ok=True)
-        print(f"Watchdog stopped (PID={pid}).")
-    except (OSError, ValueError, ProcessLookupError) as e:
-        print(f"Error stopping watchdog: {e}")
-        pid_file.unlink(missing_ok=True)

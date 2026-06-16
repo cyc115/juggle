@@ -93,6 +93,9 @@ def start_watchdog_child(
 
     env = os.environ.copy()
     env["JUGGLE_ORCHESTRATOR"] = "1"
+    # Sanction this launch (2026-06-16 incident): the daemon refuses to tick
+    # against the prod DB unless the orchestrator entrypoint set this flag.
+    env["JUGGLE_WATCHDOG_SANCTIONED"] = "1"
     env.pop("JUGGLE_WATCHDOG_SUPERVISED", None)
     if supervisor_pid is not None:
         env["JUGGLE_SUPERVISOR_PID"] = str(supervisor_pid)

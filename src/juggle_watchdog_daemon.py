@@ -78,6 +78,11 @@ def _cleanup_singleton_pid():
     daemon_pidfile.cleanup_singleton_pid(SINGLETON_PID_FILE)
 
 
+def _release_singleton_lock(fd):
+    from juggle_watchdog_singleton import release_singleton_lock
+    release_singleton_lock(fd)
+
+
 def prune_stale_watchdog_pidfiles(juggle_dir: Path | None = None) -> None:
     """Remove watchdog-*.pid files whose recorded PID is no longer alive.
 
@@ -284,8 +289,24 @@ def _set_orchestrator_preamble() -> None:
 def main() -> None:
     from juggle_watchdog_restart import should_exit_for_reload
 
+    from juggle_watchdog_singleton import (
+        WatchdogAlreadyRunning,
+        WatchdogLaunchRefused,
+        acquire_singleton_lock,
+        assert_launch_allowed,
+    )
+
     _set_orchestrator_preamble()
     _setup_logging()
+
+    # G3 (2026-06-16 incident): a worktree/test-launched daemon must NEVER tick
+    # against the production DB. Only the sanctioned orchestrator entrypoint sets
+    # JUGGLE_WATCHDOG_SANCTIONED — its absence aborts a prod-targeted launch.
+    try:
+        assert_launch_allowed(DB_PATH)
+    except WatchdogLaunchRefused as exc:
+        _log.error("Watchdog: %s", exc)
+        sys.exit(1)
 
     mode = "supervised (launchd)" if _SUPERVISED else "unsupervised"
     _log.info("Watchdog starting (PID=%d, interval=%ds, mode=%s)",
@@ -294,6 +315,17 @@ def main() -> None:
     prune_stale_watchdog_pidfiles()
 
     _kill_existing_watchdog_from_pidfile(SINGLETON_PID_FILE)
+
+    # Exclusive singleton flock per DB: refuse to become a second concurrent
+    # watchdog (the kill above clears the sanctioned predecessor; a survivor here
+    # is a rogue we must not duplicate).
+    try:
+        _singleton_fd = acquire_singleton_lock(DB_PATH)
+    except WatchdogAlreadyRunning as exc:
+        _log.error("Watchdog: %s — refusing to start a second instance", exc)
+        sys.exit(1)
+    atexit.register(_release_singleton_lock, _singleton_fd)
+
     _write_singleton_pid()
     atexit.register(_cleanup_singleton_pid)
 

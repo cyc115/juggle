@@ -36,12 +36,19 @@ def _get_hindsight_client():
 def get_db(db_path=None, init=False):
     """Return a JuggleDB handle.
 
-    db_path: optional override; falls back to the module DB_PATH (which honors
-             _JUGGLE_TEST_DB). init: call init_db() before returning.
+    db_path: optional override. When omitted, falls back to `_JUGGLE_TEST_DB`
+             (module DB_PATH) if set, else lets `JuggleDB()` resolve the path —
+             which honors `JUGGLE_DB_PATH` so test isolation can never land on
+             the production DB. init: call init_db() before returning.
     """
     from juggle_db import JuggleDB
 
-    db = JuggleDB(str(db_path) if db_path else str(DB_PATH))
+    if db_path:
+        db = JuggleDB(str(db_path))
+    elif "_JUGGLE_TEST_DB" in os.environ:
+        db = JuggleDB(str(DB_PATH))
+    else:
+        db = JuggleDB()  # honors JUGGLE_DB_PATH (isolation) / prod default
     if init:
         db.init_db()
     return db
