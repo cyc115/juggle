@@ -22,22 +22,90 @@ def _graph_task_for_thread(db, thread_uuid: str) -> dict | None:
         return None
 
 
+def _canonical_main_ref(repo: str) -> str | None:
+    """Return the best canonical main ref for ``repo``.
+
+    Prefers origin/<main> after a targeted fetch so it reflects the pushed
+    truth. Falls back to a local main/master if origin is unreachable or absent.
+    Returns None if no main ref can be resolved at all.
+    """
+    # Fetch origin/<main> so the canonical ref reflects the pushed state.
+    # Non-fatal: if origin is unreachable we fall through to local refs.
+    for branch in ("main", "master"):
+        subprocess.run(
+            ["git", "-C", repo, "fetch", "origin", branch],
+            capture_output=True, text=True,
+        )
+    for candidate in ("origin/main", "origin/master", "main", "master"):
+        r = subprocess.run(
+            ["git", "-C", repo, "rev-parse", "--verify", candidate],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            return candidate
+    return None
+
+
 def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
     """Record the merged commit (``ref`` tip, now on main) on the topic bound to
     this thread (T-verified-merged-sha). The single source of truth for the
     verified gate. Fail-soft: best-effort provenance, never blocks integrate.
+
+    Guards (2026-06-16 phantom-SHA fix):
+      1. Object must exist: ``git cat-file -e <sha>``.
+      2. SHA must be an ancestor of the canonical main (``origin/<main>`` after
+         fetch; fallback to local main). A phantom or unmerged SHA is silently
+         skipped — merged_sha is left NULL so the verified-gate stays closed.
     """
     try:
         from dbops import db_topics
         topic = db_topics.get_topic_by_thread(db, thread_uuid)
         if not topic:
             return
-        sha = subprocess.run(
+
+        sha_result = subprocess.run(
             ["git", "-C", repo, "rev-parse", ref],
             capture_output=True, text=True,
         )
-        if sha.returncode == 0 and sha.stdout.strip():
-            db_topics.set_topic_merged_sha(db, topic["id"], sha.stdout.strip())
+        if sha_result.returncode != 0 or not sha_result.stdout.strip():
+            return
+        sha = sha_result.stdout.strip()
+
+        # Guard 1: object must exist in the repo's object store.
+        cat_file = subprocess.run(
+            ["git", "-C", repo, "cat-file", "-e", sha],
+            capture_output=True, text=True,
+        )
+        if cat_file.returncode != 0:
+            import logging
+            logging.getLogger(__name__).warning(
+                "_record_merged_sha: object %s does not exist in %s — skipping",
+                sha, repo,
+            )
+            return
+
+        # Guard 2: SHA must be an ancestor of canonical main.
+        canonical = _canonical_main_ref(repo)
+        if canonical is None:
+            import logging
+            logging.getLogger(__name__).warning(
+                "_record_merged_sha: cannot resolve canonical main in %s — skipping",
+                repo,
+            )
+            return
+        ancestor_check = subprocess.run(
+            ["git", "-C", repo, "merge-base", "--is-ancestor", sha, canonical],
+            capture_output=True, text=True,
+        )
+        if ancestor_check.returncode != 0:
+            import logging
+            logging.getLogger(__name__).warning(
+                "_record_merged_sha: %s is NOT an ancestor of %s in %s — skipping",
+                sha, canonical, repo,
+            )
+            return
+
+        db_topics.set_topic_merged_sha(db, topic["id"], sha)
     except Exception:
         pass
 
@@ -144,8 +212,35 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         )
 
         if ahead_count == 0:
-            # Already merged: the branch tip is an ancestor of main. Record it
-            # as merged_sha BEFORE deleting the branch ref.
+            # Guard (2026-06-16 phantom-SHA fix): rebase_onto may be stale
+            # (failed fetch, local-only main).  Explicitly confirm the branch
+            # tip is a true ancestor of the canonical main before tearing down.
+            # If not, fall through to the real ff-merge/push path instead of
+            # stranding the work.
+            canonical_for_shortcut = rebase_onto
+            if not rebase_onto.startswith("origin/"):
+                for _cand in ("origin/main", "origin/master"):
+                    if subprocess.run(
+                        ["git", "-C", main_repo_path, "rev-parse", "--verify", _cand],
+                        capture_output=True, text=True,
+                    ).returncode == 0:
+                        canonical_for_shortcut = _cand
+                        break
+            shortcut_ancestor = subprocess.run(
+                ["git", "-C", main_repo_path, "merge-base", "--is-ancestor",
+                 worktree_branch, canonical_for_shortcut],
+                capture_output=True, text=True,
+            ).returncode == 0
+            if not shortcut_ancestor:
+                return _fail(
+                    f"Branch {worktree_branch} appeared 0 commits ahead of "
+                    f"{rebase_onto} but is NOT a true ancestor of "
+                    f"{canonical_for_shortcut} — work preserved; "
+                    f"re-run integrate to merge properly."
+                )
+
+            # Already merged: the branch tip is a verified ancestor of canonical
+            # main. Record merged_sha BEFORE deleting the branch ref.
             _record_merged_sha(db, thread_uuid, main_repo_path, worktree_branch)
             subprocess.run(
                 ["git", "-C", main_repo_path, "worktree", "remove", "--force", worktree_path],
