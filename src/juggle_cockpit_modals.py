@@ -242,6 +242,45 @@ class _GraphTaskModal(ModalScreen):
             yield Static("\n".join(self._lines()), markup=False)
 
 
+def resolve_task_detail(
+    tasks: list[dict], query: str
+) -> "tuple[dict, list[str]] | None":
+    """Pure resolver: match query against task id, unique id prefix, or _label.
+
+    Priority:
+      1. Exact task id (case-insensitive)
+      2. Unique task id prefix (case-insensitive); exact beats prefix
+      3. _label field (thread user_label slug, case-insensitive)
+
+    Returns (matched_task, deps_list) or None.
+    deps_list is taken from the task's own 'deps' field.
+    Ambiguous prefix (multiple matches, none exact) → None.
+    """
+    if not tasks or not query:
+        return None
+
+    q = query.strip().upper()
+
+    # Priority 1: exact id
+    for t in tasks:
+        if (t.get("id") or "").upper() == q:
+            return (t, list(t.get("deps") or []))
+
+    # Priority 2: unique id prefix
+    prefix_matches = [t for t in tasks if (t.get("id") or "").upper().startswith(q)]
+    if len(prefix_matches) == 1:
+        t = prefix_matches[0]
+        return (t, list(t.get("deps") or []))
+
+    # Priority 3: _label match (injected by caller from thread.user_label)
+    label_matches = [t for t in tasks if (t.get("_label") or "").upper() == q]
+    if len(label_matches) == 1:
+        t = label_matches[0]
+        return (t, list(t.get("deps") or []))
+
+    return None
+
+
 class _TailModal(ModalScreen):
     """Live tail overlay for a tmux pane.
 
