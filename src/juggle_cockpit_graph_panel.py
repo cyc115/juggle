@@ -98,11 +98,18 @@ def _cell_text(
     cell_w: int,
     selected: bool,
 ) -> Text:
-    """Render one list cell: '<idx> <glyph> <id><suffix>', truncated to cell_w."""
+    """Render one list cell: '<idx> <glyph> [id] <name><suffix>', truncated to
+    cell_w. The [thread/topic id] badge sits BEFORE the name (2026-06-16 user
+    feedback) so it survives name truncation instead of being ellipsized off the
+    end."""
     glyph = TASK_STATE_GLYPHS.get(task.state, "⬢")
+    # Thread/topic id badge — rendered in front of the name so a long, truncated
+    # name never hides it.
     if task.state in _RUNNING_STATES and (task.user_label or task.thread_id):
-        suffix = f" [{task.user_label or task.thread_id[:4]}]"
-    elif task.state == "pending" and dep_num is not None:
+        id_seg = f"[{task.user_label or task.thread_id[:4]}] "
+    else:
+        id_seg = ""
+    if task.state == "pending" and dep_num is not None:
         suffix = f" ⊣{dep_num}"          # waiting on task #dep_num
     elif task.state == "ready":
         suffix = " ▸"                     # next up
@@ -114,7 +121,7 @@ def _cell_text(
         suffix = f" {task.tasks_done}/{task.tasks_total}" + suffix
 
     is_mirror = getattr(task, "is_mirror", False)
-    prefix = f"{idx:>{idx_w}} {glyph} "
+    prefix = f"{idx:>{idx_w}} {glyph} {id_seg}"
     budget = max(3, cell_w - len(prefix) - len(suffix))
     raw_name = task.id if len(task.id) <= budget else task.id[: max(1, budget - 1)] + "…"
     name = f"~{raw_name}" if is_mirror else raw_name

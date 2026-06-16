@@ -138,6 +138,22 @@ def test_narrow_width_no_overflow():
         assert len(line) <= 40, f"overflow: {len(line)} > 40: {line!r}"
 
 
+def test_long_task_name_keeps_id_badge_visible():
+    """2026-06-16 (user feedback + screenshot): the [thread/topic id] badge must
+    survive task-name truncation. It used to render as an end-suffix and got
+    ellipsized away on a long task name; it now renders BEFORE the (possibly
+    truncated) name so the id stays visible."""
+    long_id = "reconcile-orphan-integrating-and-then-some-more-name"
+    tasks = [GraphTask(long_id, "Long", "running",
+                       thread_id="abcd1234", user_label="WK")]
+    panel = build_graph_panel(
+        project_id="P1", tasks=tasks, edges=[],
+        selection=0, unread=0, width=28, height=20, pan_offset=0,
+    )
+    out = _text(panel, width=28)
+    assert "[WK]" in out, f"id badge lost on truncation:\n{out}"
+
+
 # ── Task-progress cell suffix + multi-DAG stacking (R5, 2026-06-11) ──────────
 
 def test_topic_cell_shows_task_progress():
