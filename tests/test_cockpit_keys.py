@@ -112,7 +112,8 @@ def test_resolve_actions_by_thread_label_label_not_found():
 
 
 def test_bindings_has_expected_keys():
-    """BINDINGS must include ?, s, a, j, k. No 'r' (manual refresh removed). No 'q' (ctrl+c quits)."""
+    """BINDINGS must include ?, s, a, j, k, plus the watchdog W/R hotkeys
+    (T-cockpit-watchdog-owner: 'r' is now watchdog-restart). No 'q' (ctrl+c quits)."""
     from juggle_cockpit import CockpitApp
 
     keys = {b.key for b in CockpitApp.BINDINGS}
@@ -123,7 +124,8 @@ def test_bindings_has_expected_keys():
     assert "k" in keys, "k scroll key missing"
     assert "pagedown" in keys, "pagedown key missing"
     assert "pageup" in keys, "pageup key missing"
-    assert "r" not in keys, "'r' key must not be present (manual refresh removed)"
+    assert "w" in keys, "w watchdog-toggle key missing"
+    assert "r" in keys, "r watchdog-restart key missing"
 
 
 def test_q_key_not_in_quit_bindings():
