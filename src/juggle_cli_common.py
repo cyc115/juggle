@@ -158,15 +158,101 @@ def _cheap_llm_call(prompt: str, timeout: int = 10) -> str | None:
     return llm_call(prompt, profile="cheap", timeout=timeout)
 
 
+# Generic filler that carries no topic-specific meaning. A title made ONLY of
+# these words tells the user nothing and is near-duplicate of every other such
+# title (user feedback 2026-06-16), so it is rejected and we fall back to the
+# topic's own specifics. Kept lowercase; matched on word boundaries.
+_TITLE_FILLER: frozenset[str] = frozenset({
+    "a", "an", "and", "for", "in", "of", "on", "or", "the", "to", "with", "via",
+    "improve", "improving", "improvement", "improvements", "enhance", "enhanced",
+    "enhancement", "enhancements", "better", "optimize", "optimized",
+    "optimization", "optimisation", "efficiency", "efficient", "performance",
+    "reliability", "robustness", "stability", "quality", "orchestration",
+    "management", "handling", "support", "system", "systems", "architecture",
+    "framework", "infrastructure", "general", "generic", "update", "updates",
+    "updating", "refactor", "refactoring", "cleanup", "feature", "features",
+    "functionality", "capability", "capabilities", "misc", "miscellaneous",
+    "various", "stuff", "things", "work", "task", "tasks", "fix", "fixes",
+    "change", "changes", "logic", "flow",
+})
+
+
+def _title_content_words(title: str) -> list[str]:
+    """Lowercase alphanumeric tokens of a title with generic filler removed."""
+    import re as _re
+
+    return [
+        w for w in _re.findall(r"[a-z0-9]+", (title or "").lower())
+        if w not in _TITLE_FILLER
+    ]
+
+
+def _is_generic_title(title: str) -> bool:
+    """True when a non-empty title is ALL filler — no specific content words.
+
+    Empty/blank is NOT generic (that path is the last-resort fallback, which we
+    never reject); only a populated-but-meaningless title is.
+    """
+    if not title or not title.strip():
+        return False
+    return len(_title_content_words(title)) == 0
+
+
+def _titles_interchangeable(a: str, b: str) -> bool:
+    """True when two titles share the same set of content words.
+
+    Catches 'Improve Agent Dispatch Efficiency' vs '… Reliability' — identical
+    once trailing filler is stripped, so the user cannot tell them apart.
+    """
+    sa, sb = set(_title_content_words(a)), set(_title_content_words(b))
+    return bool(sa) and sa == sb
+
+
+def _dedupe_title(title: str, existing_titles: list[str], topic: str) -> str:
+    """Disambiguate a title that is interchangeable with an existing topic's.
+
+    Appends the most specific distinguishing token from the topic that the
+    title does not already carry. If none exists, returns the title unchanged
+    (we cannot invent specificity that the topic does not provide).
+    """
+    if not any(_titles_interchangeable(title, e) for e in existing_titles):
+        return title
+    have = set(_title_content_words(title))
+    extra = next((w for w in _title_content_words(topic) if w not in have), None)
+    if extra:
+        return f"{title} ({extra.title()})"
+    return title
+
+
+def _existing_thread_titles(db, exclude_uuid: str) -> list[str]:
+    """Non-empty titles of all OTHER threads, for dedup-awareness. Fail-soft."""
+    try:
+        return [
+            (t.get("title") or "").strip()
+            for t in db.get_all_threads()
+            if t.get("id") != exclude_uuid and (t.get("title") or "").strip()
+        ]
+    except Exception:
+        return []
+
+
 def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
-    """Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words."""
+    """Generate a specific, non-duplicate title. OpenRouter → Haiku → first 5 words.
+
+    The LLM title is rejected when it is all generic filler (forcing the topic
+    fallback), and disambiguated when it would be interchangeable with an
+    already-existing topic title.
+    """
     from juggle_settings import get_settings
 
     cfg = get_settings().get("title_gen", {})
     fallback = " ".join(topic.replace("-", " ").replace("_", " ").split()[:5]).title()
     prompt = (
-        f'Convert this task identifier into a concise 4-8 word descriptive title in Title Case. '
-        f'Task: "{topic}". Reply with the title only. No punctuation. No quotes. No explanation. Use Title Case.'
+        f'Write a specific 4-8 word Title Case title naming what this task is actually about. '
+        f'Task: "{topic}". Name the concrete component/feature/behaviour involved. '
+        f'Do NOT use vague filler words like "improve", "efficiency", "system", or '
+        f'"architecture" as the whole title — be specific. '
+        f'Reply with the title only. No punctuation. No quotes. No explanation.'
     )
     timeout = cfg.get("timeout_secs", 10)
 
@@ -174,12 +260,15 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
         if not text:
             return False
         words = text.split()
-        return 3 <= len(words) <= 15 and "-" not in text and not all(w.islower() for w in words)
+        if not (3 <= len(words) <= 15) or "-" in text or all(w.islower() for w in words):
+            return False
+        return not _is_generic_title(text)
 
     title = _cheap_llm_call(prompt, timeout=timeout)
     if title and _valid(title):
         if not any(c.isupper() for c in title):
             title = title.title()
+        title = _dedupe_title(title, _existing_thread_titles(db, thread_uuid), topic)
         logging.info("_generate_title_for_thread: -> %r", title)
         db.update_thread(thread_uuid, title=title)
         return title
