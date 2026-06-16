@@ -245,6 +245,14 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
                 _log.info("graph tick: thread cap hit — topic %s deferred", tid)
                 break  # cap is global; later topics would hit it too
             db.update_thread(thread_id, project_id=pid)
+            # Record the cyc_ branch at dispatch (T-verified-merged-sha, hole
+            # #3): tick-dispatched topics previously left worktree_branch ''
+            # so integrate couldn't know which branch tip to record as
+            # merged_sha. The branch matches _create_worktree's deterministic
+            # f"cyc_{thread_label}" (thread_label = user_label or id[:6]).
+            _t = db.get_thread(thread_id) or {}
+            _label = (_t.get("user_label") or thread_id[:6])
+            db.update_thread(thread_id, worktree_branch=f"cyc_{_label}")
             # Bind BEFORE send-task (DA round-2 MAJOR-4): a crash in the
             # dispatch window must leave the topic thread-bound so the stale
             # sweep cannot reclaim and double-dispatch it.

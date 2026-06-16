@@ -119,6 +119,19 @@ def set_topic_thread(db, topic_id, thread_id) -> None:
         conn.commit()
 
 
+def set_topic_merged_sha(db, topic_id, merged_sha, conn=None) -> None:
+    """Record the merge commit (branch tip now on main) for ``topic_id``.
+
+    The single source of truth for the verified gate (T-verified-merged-sha):
+    integrate writes this on a successful ff-merge/push so the topic can verify.
+    """
+    with _cx(db, conn) as c:
+        c.execute(
+            "UPDATE graph_topics SET merged_sha=?, updated_at=? WHERE id=?",
+            (merged_sha, _now(), topic_id),
+        )
+
+
 def set_topic_handoff(db, topic_id, handoff) -> None:
     with db._connect() as conn:
         conn.execute(

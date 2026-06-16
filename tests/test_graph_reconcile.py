@@ -25,25 +25,28 @@ import juggle_cmd_graph as cg  # noqa: E402
 
 
 def _bind_merged(db, topic_id: str, tmp_path: Path) -> None:
-    """G1 (2026-06-13): a topic only reconciles to 'verified' when its bound
-    branch is merged to main. Give the topic a thread on a merged repo so the
-    reconcile-to-verified path stays exercisable post-guard."""
+    """T-verified-merged-sha: a topic only reconciles to 'verified' when it has
+    a recorded merged_sha that is an ancestor of main. Give the topic a thread
+    on a repo AND record main's HEAD as merged_sha so the reconcile-to-verified
+    path stays exercisable under the single gate."""
     repo = tmp_path / f"repo_{topic_id}"
     repo.mkdir()
 
     def _git(*a):
-        subprocess.run(["git", "-C", str(repo), *a], check=True,
-                       capture_output=True, text=True)
+        return subprocess.run(["git", "-C", str(repo), *a], check=True,
+                              capture_output=True, text=True)
 
     _git("init", "-q", "-b", "main")
     _git("config", "user.email", "t@t.t")
     _git("config", "user.name", "T")
     (repo / "f.txt").write_text("base\n")
     _git("add", ".")
-    _git("commit", "-qm", "base")  # branch 'cyc' will be an ancestor of main
+    _git("commit", "-qm", "base")
+    main_sha = _git("rev-parse", "main").stdout.strip()
     thread_id = db.create_thread(topic="w", session_id="sessR")
-    db.update_thread(thread_id, worktree_branch="main", main_repo_path=str(repo))
+    db.update_thread(thread_id, worktree_branch="cyc_x", main_repo_path=str(repo))
     t.set_topic_thread(db, topic_id, thread_id)
+    t.set_topic_merged_sha(db, topic_id, main_sha)  # main HEAD is on main
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -270,30 +273,30 @@ def _mk_busy_agent(db, thread_id):
     return agent_id
 
 
-def test_reconcile_recovers_orphaned_integrating(db):
-    """DEFECT (2026-06-15): a topic stuck 'integrating' with NO bound thread/agent
-    whose member tasks are ALL verified must be advanced to 'verified' — the
-    integrate agent died before flipping the state. This is the recovery path."""
+def test_reconcile_orphan_without_merge_proof_stays_integrating(db):
+    """T-verified-merged-sha (closes the _orphan_recoverable hole): a topic stuck
+    'integrating' with NO bound thread/agent and NO recorded merged_sha must
+    NEVER be advanced to 'verified' — the old orphan-recovery bypass was a
+    false-verified hole. It stays 'integrating' (needs-attention)."""
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="integrating")  # orphaned — agent died
     _mk_task(db, "n1", pid, "T1", state="verified")
     _mk_task(db, "n2", pid, "T1", state="verified")
-    # thread_id IS NULL (no _bind_merged) → _verified_allowed is False, yet the
-    # orphan-recovery path must still advance it.
+    # thread_id IS NULL and merged_sha IS NULL → no merge proof → never verified.
 
     result = t.reconcile_topic_state(db, "T1")
 
-    assert result == "verified"
+    assert result == "integrating"
     topic = t.get_topic(db, "T1")
-    assert topic["state"] == "verified"
-    assert topic["verified_at"] is not None
+    assert topic["state"] == "integrating"
+    assert topic["verified_at"] is None
 
 
-def test_reconcile_recovered_integrating_is_idempotent(db):
-    """Re-running reconcile on a recovered orphan (now 'verified', still no bound
-    thread) must NOT demote it back to 'integrating'."""
+def test_reconcile_verified_is_terminal_idempotent(db):
+    """A genuinely-verified topic must stay 'verified' on re-reconcile (the
+    idempotency guarantee that previously rode on _orphan_recoverable)."""
     pid = _mk_project(db)
-    _mk_topic(db, "T1", pid, state="integrating")
+    _mk_topic(db, "T1", pid, state="verified")
     _mk_task(db, "n1", pid, "T1", state="verified")
 
     first = t.reconcile_topic_state(db, "T1")

@@ -240,6 +240,25 @@ def apply_graph_migrations(conn: sqlite3.Connection) -> None:
         _log.warning("Migration 37 (graph_topics) skipped: %s", e)
 
     migrate_is_mirror(conn)
+    migrate_merged_sha(conn)
+
+
+def migrate_merged_sha(conn: sqlite3.Connection) -> None:
+    """Migration 43 (2026-06-16, T-verified-merged-sha): add merged_sha to
+    graph_topics.
+
+    The single source of truth for 'verified ⟺ merged to main': integrate
+    records the merged commit SHA here, and the verify gate (graph_guards.
+    topic_is_merged) returns True IFF merged_sha is a recorded ancestor of main.
+    Additive + idempotent: duplicate-column ALTER is caught and swallowed; NULL
+    by default so existing rows stay pre-verified until proven merged.
+    """
+    try:
+        conn.execute("ALTER TABLE graph_topics ADD COLUMN merged_sha TEXT")
+        conn.commit()
+        _log.info("Migration 43: graph_topics.merged_sha column added")
+    except sqlite3.OperationalError as e:
+        _log.debug("Migration 43 (graph_topics.merged_sha) skipped: %s", e)
 
 
 def migrate_is_mirror(conn: sqlite3.Connection) -> None:

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from dbops.graph_guards import branch_merged_to_main
+from dbops.graph_guards import branch_merged_to_main, sha_is_ancestor
 
 
 @pytest.fixture
@@ -106,3 +106,45 @@ def test_merged_branch_verified(git_repo):
 def test_no_repo_fail_closed():
     """Missing/nonexistent repo returns False."""
     assert branch_merged_to_main("/nonexistent/path/repo", "cyc_foo") is False
+
+
+def test_branch_ref_gone_is_fail_closed(git_repo):
+    """T-verified-merged-sha: a deleted branch ref is NOT proof of merge.
+
+    The old 'branch ref gone → merged' fail-open is REMOVED — it caused
+    false-verified. An absent branch ref must return False."""
+    assert branch_merged_to_main(str(git_repo), "cyc_never_existed") is False
+
+
+# ---------------------------------------------------------------------------
+# sha_is_ancestor — the single source of truth for verified ⟺ merged
+# ---------------------------------------------------------------------------
+
+def test_sha_is_ancestor_true_for_main_commit(git_repo):
+    sha = subprocess.run(
+        ["git", "-C", str(git_repo), "rev-parse", "main"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    assert sha_is_ancestor(str(git_repo), sha) is True
+
+
+def test_sha_is_ancestor_false_for_offmain_commit(git_repo):
+    repo = str(git_repo)
+    subprocess.run(["git", "-C", repo, "checkout", "-q", "-b", "cyc_side"],
+                   check=True, capture_output=True)
+    (git_repo / "s.txt").write_text("s")
+    subprocess.run(["git", "-C", repo, "add", "."], check=True, capture_output=True)
+    subprocess.run(["git", "-C", repo, "commit", "-qm", "side"],
+                   check=True, capture_output=True)
+    sha = subprocess.run(
+        ["git", "-C", repo, "rev-parse", "cyc_side"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "-C", repo, "checkout", "-q", "main"],
+                   check=True, capture_output=True)
+    assert sha_is_ancestor(repo, sha) is False
+
+
+def test_sha_is_ancestor_empty_and_missing_fail_closed(git_repo):
+    assert sha_is_ancestor(str(git_repo), "") is False
+    assert sha_is_ancestor("/nonexistent/repo", "deadbeef") is False

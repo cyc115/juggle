@@ -42,29 +42,6 @@ def _has_live_bound_agent(db, topic: dict) -> bool:
         return False
 
 
-def _orphan_recoverable(db, topic: dict) -> bool:
-    """G5 (2026-06-15): is this an ORPHANED topic safe to settle at 'verified'?
-
-    The integrate step (integrating → verified) flips a topic only when its work
-    is merged (G1). If the integrating agent/thread dies before that flip, the
-    topic is stuck 'integrating' forever — git can no longer prove the merge once
-    the thread/branch is gone, so _verified_allowed stays False and reconcile
-    leaves it 'integrating' (inflating the cockpit 'running' count).
-
-    A topic is orphan-recoverable when it is already at/ past integrate
-    ('integrating' or 'verified'), is NOT a mirror (reflection-only trackers are
-    never advanced — commit 50b105d defense-in-depth), and has NO live bound
-    agent (thread_id IS NULL, or its agent is dead/decommissioned). Covering
-    'verified' too keeps recovery idempotent: a recovered orphan must not be
-    demoted back to 'integrating' on the next reconcile.
-    """
-    if topic.get("is_mirror"):
-        return False
-    if topic.get("state") not in ("integrating", "verified"):
-        return False
-    return not _has_live_bound_agent(db, topic)
-
-
 def reconcile_topic_state(db, topic_id: str) -> str:
     """Derive and sync a topic's state from its member task states.
 
@@ -86,6 +63,13 @@ def reconcile_topic_state(db, topic_id: str) -> str:
     if topic.get("is_mirror"):
         return topic["state"]
 
+    # 'verified' is TERMINAL: never auto-demote a proven-merged topic. This is
+    # the idempotency guarantee that previously rode on _orphan_recoverable
+    # (removed T-verified-merged-sha) — without it, a verified topic whose
+    # repo/branch is gone would derive 'integrating' and flap.
+    if topic.get("state") == "verified":
+        return "verified"
+
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT state FROM graph_tasks WHERE topic_id=?", (topic_id,)
@@ -97,12 +81,14 @@ def reconcile_topic_state(db, topic_id: str) -> str:
     task_states = [r[0] for r in rows]
 
     if all(s == "verified" for s in task_states):
-        # G1: verified ⟺ merged. Tasks 'verified' only means committed-in-
-        # worktree; without a merge to main the topic stays 'integrating'
-        # (pre-verified) rather than silently flipping to 'verified'.
-        # G5: EXCEPT an orphaned integrating topic (agent died, thread gone) —
-        # recover it to 'verified' since git can no longer prove the merge.
-        if _verified_allowed(db, topic_id) or _orphan_recoverable(db, topic):
+        # G1 single gate (T-verified-merged-sha): verified ⟺ a recorded
+        # merged_sha that is an ancestor of main. Tasks 'verified' only means
+        # committed-in-worktree; without merge proof the topic stays
+        # 'integrating' (pre-verified). The old orphan-recovery bypass (settle
+        # an agent-died topic at 'verified' without merge proof) is REMOVED — it
+        # was a false-verified hole. An orphan with merged_sha NULL stays
+        # 'integrating' (needs-attention), NEVER verified.
+        if _verified_allowed(db, topic_id):
             target = "verified"
         else:
             target = "integrating"
