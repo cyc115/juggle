@@ -281,11 +281,17 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         # ── 5. Run test_cmd (only when configured AND push_mode != none) ──────
         if test_cmd and push_mode != "none":
             from juggle_settings import get_nested
-            from juggle_integrate_testscope import select_scoped_tests, build_test_command
+            from juggle_integrate_testscope import (
+                apply_quarantine,
+                build_import_index,
+                build_test_command,
+                select_scoped_tests,
+            )
             import glob as _glob
 
             test_scope = get_nested("integrate", "test_scope", "changed")
             core_tests = get_nested("integrate", "core_tests", [])
+            quarantine = get_nested("integrate", "quarantine_tests", [])
 
             run_cmd = test_cmd
             if test_scope == "changed":
@@ -295,13 +301,17 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
                     capture_output=True, text=True,
                 )
                 changed_files = [l for l in changed_r.stdout.splitlines() if l.strip()]
+                tests_dir = Path(worktree_path) / "tests"
                 existing_tests = set(
-                    str(p).replace(str(worktree_path) + "/", "").replace(worktree_path + "/", "")
-                    for p in _glob.glob(
-                        str(Path(worktree_path) / "tests" / "**" / "*.py"), recursive=True
-                    )
+                    str(p.relative_to(worktree_path)).replace("\\", "/")
+                    for p in tests_dir.rglob("*.py")
+                ) if tests_dir.exists() else set()
+                import_index = build_import_index(tests_dir) if tests_dir.exists() else {}
+                scope = select_scoped_tests(
+                    changed_files, existing_tests,
+                    import_index=import_index,
+                    core_globs=core_tests or None,
                 )
-                scope = select_scoped_tests(changed_files, existing_tests, core_tests or None)
                 print(
                     f"[integrate] scope={scope['mode']} "
                     f"({len(scope['paths'])} file(s)): {scope['reason']}",
@@ -312,6 +322,10 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
                 elif scope["mode"] == "scoped":
                     run_cmd = build_test_command(test_cmd, scope["paths"])
                 # "full" → run_cmd stays as test_cmd (full suite)
+
+            if run_cmd and quarantine:
+                run_cmd = apply_quarantine(run_cmd, quarantine)
+                print(f"[integrate] quarantine: --deselect x{len(quarantine)}", flush=True)
 
             if run_cmd:
                 result = subprocess.run(

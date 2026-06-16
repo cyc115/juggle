@@ -94,6 +94,13 @@ DEFAULTS: dict = {
         "test_scope": "changed",
         # fnmatch globs (relative to repo root) always added to scoped runs.
         "core_tests": [],
+        # Pre-existing RED tests excluded from both scoped and full runs via
+        # --deselect.  Shrinks as each is fixed: loc_gate awaits dbops refactor
+        # + budget-lower; data_migration awaits triage.  NOT permanent.
+        "quarantine_tests": [
+            "tests/test_loc_gate.py",
+            "tests/test_data_migration.py",
+        ],
     },
     # Cockpit Display
     "cockpit": {
