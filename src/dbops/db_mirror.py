@@ -19,6 +19,10 @@ _log = logging.getLogger(__name__)
 
 _INBOX = "INBOX"
 
+# Terminal thread statuses: a mirror for a thread in any of these is stale and
+# must be pruned (the cockpit graph pane should only carry LIVE threads).
+_TERMINAL_STATUSES = ("archived", "closed")
+
 # Thread status → mirror topic state (direct SQL write, bypasses state machine).
 _THREAD_TO_STATE: dict[str, str] = {
     "active": "running",
@@ -109,7 +113,7 @@ def backfill_mirror_topics(db) -> int:
             rows = conn.execute(
                 "SELECT id, project_id FROM threads "
                 "WHERE project_id IS NOT NULL AND project_id != ? "
-                "AND status != 'archived'",
+                "AND status NOT IN ('archived','closed')",
                 (_INBOX,)
             ).fetchall()
     except Exception as exc:
@@ -133,8 +137,9 @@ def backfill_mirror_topics(db) -> int:
 def reconcile(db, project_id: str) -> dict:
     """Sync mirror topics for one project.
 
-    - Upsert mirrors for all non-archived assigned threads.
-    - Delete mirrors whose threads have since been archived or reassigned.
+    - Upsert mirrors for all live (non-terminal) assigned threads.
+    - Delete mirrors whose threads have since gone terminal (closed/archived)
+      or been reassigned.
 
     Returns dict with 'upserted' and 'deleted' counts.
     """
@@ -143,7 +148,7 @@ def reconcile(db, project_id: str) -> dict:
         with db._connect() as conn:
             thread_rows = conn.execute(
                 "SELECT id FROM threads "
-                "WHERE project_id=? AND status != 'archived'",
+                "WHERE project_id=? AND status NOT IN ('archived','closed')",
                 (project_id,)
             ).fetchall()
         active_thread_ids = {r["id"] for r in thread_rows}
