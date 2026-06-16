@@ -14,7 +14,6 @@ import sqlite3
 from dbops.migrations_recent import apply_recent_migrations
 from dbops.schema import (
     CREATE_AGENTS,
-    _next_excel_label,
 )
 
 _log = logging.getLogger(__name__)
@@ -209,33 +208,20 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         _log.warning("Migration 15 (settings seed) skipped: %s", e)
 
-    # Migration 16: backfill user_label for legacy threads, then drop label column
+    # Migration 16: drop the dead 'label' column (no backfill).
+    # The _next_excel_label backfill that was here raised 'All 702 user labels
+    # in use' once 702 persisted labels existed.  The slug-wheel allocates
+    # user_labels at create_thread time; legacy backfill is obsolete.
+    # M4 guard (user_label not in cols) prevents this from re-running on
+    # every init_db call, but M16 itself is idempotent: if 'label' somehow
+    # appears again, just drop it.
     cols = {
         row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
     }
     if "label" in cols:
         try:
-            used = {
-                row["user_label"]
-                for row in conn.execute(
-                    "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
-                ).fetchall()
-            }
-            missing = conn.execute(
-                "SELECT id FROM threads WHERE user_label IS NULL"
-            ).fetchall()
-            for row in missing:
-                ul = _next_excel_label(used)
-                conn.execute(
-                    "UPDATE threads SET user_label = ? WHERE id = ?",
-                    (ul, row["id"]),
-                )
-                used.add(ul)
             conn.execute("ALTER TABLE threads DROP COLUMN label")
-            _log.info(
-                "Migration 16: backfilled %d threads, dropped label column",
-                len(missing),
-            )
+            _log.info("Migration 16: dropped dead label column")
         except sqlite3.OperationalError as e:
             _log.warning("Migration 16 skipped: %s", e)
 

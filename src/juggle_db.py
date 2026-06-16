@@ -53,7 +53,6 @@ from dbops.schema import (  # noqa: E402, F401
     MAX_THREADS,
     _POINTER_SUFFIX,
     _is_junk_message,
-    _next_excel_label,
     _now,
     _thread_age_seconds,
 )

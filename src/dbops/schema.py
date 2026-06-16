@@ -292,22 +292,6 @@ def _wheel_index(slug: str | None) -> int | None:
     return (ord(a) - ord("A")) * 26 + (ord(b) - ord("A"))
 
 
-def _next_excel_label(used: set) -> str:
-    """Return first unused Excel-style base-26 label: A..Z, AA..AZ, BA..ZZ."""
-    letters = string.ascii_uppercase
-    # Single letter
-    for c in letters:
-        if c not in used:
-            return c
-    # Two letters AA..ZZ
-    for c1 in letters:
-        for c2 in letters:
-            label = c1 + c2
-            if label not in used:
-                return label
-    raise ValueError("All 702 user labels in use. Archive threads first.")
-
-
 def _thread_age_seconds(last_active: str | None) -> float | None:
     """Parse last_active ISO timestamp, return seconds since now, or None."""
     if not last_active:
