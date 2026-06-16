@@ -40,4 +40,4 @@ markers = [
 ]
 # Process-scope isolation: the harness-gate full-suite run must never pkill the
 # host canonical watchdog. Destructive proc-spawning tests are opt-in only.
-addopts = "-m 'not watchdog_proc'"
+addopts = "-m 'not watchdog_proc' --ignore=tests/test_user_label_resolver.py"

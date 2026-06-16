@@ -132,6 +132,7 @@ class CockpitApp(GraphModeMixin, App):
         Binding("slash",        "filter",        "Flt"),
         Binding("f",            "focus_pane",    "Foc"),
         Binding("t",            "tail_toggle",   "Tl"),
+        Binding("T",            "task_detail",   "Tk"),
         Binding("g",            "toggle_graph",  "Gr"),
         Binding("p",            "projects",      "Proj"),
         Binding("w",            "watchdog_toggle",  "Wd"),
@@ -773,6 +774,55 @@ class CockpitApp(GraphModeMixin, App):
             self.push_screen(_TailModal(agent.pane_id, _tmux_capture_pane))
 
         self.push_screen(_PromptModal(f"Tail agent (1–{len(agents)}):"), _on_index)
+
+    def action_task_detail(self) -> None:
+        """T — prompt for a task id or label and show its detail in _GraphTaskModal."""
+        from juggle_cockpit_model import snapshot as _snapshot
+        from juggle_cockpit_modals import resolve_task_detail
+        import dbops.db_graph as _g
+
+        state = _snapshot(self._db)
+
+        # Flatten all graph tasks across all projects, enriched with _label.
+        # _label is the thread's user_label slug (e.g. "AI") for label-based lookup.
+        label_by_thread: dict[str, str] = {t.id: t.label for t in state.topics}
+        all_tasks: list[dict] = []
+        try:
+            import sqlite3
+            with self._db._connect() as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT id, project_id, title, state, thread_id, verify_cmd, "
+                    "prompt, handoff FROM graph_tasks"
+                ).fetchall()
+            for r in rows:
+                d = dict(r)
+                tid = d.get("thread_id")
+                if tid and tid in label_by_thread:
+                    d["_label"] = label_by_thread[tid]
+                all_tasks.append(d)
+        except Exception:
+            pass
+
+        def _on_query(q: str | None) -> None:
+            if q is None:
+                return
+            result = resolve_task_detail(all_tasks, q)
+            if result is None:
+                self.notify(f"No task matching '{q}'", severity="warning", timeout=3)
+                return
+            task, deps = result
+            task_id = task.get("id", "")
+            try:
+                real_deps = _g.get_deps(self._db, task_id)
+            except Exception:
+                real_deps = deps
+            self.push_screen(_GraphTaskModal(task, real_deps, tasks=all_tasks))
+
+        self.push_screen(
+            _PromptModal("Task id or label (e.g. AI):", dismiss_empty_as=None),
+            _on_query,
+        )
 
     def on_key(self, event: events.Key) -> None:
         """Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape."""
