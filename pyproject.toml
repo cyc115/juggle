@@ -36,4 +36,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "asyncio: mark an async test to run under pytest-asyncio",
+    "watchdog_proc: spawns/kills REAL watchdog-like host processes; DESELECTED by default (opt-in with `-m watchdog_proc`) so a normal `pytest` run never touches the live canonical watchdog (T-watchdog-test-proc-scope, 2026-06-16 incident)",
 ]
+# Process-scope isolation: the harness-gate full-suite run must never pkill the
+# host canonical watchdog. Destructive proc-spawning tests are opt-in only.
+addopts = "-m 'not watchdog_proc'"
