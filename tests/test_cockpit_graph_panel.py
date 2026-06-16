@@ -11,6 +11,8 @@ import io
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from juggle_cockpit_graph_layout import GraphTask  # noqa: E402
@@ -151,6 +153,57 @@ def test_topic_cell_shows_task_progress():
     assert "2/6" in out
 
 
+def test_header_shows_project_name():
+    """T-cockpit-graph-pane-ux #1: section header renders '<id> · <name>',
+    not just the bare project id."""
+    from juggle_cockpit_graph_dag import GraphDag
+    from juggle_cockpit_graph_panel import build_multi_graph_panel
+
+    dags = [
+        GraphDag(project_id="P1", tasks=[GraphTask("a", "A", "verified")],
+                 edges=[], member_tasks={}, project_name="Trading Edge"),
+        GraphDag(project_id="P2", tasks=[GraphTask("b", "B", "ready")],
+                 edges=[], member_tasks={}, project_name="Juggle Claude Code Plugin"),
+    ]
+    panel = build_multi_graph_panel(
+        dags=dags, selection=0, unread=0, width=120, height=40, pan_offset=0
+    )
+    out = _text(panel, width=120)
+    assert "Juggle Claude Code Plugin" in out
+    assert "P2" in out
+    # done/running counts still rendered after the name.
+    assert "done" in out
+
+
+def test_single_header_shows_project_name():
+    tasks, edges = _dag()
+    from juggle_cockpit_graph_panel import build_graph_panel
+
+    panel = build_graph_panel(
+        project_id="P2", project_name="Juggle Claude Code Plugin",
+        tasks=tasks, edges=edges, selection=0, unread=0,
+        width=120, height=20, pan_offset=0,
+    )
+    out = _text(panel, width=120)
+    assert "Juggle Claude Code Plugin" in out
+    assert "done" in out
+
+
+def test_long_project_name_truncated_to_width():
+    tasks, edges = _dag()
+    from juggle_cockpit_graph_panel import build_graph_panel
+
+    panel = build_graph_panel(
+        project_id="P2", project_name="X" * 200,
+        tasks=tasks, edges=edges, selection=0, unread=0,
+        width=60, height=20, pan_offset=0,
+    )
+    out = _text(panel, width=60)
+    for line in out.splitlines():
+        assert len(line) <= 60, f"overflow: {len(line)} > 60: {line!r}"
+    assert "…" in out  # name was ellipsised
+
+
 def test_multi_panel_stacks_each_armed_dag_with_header():
     """REGRESSION PIN (2026-06-11): graph panel rendered only the first armed
     DAG — with two dags both project headers must render, P1 before P2."""
@@ -170,3 +223,86 @@ def test_multi_panel_stacks_each_armed_dag_with_header():
     p1_pos = out.find("P1")
     p2_pos = out.find("P2")
     assert p1_pos != -1 and p2_pos != -1 and p1_pos < p2_pos
+
+
+# ── Scrollable graph viewport (T-cockpit-graph-pane-ux #2) ───────────────────
+
+
+def _armed_many_db(tmp_path, n=120, projects=("P",)):
+    """Armed DB with many graph tasks so the graph pane overflows its viewport."""
+    from juggle_db import JuggleDB
+    from dbops import db_graph as g
+    from juggle_graph_dispatch import ARMED_PROJECT_KEY
+    from datetime import datetime, timezone
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    now = datetime.now(timezone.utc).isoformat()
+    with db._connect() as conn:
+        for pid in projects:
+            conn.execute(
+                "INSERT INTO projects(id,name,status,created_at,last_active) "
+                "VALUES(?,?,?,?,?)",
+                (pid, "Juggle Claude Code Plugin", "active", now, now),
+            )
+        conn.commit()
+    for pid in projects:
+        for i in range(n):
+            g.create_task(db, task_id=f"{pid}-n{i}", project_id=pid,
+                          title=f"Task {i}", prompt="x")
+    db.set_setting(ARMED_PROJECT_KEY, ",".join(projects))
+    return db_path
+
+
+@pytest.mark.asyncio
+async def test_graph_pane_is_scrollable_when_overflowing(tmp_path):
+    from juggle_cockpit import CockpitApp
+    from textual.containers import VerticalScroll
+
+    app = CockpitApp(db_path=_armed_many_db(tmp_path, n=120))
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.press("g")
+        await pilot.pause(0.2)
+        sc = app.query_one("#graph-scroll", VerticalScroll)
+        assert sc.max_scroll_y > 0, "tall graph should overflow the viewport"
+
+
+@pytest.mark.asyncio
+async def test_pagedown_and_j_move_the_viewport(tmp_path):
+    from juggle_cockpit import CockpitApp
+    from textual.containers import VerticalScroll
+
+    app = CockpitApp(db_path=_armed_many_db(tmp_path, n=120))
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.press("g")
+        await pilot.pause(0.2)
+        sc = app.query_one("#graph-scroll", VerticalScroll)
+        before = sc.scroll_offset.y
+        await pilot.press("pagedown")
+        await pilot.pause(0.2)
+        after_pgdn = sc.scroll_offset.y
+        assert after_pgdn > before, "PageDown should advance the viewport"
+        await pilot.press("j")
+        await pilot.pause(0.2)
+        assert sc.scroll_offset.y > after_pgdn, "j should advance the viewport"
+
+
+@pytest.mark.asyncio
+async def test_graph_header_shows_project_name_in_app(tmp_path):
+    from juggle_cockpit import CockpitApp
+
+    app = CockpitApp(db_path=_armed_many_db(tmp_path, n=4))
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.press("g")
+        await pilot.pause(0.2)
+        # End-to-end: the armed project's name flows through GraphDag into
+        # the rendered graph pane header.
+        from textual.widgets import Static
+        from rich.console import Console
+
+        panel = app.query_one("#graph-body", Static).render()._renderable
+        buf = io.StringIO()
+        Console(width=158, file=buf, no_color=True).print(panel)
+        assert "Juggle Claude Code Plugin" in buf.getvalue()

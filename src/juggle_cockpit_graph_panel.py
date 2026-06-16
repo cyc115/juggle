@@ -56,6 +56,26 @@ def _progress_bar(tasks: list[GraphTask], width: int = 10) -> str:
     return "▕" + "█" * filled + "░" * (width - filled) + "▏"
 
 
+def _section_header(
+    project_id: str,
+    project_name: str | None,
+    real_tasks: list[GraphTask],
+    inner_w: int,
+) -> Text:
+    """Header line: '<id> · <name>  <bar>  <progress>'.
+
+    The id+name label is truncated with an ellipsis so the whole line fits
+    inner_w, while the progress bar and done/running counts are kept intact.
+    """
+    counts = counts_from_states([n.state for n in real_tasks])
+    suffix = f"  {_progress_bar(real_tasks)}  {format_progress(counts)}"
+    label = f"{project_id} · {project_name}" if project_name else project_id
+    budget = max(3, inner_w - len(suffix))
+    if len(label) > budget:
+        label = label[: max(1, budget - 1)] + "…"
+    return Text(f"{label}{suffix}", style=Style(bold=True), no_wrap=True, overflow="ellipsis")
+
+
 def topological_order(
     tasks: list[GraphTask], edges: list[tuple[str, str]]
 ) -> list[GraphTask]:
@@ -120,18 +140,16 @@ def _graph_section(
     sel_id: str | None,
     inner_w: int,
     pan_offset: int,
+    project_name: str | None = None,
 ) -> list:
     """Header + grid (no Panel wrapper) — extracted so build_multi_graph_panel
     can stack multiple sections."""
     if not tasks:
-        return [Text(f"{project_id}: no graph tasks yet", style=Style(dim=True))]
+        label = f"{project_id} · {project_name}" if project_name else project_id
+        return [Text(f"{label}: no graph tasks yet", style=Style(dim=True))]
 
     real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
-    counts = counts_from_states([n.state for n in real_tasks])
-    header = Text(
-        f"{project_id}  {_progress_bar(real_tasks)}  {format_progress(counts)}",
-        style=Style(bold=True),
-    )
+    header = _section_header(project_id, project_name, real_tasks, inner_w)
 
     flat = topological_order(tasks, edges)
     idx_of = {n.id: i + 1 for i, n in enumerate(flat)}
@@ -179,11 +197,15 @@ def build_graph_panel(
     width: int,
     height: int,
     pan_offset: int,
+    project_name: str | None = None,
+    scroll: bool = False,
 ) -> Panel:
     """Build the graph Panel. Pure — no I/O.
 
     selection indexes the flat topological task list (execution order).
-    width/height are the panel's available inner dims (cells).
+    width/height are the panel's available inner dims (cells). When scroll is
+    True the full grid is rendered (no vertical truncation) so an outer
+    scrollable viewport can pan over it.
     """
     title = f"Graph{_badge_segment(unread)}"
 
@@ -195,15 +217,13 @@ def build_graph_panel(
         return Panel(body, title=title, border_style="grey50")
 
     if not tasks:
-        body = Text(f"{project_id}: no graph tasks yet", style=Style(dim=True))
+        label = f"{project_id} · {project_name}" if project_name else project_id
+        body = Text(f"{label}: no graph tasks yet", style=Style(dim=True))
         return Panel(body, title=title, border_style="grey50")
 
+    inner_w_hdr = max(8, width - 4)
     real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
-    counts = counts_from_states([n.state for n in real_tasks])
-    header = Text(
-        f"{project_id}  {_progress_bar(real_tasks)}  {format_progress(counts)}",
-        style=Style(bold=True),
-    )
+    header = _section_header(project_id, project_name, real_tasks, inner_w_hdr)
 
     flat = topological_order(tasks, edges)
     idx_of = {n.id: i + 1 for i, n in enumerate(flat)}
@@ -218,8 +238,10 @@ def build_graph_panel(
     rows = math.ceil(len(flat) / n_cols)
 
     # Vertical scroll when the list is taller than the pane (header+legend = 2).
+    # When an outer scrollable viewport is in play (scroll=True), render the
+    # full grid and let the viewport pan over it instead of truncating here.
     avail_rows = max(1, height - 2)
-    truncated = rows > avail_rows
+    truncated = (not scroll) and rows > avail_rows
     if truncated:
         rows = avail_rows
 
@@ -271,6 +293,7 @@ def build_multi_graph_panel(
     width: int,
     height: int,
     pan_offset: int,
+    scroll: bool = False,
 ) -> Panel:
     """Stacked multi-DAG panel: one titled topic-DAG section per armed project.
 
@@ -289,6 +312,7 @@ def build_multi_graph_panel(
             project_id=d.project_id, tasks=d.tasks, edges=d.edges,
             selection=selection, unread=unread, width=width, height=height,
             pan_offset=pan_offset,
+            project_name=getattr(d, "project_name", None), scroll=scroll,
         )
     inner_w = max(8, width - 4)
     flat_all = [n for d in dags for n in topological_order(d.tasks, d.edges)]
@@ -298,5 +322,6 @@ def build_multi_graph_panel(
         if i:
             parts.append(Text("─" * inner_w, style=Style(dim=True)))
         parts.extend(_graph_section(d.project_id, d.tasks, d.edges, sel_id,
-                                    inner_w, pan_offset))
+                                    inner_w, pan_offset,
+                                    project_name=getattr(d, "project_name", None)))
     return Panel(_Group(*parts), title=title, border_style="cyan")

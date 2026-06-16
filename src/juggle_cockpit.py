@@ -28,7 +28,7 @@ sys.path.insert(0, str(SRC_DIR))
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Static
 
 from juggle_db import JuggleDB
@@ -154,6 +154,19 @@ class CockpitApp(GraphModeMixin, App):
     #agents {
         height: 100%;
     }
+    #notif-region {
+        layout: vertical;
+    }
+    #notifications {
+        height: 100%;
+    }
+    #graph-scroll {
+        height: 100%;
+        display: none;
+    }
+    #graph-body {
+        height: auto;
+    }
     Footer {
         layer: base;
     }
@@ -244,8 +257,11 @@ class CockpitApp(GraphModeMixin, App):
                         min_right_pct=int(_MIN_AGENTS_RATIO * 100),
                     )
                     yield Static("", id="agents")
-                yield HSplitter("upper", "notifications")
-                yield Static("", id="notifications")
+                yield HSplitter("upper", "notif-region")
+                with Vertical(id="notif-region"):
+                    yield Static("", id="notifications")
+                    with VerticalScroll(id="graph-scroll"):
+                        yield Static("", id="graph-body")
         yield Footer(compact=True)
         yield Static("", id="wd-status")
 
@@ -273,7 +289,7 @@ class CockpitApp(GraphModeMixin, App):
         self.query_one("#actions").styles.width = f"{actions_pct}%"
         self.query_one("#agents").styles.width = f"{agents_pct}%"
         self.query_one("#upper").styles.height = f"{upper_pct}%"
-        self.query_one("#notifications").styles.height = f"{notif_pct}%"
+        self.query_one("#notif-region").styles.height = f"{notif_pct}%"
 
         self._check_tmux_mouse()
         self.set_interval(REFRESH_INTERVAL, self._refresh)
@@ -439,13 +455,26 @@ class CockpitApp(GraphModeMixin, App):
                     filter_label=self._filter.get("agents", ""),
                 )
             )
-            self.query_one("#notifications").update(
-                self._render_graph_panel(state) if self._graph_mode
-                else render_notifications(
-                    filtered_notifs, off["notifications"], active == "notifications",
-                    filter_label=self._filter.get("notifications", ""),
-                )
+            # Graph mode renders into a scrollable viewport (#graph-scroll);
+            # Notifications mode renders into the plain #notifications Static.
+            # Only one is displayed at a time within #notif-region.
+            self.query_one("#graph-scroll").styles.display = (
+                "block" if self._graph_mode else "none"
             )
+            self.query_one("#notifications").styles.display = (
+                "none" if self._graph_mode else "block"
+            )
+            if self._graph_mode:
+                self.query_one("#graph-body", Static).update(
+                    self._render_graph_panel(state)
+                )
+            else:
+                self.query_one("#notifications", Static).update(
+                    render_notifications(
+                        filtered_notifs, off["notifications"], active == "notifications",
+                        filter_label=self._filter.get("notifications", ""),
+                    )
+                )
 
         except Exception as e:
             self.notify(str(e), severity="error")
@@ -792,7 +821,7 @@ class CockpitApp(GraphModeMixin, App):
             if bp == "wide":
                 if self._last_bp != "wide":
                     # Transitioning narrow/medium → wide: restore column widths from config.
-                    # Heights (#upper / #notifications) are preserved from HSplitter drag.
+                    # Heights (#upper / #notif-region) are preserved from HSplitter drag.
                     t, a, ag = _COL_RATIOS
                     topics_w = _clamp_col_pct(int(t * 100))
                     self.query_one("#topics").styles.display = "block"

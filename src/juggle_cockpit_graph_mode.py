@@ -47,8 +47,10 @@ class GraphModeMixin:
             [state.graph_dag] if getattr(state, "graph_dag", None) else []
         )
         try:
-            w = self.query_one("#notifications").size.width or 80
-            h = self.query_one("#notifications").size.height or 20
+            # The viewport (#graph-scroll) reserves a column for its scrollbar;
+            # trim width so the grid never spills into a horizontal scroll.
+            w = (self.query_one("#graph-scroll").size.width or 80) - 2
+            h = self.query_one("#graph-scroll").size.height or 20
         except Exception:
             w, h = 80, 20
         total_tasks = sum(len(d.tasks) for d in dags)
@@ -57,7 +59,8 @@ class GraphModeMixin:
             dags=dags,
             selection=self._graph_sel,
             unread=self._graph_unread,
-            width=w, height=h, pan_offset=self._graph_pan,
+            width=max(8, w), height=h, pan_offset=self._graph_pan,
+            scroll=True,
         )
 
     # -- toggle + nav ---------------------------------------------------------
@@ -76,6 +79,12 @@ class GraphModeMixin:
             self._graph_sel = 0
             self._graph_pan = 0
         self._refresh()
+        if self._graph_mode:
+            # Focus the viewport so the mouse wheel and scroll keys target it.
+            try:
+                self.query_one("#graph-scroll").focus()
+            except Exception:
+                pass
 
     def _graph_select(self, delta: int) -> None:
         self._graph_sel = max(0, self._graph_sel + delta)
@@ -84,6 +93,22 @@ class GraphModeMixin:
     def _graph_pan_by(self, delta: int) -> None:
         self._graph_pan = max(0, self._graph_pan + delta)
         self._refresh()
+
+    def _graph_scroll_by(self, key: str) -> bool:
+        """Scroll the graph viewport. Returns True if the viewport was found."""
+        try:
+            sc = self.query_one("#graph-scroll")
+        except Exception:
+            return False
+        if key == "j":
+            sc.scroll_down(animate=False)
+        elif key == "k":
+            sc.scroll_up(animate=False)
+        elif key == "pagedown":
+            sc.scroll_page_down(animate=False)
+        elif key == "pageup":
+            sc.scroll_page_up(animate=False)
+        return True
 
     def _open_graph_task_modal(self) -> None:
         """Enter — open the read-only detail modal for the selected topic/task."""
@@ -134,6 +159,12 @@ class GraphModeMixin:
             event.stop()
             event.prevent_default()
             return True
+        # j/k/PgUp/PgDn scroll the viewport over a large / multi-project graph.
+        if k in ("j", "k", "pageup", "pagedown"):
+            if self._graph_scroll_by(k):
+                event.stop()
+                event.prevent_default()
+                return True
         if k == "escape":
             self._graph_mode = False
             event.stop()

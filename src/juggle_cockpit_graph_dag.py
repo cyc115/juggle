@@ -24,6 +24,7 @@ class GraphDag:
     tasks: list  # list[GraphTask] — TOPICS as tasks (DAG vertices)
     edges: list[tuple[str, str]]  # (topic_id, dep_topic_id)
     member_tasks: "dict | None" = field(default=None, compare=False)  # topic_id → list[dict]
+    project_name: "str | None" = None  # human project name for the panel header
 
 
 def _armed_set(conn) -> list[str]:
@@ -41,6 +42,17 @@ def _armed_set(conn) -> list[str]:
         if pid and pid not in out:
             out.append(pid)
     return out
+
+
+def _project_name(conn, pid: str) -> "str | None":
+    """Human name for a project id, or None when absent / pre-migration."""
+    try:
+        row = conn.execute(
+            "SELECT name FROM projects WHERE id = ?", (pid,)
+        ).fetchone()
+    except Exception:
+        return None
+    return (row[0] if row else None) or None
 
 
 def _load_one_legacy_tasks(conn, pid: str) -> "GraphDag | None":
@@ -70,7 +82,8 @@ def _load_one_legacy_tasks(conn, pid: str) -> "GraphDag | None":
         for r in task_rows
     ]
     edges = [(r["task_id"], r["depends_on_id"]) for r in edge_rows]
-    return GraphDag(project_id=pid, tasks=tasks, edges=edges, member_tasks=None)
+    return GraphDag(project_id=pid, tasks=tasks, edges=edges, member_tasks=None,
+                    project_name=_project_name(conn, pid))
 
 
 def _load_one(conn, pid: str) -> "GraphDag | None":
@@ -157,7 +170,8 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
             is_mirror=bool(r["is_mirror"]),
         ))
 
-    return GraphDag(project_id=pid, tasks=tasks, edges=edges, member_tasks=member_tasks)
+    return GraphDag(project_id=pid, tasks=tasks, edges=edges, member_tasks=member_tasks,
+                    project_name=_project_name(conn, pid))
 
 
 def load_graph_dags(conn) -> list["GraphDag"]:
