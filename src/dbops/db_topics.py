@@ -94,9 +94,17 @@ def get_topic_by_thread(db, thread_id) -> dict | None:
 
 
 def list_topics(db, project_id) -> list[dict]:
+    """Real graph topics for a project, in topological-ish (created_at,id) order.
+
+    Excludes mirror topics (COALESCE(is_mirror,0)=1): those are reflection-only
+    projections of assigned threads, not graph work. Listing them here made a
+    conversational chat thread `project assign`-ed to a project surface as a
+    phantom ``~<uuid>`` node in the cockpit graph pane and dragged reconcile/
+    dispatch over non-graph rows (2026-06-15 defect)."""
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM graph_topics WHERE project_id=? ORDER BY created_at, id",
+            "SELECT * FROM graph_topics WHERE project_id=? "
+            "AND COALESCE(is_mirror, 0) = 0 ORDER BY created_at, id",
             (project_id,),
         ).fetchall()
         return [dict(r) for r in rows]

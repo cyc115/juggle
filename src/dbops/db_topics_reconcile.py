@@ -42,20 +42,49 @@ def _has_live_bound_agent(db, topic: dict) -> bool:
         return False
 
 
+def _orphan_recoverable(db, topic: dict) -> bool:
+    """G5 (2026-06-15): is this an ORPHANED topic safe to settle at 'verified'?
+
+    The integrate step (integrating → verified) flips a topic only when its work
+    is merged (G1). If the integrating agent/thread dies before that flip, the
+    topic is stuck 'integrating' forever — git can no longer prove the merge once
+    the thread/branch is gone, so _verified_allowed stays False and reconcile
+    leaves it 'integrating' (inflating the cockpit 'running' count).
+
+    A topic is orphan-recoverable when it is already at/ past integrate
+    ('integrating' or 'verified'), is NOT a mirror (reflection-only trackers are
+    never advanced — commit 50b105d defense-in-depth), and has NO live bound
+    agent (thread_id IS NULL, or its agent is dead/decommissioned). Covering
+    'verified' too keeps recovery idempotent: a recovered orphan must not be
+    demoted back to 'integrating' on the next reconcile.
+    """
+    if topic.get("is_mirror"):
+        return False
+    if topic.get("state") not in ("integrating", "verified"):
+        return False
+    return not _has_live_bound_agent(db, topic)
+
+
 def reconcile_topic_state(db, topic_id: str) -> str:
     """Derive and sync a topic's state from its member task states.
 
-    Priority: all verified AND merged → 'verified' (else 'integrating', G1);
-    any failed → 'failed-verify'; any active (running/dispatching/integrating)
-    → 'running'; else leave pending/ready unchanged (or reset a phantom
-    non-terminal to 'pending'). Never demotes a 'running' topic with a live
-    bound agent (G4a). Idempotent; safe on terminal topics.
+    Priority: all verified AND (merged OR orphaned-integrating) → 'verified'
+    (else 'integrating', G1/G5); any failed → 'failed-verify'; any active
+    (running/dispatching/integrating) → 'running'; else leave pending/ready
+    unchanged (or reset a phantom non-terminal to 'pending'). Never demotes a
+    'running' topic with a live bound agent (G4a). Never writes a mirror topic
+    (reflection-only). Idempotent; safe on terminal topics.
     """
     from dbops.db_topics import _verified_allowed
 
     topic = get_topic(db, topic_id)
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
+
+    # Mirror topics are reflection-only trackers (db_mirror is their sole writer);
+    # reconcile must never advance them (commit 50b105d defense-in-depth).
+    if topic.get("is_mirror"):
+        return topic["state"]
 
     with db._connect() as conn:
         rows = conn.execute(
@@ -71,7 +100,12 @@ def reconcile_topic_state(db, topic_id: str) -> str:
         # G1: verified ⟺ merged. Tasks 'verified' only means committed-in-
         # worktree; without a merge to main the topic stays 'integrating'
         # (pre-verified) rather than silently flipping to 'verified'.
-        target = "verified" if _verified_allowed(db, topic_id) else "integrating"
+        # G5: EXCEPT an orphaned integrating topic (agent died, thread gone) —
+        # recover it to 'verified' since git can no longer prove the merge.
+        if _verified_allowed(db, topic_id) or _orphan_recoverable(db, topic):
+            target = "verified"
+        else:
+            target = "integrating"
     elif any(s in _FAILED_TASK_STATES for s in task_states):
         target = "failed-verify"
     elif any(s in _ACTIVE_TASK_STATES for s in task_states):

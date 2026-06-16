@@ -260,6 +260,117 @@ def test_graph_reconcile_cli_json_output(db, capsys, tmp_path):
     assert data["T1"]["after"] == "verified"
 
 
+# ── T-reconcile-orphan-integrating: recover orphaned 'integrating' topics ─────
+
+
+def _mk_busy_agent(db, thread_id):
+    """Register a busy agent bound to ``thread_id`` (a live bound agent)."""
+    agent_id = db.create_agent(role="coder", pane_id="p0")
+    assert db.cas_assign_agent(agent_id, thread_id)
+    return agent_id
+
+
+def test_reconcile_recovers_orphaned_integrating(db):
+    """DEFECT (2026-06-15): a topic stuck 'integrating' with NO bound thread/agent
+    whose member tasks are ALL verified must be advanced to 'verified' — the
+    integrate agent died before flipping the state. This is the recovery path."""
+    pid = _mk_project(db)
+    _mk_topic(db, "T1", pid, state="integrating")  # orphaned — agent died
+    _mk_task(db, "n1", pid, "T1", state="verified")
+    _mk_task(db, "n2", pid, "T1", state="verified")
+    # thread_id IS NULL (no _bind_merged) → _verified_allowed is False, yet the
+    # orphan-recovery path must still advance it.
+
+    result = t.reconcile_topic_state(db, "T1")
+
+    assert result == "verified"
+    topic = t.get_topic(db, "T1")
+    assert topic["state"] == "verified"
+    assert topic["verified_at"] is not None
+
+
+def test_reconcile_recovered_integrating_is_idempotent(db):
+    """Re-running reconcile on a recovered orphan (now 'verified', still no bound
+    thread) must NOT demote it back to 'integrating'."""
+    pid = _mk_project(db)
+    _mk_topic(db, "T1", pid, state="integrating")
+    _mk_task(db, "n1", pid, "T1", state="verified")
+
+    first = t.reconcile_topic_state(db, "T1")
+    second = t.reconcile_topic_state(db, "T1")
+
+    assert first == "verified"
+    assert second == "verified"
+    assert t.get_topic(db, "T1")["state"] == "verified"
+
+
+def test_reconcile_mirror_integrating_not_advanced(db):
+    """Mirror guard (commit 50b105d defense-in-depth): an is_mirror=1 topic is a
+    reflection-only tracker — reconcile must NEVER advance it, even when it looks
+    like an orphaned integrating topic with all tasks verified."""
+    pid = _mk_project(db)
+    _mk_topic(db, "M1", pid, state="integrating")
+    with db._connect() as conn:
+        conn.execute("UPDATE graph_topics SET is_mirror=1 WHERE id=?", ("M1",))
+        conn.commit()
+    _mk_task(db, "n1", pid, "M1", state="verified")
+
+    result = t.reconcile_topic_state(db, "M1")
+
+    assert result == "integrating"
+    assert t.get_topic(db, "M1")["state"] == "integrating"
+    assert t.get_topic(db, "M1")["verified_at"] is None
+
+
+def test_reconcile_integrating_with_live_agent_not_advanced(db):
+    """An 'integrating' topic with a LIVE bound agent is still in progress — the
+    integrate is genuinely running, not orphaned. Do NOT advance to verified."""
+    pid = _mk_project(db)
+    _mk_topic(db, "T1", pid, state="integrating")
+    _mk_task(db, "n1", pid, "T1", state="verified")
+    thread_id = db.create_thread(topic="w", session_id="sessL")
+    t.set_topic_thread(db, "T1", thread_id)
+    _mk_busy_agent(db, thread_id)  # live bound agent → not orphaned
+
+    result = t.reconcile_topic_state(db, "T1")
+
+    assert result == "integrating"
+    assert t.get_topic(db, "T1")["state"] == "integrating"
+
+
+def test_reconcile_integrating_with_unverified_task_not_advanced(db):
+    """An 'integrating' topic with a non-verified member task is still in
+    progress — reconcile must not jump it to verified."""
+    pid = _mk_project(db)
+    _mk_topic(db, "T1", pid, state="integrating")
+    _mk_task(db, "n1", pid, "T1", state="verified")
+    _mk_task(db, "n2", pid, "T1", state="running")  # not all verified
+
+    result = t.reconcile_topic_state(db, "T1")
+
+    assert result != "verified"
+    assert t.get_topic(db, "T1")["state"] != "verified"
+
+
+def test_list_topics_excludes_conversational_mirror(db):
+    """A conversational thread `project assign`-ed to a project gets a mirror
+    (is_mirror=1) topic. That phantom must NOT appear in the project's
+    graph-topic listing (it pollutes the cockpit graph pane)."""
+    from dbops.db_mirror import mirror_upsert_thread
+
+    pid = _mk_project(db)
+    _mk_topic(db, "T1", pid, state="pending")  # a real graph topic
+    chat = db.create_thread(topic="improve dispatch", session_id="sessC")
+    db.update_thread(chat, project_id=pid)
+    mirror_id = mirror_upsert_thread(db, chat, pid)  # ~<uuid> phantom
+
+    listed = {top["id"] for top in t.list_topics(db, pid)}
+
+    assert "T1" in listed
+    assert mirror_id not in listed
+    assert not any(tid.startswith("~") for tid in listed)
+
+
 # ── B3: doctor runs reconcile ─────────────────────────────────────────────────
 
 
