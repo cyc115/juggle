@@ -280,21 +280,55 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
 
         # ── 5. Run test_cmd (only when configured AND push_mode != none) ──────
         if test_cmd and push_mode != "none":
-            result = subprocess.run(
-                test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
-            )
-            if result.returncode != 0:
-                # One retry for transient flakes (pilot/Textual tests flake under
-                # load). Only abort if both attempts fail.
+            from juggle_settings import get_nested
+            from juggle_integrate_testscope import select_scoped_tests, build_test_command
+            import glob as _glob
+
+            test_scope = get_nested("integrate", "test_scope", "changed")
+            core_tests = get_nested("integrate", "core_tests", [])
+
+            run_cmd = test_cmd
+            if test_scope == "changed":
+                changed_r = subprocess.run(
+                    ["git", "-C", worktree_path, "diff", "--name-only",
+                     f"{rebase_onto}...HEAD"],
+                    capture_output=True, text=True,
+                )
+                changed_files = [l for l in changed_r.stdout.splitlines() if l.strip()]
+                existing_tests = set(
+                    str(p).replace(str(worktree_path) + "/", "").replace(worktree_path + "/", "")
+                    for p in _glob.glob(
+                        str(Path(worktree_path) / "tests" / "**" / "*.py"), recursive=True
+                    )
+                )
+                scope = select_scoped_tests(changed_files, existing_tests, core_tests or None)
+                print(
+                    f"[integrate] scope={scope['mode']} "
+                    f"({len(scope['paths'])} file(s)): {scope['reason']}",
+                    flush=True,
+                )
+                if scope["mode"] == "skip":
+                    run_cmd = None
+                elif scope["mode"] == "scoped":
+                    run_cmd = build_test_command(test_cmd, scope["paths"])
+                # "full" → run_cmd stays as test_cmd (full suite)
+
+            if run_cmd:
                 result = subprocess.run(
-                    test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
+                    run_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
                 )
-            if result.returncode != 0:
-                return _fail(
-                    f"Tests failed (exit {result.returncode}) for {worktree_branch}. "
-                    f"No merge performed. "
-                    f"stdout tail: {result.stdout[-300:].strip()}"
-                )
+                if result.returncode != 0:
+                    # One retry for transient flakes (pilot/Textual tests flake under
+                    # load). Only abort if both attempts fail.
+                    result = subprocess.run(
+                        run_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
+                    )
+                if result.returncode != 0:
+                    return _fail(
+                        f"Tests failed (exit {result.returncode}) for {worktree_branch}. "
+                        f"No merge performed. "
+                        f"stdout tail: {result.stdout[-300:].strip()}"
+                    )
 
         # ── 5b. Graph-task gate: pre-merge diffstat + verify_cmd (DA M3) ──────
         # Runs in the worktree, post-rebase, BEFORE any merge/push — alongside
