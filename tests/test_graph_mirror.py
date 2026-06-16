@@ -260,8 +260,11 @@ class TestBackfill:
         from dbops.db_mirror import backfill_mirror_topics
 
         _project(db)
-        tid1 = _thread(db, project_id="P1", status="active")
-        tid2 = _thread(db, project_id="P1", status="idle")
+        # Distinct topics: the create_thread dedup guard collapses
+        # lexically-identical open threads, so two backfill targets need
+        # genuinely different titles.
+        tid1 = _thread(db, project_id="P1", status="active", topic="alpha work")
+        tid2 = _thread(db, project_id="P1", status="idle", topic="beta work")
 
         count = backfill_mirror_topics(db)
         assert count >= 2

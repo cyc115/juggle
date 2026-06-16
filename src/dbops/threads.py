@@ -7,6 +7,7 @@ Must not own: message content, project assignment, agent pool, notifications.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -24,6 +25,63 @@ from dbops.schema import (
 # (or dbops.schema.MAX_THREADS) to bypass the cap in seeding fixtures.
 MAX_THREADS = _schema.MAX_THREADS
 
+# ---------------------------------------------------------------------------
+# Lexical thread-dedup guard (v1 — deterministic, NO LLM)
+#
+# A new thread whose title is a strong lexical match of an OPEN same-project
+# thread is a semantic duplicate; create_thread reuses the existing thread
+# instead of spawning a twin. This single chokepoint covers both origins of
+# thread creation: manual `create-thread` and the graph-tick dispatch path.
+#
+# _title_similarity is kept PURE and isolated so a future semantic/embedding
+# scorer can replace it without touching the call sites.
+# ---------------------------------------------------------------------------
+
+# Reuse threshold on the 0..1 similarity score. >= this is a duplicate.
+THREAD_DEDUP_THRESHOLD = 0.8
+
+# Statuses considered OPEN (live work). Closed/archived threads are historical
+# and are NEVER reuse targets.
+_OPEN_THREAD_STATES = ("active", "running", "background")
+
+# Leading "[T-<id>] " graph-topic prefix stamped onto dispatch-thread titles.
+_TOPIC_PREFIX_RE = re.compile(r"^\s*\[t-[^\]]+\]\s*", re.IGNORECASE)
+
+# Function words and structural filler that carry no topical signal.
+_DEDUP_STOPWORDS = frozenset({
+    "a", "an", "the", "of", "for", "to", "and", "or", "in", "on", "with",
+    "via", "by", "at", "is", "are", "was", "were", "be", "this", "that",
+    "it", "as", "from", "into", "topic",
+})
+
+
+def _normalize_title_tokens(title: str) -> set[str]:
+    """Lowercase, strip a leading graph-topic prefix, drop punctuation and
+    stopwords, and tokenize to a set of significant tokens."""
+    s = (title or "").lower()
+    s = _TOPIC_PREFIX_RE.sub("", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return {tok for tok in s.split() if tok and tok not in _DEDUP_STOPWORDS}
+
+
+def _title_similarity(a: str, b: str) -> float:
+    """Lexical title similarity in 0..1.
+
+    Score = max(token-set containment |A∩B|/min(|A|,|B|), Jaccard
+    |A∩B|/|A∪B|). Containment catches the case where one title is a terse
+    subset of a longer one (e.g. "slug wheel" vs the full dispatch title).
+    """
+    ta = _normalize_title_tokens(a)
+    tb = _normalize_title_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    inter = len(ta & tb)
+    if inter == 0:
+        return 0.0
+    containment = inter / min(len(ta), len(tb))
+    jaccard = inter / len(ta | tb)
+    return max(containment, jaccard)
+
 
 class ThreadsMixin:
     """Mixin for thread CRUD, state machine, archive ops, and stale detection."""
@@ -32,12 +90,64 @@ class ThreadsMixin:
     # Thread CRUD
     # ---------------------------------------------------------------
 
-    def create_thread(self, topic: str, session_id: str) -> str:
+    def _find_duplicate_open_thread(
+        self, topic: str, project_id: str | None
+    ) -> str | None:
+        """Return the id of an OPEN thread whose title is a lexical duplicate of
+        `topic`, or None. Scoped to `project_id` when known, else global.
+
+        Safety: only OPEN threads are eligible, and a thread that already OWNS a
+        graph topic or task is excluded — those are real in-flight work and must
+        never be collapsed into another topic.
+        """
+        with self._connect() as conn:
+            if project_id is not None:
+                rows = conn.execute(
+                    "SELECT id, topic, title FROM threads "
+                    f"WHERE status IN ({','.join('?' * len(_OPEN_THREAD_STATES))}) "
+                    "AND project_id = ?",
+                    (*_OPEN_THREAD_STATES, project_id),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, topic, title FROM threads "
+                    f"WHERE status IN ({','.join('?' * len(_OPEN_THREAD_STATES))})",
+                    _OPEN_THREAD_STATES,
+                ).fetchall()
+            owned: set[str] = set()
+            for tbl in ("graph_topics", "graph_tasks"):
+                try:
+                    owned.update(
+                        r["thread_id"]
+                        for r in conn.execute(
+                            f"SELECT thread_id FROM {tbl} WHERE thread_id IS NOT NULL"
+                        ).fetchall()
+                    )
+                except sqlite3.OperationalError:
+                    pass  # graph tables absent on a pre-autopilot DB
+        for row in rows:
+            if row["id"] in owned:
+                continue
+            candidate = row["title"] or row["topic"] or ""
+            if _title_similarity(topic, candidate) >= THREAD_DEDUP_THRESHOLD:
+                return row["id"]
+        return None
+
+    def create_thread(
+        self, topic: str, session_id: str, project_id: str | None = None
+    ) -> str:
         """Create a new thread. Returns the UUID of the new thread.
 
         Assigns next available A–Z label. Raises ValueError if 10 non-archived
         threads already exist or all 26 labels are in use.
+
+        Dedup guard: if an OPEN (same-project, when `project_id` is given)
+        thread already exists whose title is a lexical duplicate of `topic`,
+        no new row is inserted and that existing thread's id is returned.
         """
+        existing = self._find_duplicate_open_thread(topic, project_id)
+        if existing is not None:
+            return existing
         with self._connect() as conn:
             rows = conn.execute("SELECT id, status FROM threads").fetchall()
             active_count = sum(1 for row in rows if row["status"] != "archived")

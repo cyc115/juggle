@@ -226,7 +226,9 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
                 continue  # another claimer won (DA B4)
             try:
                 thread_id = db.create_thread(
-                    f"[{tid}] {topic['title']}"[:80], session_id=_session_id(db)
+                    f"[{tid}] {topic['title']}"[:80],
+                    session_id=_session_id(db),
+                    project_id=pid,
                 )
             except ValueError as e:
                 db_topics.topic_transition(db, tid, "stale_reset")
@@ -330,6 +332,7 @@ def _dispatch_flat_task_fallback(
                     thread_id = db.create_thread(
                         f"[{task_id}] {task['title']}"[:80],
                         session_id=_session_id(db),
+                        project_id=pid,
                     )
                 except ValueError as e:
                     db_graph.task_transition(db, task_id, "stale_reset")
