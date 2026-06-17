@@ -6,10 +6,13 @@ All symbols are re-exported from juggle_cockpit for backward compatibility.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Callable
 
 from textual import events
+
+_log = logging.getLogger(__name__)
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
@@ -609,8 +612,10 @@ class _TopicDetailModal(ModalScreen):
         any_content = any((sections.get(k) or "").strip() for k in ("context", "why", "what", "result"))
 
         if any_content:
+            _log.info("_apply_summary: branch=summary (sections filled)")
             body_lines = self._summary_body_lines(sections)
         else:
+            _log.warning("_apply_summary: branch=raw_fallback (0 sections filled — check summarize logs)")
             body_lines = self._raw_body_lines() + ["", "(summary unavailable)"]
 
         body_lines += ["", "Esc / q — close"]

@@ -7,10 +7,17 @@ summarize_topic accepts an injectable llm_fn for the same reason.
 from __future__ import annotations
 
 import logging
+import re
+import time
 
 _log = logging.getLogger(__name__)
 
 _SECTIONS = ("context", "why", "what", "result")
+
+# Strips leading markdown tokens: ##, -, *, >, **, __ (surrounding the label)
+_MD_PREFIX_RE = re.compile(r"^(?:[#*\->]+ *|\*\*|__)+")
+# Strips trailing **: or __ or bare : that survive prefix stripping
+_MD_SUFFIX_RE = re.compile(r"[\*_]+:?$|:$")
 
 
 def build_summarize_prompt(
@@ -38,7 +45,8 @@ def build_summarize_prompt(
         f"Result/output (agent's final result):\n{result_output[:800] or '(none)'}\n\n"
         f"Recent messages:\n{msg_text}\n\n"
         f"Write exactly 4 short sections (1-4 sentences each). Plain language.\n"
-        f"Format:\n"
+        f"IMPORTANT: output headers as PLAIN TEXT only — no bold, no markdown, no bullets, "
+        f"no preamble line. Use exactly this format:\n"
         f"Context: <surrounding situation — what problem/project this belongs to>\n"
         f"Why: <why this change/work was needed>\n"
         f"What: <what the change actually is, in simple plain language>\n"
@@ -46,8 +54,43 @@ def build_summarize_prompt(
     )
 
 
+def _normalize_line(line: str) -> tuple[str | None, str]:
+    """Normalize a line for header matching.
+
+    Returns (matched_key, remainder_text) or (None, "") if no header matched.
+    Handles: bare "Key:", **Key:**, **Key**:, ## Key:, - Key:, KEY:, Key - text.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None, ""
+
+    # Strip leading markdown tokens (##, -, *, >, **, __)
+    normalized = _MD_PREFIX_RE.sub("", stripped).strip()
+
+    for key in _SECTIONS:
+        label = key.capitalize()
+        # Allow optional closing **/__  before colon: "Context**:" or "Context**:" or "Context:"
+        # Colon separator
+        m = re.match(rf"(?i)^{label}(?:\*\*|__)?\s*:", normalized)
+        if m:
+            remainder = normalized[m.end():].strip()
+            # Strip any leading ** or __ from remainder (e.g. "**:" edge case)
+            remainder = re.sub(r"^\*\*|^__", "", remainder).strip()
+            return key, remainder
+        # Dash separator: "Context - text"
+        m = re.match(rf"(?i)^{label}(?:\*\*|__)?\s+-\s*(.*)", normalized)
+        if m:
+            return key, m.group(1).strip()
+
+    return None, ""
+
+
 def parse_summary_response(text: str) -> dict[str, str]:
-    """Parse LLM response into {{context, why, what, result}}. Pure function."""
+    """Parse LLM response into {context, why, what, result}. Pure function.
+
+    Robust to markdown-wrapped headers: **Context:**, ## Why:, - What:, etc.
+    Case-insensitive. Tolerates a preamble line before the first header.
+    """
     sections: dict[str, str] = {s: "" for s in _SECTIONS}
     if not text:
         return sections
@@ -60,16 +103,12 @@ def parse_summary_response(text: str) -> dict[str, str]:
             sections[current] = " ".join(buf).strip()
 
     for line in text.splitlines():
-        matched = False
-        for key in _SECTIONS:
-            prefix = f"{key.capitalize()}:"
-            if line.startswith(prefix):
-                _flush()
-                current = key
-                buf = [line[len(prefix):].strip()]
-                matched = True
-                break
-        if not matched and current:
+        key, remainder = _normalize_line(line)
+        if key is not None:
+            _flush()
+            current = key
+            buf = [remainder] if remainder else []
+        elif current:
             stripped = line.strip()
             if stripped:
                 buf.append(stripped)
@@ -85,7 +124,7 @@ def summarize_topic(
     meta: dict,
     llm_fn=None,
 ) -> dict[str, str]:
-    """Call LLM to produce {{context, why, what, result}} for a topic.
+    """Call LLM to produce {context, why, what, result} for a topic.
 
     llm_fn(prompt: str) -> str | None — injectable for tests (default: llm_call cheap).
     Returns empty-string dict on any error so modal can show raw fallback.
@@ -94,12 +133,39 @@ def summarize_topic(
         from llm_calls import llm_call
 
         def llm_fn(prompt: str) -> str | None:
-            return llm_call(prompt, profile="cheap", timeout=30)
+            t0 = time.monotonic()
+            result = llm_call(prompt, profile="cheap", timeout=30)
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
+            # provider logged inside llm_call; log elapsed here for the modal path
+            _log.info(
+                "summarize_topic: llm_call elapsed=%dms result_len=%d",
+                elapsed_ms,
+                len(result) if result else 0,
+            )
+            return result
 
     try:
         prompt = build_summarize_prompt(task_input, result_output, messages, meta)
+        t0 = time.monotonic()
         text = llm_fn(prompt) or ""
-        return parse_summary_response(text)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        _log.debug(
+            "summarize_topic: raw response len=%d first200=%r elapsed=%dms",
+            len(text),
+            text[:200],
+            elapsed_ms,
+        )
+        sections = parse_summary_response(text)
+        filled = sum(1 for v in sections.values() if v.strip())
+        if filled == 4:
+            _log.info("summarize_topic: parsed %d/4 sections OK", filled)
+        else:
+            _log.warning(
+                "summarize_topic: parsed %d/4 sections — fell back to raw display (response: %r)",
+                filled,
+                text[:200],
+            )
+        return sections
     except Exception as exc:
         _log.warning("summarize_topic failed: %s", exc)
         return {s: "" for s in _SECTIONS}

@@ -75,8 +75,10 @@ def llm_call(prompt: str, profile: str = "cheap", timeout: int = 10) -> str | No
         raise ValueError(f"Unknown LLM profile: {profile!r}. Valid: {list(profiles)}")
     cfg = profiles[profile]
     api_key = os.environ.get("OPENROUTER_KEY", "")
+    import time as _time
     if api_key:
         try:
+            t0 = _time.monotonic()
             body = json.dumps({
                 "model": cfg["openrouter_model"],
                 "messages": [{"role": "user", "content": prompt}],
@@ -92,16 +94,25 @@ def llm_call(prompt: str, profile: str = "cheap", timeout: int = 10) -> str | No
             )
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = json.loads(resp.read())
+            elapsed_ms = int((_time.monotonic() - t0) * 1000)
             text = (data["choices"][0]["message"].get("content") or "").strip()
             if text:
-                logging.info("llm_call(%s): openrouter -> %r", profile, text[:60])
+                logging.info(
+                    "llm_call(%s): provider=openrouter model=%s elapsed=%dms len=%d preview=%r",
+                    profile, cfg["openrouter_model"], elapsed_ms, len(text), text[:60],
+                )
                 return text
         except Exception as e:
             logging.warning("llm_call(%s): openrouter failed: %s", profile, e)
     try:
+        t0 = _time.monotonic()
         out = run_claude_p(prompt, model=cfg["fallback_model"], timeout=timeout)
+        elapsed_ms = int((_time.monotonic() - t0) * 1000)
         if out:
-            logging.info("llm_call(%s): fallback -> %r", profile, out[:60])
+            logging.info(
+                "llm_call(%s): provider=claude-code model=%s elapsed=%dms len=%d preview=%r",
+                profile, cfg["fallback_model"], elapsed_ms, len(out), out[:60],
+            )
             return out
     except Exception as e:
         logging.warning("llm_call(%s): fallback failed: %s", profile, e)
