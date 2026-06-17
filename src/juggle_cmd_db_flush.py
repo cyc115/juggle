@@ -150,6 +150,32 @@ WantedBy=multi-user.target
         print(f"Load with: launchctl load {plist_path}")
 
 
+def configure_db_mode(mode: str, *, config_path: Path | None = None) -> None:
+    """Write db.mode to config.json idempotently.
+
+    Used by juggle:init to persist the chosen DB mode.
+    Preserves all other keys in the config file.
+    """
+    import json
+    import os
+    if config_path is None:
+        config_path = Path(
+            os.environ.get("_JUGGLE_CONFIG_PATH",
+                           str(Path.home() / ".juggle" / "config.json"))
+        )
+    config_path = Path(config_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg: dict = {}
+    if config_path.exists():
+        try:
+            cfg = json.loads(config_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            cfg = {}
+    db_section = cfg.setdefault("db", {})
+    db_section["mode"] = mode
+    config_path.write_text(json.dumps(cfg, indent=2))
+
+
 def cmd_db_flush(args) -> int:
     """Entry point for `juggle db-flush`."""
     from juggle_settings import get_settings

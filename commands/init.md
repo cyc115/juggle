@@ -229,6 +229,33 @@ PYEOF
 
 Tell the user: "Research KB ready. Run `/juggle:research-ingest` to populate the HN corpus (~5 min, ~$0.50 in embeddings)."
 
+### 5b. Configure DB Mode (optional — idempotent)
+
+Ask the user:
+> "Would you like to enable tmpfs in-memory DB mode? This moves the live DB to /dev/shm (RAM) to prevent corruption on copy-on-write filesystems (btrfs/zfs). Effective on Linux only; macOS falls back to direct automatically. Default: direct (no change)."
+
+If the user says yes (and is on Linux):
+
+```bash
+python3 - << 'PYEOF'
+import sys
+sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
+from juggle_cmd_db_flush import configure_db_mode
+configure_db_mode("tmpfs")
+print("db.mode = tmpfs written to config.json")
+PYEOF
+```
+
+Then install the flush supervisor:
+
+```bash
+python3 '${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py' db-flush --install-supervisor
+```
+
+Tell the user to start the supervisor with the printed command.
+
+If the user declines or is on macOS, skip this step (direct mode is the default).
+
 ### 6. Report
 
 ```
