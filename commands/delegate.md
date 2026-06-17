@@ -152,6 +152,15 @@ Fill in the placeholders (`<label>`, `<role>`, `<THREAD_LABEL>`, task descriptio
 
 Before changing any code, read the target repository's CLAUDE.md first.
 
+## Preparatory refactoring (mandatory)
+
+Before making a change, first consider the refactoring that makes the change
+easy, then make the easy change. If the current structure forces scattered or
+awkward edits, do a behavior-preserving refactor FIRST (tests staying green,
+zero behavior change), committed separately, so the actual change becomes small
+and localized. Ask "what refactor makes this trivial?" before writing the change.
+Keep refactor commits separate from feature commits.
+
 ## Invoke TDD by default
 
 Invoke `superpowers:test-driven-development` before implementation. Cycle:

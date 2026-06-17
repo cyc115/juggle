@@ -199,6 +199,15 @@ file organization. When working in a repo different from your default, this
 is your first step. Follow what you find there; if it conflicts with these
 instructions, surface it in --open-questions rather than guessing.
 
+## Preparatory refactoring (mandatory)
+
+Before making a change, first consider the refactoring that makes the change
+easy, then make the easy change. If the current structure forces scattered or
+awkward edits, do a behavior-preserving refactor FIRST (tests staying green,
+zero behavior change), committed separately, so the actual change becomes small
+and localized. Ask "what refactor makes this trivial?" before writing the change.
+Keep refactor commits separate from feature commits.
+
 ## TDD discipline (mandatory)
 
 Write the test BEFORE the implementation for every new behavior. Cycle:
