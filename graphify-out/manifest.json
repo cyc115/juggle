@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cockpit.py": {
-    "mtime": 1781738850.788829,
-    "ast_hash": "752ca7a009e89477fd1b3fe0dc4cc495",
+    "mtime": 1781738912.3660905,
+    "ast_hash": "1304090d7bedfa87f7ed75dac6d8611e",
     "semantic_hash": ""
   },
   "src/juggle_watchdog.py": {
@@ -1880,8 +1880,8 @@
     "semantic_hash": ""
   },
   "tests/test_cockpit_footer_hotkeys.py": {
-    "mtime": 1781411885.5986614,
-    "ast_hash": "0c969f14c1e854b1399e2e49f84664f1",
+    "mtime": 1781738880.5413108,
+    "ast_hash": "5238d09ca05170f5ebbb12b6eb63ca23",
     "semantic_hash": ""
   },
   "tests/test_cockpit_project_arm.py": {
