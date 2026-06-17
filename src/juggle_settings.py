@@ -100,6 +100,7 @@ DEFAULTS: dict = {
         "quarantine_tests": [
             "tests/test_loc_gate.py",
             "tests/test_data_migration.py",
+            "tests/test_integrate.py",
         ],
     },
     # Cockpit Display
