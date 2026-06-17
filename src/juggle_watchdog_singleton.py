@@ -178,29 +178,50 @@ def start_watchdog_detached(db_path, *, repo_path: str | None = None) -> int:
     env["JUGGLE_ORCHESTRATOR"] = "1"
     env[SANCTION_ENV] = "1"
     env.pop("JUGGLE_WATCHDOG_SUPERVISED", None)
-    proc = subprocess.Popen(
-        ["uv", "run", "python", "src/juggle_watchdog_daemon.py"],
-        cwd=repo,
-        env=env,
-        start_new_session=True,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    log_dir = Path(db_path).parent
+    log_dir.mkdir(parents=True, exist_ok=True)
+    spawn_log = open(log_dir / "watchdog-spawn.log", "ab")
+    try:
+        proc = subprocess.Popen(
+            ["uv", "run", "python", "src/juggle_watchdog_daemon.py"],
+            cwd=repo,
+            env=env,
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=spawn_log,
+            stderr=spawn_log,
+        )
+    finally:
+        # Child has dup'd the fd; close ours to avoid a leak.
+        spawn_log.close()
     return proc.pid
 
 
-def ensure_watchdog(db_path, *, repo_path: str | None = None, spawn=None) -> bool:
+def ensure_watchdog(
+    db_path,
+    *,
+    repo_path: str | None = None,
+    spawn=None,
+    survive_timeout: float = 2.0,
+) -> bool:
     """Lock-gated ensure-exists: start a detached watchdog only if none is live.
 
-    Returns True if it launched one, False if a live watchdog already holds the
-    lock (no-op). The lock — not this check — is the authoritative singleton, so
-    a racing second launch is harmless: the loser fails to acquire and exits.
+    Returns True only if a NEW watchdog was launched AND it came up alive
+    (acquired the singleton lock) within ``survive_timeout``. Returns False if a
+    live watchdog already holds the lock (no-op) OR if the spawned daemon never
+    survived to acquire the lock. The lock — not this check — is the
+    authoritative singleton, so a racing second launch is harmless: the loser
+    fails to acquire and exits.
     """
     if is_watchdog_alive(db_path):
         return False
     (spawn or start_watchdog_detached)(db_path, repo_path=repo_path)
-    return True
+    deadline = time.monotonic() + survive_timeout
+    while time.monotonic() < deadline:
+        if is_watchdog_alive(db_path):
+            return True
+        time.sleep(0.05)
+    return is_watchdog_alive(db_path)
 
 
 def _pid_alive(pid: int) -> bool:
@@ -246,14 +267,23 @@ def toggle_watchdog(db_path, *, repo_path: str | None = None, spawn=None) -> str
     return "started"
 
 
-def restart_watchdog(db_path, *, repo_path: str | None = None, spawn=None) -> bool:
+def restart_watchdog(
+    db_path,
+    *,
+    repo_path: str | None = None,
+    spawn=None,
+    survive_timeout: float = 2.0,
+) -> bool:
     """R hotkey: kill the existing watchdog and relaunch from the canonical main
-    path (the 'always run latest code' path). Returns True if one was started."""
+    path (the 'always run latest code' path). Returns True only if the relaunched
+    daemon survived to acquire the singleton lock within ``survive_timeout``."""
     stop_watchdog(db_path)
     deadline = time.monotonic() + 3.0
     while is_watchdog_alive(db_path) and time.monotonic() < deadline:
         time.sleep(0.05)
-    return ensure_watchdog(db_path, repo_path=repo_path, spawn=spawn)
+    return ensure_watchdog(
+        db_path, repo_path=repo_path, spawn=spawn, survive_timeout=survive_timeout
+    )
 
 
 def release_singleton_lock(fd) -> None:

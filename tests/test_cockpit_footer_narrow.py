@@ -110,18 +110,22 @@ def test_footer_hint_set_locked():
 
     Incident 2026-06-16: adding T→Tk and other bindings pushed footer to 85 cols.
     Rarely-used keys must be hidden (discoverable via ?) to stay within 80-col budget.
+
+    2026-06-17 watchdog-start-fix: Wd (w) and Rwd (r) are now intentionally
+    shown — the watchdog controls were undiscoverable while the daemon-start
+    bug made them silently no-op; surfacing them is the UX fix.
     """
     from juggle_cockpit import CockpitApp
 
     shown = {b.description for b in CockpitApp.BINDINGS if b.show}
 
     # Rarely-used keys hidden from footer (all accessible via ? help)
-    for hidden in ("Info", "Wd", "Rwd"):
+    for hidden in ("Info",):
         assert hidden not in shown, (
             f"'{hidden}' should be hidden in footer (show=False) — "
             "it bloats the footer; use ? to discover it"
         )
 
     # High-frequency keys must remain visible
-    for visible in ("Help", "Sw", "Ack", "Cl", "Ar"):
+    for visible in ("Help", "Sw", "Ack", "Cl", "Ar", "Wd", "Rwd"):
         assert visible in shown, f"'{visible}' must remain visible in footer"

@@ -8,6 +8,11 @@
 
 ## Done
 
+- [x] fix watchdog daemon __main__ guard — daemon module now runs as a real entrypoint (direct `uv run python src/juggle_watchdog_daemon.py` launch ticks + acquires the singleton lock instead of exiting 0 instantly) (v1.76.1) ✅ 2026-06-17
+- [x] ensure/restart watchdog survive verification — ensure_watchdog/restart_watchdog poll the singleton lock and report True only when the daemon actually came up; spawn output captured to watchdog-spawn.log; cockpit notifies an error on no-survive (v1.76.1) ✅ 2026-06-17
+- [x] remove shift+w watchdog-restart alias — `r` already restarts; dropped the redundant duplicate binding (v1.76.1) ✅ 2026-06-17
+- [x] show watchdog hotkeys in footer — `w` (Wd) and `r` (Rwd) now show=True so they appear in the cockpit footer (v1.76.1) ✅ 2026-06-17
+
 - [x] Multi-project 3-tier autopilot (v1.61.0): project→topic→task execution model; one agent/worktree/integrate per topic; fair topic-level scheduling across armed projects. Tasks 1–10: (1) armed-set CSV accessors; (2) migration 38 + graph_topics backfill; (3) graph_topics state machine; (4) 3-tier spec parser + legacy fallback; (5) fair topic scheduler; (6) topic claim-dispatch tick; (7) topic completion gate + integrate-once-per-topic; (8) set-aware CLI + multi-project hooks + R8 guard; (9) cockpit project→topic→task tree (stacked DAGs + task progress); (10) full gates + e2e. Spec: docs/specs/2026-06-10-multi-project-autopilot.md; plan: plan/2026-06-10-multi-project-autopilot.md. ✅ 2026-06-11
 
 - [x] DB corruption-hardening (v1.60.2): JuggleDB._connect() — the single connection factory all CLI/hooks/watchdog/test callers funnel through — now asserts `PRAGMA journal_mode=WAL`, `PRAGMA synchronous=FULL`, and `PRAGMA busy_timeout=5000` on EVERY connect (synchronous is per-connection so it cannot rely on a one-time migration). Redundant WAL pragma removed from init_db. Regression-pinned in tests/test_db_wal_pragmas.py (factory asserts WAL even on a non-WAL-header DB; RED-first). No schema migration (connection config, not schema). ✅ 2026-06-10
