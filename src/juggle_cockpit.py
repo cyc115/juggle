@@ -135,8 +135,8 @@ class CockpitApp(GraphModeMixin, App):
         Binding("i",            "task_detail",   "Info",  show=False),
         Binding("g",            "toggle_graph",  "Gr"),
         Binding("p",            "projects",      "Proj"),
-        Binding("w",            "watchdog_toggle",  "Wd",  show=False),
-        Binding("r",            "watchdog_restart", "Rwd", show=False),
+        Binding("w",            "watchdog_toggle",  "Wd",  show=True),
+        Binding("r",            "watchdog_restart", "Rwd", show=True),
     ]
 
     CSS = """

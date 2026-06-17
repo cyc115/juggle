@@ -30,6 +30,8 @@ REQUIRED_SHOWN_KEYS = {
     "slash",          # Filter        ← was missing (show=False)
     "tab",            # Cycle pane    ← was missing (show=False)
     "p",              # Projects modal ← new (Feature A)
+    "w",              # Watchdog toggle  ← new (UX: footer visibility)
+    "r",              # Watchdog restart ← new (UX: footer visibility)
 }
 
 
