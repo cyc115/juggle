@@ -776,15 +776,24 @@ class CockpitApp(GraphModeMixin, App):
         self.push_screen(_PromptModal(f"Tail agent (1–{len(agents)}):"), _on_index)
 
     def action_task_detail(self) -> None:
-        """T — prompt for a task id or label and show its detail in _GraphTaskModal."""
+        """T — prompt for a task id or label and show its detail.
+
+        Resolution order:
+          1. Thread/topic human-readable label (e.g. "AO") → _TopicDetailModal
+          2. Graph-task id / prefix / _label               → _GraphTaskModal
+          3. Neither match → warning notification
+        """
         from juggle_cockpit_model import snapshot as _snapshot
-        from juggle_cockpit_modals import resolve_task_detail
+        from juggle_cockpit_modals import (
+            resolve_task_detail,
+            resolve_thread_detail,
+            _TopicDetailModal,
+        )
         import dbops.db_graph as _g
 
         state = _snapshot(self._db)
 
         # Flatten all graph tasks across all projects, enriched with _label.
-        # _label is the thread's user_label slug (e.g. "AI") for label-based lookup.
         label_by_thread: dict[str, str] = {t.id: t.label for t in state.topics}
         all_tasks: list[dict] = []
         try:
@@ -804,9 +813,41 @@ class CockpitApp(GraphModeMixin, App):
         except Exception:
             pass
 
+        # Build agent-lookup by assigned thread label for topic modal
+        agent_by_label: dict[str, str] = {}
+        for ag in state.agents:
+            if ag.topic_id and ag.id_short:
+                agent_by_label.setdefault(ag.topic_id.upper(), ag.id_short)
+
         def _on_query(q: str | None) -> None:
             if q is None:
                 return
+
+            # Priority 1: thread/topic human-readable label
+            topic = resolve_thread_detail(state.topics, q)
+            if topic is not None:
+                extra: dict = {}
+                agent = agent_by_label.get(topic.label.upper())
+                if agent:
+                    extra["agent"] = agent
+                # Fetch most-recent message excerpt from DB
+                try:
+                    import sqlite3
+                    with self._db._connect() as conn:
+                        conn.row_factory = sqlite3.Row
+                        row = conn.execute(
+                            "SELECT content FROM messages WHERE thread_id = ? "
+                            "ORDER BY created_at DESC LIMIT 1",
+                            (topic.id,),
+                        ).fetchone()
+                    if row:
+                        extra["recent_msg"] = (row["content"] or "")[:400]
+                except Exception:
+                    pass
+                self.push_screen(_TopicDetailModal(topic, extra=extra))
+                return
+
+            # Priority 2: graph-task id / prefix / _label fallback
             result = resolve_task_detail(all_tasks, q)
             if result is None:
                 self.notify(f"No task matching '{q}'", severity="warning", timeout=3)

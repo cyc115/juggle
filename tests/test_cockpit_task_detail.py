@@ -137,6 +137,114 @@ def test_resolve_prefix_case_insensitive():
 
 
 # ---------------------------------------------------------------------------
+# Cycle 4 — resolve_thread_detail: thread-label-first lookup (bug fix)
+# ---------------------------------------------------------------------------
+
+
+def _make_topic(label, title="", status="active", tid=None, task_state=None):
+    from juggle_cockpit_model import Topic
+    return Topic(
+        id=tid or f"uuid-{label.lower()}",
+        label=label,
+        status=status,
+        age_secs=0,
+        is_current=False,
+        title=title,
+        task_state=task_state,
+    )
+
+
+def test_resolve_thread_detail_by_label():
+    """resolve_thread_detail returns the Topic whose label matches the query."""
+    from juggle_cockpit_modals import resolve_thread_detail
+
+    topics = [_make_topic("AO", title="My Topic"), _make_topic("AM", title="Other")]
+    result = resolve_thread_detail(topics, "AO")
+    assert result is not None
+    assert result.label == "AO"
+    assert result.title == "My Topic"
+
+
+def test_resolve_thread_detail_case_insensitive():
+    """resolve_thread_detail matches case-insensitively."""
+    from juggle_cockpit_modals import resolve_thread_detail
+
+    topics = [_make_topic("AO")]
+    assert resolve_thread_detail(topics, "ao") is not None
+    assert resolve_thread_detail(topics, "Ao") is not None
+    assert resolve_thread_detail(topics, "AO") is not None
+
+
+def test_resolve_thread_detail_not_found():
+    """resolve_thread_detail returns None when no topic matches."""
+    from juggle_cockpit_modals import resolve_thread_detail
+
+    topics = [_make_topic("AO"), _make_topic("AM")]
+    assert resolve_thread_detail(topics, "ZZ") is None
+
+
+def test_resolve_thread_detail_empty_topics():
+    """resolve_thread_detail returns None for empty list."""
+    from juggle_cockpit_modals import resolve_thread_detail
+
+    assert resolve_thread_detail([], "AO") is None
+
+
+def test_resolve_thread_detail_empty_query():
+    """resolve_thread_detail returns None for empty query."""
+    from juggle_cockpit_modals import resolve_thread_detail
+
+    topics = [_make_topic("AO")]
+    assert resolve_thread_detail(topics, "") is None
+    assert resolve_thread_detail(topics, None) is None
+
+
+def test_topic_detail_modal_exists():
+    """_TopicDetailModal class must be importable from juggle_cockpit_modals."""
+    from juggle_cockpit_modals import _TopicDetailModal  # noqa: F401
+    assert _TopicDetailModal is not None
+
+
+def test_topic_detail_modal_accepts_topic():
+    """_TopicDetailModal can be constructed with a Topic and optional extra dict."""
+    from juggle_cockpit_modals import _TopicDetailModal
+    topic = _make_topic("AO", title="My Topic")
+    modal = _TopicDetailModal(topic)
+    assert modal is not None
+
+
+def test_topic_detail_modal_lines_contain_fields():
+    """_TopicDetailModal._lines() includes label, title, and state."""
+    from juggle_cockpit_modals import _TopicDetailModal
+    topic = _make_topic("AO", title="My Topic", status="active")
+    modal = _TopicDetailModal(topic)
+    lines = "\n".join(modal._lines())
+    assert "AO" in lines
+    assert "My Topic" in lines
+    assert "active" in lines
+
+
+def test_topic_detail_modal_shows_graph_task_state():
+    """When topic.task_state is set, _lines() includes it."""
+    from juggle_cockpit_modals import _TopicDetailModal
+    topic = _make_topic("AO", title="My Topic", task_state="running")
+    modal = _TopicDetailModal(topic)
+    lines = "\n".join(modal._lines())
+    assert "running" in lines
+
+
+def test_topic_detail_modal_extra_data():
+    """_TopicDetailModal._lines() includes extra data (agent, summary, recent_msg)."""
+    from juggle_cockpit_modals import _TopicDetailModal
+    topic = _make_topic("AO", title="My Topic")
+    modal = _TopicDetailModal(topic, extra={"agent": "coder-abc", "summary": "A summary", "recent_msg": "Hello"})
+    lines = "\n".join(modal._lines())
+    assert "coder-abc" in lines
+    assert "A summary" in lines
+    assert "Hello" in lines
+
+
+# ---------------------------------------------------------------------------
 # Cycle 2 — BINDINGS: "T" or "shift+t" maps to task_detail
 # ---------------------------------------------------------------------------
 

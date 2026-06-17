@@ -443,6 +443,78 @@ def resolve_task_detail(
     return None
 
 
+def resolve_thread_detail(topics: list, query: str):
+    """Match query against topic.label (case-insensitive). Returns Topic or None."""
+    if not topics or not query:
+        return None
+    q = query.strip().upper()
+    for topic in topics:
+        if (topic.label or "").upper() == q:
+            return topic
+    return None
+
+
+class _TopicDetailModal(ModalScreen):
+    """Read-only detail overlay for a thread/topic.
+
+    Shows label, title, status, and optional extra data (agent, summary,
+    recent_msg). Dismisses on 'q' or Escape.
+    """
+
+    from textual.binding import Binding
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+        Binding("q", "dismiss", "Close", show=False),
+    ]
+
+    DEFAULT_CSS = """
+    _TopicDetailModal {
+        align: center middle;
+    }
+    _TopicDetailModal > VerticalScroll {
+        width: 70%;
+        height: 70%;
+        border: round $accent;
+        padding: 1 2;
+    }
+    """
+
+    _EXCERPT = 400
+
+    def __init__(self, topic, *, extra: dict | None = None) -> None:
+        super().__init__()
+        self._topic = topic
+        self._extra = extra or {}
+
+    def _lines(self) -> list[str]:
+        t = self._topic
+        out = [
+            f"Topic [{t.label}]",
+            "─" * 40,
+            f"label    {t.label}",
+            f"title    {t.title or '(none)'}",
+            f"state    {t.status}",
+        ]
+        if t.task_state:
+            out.append(f"task     {t.task_state}")
+        agent = self._extra.get("agent")
+        if agent:
+            out.append(f"agent    {agent}")
+        summary = (self._extra.get("summary") or "").strip()
+        if summary:
+            out += ["", "summary:", summary[: self._EXCERPT]]
+        recent_msg = (self._extra.get("recent_msg") or "").strip()
+        if recent_msg:
+            out += ["", "recent:", recent_msg[: self._EXCERPT]]
+        out += ["", "Esc / q — close"]
+        return out
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll():
+            yield Static("\n".join(self._lines()), markup=False)
+
+
 class _TailModal(ModalScreen):
     """Live tail overlay for a tmux pane.
 
