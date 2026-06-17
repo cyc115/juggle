@@ -40,11 +40,6 @@ DB_PATH = _resolve_db_path()
 
 INBOX_PROJECT_ID = "INBOX"
 
-# Maximum character length for action item and notification messages.
-# Overflow is truncated with a pointer suffix pointing to get-messages.
-MAX_ACTION_NOTIF_LENGTH = 280
-_POINTER_SUFFIX = " …(full detail: get-messages {})"
-
 # ---------------------------------------------------------------------------
 # DDL
 # ---------------------------------------------------------------------------

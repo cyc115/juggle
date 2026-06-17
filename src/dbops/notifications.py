@@ -1,7 +1,7 @@
 """dbops.notifications — Notifications v2 and action-items mixin.
 
 Owns: add/query/watermark notifications_v2 (session-scoped), add/dismiss
-action_items, message-truncation helper.
+action_items.
 Must not own: legacy notifications v1 table (schema only, no business logic),
 thread state, agent pool.
 """
@@ -10,22 +10,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from dbops.schema import MAX_ACTION_NOTIF_LENGTH, _POINTER_SUFFIX
-
 
 class NotificationsMixin:
     """Mixin for notifications_v2 and action_items operations."""
-
-    # ---------------------------------------------------------------
-    # Shared truncation helper
-    # ---------------------------------------------------------------
-
-    @staticmethod
-    def _truncate_message(message: str, thread_id: str) -> str:
-        """Truncate message to MAX_ACTION_NOTIF_LENGTH with pointer suffix."""
-        if len(message) <= MAX_ACTION_NOTIF_LENGTH:
-            return message
-        return message[:MAX_ACTION_NOTIF_LENGTH] + _POINTER_SUFFIX.format(thread_id[:6])
 
     # ---------------------------------------------------------------
     # Notifications v2
@@ -33,7 +20,6 @@ class NotificationsMixin:
 
     def add_notification_v2(self, thread_id, message: str, session_id: str) -> int:
         """Insert a notifications_v2 row. Returns new id."""
-        message = self._truncate_message(message, thread_id)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             cur = conn.execute(
@@ -106,7 +92,6 @@ class NotificationsMixin:
     def add_action_item(
         self, thread_id, message: str, type_: str, priority: str = "normal"
     ) -> int:
-        message = self._truncate_message(message, thread_id)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             cur = conn.execute(

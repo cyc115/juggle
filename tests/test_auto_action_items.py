@@ -362,11 +362,11 @@ def test_complete_agent_researcher_with_open_questions_creates_action(db):
 
 
 # ---------------------------------------------------------------------------
-# Fix B1: length cap on action + notification text
+# Full text preservation (truncation removed 2026-06-16)
 # ---------------------------------------------------------------------------
 
-def test_action_item_truncated_at_280_chars(db):
-    """Action item text > 280 chars is truncated with pointer suffix."""
+def test_action_item_stores_full_long_text(db):
+    """Action item text is stored in full — no truncation or pointer suffix."""
     tid = db.create_thread("trunc-topic", session_id="s")
     long_text = "x" * 500
     aid = db.add_action_item(
@@ -377,19 +377,13 @@ def test_action_item_truncated_at_280_chars(db):
     )
     items = db.get_open_action_items()
     item = next(i for i in items if i["id"] == aid)
-    max_expected = 280 + len(" …(full detail: get-messages ") + 36 + 1
-    assert len(item["message"]) <= max_expected, (
-        f"Expected truncated message, got {len(item['message'])} chars"
-    )
-    assert "…(full detail: get-messages" in item["message"], (
-        f"Expected pointer suffix, got: {item['message']}"
-    )
-    # The original long text should NOT be fully present
-    assert "x" * 400 not in item["message"]
+    assert item["message"] == long_text
+    assert "full detail" not in item["message"]
+    assert "get-messages" not in item["message"]
 
 
-def test_notification_truncated_at_280_chars(db):
-    """Notification text > 280 chars is truncated with pointer suffix."""
+def test_notification_stores_full_long_text(db):
+    """Notification text is stored in full — no truncation or pointer suffix."""
     tid = db.create_thread("trunc-notif-topic", session_id="s")
     long_text = "y" * 600
     nid = db.add_notification_v2(
@@ -399,10 +393,9 @@ def test_notification_truncated_at_280_chars(db):
     )
     notifs = db.get_notifications_for_session("s")
     notif = next(n for n in notifs if n["id"] == nid)
-    max_expected = 280 + len(" …(full detail: get-messages ") + 36 + 1
-    assert len(notif["message"]) <= max_expected
-    assert "…(full detail: get-messages" in notif["message"]
-    assert "y" * 400 not in notif["message"]
+    assert notif["message"] == long_text
+    assert "full detail" not in notif["message"]
+    assert "get-messages" not in notif["message"]
 
 
 def test_short_text_not_truncated(db):
