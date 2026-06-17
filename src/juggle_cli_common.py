@@ -275,7 +275,12 @@ def _generate_title_for_thread(db, thread_uuid: str, topic: str) -> str:
     if title and _valid(title):
         if not any(c.isupper() for c in title):
             title = title.title()
-        title = _dedupe_title(title, _existing_thread_titles(db, thread_uuid), topic)
+        existing = _existing_thread_titles(db, thread_uuid)
+        # Skip disambiguation when the LLM title is already near-duplicate of an
+        # existing title — those pairs should dedup via create_thread, not diverge.
+        from dbops.threads import _title_similarity, THREAD_DEDUP_THRESHOLD
+        if not any(_title_similarity(title, e) >= THREAD_DEDUP_THRESHOLD for e in existing):
+            title = _dedupe_title(title, existing, topic)
         logging.info("_generate_title_for_thread: -> %r", title)
         db.update_thread(thread_uuid, title=title)
         return title
