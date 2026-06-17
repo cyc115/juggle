@@ -132,11 +132,11 @@ class CockpitApp(GraphModeMixin, App):
         Binding("slash",        "filter",        "Flt"),
         Binding("f",            "focus_pane",    "Foc"),
         Binding("t",            "tail_toggle",   "Tl"),
-        Binding("T",            "task_detail",   "Tk"),
+        Binding("T",            "task_detail",   "Tk",  show=False),
         Binding("g",            "toggle_graph",  "Gr"),
         Binding("p",            "projects",      "Proj"),
-        Binding("w",            "watchdog_toggle",  "Wd"),
-        Binding("r",            "watchdog_restart", "Rwd"),
+        Binding("w",            "watchdog_toggle",  "Wd",  show=False),
+        Binding("r",            "watchdog_restart", "Rwd", show=False),
         Binding("shift+w",      "watchdog_restart", "Rwd", show=False),
     ]
 

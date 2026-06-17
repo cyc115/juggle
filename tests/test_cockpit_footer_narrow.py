@@ -98,3 +98,30 @@ async def test_footer_fits_within_40_cols(tmp_path):
             f"Footer virtual width {footer.virtual_size.width} exceeds 80 cols; "
             "hints will be scrolled off-screen on a standard terminal"
         )
+
+
+# ---------------------------------------------------------------------------
+# Cycle 4 — footer hint set is locked (composition regression pin)
+# ---------------------------------------------------------------------------
+
+
+def test_footer_hint_set_locked():
+    """Locks which hints are shown/hidden to prevent uncontrolled footer growth.
+
+    Incident 2026-06-16: adding T→Tk and other bindings pushed footer to 85 cols.
+    Rarely-used keys must be hidden (discoverable via ?) to stay within 80-col budget.
+    """
+    from juggle_cockpit import CockpitApp
+
+    shown = {b.description for b in CockpitApp.BINDINGS if b.show}
+
+    # Rarely-used keys hidden from footer (all accessible via ? help)
+    for hidden in ("Tk", "Wd", "Rwd"):
+        assert hidden not in shown, (
+            f"'{hidden}' should be hidden in footer (show=False) — "
+            "it bloats the footer; use ? to discover it"
+        )
+
+    # High-frequency keys must remain visible
+    for visible in ("Help", "Sw", "Ack", "Cl", "Ar"):
+        assert visible in shown, f"'{visible}' must remain visible in footer"
