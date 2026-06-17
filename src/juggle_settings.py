@@ -393,6 +393,12 @@ DEFAULTS: dict = {
             "fallback_model": "claude-sonnet-4-6",
         },
     },
+    # DB mode — opt-in tmpfs for COW-filesystem corruption protection
+    "db": {
+        "mode": "direct",      # "direct" | "tmpfs"
+        "tmpfs_dir": "/dev/shm",
+        "flush_interval_s": 10,
+    },
 }
 
 

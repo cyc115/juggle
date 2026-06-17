@@ -77,7 +77,9 @@ def cmd_doctor(args) -> int:
         print(f"config: {CONFIG_PATH} does not exist — nothing to migrate")
 
     # 2. DB (presence-based; juggle has no schema_version table)
-    from juggle_db import JuggleDB, DB_PATH
+    from juggle_db import JuggleDB
+    from dbops.schema import _resolve_db_path
+    DB_PATH = _resolve_db_path()  # call-time resolution respects JUGGLE_DB_PATH
 
     if Path(DB_PATH).exists():
         conn = sqlite3.connect(str(DB_PATH))

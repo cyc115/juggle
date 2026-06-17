@@ -36,6 +36,7 @@ from juggle_cmd_projects import (
 from juggle_cmd_graph import register_graph_parsers
 from juggle_cmd_research import cmd_research
 from juggle_cmd_runs import register_runs_parsers
+from juggle_cmd_db_flush import cmd_db_flush
 
 
 def register(subparsers, *, vault_path_default: str) -> None:
@@ -273,3 +274,19 @@ def register(subparsers, *, vault_path_default: str) -> None:
     _synth_group.add_argument("--dirty", action="store_true", help="Re-synth only dirty projects")
     _p.add_argument("project_id", nargs="?", help="Project id (omit if --all or --dirty)")
     _p.set_defaults(func=cmd_project_synth)
+
+    # db-flush
+    p_flush = subparsers.add_parser(
+        "db-flush",
+        help="Flush live (tmpfs) DB to durable disk path",
+    )
+    p_flush.add_argument("--once", action="store_true", help="Single flush then exit")
+    p_flush.add_argument("--status", action="store_true", help="Print last-flush status JSON")
+    p_flush.add_argument("--live", default=None, help="Override live DB path")
+    p_flush.add_argument("--durable", default=None, help="Override durable DB path")
+    p_flush.add_argument("--interval", type=float, default=None, help="Override flush interval (s)")
+    p_flush.add_argument(
+        "--install-supervisor", action="store_true", dest="install_supervisor",
+        help="Write systemd/launchd supervisor config"
+    )
+    p_flush.set_defaults(func=cmd_db_flush)
