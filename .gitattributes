@@ -1,1 +1,2 @@
 graphify-out/** merge=ours
+.claude-plugin/plugin.json merge=juggle-version

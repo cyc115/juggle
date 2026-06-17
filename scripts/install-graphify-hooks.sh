@@ -26,6 +26,17 @@ git config merge.ours.driver true
 echo "[graphify-hooks] Set merge.ours.driver=true"
 
 # ---------------------------------------------------------------------------
+# 2b. Register the juggle-version merge driver for .claude-plugin/plugin.json
+#     Auto-resolves version-only conflicts by taking max semver.
+#     Worktrees share the main repo's .git/config, so configuring here covers
+#     worktree rebases during `juggle integrate`.
+# ---------------------------------------------------------------------------
+DRIVER_SCRIPT="$(git rev-parse --show-toplevel)/scripts/git-merge-plugin-version.py"
+git config merge.juggle-version.driver "python3 $DRIVER_SCRIPT %O %A %B"
+git config merge.juggle-version.name "Juggle plugin.json version merger (max semver)"
+echo "[graphify-hooks] Set merge.juggle-version.driver -> $DRIVER_SCRIPT"
+
+# ---------------------------------------------------------------------------
 # 3. Rewrite pre-commit: keep codesight, append graphify regen + stage
 # ---------------------------------------------------------------------------
 PRE_COMMIT="$HOOKS_DIR/pre-commit"
