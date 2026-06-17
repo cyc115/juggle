@@ -3,7 +3,7 @@
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -65,34 +65,28 @@ async def test_search_vault_returns_paths(tmp_path):
     assert str(md_file) in results
 
 
-@pytest.mark.asyncio
-async def test_synthesize_calls_openrouter():
+def test_synthesize_routes_through_llm_call():
+    """synthesize() now delegates to the shared llm_call dispatcher (which owns
+    the OpenRouter -> claude -p fallback) instead of calling OpenRouter directly."""
     from juggle_cmd_research import synthesize
 
-    with patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.json.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": "## Async Python\n\n- [Guide](https://example.com/async) — asyncio intro"
-                    }
-                }
-            ]
-        }
-        mock_client.post = AsyncMock(return_value=mock_resp)
-        result = await synthesize(
+    captured = {}
+
+    def fake_llm_call(prompt, profile="cheap", timeout=10, max_tokens=None, json_mode=False):
+        captured["profile"] = profile
+        captured["max_tokens"] = max_tokens
+        return "## Async Python\n\n- [Guide](https://example.com/async) — asyncio intro"
+
+    with patch("llm_calls.llm_call", side_effect=fake_llm_call):
+        result = synthesize(
             topic="async python",
             context="Articles: Async Python Guide https://example.com/async",
-            model="google/gemini-3.1-flash",
-            api_key="test-key",
+            vault_name="personal",
         )
     assert "Async Python" in result
     assert "https://example.com/async" in result
+    assert captured["profile"] == "synthesis"
+    assert captured["max_tokens"] >= 2048
 
 
 def test_format_kb_results_default():

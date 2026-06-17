@@ -236,7 +236,7 @@ DEFAULTS: dict = {
             # provider NAME (passed as `--model`); define that provider in
             # reasonix.toml pointing base_url at OpenRouter and model at
             # `deepseek/deepseek-v4-pro` (see docs/reasonix.toml.example). Export
-            # OPENROUTER_API_KEY in juggle's environment so launched agents
+            # OPENROUTER_KEY in juggle's environment so launched agents
             # inherit it.
             "reasonix": {
                 "type": "template",
@@ -392,6 +392,11 @@ DEFAULTS: dict = {
         "normal": {
             "openrouter_model": "moonshotai/kimi-k2:free",
             "fallback_model": "claude-sonnet-4-6",
+        },
+        "synthesis": {
+            "openrouter_model": "google/gemini-2.5-flash",
+            "fallback_model": "claude-sonnet-4-6",
+            "max_tokens": 2048,
         },
     },
     # DB mode — opt-in tmpfs for COW-filesystem corruption protection

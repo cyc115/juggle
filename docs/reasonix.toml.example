@@ -10,8 +10,8 @@
 #
 # Then export your OpenRouter key where juggle runs (launched agents inherit it):
 #
-#     echo 'OPENROUTER_API_KEY=sk-or-v1-...' >> ~/.juggle/.env   # juggle loads this
-#     # or: export OPENROUTER_API_KEY=sk-or-v1-...
+#     echo 'OPENROUTER_KEY=sk-or-v1-...' >> ~/.juggle/.env   # juggle loads this
+#     # or: export OPENROUTER_KEY=sk-or-v1-...
 #
 # juggle's reasonix harness is set to `"model": "deepseek-v4-pro"`, which is the
 # provider NAME below (passed as `reasonix run --model deepseek-v4-pro`).
@@ -24,7 +24,7 @@ name        = "deepseek-v4-pro"
 kind        = "openai"
 base_url    = "https://openrouter.ai/api/v1"
 model       = "deepseek/deepseek-v4-pro"   # OpenRouter model slug
-api_key_env = "OPENROUTER_API_KEY"
+api_key_env = "OPENROUTER_KEY"
 
 # Prompt caching: DeepSeek caches identical leading prefixes automatically (no
 # config; cache-hit input ≈ 1/10 the miss price). To actually realise it through

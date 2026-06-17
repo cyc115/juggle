@@ -87,17 +87,17 @@ async def main() -> None:
     kb.init_db()
 
     try:
-        if args.fts:
+        api_key = os.environ.get("OPENROUTER_KEY", "")
+        if args.fts or not api_key:
+            if not args.fts:
+                print(
+                    "Warning: OPENROUTER_KEY not set — semantic search unavailable -> "
+                    "FTS keyword fallback",
+                    file=sys.stderr,
+                )
             results = kb.fts_search(args.query, limit=args.limit)
             mode = "fts"
         else:
-            api_key = os.environ.get("OPENROUTER_KEY", "")
-            if not api_key:
-                print(
-                    "Error: OPENROUTER_KEY not set. Use --fts for fully-offline search.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
             embedding = await _get_embedding(args.query, api_key, embedding_model)
             results = kb.hybrid_search(embedding, args.query, k=args.limit)
             mode = "hybrid"

@@ -63,27 +63,44 @@ def run_claude_p(
     return result.stdout.strip()
 
 
-def llm_call(prompt: str, profile: str = "cheap", timeout: int = 10) -> str | None:
+def llm_call(
+    prompt: str,
+    profile: str = "cheap",
+    timeout: int = 10,
+    max_tokens: int | None = None,
+    json_mode: bool = False,
+) -> str | None:
     """Profile-based LLM dispatcher.
 
-    Profiles defined in settings.llm_profiles (cheap / normal).
+    Profiles defined in settings.llm_profiles (cheap / normal / synthesis).
     Flow: OpenRouter primary -> Claude subprocess fallback -> None.
+
+    max_tokens: cap on generated tokens. When None, falls back to the profile's
+    "max_tokens" field, then to 200 (backward-compatible default). Synthesis-class
+    callers must pass a larger value (200 truncates synthesis).
+    json_mode: request a JSON object from OpenRouter (response_format). The claude
+    -p fallback relies on the prompt instructing JSON; callers keep their own parse.
     """
     from juggle_settings import get_settings
     profiles = get_settings().get("llm_profiles", {})
     if profile not in profiles:
         raise ValueError(f"Unknown LLM profile: {profile!r}. Valid: {list(profiles)}")
     cfg = profiles[profile]
+    if max_tokens is None:
+        max_tokens = cfg.get("max_tokens", 200)
     api_key = os.environ.get("OPENROUTER_KEY", "")
     import time as _time
     if api_key:
         try:
             t0 = _time.monotonic()
-            body = json.dumps({
+            payload = {
                 "model": cfg["openrouter_model"],
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 200,
-            }).encode()
+                "max_tokens": max_tokens,
+            }
+            if json_mode:
+                payload["response_format"] = {"type": "json_object"}
+            body = json.dumps(payload).encode()
             req = urllib.request.Request(
                 "https://openrouter.ai/api/v1/chat/completions",
                 body,

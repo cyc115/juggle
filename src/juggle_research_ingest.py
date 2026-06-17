@@ -119,7 +119,9 @@ async def ingest_pdf(kb, pdf_path: str, model: str, api_key: str) -> int:
         return 0
 
     filename = Path(pdf_path).stem
-    embeddings = await embed_batch(chunks, model, api_key)
+    # Without an embeddings provider, still ingest chunk text into FTS (keyword
+    # search) but skip vector embedding.
+    embeddings = await embed_batch(chunks, model, api_key) if api_key else [None] * len(chunks)
 
     count = 0
     for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
@@ -134,7 +136,8 @@ async def ingest_pdf(kb, pdf_path: str, model: str, api_key: str) -> int:
             body=chunk,
         )
         if row_id:
-            kb.upsert_embedding(row_id, emb)
+            if emb is not None:
+                kb.upsert_embedding(row_id, emb)
             count += 1
 
     mtime = Path(pdf_path).stat().st_mtime
@@ -183,6 +186,9 @@ async def run_hn_ingest(
     rows = json.loads(result.stdout) if result.stdout.strip() else []
     inserted = ingest_hn_rows(kb, rows)
     print(f"Inserted {inserted} new articles from {len(rows)} rows")
+    if not api_key:
+        print("  (skipping embeddings — no OPENROUTER_KEY; FTS keyword search only)")
+        return
     embedded = await embed_pending(kb, model, api_key)
     print(f"Embedded {embedded} articles")
 
@@ -213,8 +219,13 @@ async def main(args) -> None:
     model = s["embedding_model"]
     api_key = os.environ.get("OPENROUTER_KEY", "")
     if not api_key:
-        print("Error: OPENROUTER_KEY not set in ~/.juggle/.env", file=sys.stderr)
-        sys.exit(1)
+        # No embeddings provider: still ingest article/PDF text into the FTS
+        # table (keyword-searchable) but skip the vector-embedding step.
+        print(
+            "Warning: OPENROUTER_KEY not set — semantic search unavailable -> "
+            "FTS keyword fallback (ingesting text, skipping embeddings)",
+            file=sys.stderr,
+        )
 
     kb = ResearchKB(db_path)
     kb.init_db()

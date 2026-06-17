@@ -175,26 +175,21 @@ async def enrich_web_results(web_data: list[dict], deep: bool = False) -> list[d
     return web_data
 
 
-async def synthesize(
-    topic: str, context: str, model: str, api_key: str, vault_name: str = "personal"
-) -> str:
+def synthesize(topic: str, context: str, vault_name: str = "personal") -> str:
+    """Synthesize a research digest via the shared llm_call dispatcher.
+
+    Routes through llm_call (OpenRouter -> claude -p fallback), so it keeps
+    working when OPENROUTER_KEY is unset instead of requiring a direct API call.
+    """
+    sys.path.insert(0, str(Path(__file__).parent))
+    from llm_calls import llm_call
+
     prompt = (
         SYNTHESIS_PROMPT.replace("{vault_name}", vault_name)
         .replace("{topic}", topic)
         .replace("{context}", context)
     )
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-            timeout=60.0,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+    return llm_call(prompt, profile="synthesis", timeout=120, max_tokens=2048) or ""
 
 
 def format_kb_results(articles: list[dict], verbose: bool) -> str:
@@ -269,20 +264,33 @@ async def run(
 
     s = get_settings()["research_kb"]
     api_key = os.environ.get("OPENROUTER_KEY", "")
-    if not api_key:
-        print("Error: OPENROUTER_KEY not set in ~/.juggle/.env", file=sys.stderr)
-        sys.exit(1)
 
     vault_path, vault_name = _get_vault_info()
     db_path = str(Path(s["db_path"]).expanduser())
     embedding_model = s["embedding_model"]
-    synthesis_model = s["summarization_model"]
 
     kb = ResearchKB(db_path)
 
+    # Semantic KB search needs an embeddings provider; without a key, degrade to
+    # FTS keyword search rather than aborting. Synthesis below always degrades to
+    # claude -p via llm_call, so the command stays functional either way.
+    if api_key:
+        kb_search = search_kb(kb, topic, api_key, embedding_model)
+    else:
+        print(
+            "Warning: OPENROUTER_KEY not set — semantic search unavailable -> "
+            "FTS keyword fallback",
+            file=sys.stderr,
+        )
+
+        async def _fts():
+            return kb.fts_search(topic, limit=10)
+
+        kb_search = _fts()
+
     # Parallel search
     tasks = {
-        "kb": search_kb(kb, topic, api_key, embedding_model),
+        "kb": kb_search,
         "vault": search_vault(topic, vault_path),
         "hindsight": search_hindsight(topic),
     }
@@ -337,9 +345,7 @@ async def run(
         print(f"No results found for: {topic}")
         return
 
-    digest = await synthesize(
-        topic, "\n\n".join(context_parts), synthesis_model, api_key, vault_name
-    )
+    digest = synthesize(topic, "\n\n".join(context_parts), vault_name)
     print(digest)
 
 

@@ -219,10 +219,10 @@ name). To use it:
    cp docs/reasonix.toml.example ~/.config/reasonix/config.toml
    ```
    It defines a `deepseek-v4-pro` provider → `base_url = https://openrouter.ai/api/v1`,
-   `model = deepseek/deepseek-v4-pro`, `api_key_env = OPENROUTER_API_KEY`.
+   `model = deepseek/deepseek-v4-pro`, `api_key_env = OPENROUTER_KEY`.
 2. Export your OpenRouter key where juggle runs (launched agents inherit it):
    ```bash
-   echo 'OPENROUTER_API_KEY=sk-or-v1-...' >> ~/.juggle/.env
+   echo 'OPENROUTER_KEY=sk-or-v1-...' >> ~/.juggle/.env
    ```
 3. Select the harness: set `agent.harness = "reasonix"` (or per-role via
    `agent.harness_by_role`) in `~/.juggle/config.json`.

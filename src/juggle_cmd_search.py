@@ -55,40 +55,50 @@ async def get_embedding(text: str, api_key: str, model: str) -> list[float]:
         return resp.json()["data"][0]["embedding"]
 
 
-async def search_kb(query: str, api_key: str, model: str, k: int) -> list[dict]:
+def _open_kb():
     sys.path.insert(0, str(Path(__file__).parent))
     from juggle_research_kb import ResearchKB
     from juggle_settings import get_settings
 
     s = get_settings()["research_kb"]
     db_path = str(Path(s["db_path"]).expanduser())
-    kb = ResearchKB(db_path)
+    return ResearchKB(db_path)
+
+
+async def search_kb(query: str, api_key: str, model: str, k: int) -> list[dict]:
+    kb = _open_kb()
     embedding = await get_embedding(query, api_key, model)
     return kb.hybrid_search(embedding, query, k=k)
 
 
-async def haiku_filter(query: str, kb_results: list[dict], web_results: list[dict], api_key: str) -> dict:
+def fts_search_kb(query: str, k: int) -> list[dict]:
+    """Keyword-only KB search — no embeddings provider required."""
+    return _open_kb().fts_search(query, limit=k)
+
+
+async def haiku_filter(query: str, kb_results: list[dict], web_results: list[dict]) -> dict:
+    """Filter/dedupe results via the shared llm_call dispatcher.
+
+    Routes through llm_call (OpenRouter -> claude -p fallback) so it keeps working
+    when OPENROUTER_KEY is unset instead of being skipped.
+    """
+    sys.path.insert(0, str(Path(__file__).parent))
+    from llm_calls import llm_call
+
     raw = json.dumps({"kb": kb_results, "web": web_results}, indent=2)
     prompt = FILTER_PROMPT.format(query=query, raw=raw)
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": "anthropic/claude-haiku-4-5",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1024,
-            },
-            timeout=30.0,
+    text = (
+        await asyncio.to_thread(
+            llm_call, prompt, profile="cheap", timeout=30, max_tokens=1024, json_mode=True
         )
-        resp.raise_for_status()
-        text = resp.json()["choices"][0]["message"]["content"].strip()
-        # strip markdown fences if present
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        return json.loads(text)
+        or ""
+    ).strip()
+    # strip markdown fences if present
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text)
 
 
 async def main(args: argparse.Namespace) -> None:
@@ -103,16 +113,21 @@ async def main(args: argparse.Namespace) -> None:
     web_results: list[dict] = []
 
     if not args.no_kb:
-        if not api_key:
-            print("Warning: OPENROUTER_KEY not set — skipping KB search", file=sys.stderr)
-        else:
+        if api_key:
             kb_results = await search_kb(args.query, api_key, model, args.k)
+        else:
+            print(
+                "Warning: OPENROUTER_KEY not set — semantic search unavailable -> "
+                "FTS keyword fallback",
+                file=sys.stderr,
+            )
+            kb_results = fts_search_kb(args.query, args.k)
 
     if args.web_results:
         web_results = json.loads(args.web_results)
 
-    if args.filter and api_key and (kb_results or web_results):
-        filtered = await haiku_filter(args.query, kb_results, web_results, api_key)
+    if args.filter and (kb_results or web_results):
+        filtered = await haiku_filter(args.query, kb_results, web_results)
         print(json.dumps({"filtered": True, **filtered}, indent=2))
     else:
         out: dict = {}
