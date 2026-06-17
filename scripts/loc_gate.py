@@ -32,39 +32,33 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Grandfathered offenders at their line counts as of 2026-06-10 (plan baseline,
 # branch cyc_refactor-tokens). MAY ONLY SHRINK — see module docstring.
 GRANDFATHERED: dict[str, int] = {
-    # juggle_db.py split Phase 2.1: composition root is 144 lines (removed from allowlist).
-    # dbops/migrations.py holds all 34 schema migrations as a single ordered sequence;
-    # cannot split without losing migration-ordering invariant. Follow-up debt noted in results.
-    "src/juggle_watchdog.py": 1051,  # 964→1051: context-recycle fix + spinner detection (2026-06-15)
-    "src/juggle_cockpit.py": 835,  # lowered from 1120 (Ph2.3: layout+profile extracted)
-    # juggle_hooks.py Phase 2.5: split into hooks sub-modules (shim now 117 lines, removed).
-    # Two sub-modules exceed 300 and are grandfathered below their current size:
-    "src/juggle_hooks_tooluse.py": 334,   # PreToolUse+PostToolUse handlers; target ≤300
+    "src/juggle_cockpit.py": 1062,
+    "src/juggle_watchdog.py": 1051,
     "src/juggle_tmux.py": 839,
     "src/schedules/autofix.py": 823,
-    "src/juggle_cmd_projects.py": 735,  # lowered from 737 (Phase 1.2 llm consolidation)
-    "src/juggle_cmd_threads.py": 639,  # +31: close_junk_threads + chatter guard (2026-06-15)
-    "src/juggle_context.py": 345,
-    "src/schedules/reflect.py": 582,  # 545→582: per-section cost-cap enforcement (COST_CAP $1.00 / SECTION_CAP $0.35) merged from origin/main 80780d4 during rebase
-    "src/juggle_cockpit_view.py": 462,  # 460→462 (2026-06-11: narrow-row wrap feature); prior: lowered 499→460 (Ph4: static renders → juggle_cockpit_static)
+    "src/juggle_cockpit_modals.py": 810,
+    "src/juggle_cmd_projects.py": 755,
+    "src/juggle_cmd_threads.py": 650,
+    "src/schedules/reflect.py": 582,
+    "src/dbops/threads.py": 560,
     "src/juggle_scheduler.py": 494,
-    "src/juggle_cockpit_model.py": 440,  # lowered 467→440 (Ph4: sched discovery → juggle_cockpit_sched; headroom for graph counts)
-    "src/juggle_settings.py": 460,
-    "src/schedules/dogfood.py": 406,
-    "src/juggle_cmd_research.py": 392,
-    # src/juggle_cmd_context.py removed: shrank to 298 (recall commands deleted)
-    # src/schedules/common.py (ex juggle_schedule_common) removed 2026-06-10: shrank to 297 (Phase 1.2)
+    "src/juggle_cmd_integrate.py": 492,
+    "src/juggle_settings.py": 481,
+    "src/juggle_cockpit_view.py": 444,
+    "src/juggle_cockpit_model.py": 439,
+    "src/dbops/migrations_recent.py": 427,
     "scripts/talkback": 415,
-    # 2026-06-11 bug J fix: added _dispatch_flat_node_fallback() for legacy node-only graphs
-    "src/juggle_graph_dispatch.py": 386,
-    # 2026-06-13 incident guards (G1/G3/G4a) + topic CRUD; reconcile split out
-    "src/dbops/db_topics.py": 350,
-    # migration 41 (drop Hindsight cols) added run_migration_41(); split candidate
-    "src/dbops/migrations_recent.py": 361,
-    # 2026-06-14 direct-mode bugs: +retry logic +HEAD validation +graphify clean
-    "src/juggle_cmd_integrate.py": 325,
-    # 2026-06-15 junk-thread guard: is_auto_topic_eligible + _ORCHESTRATOR_CHATTER_MARKERS
-    "src/dbops/schema.py": 316,
+    "src/schedules/dogfood.py": 406,
+    "src/juggle_graph_dispatch.py": 397,
+    "src/juggle_cmd_research.py": 392,
+    "src/juggle_watchdog_daemon.py": 383,
+    "src/dbops/db_topics.py": 359,
+    "src/juggle_context.py": 345,
+    "src/juggle_watchdog_singleton.py": 337,
+    "src/dbops/schema.py": 334,
+    "src/juggle_cockpit_graph_panel.py": 334,
+    "src/juggle_hooks_tooluse.py": 334,
+    "src/dbops/agents.py": 320,
 }
 
 

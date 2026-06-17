@@ -162,8 +162,9 @@ def apply_quarantine(cmd: str, quarantine: list[str]) -> str:
         return cmd
 
     tokens = cmd.split()
-    # Find split point: last flag token index (flags start with '-')
-    split = 0
+    # Find split point: last flag token index (flags start with '-').
+    # Always at least 1 so we never insert --deselect before the executable.
+    split = 1 if tokens else 0
     for i, tok in enumerate(tokens):
         if tok.startswith("-"):
             split = i + 1

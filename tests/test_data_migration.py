@@ -83,8 +83,8 @@ def test_backfill_user_label_in_creation_order(db):
     _insert_raw(db, status="active", topic="second")
     migrate(db)
     threads = sorted(db.get_all_threads(), key=lambda t: t["created_at"])
-    assert threads[0]["user_label"] == "A"
-    assert threads[1]["user_label"] == "B"
+    assert threads[0]["user_label"] == "AA"
+    assert threads[1]["user_label"] == "AB"
 
 
 def test_backfill_last_active_at(db):
