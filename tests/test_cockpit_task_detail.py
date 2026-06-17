@@ -264,27 +264,22 @@ def test_task_detail_binding_exists():
 
 
 def test_task_detail_binding_key():
-    """The task_detail binding uses key 'T' or 'shift+t'."""
+    """The task_detail binding uses key 'i' (information mnemonic)."""
     b = _task_detail_binding()
     assert b is not None
-    assert b.key in ("T", "shift+t"), (
-        f"Expected 'T' or 'shift+t', got '{b.key}'"
+    assert b.key == "i", (
+        f"Expected 'i', got '{b.key}'"
     )
 
 
-def test_task_detail_binding_after_tail():
-    """task_detail binding appears after the 't' (tail_toggle) binding."""
+def test_task_detail_binding_not_T():
+    """'T' must NOT be bound to task_detail (rebind to 'i')."""
     from juggle_cockpit import CockpitApp
-
-    keys = [b.key for b in CockpitApp.BINDINGS]
-    assert "t" in keys, "tail_toggle binding ('t') not found"
-    tail_idx = keys.index("t")
-    td_b = _task_detail_binding()
-    assert td_b is not None
-    td_idx = keys.index(td_b.key)
-    assert td_idx > tail_idx, (
-        f"task_detail binding at index {td_idx} should come after tail at {tail_idx}"
-    )
+    for b in CockpitApp.BINDINGS:
+        if b.key in ("T", "shift+t"):
+            assert b.action != "task_detail", (
+                "'T'/'shift+t' must no longer be bound to task_detail"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -299,3 +294,47 @@ def test_action_task_detail_method_exists():
         "CockpitApp missing action_task_detail method"
     )
     assert callable(CockpitApp.action_task_detail)
+
+
+# ---------------------------------------------------------------------------
+# Cycle 5 — enriched _TopicDetailModal sections (task_input, result_output, recent)
+# ---------------------------------------------------------------------------
+
+
+def test_topic_detail_modal_shows_task_input():
+    """_TopicDetailModal renders task_input section when provided in extra."""
+    from juggle_cockpit_modals import _TopicDetailModal
+    topic = _make_topic("AO", title="My Topic")
+    modal = _TopicDetailModal(topic, extra={"task_input": "Please implement feature X"})
+    lines = "\n".join(modal._lines())
+    assert "task" in lines.lower() and "input" in lines.lower(), (
+        "Expected 'task' and 'input' header in modal lines"
+    )
+    assert "Please implement feature X" in lines
+
+
+def test_topic_detail_modal_shows_result_output():
+    """_TopicDetailModal renders result_output section when provided in extra."""
+    from juggle_cockpit_modals import _TopicDetailModal
+    topic = _make_topic("AO", title="My Topic")
+    modal = _TopicDetailModal(topic, extra={"result_output": "Done: feature implemented"})
+    lines = "\n".join(modal._lines())
+    assert ("output" in lines.lower() or "result" in lines.lower()), (
+        "Expected 'output' or 'result' header in modal lines"
+    )
+    assert "Done: feature implemented" in lines
+
+
+def test_topic_detail_modal_shows_recent():
+    """_TopicDetailModal renders recent activity list when provided in extra."""
+    from juggle_cockpit_modals import _TopicDetailModal
+    topic = _make_topic("AO", title="My Topic")
+    recent = [
+        {"role": "user", "content": "check this please"},
+        {"role": "assistant", "content": "all done"},
+    ]
+    modal = _TopicDetailModal(topic, extra={"recent": recent})
+    lines = "\n".join(modal._lines())
+    assert "recent" in lines.lower(), "Expected 'recent' header in modal lines"
+    assert "check this please" in lines
+    assert "all done" in lines

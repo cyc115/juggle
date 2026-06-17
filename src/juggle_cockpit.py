@@ -132,7 +132,7 @@ class CockpitApp(GraphModeMixin, App):
         Binding("slash",        "filter",        "Flt"),
         Binding("f",            "focus_pane",    "Foc"),
         Binding("t",            "tail_toggle",   "Tl"),
-        Binding("T",            "task_detail",   "Tk",  show=False),
+        Binding("i",            "task_detail",   "Info",  show=False),
         Binding("g",            "toggle_graph",  "Gr"),
         Binding("p",            "projects",      "Proj"),
         Binding("w",            "watchdog_toggle",  "Wd",  show=False),
@@ -776,7 +776,7 @@ class CockpitApp(GraphModeMixin, App):
         self.push_screen(_PromptModal(f"Tail agent (1–{len(agents)}):"), _on_index)
 
     def action_task_detail(self) -> None:
-        """T — prompt for a task id or label and show its detail.
+        """i — prompt for a task id or label and show its detail.
 
         Resolution order:
           1. Thread/topic human-readable label (e.g. "AO") → _TopicDetailModal
@@ -830,18 +830,43 @@ class CockpitApp(GraphModeMixin, App):
                 agent = agent_by_label.get(topic.label.upper())
                 if agent:
                     extra["agent"] = agent
-                # Fetch most-recent message excerpt from DB
+                # Fetch enriched data from DB
                 try:
+                    thread = self._db.get_thread(topic.id)
+                    if thread:
+                        summary = (thread.get("summary") or "").strip()
+                        if summary:
+                            extra["summary"] = summary
+                    # First substantive user message = task input
                     import sqlite3
                     with self._db._connect() as conn:
                         conn.row_factory = sqlite3.Row
-                        row = conn.execute(
-                            "SELECT content FROM messages WHERE thread_id = ? "
-                            "ORDER BY created_at DESC LIMIT 1",
+                        first_row = conn.execute(
+                            "SELECT content FROM messages "
+                            "WHERE thread_id = ? AND role = 'user' "
+                            "ORDER BY id ASC LIMIT 1",
                             (topic.id,),
                         ).fetchone()
-                    if row:
-                        extra["recent_msg"] = (row["content"] or "")[:400]
+                    if first_row:
+                        extra["task_input"] = (first_row["content"] or "").strip()
+                    # Last assistant message = result output
+                    exchange = self._db.get_last_exchange(topic.id)
+                    last_asst = (exchange.get("last_assistant") or "").strip()
+                    if last_asst:
+                        extra["result_output"] = last_asst
+                    # Recent raw messages (last 3)
+                    with self._db._connect() as conn:
+                        conn.row_factory = sqlite3.Row
+                        recent_rows = conn.execute(
+                            "SELECT role, content FROM messages "
+                            "WHERE thread_id = ? ORDER BY id DESC LIMIT 3",
+                            (topic.id,),
+                        ).fetchall()
+                    if recent_rows:
+                        extra["recent"] = [
+                            {"role": r["role"], "content": r["content"]}
+                            for r in reversed(recent_rows)
+                        ]
                 except Exception:
                     pass
                 self.push_screen(_TopicDetailModal(topic, extra=extra))

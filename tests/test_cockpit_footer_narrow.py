@@ -116,7 +116,7 @@ def test_footer_hint_set_locked():
     shown = {b.description for b in CockpitApp.BINDINGS if b.show}
 
     # Rarely-used keys hidden from footer (all accessible via ? help)
-    for hidden in ("Tk", "Wd", "Rwd"):
+    for hidden in ("Info", "Wd", "Rwd"):
         assert hidden not in shown, (
             f"'{hidden}' should be hidden in footer (show=False) — "
             "it bloats the footer; use ? to discover it"

@@ -223,9 +223,9 @@ COCKPIT_HELP_TABLE: list[dict] = [
         "entries": [
             {
                 "action": "task_detail",
-                "key": "T  (Shift+T)",
-                "short": "Tk",
-                "desc": "Show task graph detail by task id or thread label",
+                "key": "i",
+                "short": "Info",
+                "desc": "Show topic info (label, title, task input, result) by thread label",
             },
             {
                 "action": "toggle_graph",
@@ -480,8 +480,6 @@ class _TopicDetailModal(ModalScreen):
     }
     """
 
-    _EXCERPT = 400
-
     def __init__(self, topic, *, extra: dict | None = None) -> None:
         super().__init__()
         self._topic = topic
@@ -503,10 +501,23 @@ class _TopicDetailModal(ModalScreen):
             out.append(f"agent    {agent}")
         summary = (self._extra.get("summary") or "").strip()
         if summary:
-            out += ["", "summary:", summary[: self._EXCERPT]]
-        recent_msg = (self._extra.get("recent_msg") or "").strip()
-        if recent_msg:
-            out += ["", "recent:", recent_msg[: self._EXCERPT]]
+            out += ["", "summary:", summary]
+        task_input = (self._extra.get("task_input") or "").strip()
+        if task_input:
+            out += ["", "task / input:", task_input]
+        result_output = (self._extra.get("result_output") or "").strip()
+        if result_output:
+            out += ["", "output / result:", result_output]
+        recent = self._extra.get("recent") or []
+        if recent:
+            out += ["", "recent activity:"]
+            for msg in recent:
+                role = msg.get("role", "?")
+                content = (msg.get("content") or "").strip()
+                out.append(f"[{role}] {content}")
+        elif self._extra.get("recent_msg"):
+            # legacy single-message fallback
+            out += ["", "recent:", (self._extra["recent_msg"] or "").strip()]
         out += ["", "Esc / q — close"]
         return out
 
