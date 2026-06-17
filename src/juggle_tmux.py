@@ -287,7 +287,49 @@ class JuggleTmuxManager:
                 self._run_tmux("send-keys", "-t", pane_id, "C-m")
                 retries += 1
             time.sleep(1)
-        return False
+        # Secondary confirmation before declaring failure: the input-box heuristic
+        # can lag a submission that actually landed (Enter consumed, prompt left
+        # the box, but markers not yet rendered). Confirm via side-effect to avoid
+        # a false-negative that files spurious "dispatch failed" action items.
+        return self._submission_confirmed_by_side_effect(pane_id, head)
+
+    def _submission_confirmed_by_side_effect(self, pane_id: str, head: str) -> bool:
+        """Side-effect confirmation that a prompt was submitted, after the
+        marker-poll loop timed out.
+
+        Positive evidence (any of):
+          * a submission/activity marker has since rendered, OR
+          * the input box no longer holds our prompt (it was consumed/submitted)
+            AND a live JUGGLE_IS_AGENT process is present in the pane.
+
+        A box still holding unsubmitted input ("[Pasted text" placeholder, the
+        prompt head, an INSERT-mode banner, or a non-empty ❯/> line) is NEVER
+        rescued — that is a genuine stuck-at-prompt, returns False.
+        """
+        _, submission_markers = _harness_markers()
+        result = self._run_tmux(
+            "capture-pane", "-p", "-t", pane_id, "-S", f"-{_DETECT_TAIL_LINES}"
+        )
+        out = getattr(result, "stdout", "") or ""
+        bottom = "\n".join(out.splitlines()[-_DETECT_TAIL_LINES:])
+        if any(m in bottom for m in submission_markers) or any(
+            m in bottom for m in _ACTIVITY_MARKERS
+        ):
+            return True
+        stuck = (
+            "[Pasted text" in bottom
+            or "-- INSERT --" in bottom
+            or (head and head in bottom)
+            or any(
+                line.strip().startswith(("❯ ", "> ")) and len(line.strip()) > 2
+                for line in bottom.splitlines()
+            )
+        )
+        if stuck:
+            return False
+        # Input box cleared but no markers yet — corroborate with a live agent
+        # process so an empty/dead pane is not mistaken for a successful submit.
+        return _pane_has_juggle_agent_env(pane_id)
 
     def send_task(self, pane_id: str, prompt: str, is_new: bool = False) -> str:
         """Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.

@@ -250,6 +250,15 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     _orphan_threshold = float(os.environ.get("JUGGLE_ORPHAN_THRESHOLD", "300"))
     check_orphaned_threads(db, orphan_threshold=_orphan_threshold)
 
+    # Loop 2b: completed-but-unmerged topic guard (G5) — surface any topic whose
+    # tasks are all verified but whose work never merged (close-before-integrate
+    # orphan) so it is never silently abandoned without a blocker.
+    try:
+        from dbops.orphan_guard import flag_unmerged_completed_topics
+        flag_unmerged_completed_topics(db)
+    except Exception:
+        pass
+
     # Generic stale-agent reap (pass 1: idle TTL / dead panes; pass 2: orphan panes)
     from juggle_tmux import reap_stale_agents
     try:

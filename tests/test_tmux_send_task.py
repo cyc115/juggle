@@ -128,3 +128,75 @@ def test_send_task_does_not_raise_when_agent_already_running(mgr):
     ):
         # Must not raise RuntimeError
         pane_hash = mgr.send_task("%763", "implement the new feature")
+
+
+# --- false-negative: Enter landed but the input-box heuristic lagged ---------
+
+
+def test_send_task_succeeds_when_submission_lagged_but_agent_busy(mgr):
+    """Dispatch false-negative repro (incident BK/of-init-optional-key).
+
+    paste-buffer + C-m landed and the agent ran the task, but the
+    submission/activity markers never rendered inside wait_for_submission's
+    polling window. The input box is CLEARED (prompt is gone). A live
+    JUGGLE_IS_AGENT process confirms the dispatch via side-effect — send_task
+    must NOT raise the spurious 'submission not verified' RuntimeError.
+    """
+    cleared = "  earlier scrollback line\n  another line of output\n"
+
+    def fake_tmux(*args):
+        if args[0] == "capture-pane":
+            return _ok(stdout=cleared)
+        return _ok()
+
+    with (
+        patch.object(mgr, "wait_for_ready_to_paste", return_value=True),
+        patch.object(mgr, "_run_tmux", side_effect=fake_tmux),
+        patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True),
+        patch("time.sleep"),
+    ):
+        pane_hash = mgr.send_task("%763", "implement the feature end to end")
+    assert pane_hash  # no RuntimeError
+
+
+def test_wait_for_submission_confirmed_by_agent_busy_side_effect(mgr):
+    """Box cleared + no markers + live agent process → confirmed submitted (True)."""
+    cleared = "  scrollback\n  more output\n"
+    with (
+        patch.object(mgr, "_run_tmux", return_value=_ok(stdout=cleared)),
+        patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True),
+        patch("time.sleep"),
+    ):
+        result = mgr.wait_for_submission(
+            "%3", "some prompt text here", timeout=2, max_enter_retries=0
+        )
+    assert result is True
+
+
+def test_wait_for_submission_false_when_cleared_but_no_live_agent(mgr):
+    """Box cleared but NO live agent process → cannot confirm → False (no false-positive)."""
+    cleared = "  idle scrollback only\n"
+    with (
+        patch.object(mgr, "_run_tmux", return_value=_ok(stdout=cleared)),
+        patch("juggle_tmux._pane_has_juggle_agent_env", return_value=False),
+        patch("time.sleep"),
+    ):
+        result = mgr.wait_for_submission(
+            "%3", "prompt body text", timeout=2, max_enter_retries=0
+        )
+    assert result is False
+
+
+def test_wait_for_submission_false_when_stuck_despite_live_agent(mgr):
+    """A genuinely stuck prompt (still in the input box) stays False even when the
+    agent process is alive — side-effect confirmation only rescues a CLEARED box,
+    never a box still holding unsubmitted input."""
+    prompt = "stuck prompt body that never submits to the agent"
+    stuck = _ok(stdout=f"> {prompt} still here\n")
+    with (
+        patch.object(mgr, "_run_tmux", return_value=stuck),
+        patch("juggle_tmux._pane_has_juggle_agent_env", return_value=True),
+        patch("time.sleep"),
+    ):
+        result = mgr.wait_for_submission("%3", prompt, timeout=2, max_enter_retries=1)
+    assert result is False
