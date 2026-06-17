@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "tests/test_data_migration.py": {
-    "mtime": 1781681843.1719646,
-    "ast_hash": "e5159e459adbd62247e1f3df02be19e0",
+    "mtime": 1781682162.3058093,
+    "ast_hash": "28831a532f26c95cbf5353a87d231e39",
     "semantic_hash": ""
   },
   "tests/test_thread_state_machine.py": {

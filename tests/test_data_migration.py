@@ -15,7 +15,8 @@ def db(tmp_path):
 
 def _insert_raw(db, **cols):
     """Insert a thread row with raw status (bypasses set_thread_status guards)."""
-    import uuid, datetime
+    import uuid
+    import datetime
 
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M")
     tid = cols.get("id") or str(uuid.uuid4())
