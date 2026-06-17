@@ -27,8 +27,8 @@ def save_screenshot(path: str, db_path: str | None, *, graph_mode: bool = False)
 
     db = JuggleDB(db_path=db_path)
     db.init_db()
-    conn = sqlite3.connect(str(db.db_path))
-    conn.row_factory = sqlite3.Row
+    from juggle_db_connect import open_connection
+    conn = open_connection(db.db_path)
     db._connect = lambda: conn  # noqa: E731
     try:
         state = snapshot(db, load_graph_dag=graph_mode)

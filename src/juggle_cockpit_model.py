@@ -172,8 +172,8 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
     # Open a fresh connection each call to avoid WAL read-transaction pinning.
     # Fall back to db._connect() for in-memory / fake DBs that expose no db_path.
     if hasattr(db, "db_path"):
-        conn = _sqlite3.connect(str(db.db_path))
-        conn.row_factory = _sqlite3.Row
+        from juggle_db_connect import open_connection
+        conn = open_connection(db.db_path)
     else:
         conn = db._connect()
 

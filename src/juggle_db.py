@@ -85,31 +85,43 @@ class JuggleDB(
     ``DB_PATH`` (``~/.claude/juggle/juggle.db`` by default).
     """
 
-    def __init__(self, db_path=None):
+    def __init__(
+        self,
+        db_path=None,
+        *,
+        _tmpfs_mode: bool = False,
+        _tmpfs_dir: str | None = None,
+        _instance_id: str = "default",
+        _platform: str | None = None,
+    ):
         if db_path is None:
             # Honor JUGGLE_DB_PATH at call time so test isolation (which sets the
             # env per-test) redirects bare JuggleDB() off the production DB.
             from dbops.schema import _resolve_db_path
-            self.db_path = _resolve_db_path()
+            resolved = _resolve_db_path()
         else:
-            self.db_path = Path(db_path)
+            resolved = Path(db_path)
+
+        if _tmpfs_mode and _tmpfs_dir is not None:
+            from juggle_db_path import resolve_db_paths
+            paths = resolve_db_paths(
+                "tmpfs", _tmpfs_dir, resolved, _instance_id,
+                _platform=_platform,
+            )
+            self.db_path = paths.live
+            if paths.mode == "tmpfs":
+                from juggle_db_bootstrap import bootstrap_tmpfs
+                bootstrap_tmpfs(paths.live, paths.durable)
+        else:
+            self.db_path = resolved
+
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
-        # Corruption-hardening, applied on EVERY connection (the one chokepoint
-        # all CLI/hooks/watchdog/test callers funnel through):
-        #   journal_mode=WAL  — persisted in the file header; concurrent readers
-        #     + single writer, which suits juggle's multi-agent access.
-        #   synchronous=NORMAL — PER-CONNECTION (not persisted), so it MUST be
-        #     re-asserted every connect. WAL-safe (no corruption; only risks last txn on power loss); relaxed from FULL 2026-06-10 — FULL fsync-per-commit caused integrate lock-hold storms under concurrent agents.
-        #   busy_timeout=5000 — WAL still serializes writers and juggle opens
-        #     many concurrent connections; prevents spurious "database is locked".
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=NORMAL;")
-        conn.execute("PRAGMA busy_timeout=5000;")
-        return conn
+        # Single seam — all raw DB opens go through open_connection() so
+        # WAL/synchronous/busy_timeout pragmas are applied exactly once.
+        from juggle_db_connect import open_connection
+        return open_connection(self.db_path)
 
     def init_db(self):
         """Create tables if not exist, run schema migrations, enable WAL mode.

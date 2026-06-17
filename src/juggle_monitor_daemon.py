@@ -87,8 +87,8 @@ def _poll_once(
 def _init_cursor(db_path: Path) -> int:
     """Return current max notifications_v2 id so we don't replay history."""
     try:
-        conn = sqlite3.connect(str(db_path))
-        conn.row_factory = sqlite3.Row
+        from juggle_db_connect import open_connection
+        conn = open_connection(db_path)
         row = conn.execute("SELECT MAX(id) AS m FROM notifications_v2").fetchone()
         conn.close()
         return row["m"] if row and row["m"] is not None else 0
@@ -107,8 +107,8 @@ def main() -> None:
 
     while True:
         try:
-            conn = sqlite3.connect(str(db_path))
-            conn.row_factory = sqlite3.Row
+            from juggle_db_connect import open_connection
+            conn = open_connection(db_path)
             results, last_seen_id = _poll_once(conn, last_seen_id)
             conn.close()
             for thread_id, line in results:
