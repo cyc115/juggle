@@ -388,3 +388,7 @@ def main() -> None:
     finally:
         _cleanup_singleton_pid()
         _log.info("Watchdog stopped.")
+
+
+if __name__ == "__main__":
+    main()

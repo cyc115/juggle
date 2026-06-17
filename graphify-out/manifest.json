@@ -1300,8 +1300,8 @@
     "semantic_hash": ""
   },
   "src/juggle_watchdog_daemon.py": {
-    "mtime": 1781682702.2844245,
-    "ast_hash": "c3172f7de3022e95f3b0e6a8d86330c2",
+    "mtime": 1781738356.5084805,
+    "ast_hash": "f7fc33e0dbd624a0dd61e89dc2b1369e",
     "semantic_hash": ""
   },
   "tests/watchdog/test_actionable_items.py": {
@@ -2277,6 +2277,11 @@
   "specs/2026-06-17-llm-gateway.md": {
     "mtime": 1781735484.3353705,
     "ast_hash": "7ec2c95623c5b48de58bf36bf37c1b01",
+    "semantic_hash": ""
+  },
+  "tests/test_watchdog_daemon_main_entry.py": {
+    "mtime": 1781738348.4096067,
+    "ast_hash": "899b20c1bf9c4ae85f1e37379fcb99a3",
     "semantic_hash": ""
   }
 }
