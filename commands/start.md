@@ -190,6 +190,15 @@ Invoke superpowers:test-driven-development AND superpowers:executing-plans. Over
 - Don't stop for help — exhaust retries then complete-agent PARTIAL/BLOCKED
 - Don't ask branch permission — proceed
 
+## Target-repo conventions (mandatory)
+
+Before writing any code, read the target repository's CLAUDE.md (and any
+nested CLAUDE.md in directories you will modify) to learn its development
+conventions — build/test commands, branch policy, commit message style, and
+file organization. When working in a repo different from your default, this
+is your first step. Follow what you find there; if it conflicts with these
+instructions, surface it in --open-questions rather than guessing.
+
 ## TDD discipline (mandatory)
 
 Write the test BEFORE the implementation for every new behavior. Cycle:

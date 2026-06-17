@@ -148,6 +148,10 @@ Fill in the placeholders (`<label>`, `<role>`, `<THREAD_LABEL>`, task descriptio
 ```
 ## Coder behavioral spec
 
+## Target-repo conventions (mandatory)
+
+Before changing any code, read the target repository's CLAUDE.md first.
+
 ## Invoke TDD by default
 
 Invoke `superpowers:test-driven-development` before implementation. Cycle:
