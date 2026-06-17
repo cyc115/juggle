@@ -1,0 +1,230 @@
+{
+  "_comment": "Juggle config — copy to ~/.juggle/config.json and edit. Env override: _JUGGLE_CONFIG_PATH. Deep-merged over built-in DEFAULTS; omit keys to inherit defaults.",
+
+  "max_threads": 10,
+  "max_agents": 20,
+  "agent_idle_ttl_secs": 43200,
+  "agent_boot_grace_secs": 120,
+  "message_history_token_budget": 1500,
+  "context_injection_char_limit": 8000,
+  "context_teaser_chars": 80,
+  "stale_summary_message_threshold": 3,
+  "summary_max_chars": 250,
+  "thread_idle_threshold_secs": 1800,
+  "thread_archive_threshold_secs": 172800,
+
+  "paths": {
+    "data_dir": "~/.claude/juggle",
+    "config_dir": "~/.juggle",
+    "digest_log_dir": "~/.juggle/logs",
+    "vault": "/Documents/personal",
+    "vault_name": "personal"
+  },
+
+  "tmux": {
+    "session_name": "juggle",
+    "session_width": 220,
+    "session_height": 50,
+    "agent_idle_detection_secs": 30,
+    "ready_poll_attempts": 120,
+    "ready_poll_interval_secs": 1
+  },
+
+  "cockpit": {
+    "refresh_interval_secs": 1.0,
+    "column_ratios": [0.30, 0.40, 0.30],
+    "notification_ratio": 30,
+    "bell": true,
+    "desktop_notifications": false
+  },
+
+  "db": {
+    "mode": "direct",
+    "tmpfs_dir": "/dev/shm",
+    "flush_interval_s": 10
+  },
+
+  "hindsight": {
+    "enabled": false,
+    "api_url": "http://localhost:18888",
+    "api_key": "juggle",
+    "bank": "juggle",
+    "timeout_secs": 10,
+    "reflect_timeout_secs": 60
+  },
+
+  "talkback": {
+    "enabled": false,
+    "port": 18787
+  },
+
+  "title_gen": {
+    "openrouter_enabled": true,
+    "openrouter_model": "google/gemini-2.5-flash-lite",
+    "haiku_model": "claude-haiku-4-5-20251001",
+    "sonnet_model": "claude-sonnet-4-6",
+    "timeout_secs": 10
+  },
+
+  "llm_profiles": {
+    "cheap": {
+      "openrouter_model": "deepseek/deepseek-chat-v3-0324:free",
+      "fallback_model": "claude-haiku-4-5-20251001"
+    },
+    "normal": {
+      "openrouter_model": "moonshotai/kimi-k2:free",
+      "fallback_model": "claude-sonnet-4-6"
+    }
+  },
+
+  "research_kb": {
+    "db_path": "~/.juggle/research_kb.db",
+    "embedding_model": "openai/text-embedding-3-small",
+    "summarization_model": "~google/gemini-pro-latest",
+    "hn_score_threshold": 100,
+    "web_search_enabled": true,
+    "pdf_dirs": []
+  },
+
+  "integrate": {
+    "test_scope": "changed",
+    "core_tests": [],
+    "quarantine_tests": []
+  },
+
+  "repos": {
+    "/home/user/myproject": {
+      "push_mode": "direct",
+      "test_cmd": "uv run pytest -q"
+    }
+  },
+
+  "agent": {
+    "claude_launch_command": "claude --dangerously-skip-permissions",
+    "harness": "claude",
+    "harness_by_role": {},
+    "audit_mode": false,
+    "quality_gate_skill": "mike:pre-pr",
+
+    "role_context": {
+      "researcher": "Produce comprehensive, well-structured, cited reports. Never fabricate URLs.",
+      "coder": "Implement exactly what is specified — no more. Minimal diff.",
+      "planner": "Produce plans a coder can execute without clarification."
+    },
+
+    "harnesses": {
+      "claude": {
+        "type": "claude",
+        "model_flag": "--model {model}",
+        "env": {},
+        "env_unset": ["CLAUDE_PLUGIN_DATA"],
+        "readiness_markers": ["bypass permissions on", "/effort"],
+        "submission_markers": ["esc to interrupt", "✻", "✶"],
+        "supports_hooks": true
+      },
+      "codex": {
+        "type": "codex",
+        "command": "codex exec",
+        "interactive": false,
+        "model_flag": "-m {model}",
+        "model": "",
+        "extra_flags": "",
+        "prompt_arg": "- < {prompt_file}",
+        "approval_policy": "never",
+        "sandbox_by_role": {
+          "researcher": "read-only",
+          "planner": "read-only",
+          "coder": "workspace-write"
+        },
+        "sandbox_default": "read-only",
+        "sandbox_audit": "workspace-write",
+        "restrictions_flag": "",
+        "env": {},
+        "env_unset": [],
+        "supports_hooks": false
+      },
+      "reasonix": {
+        "type": "template",
+        "command": "reasonix run",
+        "interactive": false,
+        "model_flag": "--model {model}",
+        "model": "deepseek-v4-pro",
+        "extra_flags": "",
+        "prompt_arg": "< {prompt_file}",
+        "restrictions_flag": "",
+        "external_restriction": true,
+        "env": {},
+        "env_unset": [],
+        "supports_hooks": false
+      }
+    },
+
+    "settings_overlay_base": {
+      "editorMode": "normal",
+      "permissions": {
+        "deny": [
+          "mcp__opentabs__*",
+          "mcp__github__*",
+          "mcp__otterai__*",
+          "mcp__personal-mcp__plaid_get_accounts",
+          "mcp__personal-mcp__plaid_get_statements",
+          "mcp__personal-mcp__plaid_sync_transactions",
+          "ScheduleWakeup",
+          "CronCreate",
+          "CronList",
+          "CronDelete",
+          "ShareOnboardingGuide",
+          "ExitPlanMode",
+          "EnterPlanMode",
+          "EnterWorktree",
+          "ExitWorktree",
+          "PushNotification",
+          "Agent",
+          "RemoteTrigger",
+          "ListMcpResourcesTool",
+          "ReadMcpResourceTool"
+        ]
+      }
+    },
+
+    "settings_overlay_by_role": {
+      "researcher": {
+        "permissions": {
+          "deny": ["Edit", "NotebookEdit"]
+        }
+      },
+      "coder": {
+        "permissions": {
+          "deny": [
+            "NotebookEdit",
+            "mcp__personal-mcp__extract_text_from_file",
+            "mcp__claude.ai Google Drive__*",
+            "mcp__claude.ai Google Calendar__*",
+            "mcp__claude.ai Gmail__*"
+          ]
+        }
+      },
+      "planner": {
+        "permissions": {
+          "deny": [
+            "Edit",
+            "NotebookEdit",
+            "Monitor",
+            "TaskOutput",
+            "TaskStop",
+            "mcp__personal-mcp__extract_text_from_file",
+            "mcp__claude.ai Google Drive__*",
+            "mcp__claude.ai Google Calendar__*",
+            "mcp__claude.ai Gmail__*"
+          ]
+        }
+      }
+    }
+  },
+
+  "task_templates": {
+    "coder": "## Role: Coder\n\nImplement exactly what is specified — no more. Minimal diff.",
+    "planner": "## Role: Planner\n\nProduce plans a coder can execute without clarification.",
+    "researcher": "## Role: Researcher\n\nProduce comprehensive, well-structured, cited reports. Never fabricate URLs."
+  }
+}
