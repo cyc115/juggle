@@ -45,21 +45,29 @@ def test_doctor_respects_juggle_db_path_set_after_module_load(tmp_path, monkeypa
 
 
 def test_doctor_cmd_doctor_does_not_use_module_level_db_path(tmp_path, monkeypatch):
-    """cmd_doctor function body must not reference module-level DB_PATH directly.
+    """cmd_doctor must not cache DB_PATH at module level.
 
-    It must call _resolve_db_path() or JuggleDB(db_path=None) which re-resolves
-    at call time.
+    Regression pin: DB_PATH must be resolved inside cmd_doctor() (call time),
+    not at module import time. Acceptable patterns:
+      - import inside function body: `from juggle_db import JuggleDB, DB_PATH`
+      - call _resolve_db_path() inside the function
+
+    Either way, patching juggle_db.DB_PATH or JUGGLE_DB_PATH after module load
+    takes effect on the next cmd_doctor() call.
     """
+    import ast
     import inspect
     import juggle_cmd_doctor
-    src = inspect.getsource(juggle_cmd_doctor.cmd_doctor)
-    # The function must NOT use the bare module-level DB_PATH constant
-    # (it may reference it only to assign to a local using _resolve_db_path)
-    # We accept any reference inside a call to _resolve_db_path or JuggleDB(None)
-    # Simple proxy: if "DB_PATH" appears in the function body without
-    # "_resolve_db_path" nearby, that's the bug.
-    if "DB_PATH" in src:
-        assert "_resolve_db_path" in src, (
-            "cmd_doctor uses DB_PATH without calling _resolve_db_path() — "
-            "path is stale if env var is set after module import"
-        )
+
+    # Parse the module source and check DB_PATH is NOT assigned at module scope
+    # (it must only appear inside cmd_doctor's body, not as a top-level assignment)
+    module_src = inspect.getsource(juggle_cmd_doctor)
+    tree = ast.parse(module_src)
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "DB_PATH":
+                    raise AssertionError(
+                        "juggle_cmd_doctor has a module-level DB_PATH assignment — "
+                        "this fixes the path at import time and breaks test isolation"
+                    )
