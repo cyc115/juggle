@@ -209,8 +209,10 @@ def purge_expired_selfheal(db, now: datetime, retention_days: int = 14) -> int:
     """
     cutoff = (now - timedelta(days=retention_days)).strftime("%Y-%m-%d %H:%M")
     with db._connect() as conn:
+        # Only purge resolved/open rows — never purge diagnosing/awaiting_approval
+        # rows that may still be actively in-flight.
         cur = conn.execute(
-            "DELETE FROM error_events WHERE last_seen < ?",
+            "DELETE FROM error_events WHERE last_seen < ? AND status IN ('open', 'resolved')",
             (cutoff,),
         )
         conn.commit()
@@ -271,6 +273,10 @@ def maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=None) -> bool:
     cfg = get_settings().get("selfheal", {})
     enabled = bool(cfg.get("enabled", False))
     min_count = int(cfg.get("min_count", 3))
+
+    # Reset stale diagnosing rows BEFORE checking in-flight — otherwise a crash
+    # mid-dispatch leaves the row stuck forever, permanently blocking new dispatch.
+    reset_stale_diagnosing_rows(db, datetime.now(timezone.utc))
 
     candidates = get_diagnosis_candidates(db, min_count=min_count)
     in_flight = _in_flight_exists(db)

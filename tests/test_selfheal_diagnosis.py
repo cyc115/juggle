@@ -188,6 +188,7 @@ def test_purge_expired_deletes_old_rows(tmp_path):
     """Rows with last_seen older than retention_days are deleted.
 
     2026-06-17: retention auto-purge bounds the error_events table indefinitely.
+    Only open/resolved rows are purged — not active in-flight rows.
     """
     from juggle_db import JuggleDB
     from juggle_selfheal import purge_expired_selfheal
@@ -201,13 +202,25 @@ def test_purge_expired_deletes_old_rows(tmp_path):
         conn.execute("UPDATE error_events SET last_seen=? WHERE signature_hash='sig_old'", (old,))
         conn.commit()
 
+    # diagnosing row should NOT be purged even if old
+    db.dedup_or_insert_error("sig_inflight", "A", "E", "tb", "ep2", "{}")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE error_events SET last_seen=?, status='diagnosing' WHERE signature_hash='sig_inflight'",
+            (old,),
+        )
+        conn.commit()
+
     now = datetime.now(timezone.utc)
     deleted = purge_expired_selfheal(db, now, retention_days=14)
-    assert deleted == 1
+    assert deleted == 1  # only sig_old purged
 
     with db._connect() as conn:
         row = conn.execute("SELECT id FROM error_events WHERE signature_hash='sig_old'").fetchone()
     assert row is None
+    with db._connect() as conn:
+        row = conn.execute("SELECT id FROM error_events WHERE signature_hash='sig_inflight'").fetchone()
+    assert row is not None  # in-flight preserved
 
 
 def test_purge_expired_keeps_recent_rows(tmp_path):
