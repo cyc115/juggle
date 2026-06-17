@@ -602,7 +602,7 @@ class _TopicDetailModal(ModalScreen):
         if thread_id:
             _topic_summary_cache[(thread_id, message_count)] = sections
 
-        self.call_from_thread(self._apply_summary, sections)
+        self.app.call_from_thread(self._apply_summary, sections)
 
     def _apply_summary(self, sections: dict) -> None:
         """Update body widget with summarised or fallback content (runs on UI thread)."""
