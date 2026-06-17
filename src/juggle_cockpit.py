@@ -329,18 +329,32 @@ class CockpitApp(GraphModeMixin, App):
             action = toggle_watchdog(
                 self._watchdog_db_path(), repo_path=canonical_repo_path()
             )
-            self.notify(f"watchdog {action}", timeout=4)
+            if action == "started" and not _lock_watchdog_alive(
+                self._watchdog_db_path()
+            ):
+                self.notify(
+                    "watchdog start failed — daemon did not survive",
+                    severity="error",
+                )
+            else:
+                self.notify(f"watchdog {action}", timeout=4)
         except Exception as e:
             self.notify(f"watchdog toggle failed: {e}", severity="error")
         self._update_watchdog_status()
 
     def action_watchdog_restart(self) -> None:
-        """R / shift+W — kill + relaunch from canonical main (latest code)."""
+        """R — kill + relaunch from canonical main (latest code)."""
         try:
-            restart_watchdog(
+            ok = restart_watchdog(
                 self._watchdog_db_path(), repo_path=canonical_repo_path()
             )
-            self.notify("watchdog restarted from main", timeout=4)
+            if not ok:
+                self.notify(
+                    "watchdog restart failed — daemon did not survive",
+                    severity="error",
+                )
+            else:
+                self.notify("watchdog restarted from main", timeout=4)
         except Exception as e:
             self.notify(f"watchdog restart failed: {e}", severity="error")
         self._update_watchdog_status()

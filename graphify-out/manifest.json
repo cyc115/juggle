@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cockpit.py": {
-    "mtime": 1781675947.651157,
-    "ast_hash": "d1217e316f12034b5c72269866530763",
+    "mtime": 1781738850.788829,
+    "ast_hash": "752ca7a009e89477fd1b3fe0dc4cc495",
     "semantic_hash": ""
   },
   "src/juggle_watchdog.py": {
@@ -1300,7 +1300,7 @@
     "semantic_hash": ""
   },
   "src/juggle_watchdog_daemon.py": {
-    "mtime": 1781738356.5084805,
+    "mtime": 1781738850.7307959,
     "ast_hash": "f7fc33e0dbd624a0dd61e89dc2b1369e",
     "semantic_hash": ""
   },
@@ -1845,8 +1845,8 @@
     "semantic_hash": ""
   },
   "src/juggle_watchdog_singleton.py": {
-    "mtime": 1781597440.6477659,
-    "ast_hash": "6b456fc83ae91344931aec9305ebdaff",
+    "mtime": 1781738850.7890716,
+    "ast_hash": "45d1c2a3d61d8e1d2ffd61ca909934da",
     "semantic_hash": ""
   },
   "src/vcs.py": {
@@ -2280,8 +2280,13 @@
     "semantic_hash": ""
   },
   "tests/test_watchdog_daemon_main_entry.py": {
-    "mtime": 1781738348.4096067,
+    "mtime": 1781738850.7311106,
     "ast_hash": "899b20c1bf9c4ae85f1e37379fcb99a3",
+    "semantic_hash": ""
+  },
+  "tests/test_watchdog_survive.py": {
+    "mtime": 1781738432.0407026,
+    "ast_hash": "a1bbc2536088ba566eeaf2772b7c540a",
     "semantic_hash": ""
   }
 }
