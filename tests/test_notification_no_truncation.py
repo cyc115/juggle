@@ -8,8 +8,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import pytest
-
 
 LONG_MESSAGE = "A" * 300 + " — important detail that must not be lost"
 
