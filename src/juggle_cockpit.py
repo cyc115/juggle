@@ -854,19 +854,22 @@ class CockpitApp(GraphModeMixin, App):
                     last_asst = (exchange.get("last_assistant") or "").strip()
                     if last_asst:
                         extra["result_output"] = last_asst
-                    # Recent raw messages (last 3)
+                    # All messages for LLM context (last 20) + recent activity (last 5)
                     with self._db._connect() as conn:
                         conn.row_factory = sqlite3.Row
-                        recent_rows = conn.execute(
+                        all_rows = conn.execute(
                             "SELECT role, content FROM messages "
-                            "WHERE thread_id = ? ORDER BY id DESC LIMIT 3",
+                            "WHERE thread_id = ? ORDER BY id ASC",
                             (topic.id,),
                         ).fetchall()
-                    if recent_rows:
-                        extra["recent"] = [
-                            {"role": r["role"], "content": r["content"]}
-                            for r in reversed(recent_rows)
-                        ]
+                    messages_all = [
+                        {"role": r["role"], "content": r["content"]}
+                        for r in all_rows
+                    ]
+                    extra["messages_all"] = messages_all[-20:]
+                    extra["recent"] = messages_all[-5:]
+                    extra["thread_id"] = topic.id
+                    extra["message_count"] = len(messages_all)
                 except Exception:
                     pass
                 self.push_screen(_TopicDetailModal(topic, extra=extra))

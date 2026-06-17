@@ -457,11 +457,17 @@ def resolve_thread_detail(topics: list, query: str):
     return None
 
 
+# Session-scoped summary cache: (thread_id, message_count) → {context,why,what,result}
+_topic_summary_cache: dict[tuple, dict] = {}
+
+
 class _TopicDetailModal(ModalScreen):
     """Read-only detail overlay for a thread/topic.
 
-    Shows label, title, status, and optional extra data (agent, summary,
-    recent_msg). Dismisses on 'q' or Escape.
+    Header (label/title/state) renders immediately. Body is LLM-summarised
+    asynchronously in a background thread; shows "Summarizing…" until done.
+    Falls back to raw task/result sections if the LLM call fails.
+    Cache key: (thread_id, message_count) — re-opens are instant.
     """
 
     from textual.binding import Binding
@@ -488,7 +494,7 @@ class _TopicDetailModal(ModalScreen):
         self._topic = topic
         self._extra = extra or {}
 
-    def _lines(self) -> list[str]:
+    def _header_lines(self) -> list[str]:
         t = self._topic
         out = [
             f"Topic [{t.label}]",
@@ -502,6 +508,11 @@ class _TopicDetailModal(ModalScreen):
         agent = self._extra.get("agent")
         if agent:
             out.append(f"agent    {agent}")
+        return out
+
+    def _raw_body_lines(self) -> list[str]:
+        """Fallback body when LLM summary is unavailable."""
+        out = []
         summary = (self._extra.get("summary") or "").strip()
         if summary:
             out += ["", "summary:", summary]
@@ -511,6 +522,31 @@ class _TopicDetailModal(ModalScreen):
         result_output = (self._extra.get("result_output") or "").strip()
         if result_output:
             out += ["", "output / result:", result_output]
+        return out
+
+    def _summary_body_lines(self, sections: dict, note: str = "") -> list[str]:
+        """Render the four LLM sections + recent activity."""
+        from juggle_topic_summary import format_recent_activity
+
+        out = []
+        labels = [("Context", "context"), ("Why", "why"), ("What", "what"), ("Result", "result")]
+        for display, key in labels:
+            val = (sections.get(key) or "").strip()
+            if val:
+                out += ["", f"{display}:", val]
+        if note:
+            out += ["", note]
+        messages_all = self._extra.get("messages_all") or self._extra.get("recent") or []
+        activity = format_recent_activity(messages_all, limit=5)
+        if activity:
+            out += ["", "Recent Activity:"]
+            for line in activity:
+                out.append(f"- {line}")
+        return out
+
+    def _lines(self) -> list[str]:
+        """Combined header + raw fallback body. Used in tests and synchronous contexts."""
+        out = self._header_lines() + self._raw_body_lines()
         recent = self._extra.get("recent") or []
         if recent:
             out += ["", "recent activity:"]
@@ -519,14 +555,66 @@ class _TopicDetailModal(ModalScreen):
                 content = (msg.get("content") or "").strip()
                 out.append(f"[{role}] {content}")
         elif self._extra.get("recent_msg"):
-            # legacy single-message fallback
             out += ["", "recent:", (self._extra["recent_msg"] or "").strip()]
         out += ["", "Esc / q — close"]
         return out
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
-            yield Static("\n".join(self._lines()), markup=False)
+            yield Static(
+                "\n".join(self._header_lines()),
+                id="topic-header",
+                markup=False,
+            )
+            yield Static("", id="topic-body", markup=False)
+
+    def on_mount(self) -> None:
+        thread_id = self._extra.get("thread_id", "")
+        message_count = self._extra.get("message_count", 0)
+        cache_key = (thread_id, message_count)
+
+        if cache_key in _topic_summary_cache:
+            sections = _topic_summary_cache[cache_key]
+            self._apply_summary(sections)
+            return
+
+        self.query_one("#topic-body", Static).update("Summarizing…")
+        self.run_worker(self._fetch_summary, thread=True)
+
+    def _fetch_summary(self) -> None:
+        """Blocking worker: call LLM, update body via call_from_thread."""
+        from juggle_topic_summary import summarize_topic
+
+        task_input = (self._extra.get("task_input") or "").strip()
+        result_output = (self._extra.get("result_output") or "").strip()
+        messages_all = self._extra.get("messages_all") or self._extra.get("recent") or []
+        meta = {
+            "label": self._topic.label,
+            "title": self._topic.title or "",
+            "status": self._topic.status,
+        }
+
+        sections = summarize_topic(task_input, result_output, messages_all, meta)
+
+        # Cache if we have a thread_id
+        thread_id = self._extra.get("thread_id", "")
+        message_count = self._extra.get("message_count", 0)
+        if thread_id:
+            _topic_summary_cache[(thread_id, message_count)] = sections
+
+        self.call_from_thread(self._apply_summary, sections)
+
+    def _apply_summary(self, sections: dict) -> None:
+        """Update body widget with summarised or fallback content (runs on UI thread)."""
+        any_content = any((sections.get(k) or "").strip() for k in ("context", "why", "what", "result"))
+
+        if any_content:
+            body_lines = self._summary_body_lines(sections)
+        else:
+            body_lines = self._raw_body_lines() + ["", "(summary unavailable)"]
+
+        body_lines += ["", "Esc / q — close"]
+        self.query_one("#topic-body", Static).update("\n".join(body_lines))
 
 
 class _TailModal(ModalScreen):
