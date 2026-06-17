@@ -68,21 +68,27 @@ PYEOF
 python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
 ```
 
-**Q2: OpenRouter API Key**
+**Q2: OpenRouter API Key (OPTIONAL)**
 
 **Skip if `~/.juggle/.env` already exists** — tell the user "`.env` already exists, skipping key setup." and proceed to Q3 (model selection is still skipped if `.env` exists).
 
 If `.env` does not exist, explain to the user:
-> Hindsight uses OpenRouter to run a small LLM for memory summarization. Usage is minimal (~$0.40/month on the recommended model). Your key will be stored only in `~/.juggle/.env` (chmod 600) — never in config files.
+> **The OpenRouter key is optional — Juggle runs fully without it.** A key just lets Juggle use a cheap/fast hosted LLM for research, search, and memory summarization. Without a key, Juggle **falls back to claude -p** for all generation, and research/search **degrade to keyword (FTS) search** — semantic embeddings (the research-KB semantic lookup) are unavailable, but keyword search still works.
 >
-> Get a key at https://openrouter.ai/keys (free account, no credit card required to start).
+> If you do add a key: usage is minimal (~$0.40/month on the recommended model). Your key is stored only in `~/.juggle/.env` (chmod 600) — never in config files. Get one at https://openrouter.ai/keys (free account, no credit card required to start).
 
-Ask the user to paste their OpenRouter API key. Then validate:
+Use AskUserQuestion to offer:
+- "(Recommended) Add OpenRouter key — cheap/fast hosted LLM + semantic research/search"
+- "Skip — use claude -p fallback (no key; research/search degrade to keyword FTS, no semantic embeddings)"
+
+If the user picks **Skip**: do not prompt for a key. Set `OPENROUTER_SKIP=1` and proceed to Q3 — the `OPENROUTER_KEY` line will be omitted from `.env` (see step 3). Tell the user: "Skipping key — Juggle will use claude -p; semantic research-KB search is unavailable, keyword search still works."
+
+If the user picks **Add key**: ask them to paste their OpenRouter API key, then validate:
 ```bash
 curl -sf -H "Authorization: Bearer <key>" https://openrouter.ai/api/v1/models | head -c 100
 ```
 
-If validation fails, tell the user and ask them to re-enter the key. Retry up to 3 times before giving up with a clear error.
+If validation fails, tell the user and ask them to re-enter the key. Retry up to 3 times. If it still fails, do **not** dead-end — tell the user the key looks invalid and offer to **skip and use the claude -p fallback** instead (set `OPENROUTER_SKIP=1` and continue to Q3).
 
 Confirm: "Key validated. Will be stored securely in `~/.juggle/.env`."
 
@@ -105,13 +111,24 @@ mkdir -p ~/.juggle/memory/pg0 ~/.juggle/logs
 
 # Write .env only if it doesn't already exist
 # (KEY=VALUE format — no "export" prefix; juggle_cli.py loads this automatically)
+#
+# If the user skipped Q2 (OPENROUTER_SKIP=1 / no key), OMIT the OPENROUTER_KEY
+# line entirely — Juggle detects the missing key and falls back to claude -p.
+# Write .env without the key in that case; otherwise include the validated key.
 if [ ! -f "$HOME/.juggle/.env" ]; then
-  cat > ~/.juggle/.env << 'ENVEOF'
+  if [ "${OPENROUTER_SKIP:-0}" = "1" ]; then
+    cat > ~/.juggle/.env << 'ENVEOF'
+HINDSIGHT_LLM_MODEL=<user's model choice>
+ENVEOF
+    echo ".env written without OPENROUTER_KEY (claude -p fallback)"
+  else
+    cat > ~/.juggle/.env << 'ENVEOF'
 OPENROUTER_KEY=<user's key>
 HINDSIGHT_LLM_MODEL=<user's model choice>
 ENVEOF
+    echo ".env written"
+  fi
   chmod 600 ~/.juggle/.env
-  echo ".env written"
 else
   echo ".env already exists — skipping (preserved existing)"
 fi
