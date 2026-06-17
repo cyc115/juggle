@@ -66,6 +66,7 @@ def register(subparsers, *, vault_path_default: str) -> None:
 
     # selfheal subcommands
     p_list_selfheal = subparsers.add_parser("list-selfheal", help="List pending self-heal errors")
+    p_list_selfheal.add_argument("--json", action="store_true", default=False, help="Output as JSON array")
     p_list_selfheal.set_defaults(func=_cmd_list_selfheal)
 
     p_sh_set = subparsers.add_parser("selfheal-set-status", help="Update error_event status")

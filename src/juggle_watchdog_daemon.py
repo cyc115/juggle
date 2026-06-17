@@ -267,6 +267,13 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     except Exception:
         _log.exception("Watchdog: graph dispatch tick failed — continuing")
 
+    # Self-heal auto-diagnosis: fire-and-forget, never block the tick.
+    try:
+        from juggle_selfheal import maybe_dispatch_selfheal_diagnosis
+        maybe_dispatch_selfheal_diagnosis(db)
+    except Exception:
+        _log.exception("Watchdog: selfheal diagnosis tick failed — continuing")
+
 
 def _set_orchestrator_preamble() -> None:
     """Mark this process as the orchestrator and chdir to a stable non-worktree dir.

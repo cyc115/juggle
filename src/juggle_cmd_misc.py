@@ -150,9 +150,13 @@ def cmd_agent_tools(args):
 
 
 def _cmd_list_selfheal(args):
+    import json as _json
     from pathlib import Path as _Path
     db = get_db(getattr(args, "db_path", None), init=True)
     rows = db.get_open_error_events()
+    if getattr(args, "json", False):
+        print(_json.dumps(rows, default=str))
+        return
     if not rows:
         print("No pending self-heal errors.")
         return

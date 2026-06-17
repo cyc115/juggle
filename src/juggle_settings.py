@@ -399,6 +399,12 @@ DEFAULTS: dict = {
         "tmpfs_dir": "/dev/shm",
         "flush_interval_s": 10,
     },
+    # Self-heal auto-diagnosis loop (opt-in — enabled=False by default)
+    "selfheal": {
+        "enabled": False,
+        "min_count": 3,
+        "retention_days": 14,
+    },
 }
 
 

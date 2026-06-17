@@ -123,9 +123,17 @@ def handle_session_start(data: dict) -> None:
             from juggle_context import build_startup_output
 
             additional_context = build_startup_output(db)
-            # Append self-heal pending count
+            # Self-heal: purge expired rows, then append pending count.
             try:
-                from juggle_selfheal import _get_pending_selfheal_count
+                from datetime import datetime, timezone
+                from juggle_selfheal import (
+                    _get_pending_selfheal_count,
+                    purge_expired_selfheal,
+                )
+                from juggle_settings import get_settings as _get_settings
+                _sh_cfg = _get_settings().get("selfheal", {})
+                _retention = int(_sh_cfg.get("retention_days", 14))
+                purge_expired_selfheal(db, datetime.now(timezone.utc), retention_days=_retention)
                 pending = _get_pending_selfheal_count(db)
                 if pending > 0:
                     additional_context += (
