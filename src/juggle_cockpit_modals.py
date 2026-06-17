@@ -98,7 +98,8 @@ class _PromptModal(ModalScreen):
     def on_key(self, event: events.Key) -> None:
         if event.key == "escape":
             event.stop()  # prevent Esc from bubbling to CockpitApp.on_key
-            self.dismiss(None)
+            if self.is_current:
+                self.dismiss(None)
 
 
 class _ConfirmModal(ModalScreen):
@@ -130,6 +131,8 @@ class _ConfirmModal(ModalScreen):
             yield Label("[dim]y — confirm    n / Esc — cancel[/dim]")
 
     def on_key(self, event: events.Key) -> None:
+        if not self.is_current:
+            return
         if event.key == "y":
             self.dismiss(True)
         elif event.key in ("n", "escape"):
@@ -590,7 +593,8 @@ class _TailModal(ModalScreen):
     def on_key(self, event: events.Key) -> None:
         if event.key in ("q", "t", "escape"):
             event.stop()
-            self.dismiss()
+            if self.is_current:
+                self.dismiss()
         elif event.key == "j":
             self.query_one("#tail-scroll", VerticalScroll).scroll_down()
             event.stop()
