@@ -136,8 +136,182 @@ class _ConfirmModal(ModalScreen):
             self.dismiss(False)
 
 
+# ---------------------------------------------------------------------------
+# Structured help table — single source of truth for the ? modal.
+# 'short' matches Binding description (terse, for footer).
+# 'desc'  is the full human-readable explanation shown in the modal.
+# ---------------------------------------------------------------------------
+
+COCKPIT_HELP_TABLE: list[dict] = [
+    {
+        "group": "Navigation",
+        "entries": [
+            {
+                "action": "scroll_down",
+                "key": "j / k  (↓ / ↑)",
+                "short": "↓↑",
+                "desc": "Scroll active pane down / up one row",
+            },
+            {
+                "action": "page_down",
+                "key": "PgDn / PgUp",
+                "short": "PgDn/Up",
+                "desc": "Scroll active pane down / up 5 rows",
+            },
+            {
+                "action": "cycle_pane",
+                "key": "Tab",
+                "short": "Tab",
+                "desc": "Cycle active pane (topics → actions → agents → …)",
+            },
+            {
+                "action": "focus_pane",
+                "key": "f",
+                "short": "Foc",
+                "desc": "Focus tmux pane of agent by 1-based index",
+            },
+        ],
+    },
+    {
+        "group": "Thread actions",
+        "entries": [
+            {
+                "action": "switch",
+                "key": "s",
+                "short": "Sw",
+                "desc": "Switch active thread by label (prompts for label)",
+            },
+            {
+                "action": "ack",
+                "key": "a",
+                "short": "Ack",
+                "desc": "Ack all open action items on a thread (Z = orphaned)",
+            },
+            {
+                "action": "close",
+                "key": "C  (Shift+C)",
+                "short": "Cl",
+                "desc": "Close thread by label (requires y/N confirm)",
+            },
+            {
+                "action": "archive",
+                "key": "x",
+                "short": "Ar",
+                "desc": "Archive thread by label (requires y/N confirm)",
+            },
+        ],
+    },
+    {
+        "group": "Agent / pane",
+        "entries": [
+            {
+                "action": "tail_toggle",
+                "key": "t",
+                "short": "Tl",
+                "desc": "Open live tail overlay for agent's tmux pane",
+            },
+            {
+                "action": "decommission",
+                "key": "d",
+                "short": "Dc",
+                "desc": "Decommission agent by index (queues decommission_pending)",
+            },
+        ],
+    },
+    {
+        "group": "Views & modals",
+        "entries": [
+            {
+                "action": "task_detail",
+                "key": "T  (Shift+T)",
+                "short": "Tk",
+                "desc": "Show task graph detail by task id or thread label",
+            },
+            {
+                "action": "toggle_graph",
+                "key": "g",
+                "short": "Gr",
+                "desc": "Toggle graph mode / notifications panel",
+            },
+            {
+                "action": "projects",
+                "key": "p",
+                "short": "Proj",
+                "desc": "Open project arm/disarm overlay",
+            },
+            {
+                "action": "watchdog_toggle",
+                "key": "w",
+                "short": "Wd",
+                "desc": "Toggle watchdog: stop if running, start if stopped",
+            },
+            {
+                "action": "watchdog_restart",
+                "key": "r  (Shift+W)",
+                "short": "Rwd",
+                "desc": "Kill and relaunch watchdog from canonical main branch",
+            },
+            {
+                "action": "filter",
+                "key": "/",
+                "short": "Flt",
+                "desc": "Filter active pane (blank to clear; actions: priority:high)",
+            },
+        ],
+    },
+    {
+        "group": "App",
+        "entries": [
+            {
+                "action": "help",
+                "key": "?",
+                "short": "Help",
+                "desc": "Show this keyboard shortcuts overlay",
+            },
+            {
+                "action": "quit",
+                "key": "Ctrl+C",
+                "short": "Quit",
+                "desc": "Quit the cockpit",
+            },
+        ],
+    },
+]
+
+def build_help_content() -> list[dict]:
+    """Return COCKPIT_HELP_TABLE with scroll_up/page_up aliases merged.
+
+    scroll_up and page_up share display rows with scroll_down/page_down,
+    so they are intentionally absent from COCKPIT_HELP_TABLE.  This function
+    is the authoritative content builder for the modal — tests assert on it.
+    """
+    return COCKPIT_HELP_TABLE
+
+
+def render_help_lines() -> list[str]:
+    """Render help content as aligned text lines for the modal Static widget.
+
+    Three-column layout: key (left-aligned) | short (fixed-width) | full desc.
+    Group headers are displayed as section separators.
+    """
+    KEY_W = 18
+    SHORT_W = 6
+    lines: list[str] = ["Keyboard Shortcuts", "─" * 52]
+    for group in COCKPIT_HELP_TABLE:
+        lines.append("")
+        lines.append(f"  {group['group']}")
+        lines.append("  " + "─" * 48)
+        for entry in group["entries"]:
+            key = entry["key"]
+            short = entry["short"]
+            desc = entry["desc"]
+            lines.append(f"  {key:<{KEY_W}}  {short:<{SHORT_W}}  {desc}")
+    lines += ["", "Esc / q — close"]
+    return lines
+
+
 class _HelpModal(ModalScreen):
-    """Help overlay listing all bindings, generated from CockpitApp.BINDINGS."""
+    """Help overlay — grouped keyboard shortcuts with full descriptions."""
 
     from textual.binding import Binding
 
@@ -151,26 +325,14 @@ class _HelpModal(ModalScreen):
         align: center middle;
     }
     _HelpModal > Static {
-        width: 50;
+        width: 72;
         border: round $accent;
         padding: 1 2;
     }
     """
 
     def compose(self) -> ComposeResult:
-        from juggle_cockpit import CockpitApp  # lazy: avoids circular at module load
-        # De-duplicate aliased scroll keys: show one row per unique action name.
-        seen_actions: set[str] = set()
-        lines: list[str] = ["Keyboard Shortcuts", "─" * 34]
-        for b in CockpitApp.BINDINGS:
-            if not b.description:
-                continue
-            if b.action in seen_actions:
-                continue
-            seen_actions.add(b.action)
-            lines.append(f"  {b.key:<14} {b.description}")
-        lines += ["", "Esc / q — close"]
-        yield Static("\n".join(lines))
+        yield Static("\n".join(render_help_lines()))
 
 
 class _GraphTaskModal(ModalScreen):
