@@ -5,7 +5,7 @@ Python CLI project (Claude Code plugin). Source in `src/`.
 Code map, domain layout, pinned entry points, and LOC-gate policy: `docs/ARCHITECTURE.md`.
 
 Required environment variables (no defaults):
-- _JUGGLE_TEST_DB, CLAUDE_PLUGIN_DATA (juggle_cli.py)
+- CLAUDE_PLUGIN_DATA (juggle_cli.py)
 - JUGGLE_MAX_BACKGROUND_AGENTS, JUGGLE_MAX_THREADS (juggle_db.py)
 
 # Testing
@@ -19,7 +19,6 @@ the hooks (e.g. `test_juggle_hooks.py`) run against the **shared** DB at
 Set up the shared DB once per fresh checkout/container before running the suite:
 
 ```bash
-export _JUGGLE_TEST_DB="$HOME/.claude/juggle/juggle.db"   # point CLI at the shared DB
 export CLAUDE_PLUGIN_DATA="$HOME/.claude/juggle"
 export JUGGLE_MAX_BACKGROUND_AGENTS=5 JUGGLE_MAX_THREADS=10
 uv run python src/juggle_cli.py init-db   # create all tables (fresh DB)
