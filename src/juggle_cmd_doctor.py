@@ -147,6 +147,25 @@ def cmd_doctor(args) -> int:
     else:
         print("graph reconcile: all topics consistent")
 
+    # 4.5 Backfill merged_sha for out-of-band merges (orphan-guard
+    # false-positive fix, 2026-06-17). A topic whose work was merged outside
+    # `juggle integrate` is reachable from main but has a NULL merged_sha, so the
+    # orphan guard re-fires a HIGH alert every tick. Stamp merged_sha from the
+    # already-merged branch and reconcile. Idempotent; orchestrator-only (G2-safe).
+    if not dry:
+        try:
+            from dbops.orphan_guard import reconcile_out_of_band_merges
+            reconciled = reconcile_out_of_band_merges(db_instance)
+            if reconciled:
+                print(f"merged-sha backfill: {len(reconciled)} topic(s) "
+                      f"reconciled ({', '.join(reconciled)})")
+            else:
+                print("merged-sha backfill: nothing to reconcile")
+        except Exception as e:
+            print(f"merged-sha backfill: skipped ({e})")
+    else:
+        print("merged-sha backfill: (dry-run — skipped)")
+
     # 5. Backfill mirror topics (graph-mirrors-threads, 2026-06-14).
     # Idempotent: safe to run on every doctor invocation. G2-safe: doctor runs
     # as the orchestrator, never from an agent/worktree context.

@@ -9,11 +9,50 @@ keeps such a topic out of 'verified'; this adds a detector + flag so the
 stranded topic is surfaced (HIGH action item) rather than silently abandoned.
 """
 
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+
+def _git(repo, *args):
+    subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True, capture_output=True, text=True,
+    )
+
+
+def _repo_with_out_of_band_merge(repo):
+    """Build a real git repo where branch ``cyc_X`` was merged into ``main``
+    out-of-band (work IS reachable from main), and return that branch name."""
+    repo.mkdir(parents=True, exist_ok=True)
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "f.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "cyc_X")
+    (repo / "f.txt").write_text("work")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "work")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "cyc_X", "-m", "merge cyc_X")  # out-of-band
+    return "cyc_X"
+
+
+def _bind_thread(db, *, repo, branch):
+    """Create a thread carrying main_repo_path + worktree_branch; return its id."""
+    tid = db.create_thread(topic="orphan-test", session_id="s")
+    with db._connect() as c:
+        c.execute(
+            "UPDATE threads SET main_repo_path=?, worktree_branch=? WHERE id=?",
+            (str(repo), branch, tid),
+        )
+        c.commit()
+    return tid
 
 
 def _make_db(tmp_path):
@@ -131,3 +170,82 @@ def test_reconcile_never_marks_unmerged_topic_verified(tmp_path):
     state = reconcile_topic_state(db, "T1")
     assert state == "integrating"
     assert get_topic(db, "T1")["state"] == "integrating"
+
+
+# --- out-of-band merge: reconcile, don't re-flag ----------------------------
+
+
+def test_reconcile_stamps_merged_sha_for_out_of_band_merge(tmp_path):
+    """Work merged OUTSIDE `juggle integrate` (branch IS an ancestor of main,
+    merged_sha never stamped) must be reconciled — stamp merged_sha + verify —
+    NOT re-flagged as a stranded orphan."""
+    from dbops import orphan_guard
+    from dbops.db_topics import get_topic
+
+    repo = tmp_path / "repo"
+    branch = _repo_with_out_of_band_merge(repo)
+
+    db = _make_db(tmp_path)
+    tid = _bind_thread(db, repo=repo, branch=branch)
+    _seed_topic(db, "T1", ["verified"], state="integrating",
+                thread_id=tid, merged_sha=None)
+
+    # Before the fix this re-fires every tick; after it, the work is recognised
+    # as already-on-main and reconciled.
+    reconciled = orphan_guard.reconcile_out_of_band_merges(db)
+    assert reconciled == ["T1"]
+    stamped = (get_topic(db, "T1")["merged_sha"] or "").strip()
+    assert stamped, "merged_sha must be stamped from the merged branch HEAD"
+    assert get_topic(db, "T1")["state"] == "verified"
+
+    # No orphan alert is filed (the false-positive loop is closed) and the
+    # topic is no longer an orphan.
+    assert orphan_guard.find_unmerged_completed_topics(db) == []
+    assert orphan_guard.flag_unmerged_completed_topics(db) == []
+    assert db.get_open_action_items() == []
+
+
+def test_flag_auto_reconciles_before_alerting(tmp_path):
+    """flag_unmerged_completed_topics reconciles out-of-band merges first, so a
+    topic whose work is already on main is verified, not flagged HIGH."""
+    from dbops import orphan_guard
+    from dbops.db_topics import get_topic
+
+    repo = tmp_path / "repo"
+    branch = _repo_with_out_of_band_merge(repo)
+
+    db = _make_db(tmp_path)
+    tid = _bind_thread(db, repo=repo, branch=branch)
+    _seed_topic(db, "T1", ["verified"], state="integrating",
+                thread_id=tid, merged_sha=None)
+
+    assert orphan_guard.flag_unmerged_completed_topics(db) == []
+    assert get_topic(db, "T1")["state"] == "verified"
+    assert db.get_open_action_items() == []
+
+
+def test_reconcile_skips_truly_unmerged_branch(tmp_path):
+    """A branch NOT reachable from main is a genuine orphan — never reconciled,
+    still flagged."""
+    from dbops import orphan_guard
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "f.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "cyc_X")
+    (repo / "f.txt").write_text("work")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "work")  # cyc_X ahead of main, NOT merged
+
+    db = _make_db(tmp_path)
+    tid = _bind_thread(db, repo=repo, branch="cyc_X")
+    _seed_topic(db, "T1", ["verified"], state="integrating",
+                thread_id=tid, merged_sha=None)
+
+    assert orphan_guard.reconcile_out_of_band_merges(db) == []
+    assert [t["id"] for t in orphan_guard.find_unmerged_completed_topics(db)] == ["T1"]

@@ -62,6 +62,21 @@ def branch_merged_to_main(repo: str, branch: str, *, main: str = "main") -> bool
     return _git_ok(["merge-base", "--is-ancestor", branch, main], repo)
 
 
+def resolve_branch_sha(repo: str, branch: str) -> str:
+    """Return the commit sha ``branch`` points to in ``repo``, or '' if it
+    can't be resolved (no repo, no branch, deleted ref, git error)."""
+    if not repo or not branch or not Path(repo).exists():
+        return ""
+    try:
+        r = subprocess.run(
+            ["git", "-C", repo, "rev-parse", "--verify", branch],
+            capture_output=True, text=True, timeout=10,
+        )
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
 def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
     """True iff commit ``sha`` exists in ``repo`` and is an ancestor of ``main``.
 

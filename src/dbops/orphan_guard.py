@@ -17,7 +17,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from dbops.graph_guards import topic_is_merged
+from dbops.graph_guards import (
+    _resolve_topic_repo,
+    branch_merged_to_main,
+    resolve_branch_sha,
+    topic_is_merged,
+)
 
 # watchdog_events.event_type used to dedup repeated flags for the same topic.
 _ORPHAN_EVENT = "topic_unmerged_orphan"
@@ -60,13 +65,67 @@ def find_unmerged_completed_topics(db) -> list[dict]:
     return orphans
 
 
+def _topic_branch(db, topic: dict) -> str:
+    """The agent branch bound to this topic (its thread's worktree_branch), or
+    '' if none is recorded."""
+    thread_id = topic.get("thread_id")
+    if not thread_id:
+        return ""
+    try:
+        thread = db.get_thread(thread_id) or {}
+    except Exception:
+        thread = {}
+    return (thread.get("worktree_branch") or "").strip()
+
+
+def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
+    """Stamp ``merged_sha`` for completed topics whose work is already on main.
+
+    The orphan detector keys off a NULL ``merged_sha``. When a topic's work was
+    merged OUTSIDE ``juggle integrate`` (a manual / out-of-band merge), the work
+    IS reachable from main but ``merged_sha`` was never stamped — so the orphan
+    guard false-positives and re-files a HIGH alert every watchdog tick
+    (observed for the 2026-06-17 recovery topics).
+
+    For each such topic whose bound branch is an ancestor of ``main``, record the
+    branch HEAD as ``merged_sha`` and reconcile the topic (→ ``verified`` via the
+    G1 gate). Genuinely-unmerged topics (branch ahead of main, or branch ref
+    gone) are left untouched for the alerting path. Returns reconciled topic ids.
+    """
+    from dbops import db_topics
+
+    reconciled: list[str] = []
+    for topic in find_unmerged_completed_topics(db):
+        repo = _resolve_topic_repo(db, topic)
+        branch = _topic_branch(db, topic)
+        if not repo or not branch:
+            continue
+        if not branch_merged_to_main(repo, branch, main=main):
+            continue
+        sha = resolve_branch_sha(repo, branch)
+        if not sha:
+            continue
+        with db._connect() as conn:
+            conn.execute(
+                "UPDATE graph_topics SET merged_sha=? WHERE id=?",
+                (sha, topic["id"]),
+            )
+            conn.commit()
+        db_topics.reconcile_topic_state(db, topic["id"])
+        reconciled.append(topic["id"])
+    return reconciled
+
+
 def flag_unmerged_completed_topics(db, *, dedup_window_hours: float = 24.0) -> list[str]:
     """Detect completed-but-unmerged topics and file a HIGH action item for each.
 
-    Deduped via ``watchdog_events`` (one flag per topic per ``dedup_window_hours``)
+    Out-of-band merges are reconciled FIRST (``reconcile_out_of_band_merges``) so
+    work already on main is verified, never re-flagged. Remaining orphans are
+    deduped via ``watchdog_events`` (one flag per topic per ``dedup_window_hours``)
     so the watchdog tick can call this every cycle. Returns the topic ids flagged
     this pass.
     """
+    reconcile_out_of_band_merges(db)
     orphans = find_unmerged_completed_topics(db)
     now = datetime.now(timezone.utc)
     cutoff = (now - timedelta(hours=dedup_window_hours)).isoformat()
