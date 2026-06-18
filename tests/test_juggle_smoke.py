@@ -284,22 +284,39 @@ def test_render_2k_third_no_overflow_and_frame_file_written(tmp_path):
 
 @_skip_pty
 def test_nav_j_key_produces_visible_change(tmp_path):
-    """Nav: pressing 'j' 10 times scrolls the topics pane — grid differs from initial."""
+    """Nav: focusing the Topics pane and pressing 'j' scrolls it — grid differs.
+
+    Hermetic-scroll requirements (all enforced below):
+      * WIDE profile (2k_half, 120 cols) so pick_breakpoint() == 'wide' and the
+        Topics column actually renders (it is display:none at medium/narrow).
+      * 30 seeded topics so the pane overflows its visible rows and the scroll
+        offset can move (the offset is clamped to len(topics)-3 in _refresh).
+      * Tab once to move the active pane from the default empty 'notifications'
+        to the populated 'topics' pane before pressing 'j'; otherwise 'j' clamps
+        the empty pane's offset to 0 and nothing scrolls.
+    This makes frame_before != frame_after a consequence of REAL scrolling, not
+    an incidental async watchdog-status-dot transition.
+    """
     from juggle_smoke import load_viewports, open_cockpit_pty
 
     db_path = _make_db(tmp_path, n_threads=30)
     vp = load_viewports(VIEWPORTS_YAML)
-    profile = vp["2k_third"]
+    profile = vp["2k_half"]  # 120x67 → wide → Topics pane renders
 
     with open_cockpit_pty(profile, db_path=db_path) as handle:
-        frame_before = handle.frame(settle=2.0, timeout=12.0)
+        handle.frame(settle=2.0, timeout=12.0)  # initial render + watchdog dot settles
+        handle.send(b"\t")                       # focus Topics (notifications → topics)
+        frame_before = handle.frame(settle=1.0, timeout=5.0)
         for _ in range(10):
             handle.send(b"j")
         frame_after = handle.frame(settle=1.0, timeout=5.0)
 
-    # With 30 topics, 10× j must have scrolled content — grid must differ
+    # Topics is focused, visible, and overflowing → 10× 'j' must scroll it.
+    # frame_before is captured AFTER the dot has settled, so the only thing that
+    # can change between the two frames is the Topics scroll position.
     assert frame_before != frame_after, (
-        "Frame unchanged after 10× 'j' with 30 topics — scroll did not fire"
+        "Frame unchanged after 10× 'j' on a focused, populated Topics pane — "
+        "scroll did not fire"
     )
 
 

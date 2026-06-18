@@ -41,12 +41,23 @@ def started_db(tmp_path):
     return db_path, tid
 
 
-def _dispatch(db_path, thread_id, prompt_file, role="coder"):
+def _dispatch(db_path, thread_id, prompt_file, role="coder", allow_main=False):
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["get-agent", thread_id, "--role", role], db_path)
     agent_id = r.stdout.strip().split()[0]
+    # --allow-main keeps the dispatch hermetic: without it, coder/planner
+    # send-task auto-creates a real worktree against the live repo and stamps
+    # main_repo_path on the thread. complete-agent would then route through the
+    # integrate branch guard, which correctly warns when the live checkout is
+    # not on 'main' (e.g. an integ-recovery worktree). --allow-main leaves the
+    # thread with no worktree fields, so complete-agent takes the no-op
+    # _finalize_worktree path and the run output is the clean summary.
+    send_args = ["send-task"]
+    if allow_main:
+        send_args.append("--allow-main")
+    send_args += [agent_id, str(prompt_file)]
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        res = run_cli(["send-task", agent_id, str(prompt_file)], db_path)
+        res = run_cli(send_args, db_path)
     return agent_id, res
 
 
@@ -130,7 +141,10 @@ def test_complete_agent_closes_run(started_db, tmp_path):
     db_path, thread_id = started_db
     prompt_file = tmp_path / "task.txt"
     prompt_file.write_text("Do the thing.\n")
-    _dispatch(db_path, thread_id, prompt_file)
+    # Hermetic: dispatch in main worktree so the thread carries no worktree
+    # fields; complete-agent then exercises the clean (un-warned) summary path
+    # without depending on the live repo being checked out on 'main'.
+    _dispatch(db_path, thread_id, prompt_file, allow_main=True)
 
     res = run_cli(
         ["complete-agent", thread_id, "All done — shipped it."], db_path
