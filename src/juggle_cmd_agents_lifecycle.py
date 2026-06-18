@@ -36,16 +36,17 @@ def cmd_get_agent(args):
         )
         sys.exit(1)
 
-    # Resolve target repo for filtering (default: current cwd git toplevel)
+    # Resolve target repo for filtering. Default to the canonical SOURCE repo
+    # (cwd-INDEPENDENT) — NOT the orchestrator's cwd git toplevel, which is
+    # ~/.claude when launched from the plugin install dir (2026-06-16 mis-binding
+    # incident). _spawn_repo_path() prefers canonical_repo_path(), falling back
+    # to cwd toplevel only for non-juggle checkouts.
     explicit_repo = getattr(args, "repo", None)
     target_repo = explicit_repo
     if target_repo is None:
-        try:
-            target_repo = subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"], text=True, cwd=os.getcwd()
-            ).strip()
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            target_repo = ""
+        from juggle_tmux import _spawn_repo_path
+
+        target_repo = _spawn_repo_path()
 
     # Resolve requested harness: explicit --harness flag > config default
     agent_cfg = _com._get_settings().get("agent", {})

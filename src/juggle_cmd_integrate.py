@@ -22,28 +22,12 @@ def _graph_task_for_thread(db, thread_uuid: str) -> dict | None:
         return None
 
 
-def _canonical_main_ref(repo: str) -> str | None:
-    """Return the best canonical main ref for ``repo``.
-
-    Prefers origin/<main> after a targeted fetch so it reflects the pushed
-    truth. Falls back to a local main/master if origin is unreachable or absent.
-    Returns None if no main ref can be resolved at all.
-    """
-    # Fetch origin/<main> so the canonical ref reflects the pushed state.
-    # Non-fatal: if origin is unreachable we fall through to local refs.
-    for branch in ("main", "master"):
-        subprocess.run(
-            ["git", "-C", repo, "fetch", "origin", branch],
-            capture_output=True, text=True,
-        )
-    for candidate in ("origin/main", "origin/master", "main", "master"):
-        r = subprocess.run(
-            ["git", "-C", repo, "rev-parse", "--verify", candidate],
-            capture_output=True, text=True,
-        )
-        if r.returncode == 0:
-            return candidate
-    return None
+# Source-binding guard lives in juggle_repo_binding (single source of truth,
+# shared with agent spawn). Re-exported for the existing test import surface.
+from juggle_repo_binding import (  # noqa: E402,F401
+    assert_source_binding as _assert_source_binding,
+    canonical_main_ref as _canonical_main_ref,
+)
 
 
 def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
@@ -145,6 +129,20 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
     # Autopilot context (thread bound to a graph task): fan-in completions
     # legitimately queue behind a long test_cmd — wait up to 30 min (DA M2).
     task = _graph_task_for_thread(db, thread_uuid)
+
+    # Source-binding guard (2026-06-16 multi-repo incident): an autopilot topic
+    # mis-bound to ~/.claude would ff-merge an empty branch (work dropped) or
+    # push the wrong HEAD. Refuse BEFORE any git side effects / lock acquisition.
+    bind_err = _assert_source_binding(main_repo_path, is_autopilot=bool(task))
+    if bind_err:
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"⚠️ integrate refused [{worktree_branch}]: {bind_err}",
+            type_="manual_step",
+            priority="high",
+        )
+        return False, bind_err
+
     lock_timeout = AUTOPILOT_LOCK_TIMEOUT_SECS if task else 300.0
     try:
         lock_path = acquire_repo_lock(main_repo_path, timeout_secs=lock_timeout)

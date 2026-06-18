@@ -9,6 +9,13 @@ from pathlib import Path
 
 from juggle_settings import get_settings as _get_settings
 
+
+# Deterministic spawn-time repo binding (canonical SOURCE repo, cwd-INDEPENDENT —
+# 2026-06-16 multi-repo mis-binding incident). Single source of truth lives in
+# juggle_repo_binding; aliased here for the existing call/test surface.
+from juggle_repo_binding import spawn_repo_path as _spawn_repo_path  # noqa: E402
+
+
 # Built-in Claude Code markers — used as the fallback when the configured
 # harness adapter can't be resolved (see _harness_markers).
 _READY_MARKERS = ("bypass permissions on", "/effort")
@@ -542,13 +549,7 @@ class JuggleTmuxManager:
 
         mock_pane = os.environ.get("JUGGLE_TMUX_MOCK_PANE")
         if mock_pane:
-            try:
-                mock_repo = subprocess.check_output(
-                    ["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
-                    text=True, stderr=subprocess.DEVNULL,
-                ).strip()
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                mock_repo = ""
+            mock_repo = _spawn_repo_path()
             agent_id = db.create_agent(role=role, pane_id=mock_pane, harness=harness_id, repo_path=mock_repo)
             return db.get_agent(agent_id)
 
@@ -556,14 +557,9 @@ class JuggleTmuxManager:
         pane_id = self.spawn_pane()
         self.start_agent_in_pane(pane_id, model=model, role=role, agent_cfg=agent_cfg)
 
-        # Detect repo_path at spawn time for get-agent --repo filtering
-        try:
-            repo_path = subprocess.check_output(
-                ["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
-                text=True
-            ).strip()
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            repo_path = ""  # not a git repo
+        # Bind repo_path at spawn time for get-agent --repo filtering. Canonical
+        # SOURCE repo, NOT cwd toplevel (2026-06-16 mis-binding incident).
+        repo_path = _spawn_repo_path()
 
         agent_id = db.create_agent(role=role, pane_id=pane_id, harness=harness_id, repo_path=repo_path)
         return db.get_agent(agent_id)
