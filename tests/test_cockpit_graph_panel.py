@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import sys
 
 import pytest
@@ -20,12 +21,17 @@ from juggle_cockpit_graph_panel import build_graph_panel  # noqa: E402
 from juggle_cockpit_view import TASK_STATE_GLYPHS  # noqa: E402
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def _text(panel, width=80) -> str:
     from rich.console import Console
 
     buf = io.StringIO()
     Console(width=width, file=buf, no_color=True, highlight=False).print(panel)
-    return buf.getvalue()
+    # Console(no_color=True) strips color but still emits dim/bold style codes;
+    # strip them so overflow assertions measure visible width, not raw bytes.
+    return _ANSI_RE.sub("", buf.getvalue())
 
 
 def _dag():

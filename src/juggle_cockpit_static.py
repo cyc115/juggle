@@ -9,7 +9,21 @@ reader (juggle_cockpit_model).
 
 from __future__ import annotations
 
+import re
+
 from juggle_cockpit_model import CockpitState
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(s: str) -> str:
+    """Remove ANSI SGR escape codes so width math runs on visible characters.
+
+    Rich's Console(no_color=True) strips color but still emits dim/bold style
+    codes; byte-slicing those raw strings cuts visible glyphs and leaves
+    dangling escapes. Strip them before any ljust/slice width operation.
+    """
+    return _ANSI_RE.sub("", s)
 from juggle_cockpit_view import (
     render_actions,
     render_agents,
@@ -36,7 +50,7 @@ def render_static_from_state(state: CockpitState, width: int = 120) -> str:
         buf = io.StringIO()
         con = Console(width=w, file=buf, no_color=True, highlight=False)
         con.print(renderable)
-        return buf.getvalue().splitlines()
+        return [_strip_ansi(ln) for ln in buf.getvalue().splitlines()]
 
     left_w = width // 3
     right_w = width - left_w
