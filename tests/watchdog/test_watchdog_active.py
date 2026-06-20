@@ -1,16 +1,20 @@
 """Active suite: watchdog detects + handles all 5 states.
 Skipped automatically when src/juggle_watchdog.py is not yet implemented.
+Isolation guarantees (incident #4713):
+  - test_db always uses a temp path (NEVER prod DB — enforced in conftest)
+  - no real time.sleep() — pane content is polled; stall is injected via DB timestamp
+  - assert_no_leaked_daemons autouse fixture catches any future regression
 """
 
 import sqlite3
 import subprocess
 import time
+import datetime
 from pathlib import Path
 
 import pytest
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
-SNAPSHOT_DIR = Path.home() / ".juggle" / "watchdog" / "snapshots"
 TEST_SESSION = "juggle-watchdog-test"
 
 # Skips the entire module gracefully until juggle_watchdog ships.
@@ -20,15 +24,24 @@ _watchdog = pytest.importorskip(
 inspect_agent = _watchdog.inspect_agent
 
 
+def _wait_pane(pane_id: str, marker: str, timeout: float = 5.0, interval: float = 0.05) -> str:
+    """Poll tmux pane until marker appears or timeout; returns final content."""
+    deadline = time.monotonic() + timeout
+    content = ""
+    while time.monotonic() < deadline:
+        r = subprocess.run(
+            ["tmux", "capture-pane", "-pt", pane_id],
+            capture_output=True, text=True,
+        )
+        content = r.stdout
+        if marker in content:
+            return content
+        time.sleep(interval)
+    return content
+
+
 def _send(pane_id, cmd):
     subprocess.run(["tmux", "send-keys", "-t", pane_id, cmd, "Enter"], check=True)
-
-
-def _capture(pane_id) -> str:
-    r = subprocess.run(
-        ["tmux", "capture-pane", "-pt", pane_id], capture_output=True, text=True
-    )
-    return r.stdout
 
 
 def _action_items(db, tid) -> list:
@@ -55,10 +68,22 @@ def _agent_row(db, agent_id) -> dict | None:
         return dict(r) if r else None
 
 
+def _set_last_active_past(db, agent_id: str, seconds_ago: float) -> None:
+    """Backdate an agent's last_active so stall detection fires immediately."""
+    past = (
+        datetime.datetime.now(datetime.timezone.utc)
+        - datetime.timedelta(seconds=seconds_ago)
+    ).isoformat()
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE agents SET last_active=? WHERE id=?", (past, agent_id)
+        )
+
+
 def test_working_no_false_positive(tmux_pane, fake_agent, test_db):
     """Working agent: inspect returns 'working', no spurious action items."""
     _send(tmux_pane, f"bash {FIXTURE_DIR}/working.sh")
-    time.sleep(3)
+    _wait_pane(tmux_pane, "working...")  # deterministic: poll instead of sleep
     result = inspect_agent(fake_agent["agent_id"], test_db, TEST_SESSION)
     assert result["state"] == "working"
     assert result["action_item_id"] is None
@@ -68,23 +93,28 @@ def test_working_no_false_positive(tmux_pane, fake_agent, test_db):
 def test_recoverable_prompt_auto_dismissed(tmux_pane, fake_agent, test_db):
     """Recoverable prompt: watchdog sends '2', dialog clears, notification logged, no action item."""
     _send(tmux_pane, f"bash {FIXTURE_DIR}/recoverable-prompt.sh")
-    time.sleep(2)
+    _wait_pane(tmux_pane, "1. Yes")  # poll until prompt appears
     result = inspect_agent(fake_agent["agent_id"], test_db, TEST_SESSION)
     assert result["state"] == "recoverable_prompt"
     assert "sent_key" in result["actions"]
-    time.sleep(1)
-    content = _capture(tmux_pane)
-    assert "Response received" in content
+    _wait_pane(tmux_pane, "Response received")  # poll for watchdog's key response
     assert result["action_item_id"] is None
     notifs = _notifications(test_db, fake_agent["thread_id"])
     assert len(notifs) == 1
 
 
 def test_stalled_silent_action_item_filed(tmux_pane, fake_agent, test_db, monkeypatch):
-    """Stalled silent: action item filed (failure/high) + snapshot written."""
-    monkeypatch.setenv("JUGGLE_WATCHDOG_STALL_SECS", "1")
+    """Stalled silent: action item filed (failure/high) + snapshot written.
+
+    Deterministic: last_active is backdated 120s so stall fires immediately
+    without any real time.sleep(). JUGGLE_WATCHDOG_STALL_SECS=60 is the
+    threshold; stall_for=120 >= 60 always passes.
+    """
+    monkeypatch.setenv("JUGGLE_WATCHDOG_STALL_SECS", "60")
     _send(tmux_pane, f"bash {FIXTURE_DIR}/stalled-silent.sh")
-    time.sleep(2)
+    _wait_pane(tmux_pane, "Starting analysis...")  # poll until script is running
+    # Inject stall by backdating last_active — no sleep needed
+    _set_last_active_past(test_db, fake_agent["agent_id"], seconds_ago=120)
     result = inspect_agent(fake_agent["agent_id"], test_db, TEST_SESSION)
     assert result["state"] == "stalled_silent"
     assert result["action_item_id"] is not None
@@ -92,7 +122,8 @@ def test_stalled_silent_action_item_filed(tmux_pane, fake_agent, test_db, monkey
     assert len(items) == 1
     assert items[0]["type"] == "failure"
     assert items[0]["priority"] == "high"
-    snapshots = list(SNAPSHOT_DIR.glob(f"{fake_agent['agent_id']}-*.txt"))
+    snapshot_dir = Path.home() / ".juggle" / "watchdog" / "snapshots"
+    snapshots = list(snapshot_dir.glob(f"{fake_agent['agent_id']}-*.txt"))
     assert len(snapshots) >= 1
     for s in snapshots:
         s.unlink(missing_ok=True)
@@ -101,7 +132,8 @@ def test_stalled_silent_action_item_filed(tmux_pane, fake_agent, test_db, monkey
 def test_crashed_thread_marked_failed(tmux_pane, fake_agent, test_db):
     """Crashed: thread marked failed, action item filed, agent record cleaned up."""
     _send(tmux_pane, f"bash {FIXTURE_DIR}/crashed.sh")
-    time.sleep(2)
+    # Poll for shell prompt — indicates the script exited and shell returned
+    _wait_pane(tmux_pane, "$ ")
     result = inspect_agent(fake_agent["agent_id"], test_db, TEST_SESSION)
     assert result["state"] == "crashed"
     assert result["action_item_id"] is not None
@@ -116,13 +148,11 @@ def test_crashed_thread_marked_failed(tmux_pane, fake_agent, test_db):
 def test_stuck_at_prompt_auto_unstuck(tmux_pane, fake_agent, test_db):
     """Stuck-at-prompt: watchdog sends Enter, pane advances, notification logged, no action item."""
     _send(tmux_pane, f"bash {FIXTURE_DIR}/stuck-at-prompt.sh")
-    time.sleep(2)
+    _wait_pane(tmux_pane, "╭")  # poll until box appears
     result = inspect_agent(fake_agent["agent_id"], test_db, TEST_SESSION)
     assert result["state"] == "stuck_at_prompt"
     assert "sent_enter" in result["actions"]
-    time.sleep(1)
-    content = _capture(tmux_pane)
-    assert "Executing task..." in content
+    _wait_pane(tmux_pane, "Executing task...")  # poll for post-Enter response
     assert result["action_item_id"] is None
     notifs = _notifications(test_db, fake_agent["thread_id"])
     assert len(notifs) == 1

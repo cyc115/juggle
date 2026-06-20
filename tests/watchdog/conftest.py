@@ -1,4 +1,5 @@
 import subprocess
+import time
 import uuid
 import datetime
 import sys
@@ -8,9 +9,26 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 from juggle_db import JuggleDB
+from juggle_watchdog_singleton import PROD_DB_PATH, find_watchdog_pids
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 TEST_SESSION = "juggle-watchdog-test"
+
+
+def _wait_pane(pane_id: str, marker: str, timeout: float = 5.0, interval: float = 0.05) -> str:
+    """Poll tmux pane content until `marker` appears or timeout. Returns final content."""
+    deadline = time.monotonic() + timeout
+    content = ""
+    while time.monotonic() < deadline:
+        r = subprocess.run(
+            ["tmux", "capture-pane", "-pt", pane_id],
+            capture_output=True, text=True,
+        )
+        content = r.stdout
+        if marker in content:
+            return content
+        time.sleep(interval)
+    return content  # return whatever we got; caller asserts
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -46,7 +64,12 @@ def tmux_pane(ensure_tmux_session):  # noqa: ARG001 — fixture dep, not used in
 
 @pytest.fixture
 def test_db(tmp_path):
-    db = JuggleDB(str(tmp_path / "juggle.db"))
+    db_path = tmp_path / "juggle.db"
+    # Sanction guard: never allow tests to target the production DB.
+    assert db_path.resolve() != PROD_DB_PATH, (
+        f"test_db must use a temp path, not the prod DB {PROD_DB_PATH}"
+    )
+    db = JuggleDB(str(db_path))
     db.init_db()
     return db
 
@@ -69,3 +92,22 @@ def fake_agent(tmux_pane, test_db):
         conn.execute("DELETE FROM notifications_v2 WHERE thread_id = ?", (tid,))
         conn.execute("DELETE FROM messages WHERE thread_id = ?", (tid,))
         conn.execute("DELETE FROM threads WHERE id = ?", (tid,))
+
+
+@pytest.fixture(autouse=True)
+def assert_no_leaked_daemons():
+    """REGRESSION PIN (#4713): every watchdog-active test must leave zero
+    daemon processes behind. A leak here means a rogue daemon could tick
+    against the prod DB across the entire test session.
+
+    Checks both before (sanity) and after the test so a pre-existing leak
+    from outside the suite doesn't produce a false positive.
+    """
+    before = set(find_watchdog_pids())
+    yield
+    after = set(find_watchdog_pids())
+    new_leaks = after - before
+    assert not new_leaks, (
+        f"Watchdog daemon(s) leaked after test: PIDs {sorted(new_leaks)}. "
+        "Every test that can spawn a daemon MUST kill it in teardown."
+    )
