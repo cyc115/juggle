@@ -6,6 +6,8 @@ render_static_from_state) live in juggle_cockpit_static.
 
 from __future__ import annotations
 
+import re
+
 from rich.console import Group as _RichGroup
 from rich.panel import Panel
 from rich.rule import Rule
@@ -22,6 +24,21 @@ from juggle_cockpit_model import (
     format_age,
     group_threads_by_project,
 )
+
+_LEADING_TAG_RE = re.compile(r"^\s*\[[^\]\n]+\]\s*")
+
+
+def strip_leading_tag(title: str | None) -> str:
+    """Drop ONE leading '[...]' tag + whitespace from a display title.
+
+    Conversational titles have no leading bracket and are returned unchanged.
+    If stripping would empty the string, the original is returned (never blank).
+    """
+    s = title or ""
+    stripped = _LEADING_TAG_RE.sub("", s)
+    return stripped if stripped else s
+
+
 # ---------------------------------------------------------------------------
 # Glyph tables
 # ---------------------------------------------------------------------------
@@ -124,7 +141,7 @@ def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
     combined.append(glyph)
     combined.append(label_str, style=style)
     combined.append(" ")
-    combined.append(t.title or t.label, style=style)
+    combined.append(strip_leading_tag(t.title) or t.label, style=style)
     table.add_row(combined)
 
 
