@@ -221,6 +221,29 @@ def register(subparsers, *, vault_path_default: str) -> None:
         help="During smoke, toggle the lower-right panel into Graph mode (press g) and validate it",
     )
     p_cockpit.set_defaults(func=cmd_cockpit)
+    # juggle add-node — unified node creation verb (P5)
+    from juggle_cmd_add_node import cmd_add_node
+    p_an = subparsers.add_parser("add-node", help="Create a unified graph node (P5)")
+    p_an.add_argument("title", help="Node title")
+    p_an.add_argument(
+        "--kind", default="task",
+        choices=["task", "research", "conversation", "decision"],
+        help="Node kind (default: task)",
+    )
+    p_an.add_argument("--objective", default=None,
+                      help="Objective / prompt (omit or '-' to read from stdin)")
+    p_an.add_argument("--project", default=None, help="Project id tag (default: INBOX)")
+    p_an.add_argument("--deps", default=None,
+                      help="Comma-separated node ids this node depends on")
+    p_an.add_argument("--required-by", dest="required_by", default=None,
+                      help="Comma-separated node ids that gain a dep on this node")
+    p_an.add_argument("--verify-cmd", dest="verify_cmd", default=None,
+                      help="Verification command (task only)")
+    p_an.add_argument("--parent", default=None, help="Parent node id (sub-task)")
+    p_an.add_argument("--json", dest="json_out", action="store_true",
+                      help="Emit {node_id: ...} JSON")
+    p_an.set_defaults(func=cmd_add_node)
+
     # juggle project-graph / graph <subcmd> — task-graph plan store + live edits
     register_graph_parsers(subparsers)
     register_runs_parsers(subparsers)  # runs <subcmd> — agent I/O ledger

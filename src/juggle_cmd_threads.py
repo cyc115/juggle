@@ -248,6 +248,24 @@ def cmd_stop(_):
     print("Juggle stopped.")
 
 
+def _create_node_for_thread(db, thread_id: str, topic: str) -> None:
+    """P5 shim helper: write a nodes row mirroring an existing threads row.
+
+    Called AFTER db.create_thread() so the thread row already exists.
+    INSERT OR IGNORE is safe to call multiple times (idempotent).
+    Fail-silent: if the nodes table doesn't exist yet or db is mocked, skip.
+    """
+    try:
+        from juggle_add_node import _create_node_row
+        _create_node_row(
+            db, node_id=thread_id, kind="conversation", title=topic,
+            objective="", state="open", project_id=None,
+            verify_cmd=None, parent_id=None,
+        )
+    except Exception:
+        pass
+
+
 def cmd_create_thread(args):
     if not is_auto_topic_eligible(args.topic):
         print(
@@ -257,6 +275,8 @@ def cmd_create_thread(args):
         sys.exit(1)
     db = get_db()
     thread_uuid = db.create_thread(args.topic, session_id="")
+    # P5 shim: also write a unified nodes row for this conversation.
+    _create_node_for_thread(db, thread_uuid, args.topic)
     db.set_current_thread(thread_uuid)
     thread = db.get_thread(thread_uuid)
     label = (thread.get("user_label") or thread.get("label")) if thread else thread_uuid
