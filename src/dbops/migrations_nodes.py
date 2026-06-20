@@ -85,16 +85,16 @@ def _backfill_threads(conn: sqlite3.Connection) -> None:
     """
     existing = _threads_columns(conn)
 
-    # Only id and topic are truly required; all other columns are introspection-guarded.
+    # Only id is truly required; all other columns (including topic) are introspection-guarded.
     guarded = [
-        "status", "created_at", "last_active",
+        "topic", "status", "created_at", "last_active",
         "session_id", "summary", "key_decisions", "open_questions",
         "last_user_intent", "agent_task_id", "agent_result",
         "show_in_list", "summarized_msg_count",
         "last_dispatched_task", "last_dispatched_role", "last_dispatched_model",
         "worktree_path", "worktree_branch", "main_repo_path",
     ]
-    select_cols = ["id", "topic"] + [
+    select_cols = ["id"] + [
         col if col in existing else f"NULL AS {col}" for col in guarded
     ]
 
@@ -128,7 +128,7 @@ def _backfill_threads(conn: sqlite3.Connection) -> None:
                 ?, ?
             )
         """, (
-            r["id"], r["topic"], intent, state,
+            r["id"], r["topic"] or r["id"], intent, state,
             r["worktree_path"], r["worktree_branch"], r["main_repo_path"],
             r["agent_task_id"], r["agent_result"],
             r["last_dispatched_task"], r["last_dispatched_role"], r["last_dispatched_model"],

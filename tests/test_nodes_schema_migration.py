@@ -621,3 +621,117 @@ def test_backfill_threads_id_topic_only_schema(tmp_path):
     assert row is not None, "th-bare not backfilled into nodes (D2 regression)"
     assert row["kind"] == "conversation"
     assert row["state"] == "open"  # NULL status → 'open' via fallback
+
+
+# ---------------------------------------------------------------------------
+# Parametrized missing-column pin (2026-06-20): closes whole class of
+# migration-44 OperationalError: no such column: <x> failures
+# ---------------------------------------------------------------------------
+
+_THREADS_ALL_OPTIONAL_COLS = [
+    "topic", "status", "created_at", "last_active",
+    "session_id", "summary", "key_decisions", "open_questions",
+    "last_user_intent", "agent_task_id", "agent_result",
+    "show_in_list", "summarized_msg_count",
+    "last_dispatched_task", "last_dispatched_role", "last_dispatched_model",
+    "worktree_path", "worktree_branch", "main_repo_path",
+]
+
+_THREADS_FULL_DDL = """
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL DEFAULT '',
+    topic TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    summary TEXT DEFAULT '',
+    key_decisions TEXT DEFAULT '[]',
+    open_questions TEXT DEFAULT '[]',
+    last_user_intent TEXT DEFAULT '',
+    agent_task_id TEXT,
+    agent_result TEXT,
+    show_in_list INTEGER NOT NULL DEFAULT 1,
+    summarized_msg_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00',
+    last_active TEXT NOT NULL DEFAULT '1970-01-01T00:00:00',
+    last_dispatched_task TEXT,
+    last_dispatched_role TEXT,
+    last_dispatched_model TEXT,
+    worktree_path TEXT,
+    worktree_branch TEXT,
+    main_repo_path TEXT
+"""
+
+_SUPPORT_TABLES_DDL = """
+    CREATE TABLE IF NOT EXISTS graph_topics (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+        title TEXT NOT NULL, objective TEXT NOT NULL DEFAULT '',
+        state TEXT NOT NULL DEFAULT 'ready',
+        thread_id TEXT, handoff TEXT, diffstat TEXT,
+        verified_at TEXT, merged_sha TEXT, is_mirror INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS graph_tasks (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+        title TEXT NOT NULL, prompt TEXT NOT NULL DEFAULT '',
+        verify_cmd TEXT, state TEXT NOT NULL DEFAULT 'ready',
+        thread_id TEXT, handoff TEXT, diffstat TEXT, verified_at TEXT,
+        topic_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS graph_edges (
+        task_id TEXT NOT NULL, depends_on_id TEXT NOT NULL,
+        PRIMARY KEY (task_id, depends_on_id)
+    );
+"""
+
+
+def _threads_ddl_minus(missing_col: str) -> str:
+    """Return threads DDL with one column removed."""
+    lines = [l for l in _THREADS_FULL_DDL.splitlines()
+             if missing_col not in l or l.strip().startswith("--")]
+    # Strip trailing comma from last non-empty line to avoid syntax error
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip():
+            lines[i] = lines[i].rstrip().rstrip(",")
+            break
+    return "\n".join(lines)
+
+
+@pytest.mark.parametrize("missing_col", _THREADS_ALL_OPTIONAL_COLS + [None])
+def test_backfill_threads_missing_col_parametrized(tmp_path, missing_col):
+    """REGRESSION PIN (2026-06-20): migration 44 must not raise
+    sqlite3.OperationalError regardless of which non-id column is absent
+    from threads, including topic and the truly-minimal threads(id) table.
+
+    Symptom: test_doctor_preserves_archived_labels and test_db_graph fixtures
+    create threads tables without certain columns; migration 44 previously
+    hardcoded those columns in SELECT, causing OperationalError.
+    """
+    if missing_col is None:
+        # truly minimal: threads(id) only
+        ddl = "id TEXT PRIMARY KEY"
+        label = "id_only"
+    else:
+        ddl = _threads_ddl_minus(missing_col)
+        label = missing_col
+
+    db_path = tmp_path / f"missing_{label}.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute(f"CREATE TABLE threads ({ddl})")
+    conn.executescript(_SUPPORT_TABLES_DDL)
+    has_topic = missing_col != "topic" and missing_col is not None
+    if has_topic:
+        conn.execute("INSERT INTO threads (id, topic) VALUES ('th-missing', 'test topic')")
+    else:
+        conn.execute("INSERT INTO threads (id) VALUES ('th-missing')")
+    conn.commit()
+
+    # Must not raise
+    _run_migration(conn)
+
+    row = conn.execute(
+        "SELECT id, kind, title, state FROM nodes WHERE id='th-missing'"
+    ).fetchone()
+    assert row is not None, f"th-missing not backfilled (missing col: {label})"
+    assert row["kind"] == "conversation"
+    assert row["state"] == "open"
+    assert row["title"]  # title falls back to id when topic is absent
