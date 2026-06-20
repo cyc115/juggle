@@ -1,0 +1,475 @@
+"""Tests for the nodes/node_edges schema + migration 44 (P1 unified topic-graph).
+
+All tests run against a fresh TEMP sqlite DB — never against prod.
+
+Regression pin (2026-06-20): P1 additive migration — nodes + node_edges tables
+are created and backfilled from threads/graph_topics/graph_tasks/graph_edges.
+Old tables must remain untouched and the migration must be idempotent.
+"""
+import sqlite3
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# Helpers: build a minimal DB that mirrors prod structure
+# ---------------------------------------------------------------------------
+
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _make_db(tmp_path) -> sqlite3.Connection:
+    """Create a minimal SQLite DB with old tables seeded with representative rows."""
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS threads (
+            id              TEXT PRIMARY KEY,
+            session_id      TEXT NOT NULL DEFAULT '',
+            topic           TEXT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'active',
+            summary         TEXT DEFAULT '',
+            key_decisions   TEXT DEFAULT '[]',
+            open_questions  TEXT DEFAULT '[]',
+            last_user_intent TEXT DEFAULT '',
+            agent_task_id   TEXT,
+            agent_result    TEXT,
+            show_in_list    INTEGER NOT NULL DEFAULT 1,
+            summarized_msg_count INTEGER NOT NULL DEFAULT 0,
+            title           TEXT DEFAULT '',
+            created_at      TEXT NOT NULL,
+            last_active     TEXT NOT NULL,
+            last_dispatched_task  TEXT,
+            last_dispatched_role  TEXT,
+            last_dispatched_model TEXT,
+            worktree_path         TEXT,
+            worktree_branch       TEXT,
+            main_repo_path        TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS graph_topics (
+            id          TEXT PRIMARY KEY,
+            project_id  TEXT NOT NULL,
+            title       TEXT NOT NULL,
+            objective   TEXT NOT NULL DEFAULT '',
+            state       TEXT NOT NULL DEFAULT 'pending',
+            thread_id   TEXT,
+            handoff     TEXT,
+            diffstat    TEXT,
+            verified_at TEXT,
+            merged_sha  TEXT,
+            is_mirror   INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS graph_tasks (
+            id          TEXT PRIMARY KEY,
+            project_id  TEXT NOT NULL,
+            title       TEXT NOT NULL,
+            prompt      TEXT NOT NULL,
+            verify_cmd  TEXT,
+            state       TEXT NOT NULL DEFAULT 'pending',
+            thread_id   TEXT,
+            handoff     TEXT,
+            diffstat    TEXT,
+            verified_at TEXT,
+            topic_id    TEXT,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS graph_edges (
+            task_id       TEXT NOT NULL,
+            depends_on_id TEXT NOT NULL,
+            PRIMARY KEY (task_id, depends_on_id)
+        );
+    """)
+
+    now = _now()
+
+    # Insert a project
+    conn.execute("INSERT INTO projects VALUES ('proj-1', 'Test Project')")
+
+    # Thread: active conversation
+    conn.execute("""
+        INSERT INTO threads (id, topic, status, last_user_intent, created_at, last_active)
+        VALUES ('th-active', 'Active convo', 'active', 'do stuff', ?, ?)
+    """, (now, now))
+
+    # Thread: closed conversation
+    conn.execute("""
+        INSERT INTO threads (id, topic, status, created_at, last_active)
+        VALUES ('th-closed', 'Closed convo', 'closed', ?, ?)
+    """, (now, now))
+
+    # Thread: failed conversation
+    conn.execute("""
+        INSERT INTO threads (id, topic, status, created_at, last_active)
+        VALUES ('th-failed', 'Failed convo', 'failed', ?, ?)
+    """, (now, now))
+
+    # Thread: archived conversation
+    conn.execute("""
+        INSERT INTO threads (id, topic, status, created_at, last_active)
+        VALUES ('th-archived', 'Archived convo', 'archived', ?, ?)
+    """, (now, now))
+
+    # Thread: background (agent dispatched)
+    conn.execute("""
+        INSERT INTO threads (id, topic, status, worktree_path, worktree_branch,
+                            main_repo_path, created_at, last_active)
+        VALUES ('th-bg', 'Background convo', 'background', '/wt/path', 'cyc_bg',
+                '/repo', ?, ?)
+    """, (now, now))
+
+    # graph_topic (is_mirror=0, task-tier, pending state)
+    conn.execute("""
+        INSERT INTO graph_topics (id, project_id, title, objective, state,
+                                  is_mirror, created_at, updated_at)
+        VALUES ('topic-1', 'proj-1', 'Big feature', 'Fix login', 'pending', 0, ?, ?)
+    """, (now, now))
+
+    # graph_topic (is_mirror=0, running state, has merged_sha)
+    conn.execute("""
+        INSERT INTO graph_topics (id, project_id, title, objective, state,
+                                  merged_sha, is_mirror, created_at, updated_at)
+        VALUES ('topic-2', 'proj-1', 'Done feature', 'Implement X', 'verified',
+                'abc123', 0, ?, ?)
+    """, (now, now))
+
+    # graph_topic (is_mirror=1 = mirror/conversation)
+    conn.execute("""
+        INSERT INTO graph_topics (id, project_id, title, objective, state,
+                                  is_mirror, thread_id, created_at, updated_at)
+        VALUES ('topic-mirror', 'proj-1', 'Mirror topic', '', 'running', 1,
+                'th-bg', ?, ?)
+    """, (now, now))
+
+    # graph_tasks (topic_id set = sub-task)
+    conn.execute("""
+        INSERT INTO graph_tasks (id, project_id, title, prompt, state,
+                                 topic_id, verify_cmd, created_at, updated_at)
+        VALUES ('task-1', 'proj-1', 'Sub task A', 'Do A', 'pending',
+                'topic-1', 'pytest -k A', ?, ?)
+    """, (now, now))
+
+    conn.execute("""
+        INSERT INTO graph_tasks (id, project_id, title, prompt, state,
+                                 topic_id, created_at, updated_at)
+        VALUES ('task-2', 'proj-1', 'Sub task B', 'Do B', 'running',
+                'topic-1', ?, ?)
+    """, (now, now))
+
+    # graph_tasks: flat task (topic_id IS NULL, legacy pre-3-tier)
+    conn.execute("""
+        INSERT INTO graph_tasks (id, project_id, title, prompt, state,
+                                 topic_id, created_at, updated_at)
+        VALUES ('task-flat', 'proj-1', 'Flat task', 'Do flat thing', 'pending',
+                NULL, ?, ?)
+    """, (now, now))
+
+    # graph_edges: task-2 depends on task-1
+    conn.execute("""
+        INSERT INTO graph_edges (task_id, depends_on_id)
+        VALUES ('task-2', 'task-1')
+    """)
+
+    conn.commit()
+    return conn
+
+
+def _run_migration(conn: sqlite3.Connection) -> None:
+    """Run the nodes migration (44) against the given connection."""
+    from dbops.migrations_nodes import apply_nodes_migration
+    apply_nodes_migration(conn)
+
+
+# ---------------------------------------------------------------------------
+# Schema tests
+# ---------------------------------------------------------------------------
+
+
+def test_nodes_table_created(tmp_path):
+    """Migration 44 creates the nodes table with all required columns."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+    required = {
+        "id", "kind", "title", "objective", "state", "project_id", "parent_id",
+        "verify_cmd", "worktree_path", "worktree_branch", "main_repo_path",
+        "handoff", "diffstat", "verified_at", "merged_sha",
+        "agent_task_id", "agent_result", "last_dispatched_task",
+        "last_dispatched_role", "last_dispatched_model",
+        "session_id", "summary", "key_decisions", "open_questions",
+        "last_user_intent", "summarized_msg_count", "show_in_list",
+        "created_at", "updated_at",
+    }
+    assert required <= cols, f"Missing columns: {required - cols}"
+
+
+def test_node_edges_table_created(tmp_path):
+    """Migration 44 creates the node_edges table."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    assert "node_edges" in tables
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(node_edges)").fetchall()}
+    assert {"node_id", "depends_on_id"} <= cols
+
+
+# ---------------------------------------------------------------------------
+# Row count / row mapping tests
+# ---------------------------------------------------------------------------
+
+
+def test_migration_row_count(tmp_path):
+    """nodes COUNT = threads + graph_topics(is_mirror=0) + graph_tasks."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    n_threads = conn.execute("SELECT COUNT(*) FROM threads").fetchone()[0]
+    n_topics_task = conn.execute(
+        "SELECT COUNT(*) FROM graph_topics WHERE is_mirror=0"
+    ).fetchone()[0]
+    n_tasks = conn.execute("SELECT COUNT(*) FROM graph_tasks").fetchone()[0]
+    # is_mirror=1 rows → conversation nodes (counted separately from threads)
+    n_topics_conv = conn.execute(
+        "SELECT COUNT(*) FROM graph_topics WHERE is_mirror=1"
+    ).fetchone()[0]
+    expected = n_threads + n_topics_task + n_tasks + n_topics_conv
+    actual = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+    assert actual == expected, f"Expected {expected} nodes, got {actual}"
+
+
+def test_migration_no_pending_state(tmp_path):
+    """After migration, no nodes should have state='pending'."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    count = conn.execute(
+        "SELECT COUNT(*) FROM nodes WHERE state='pending'"
+    ).fetchone()[0]
+    assert count == 0, f"{count} nodes still have state='pending'"
+
+
+def test_migration_conversation_kind(tmp_path):
+    """All thread rows + is_mirror=1 topics become kind='conversation' nodes."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    # Every thread ID should appear as a conversation node
+    thread_ids = {r[0] for r in conn.execute("SELECT id FROM threads").fetchall()}
+    conv_ids = {r[0] for r in conn.execute(
+        "SELECT id FROM nodes WHERE kind='conversation'"
+    ).fetchall()}
+    assert thread_ids <= conv_ids, f"Missing thread IDs in conversations: {thread_ids - conv_ids}"
+
+
+def test_migration_task_kind(tmp_path):
+    """graph_topics(is_mirror=0) and graph_tasks → kind='task' nodes."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    task_ids = {r[0] for r in conn.execute("SELECT id FROM nodes WHERE kind='task'").fetchall()}
+
+    topic_task_ids = {r[0] for r in conn.execute(
+        "SELECT id FROM graph_topics WHERE is_mirror=0"
+    ).fetchall()}
+    gtask_ids = {r[0] for r in conn.execute("SELECT id FROM graph_tasks").fetchall()}
+
+    assert topic_task_ids <= task_ids
+    assert gtask_ids <= task_ids
+
+
+def test_migration_state_mapping_threads(tmp_path):
+    """threads.status values are mapped to correct node.state per §4.3."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    mapping = {
+        "th-active": "open",
+        "th-closed": "done",
+        "th-failed": "failed-exec",
+        "th-archived": "archived",
+        "th-bg": "running",
+    }
+    for tid, expected_state in mapping.items():
+        row = conn.execute("SELECT state FROM nodes WHERE id=?", (tid,)).fetchone()
+        assert row is not None, f"Node {tid} not found"
+        assert row[0] == expected_state, f"Thread {tid}: expected {expected_state}, got {row[0]}"
+
+
+def test_migration_pending_becomes_open_for_tasks(tmp_path):
+    """graph_topics and graph_tasks with state='pending' get state='open'."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    # topic-1 was pending → should be open
+    row = conn.execute("SELECT state FROM nodes WHERE id='topic-1'").fetchone()
+    assert row is not None
+    assert row[0] == "open"
+
+    # task-1 was pending → should be open
+    row = conn.execute("SELECT state FROM nodes WHERE id='task-1'").fetchone()
+    assert row is not None
+    assert row[0] == "open"
+
+
+def test_migration_task_parent_id(tmp_path):
+    """graph_tasks with topic_id get parent_id = that topic's id in nodes."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    row = conn.execute("SELECT parent_id FROM nodes WHERE id='task-1'").fetchone()
+    assert row is not None
+    assert row[0] == "topic-1"
+
+    row = conn.execute("SELECT parent_id FROM nodes WHERE id='task-2'").fetchone()
+    assert row is not None
+    assert row[0] == "topic-1"
+
+
+def test_migration_flat_task_null_parent(tmp_path):
+    """graph_tasks with topic_id IS NULL (flat tasks) get parent_id=NULL."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    row = conn.execute("SELECT parent_id FROM nodes WHERE id='task-flat'").fetchone()
+    assert row is not None
+    assert row[0] is None
+
+
+def test_migration_merged_sha_preserved(tmp_path):
+    """topic nodes with merged_sha have that value copied to nodes.merged_sha."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    row = conn.execute("SELECT merged_sha FROM nodes WHERE id='topic-2'").fetchone()
+    assert row is not None
+    assert row[0] == "abc123"
+
+
+def test_migration_node_edges_count(tmp_path):
+    """node_edges COUNT == graph_edges COUNT."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    n_edges = conn.execute("SELECT COUNT(*) FROM graph_edges").fetchone()[0]
+    n_node_edges = conn.execute("SELECT COUNT(*) FROM node_edges").fetchone()[0]
+    assert n_node_edges == n_edges
+
+
+def test_migration_node_edges_mapping(tmp_path):
+    """graph_edges.(task_id, depends_on_id) → node_edges.(node_id, depends_on_id)."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    row = conn.execute(
+        "SELECT node_id, depends_on_id FROM node_edges WHERE node_id='task-2'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "task-2"
+    assert row[1] == "task-1"
+
+
+def test_migration_verify_cmd_preserved(tmp_path):
+    """graph_tasks.verify_cmd is copied into nodes.verify_cmd."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    row = conn.execute("SELECT verify_cmd FROM nodes WHERE id='task-1'").fetchone()
+    assert row is not None
+    assert row[0] == "pytest -k A"
+
+
+def test_migration_objective_mapping(tmp_path):
+    """graph_tasks.prompt → nodes.objective; graph_topics.objective → nodes.objective."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    # task-1 from graph_tasks: prompt='Do A'
+    row = conn.execute("SELECT objective FROM nodes WHERE id='task-1'").fetchone()
+    assert row is not None
+    assert row[0] == "Do A"
+
+    # topic-1 from graph_topics: objective='Fix login'
+    row = conn.execute("SELECT objective FROM nodes WHERE id='topic-1'").fetchone()
+    assert row is not None
+    assert row[0] == "Fix login"
+
+    # th-active from threads: last_user_intent='do stuff'
+    row = conn.execute("SELECT objective FROM nodes WHERE id='th-active'").fetchone()
+    assert row is not None
+    assert row[0] == "do stuff"
+
+
+# ---------------------------------------------------------------------------
+# Idempotency test
+# ---------------------------------------------------------------------------
+
+
+def test_migration_idempotent(tmp_path):
+    """Running migration twice yields same nodes count (no duplicates)."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+    count_after_first = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+    edge_count_first = conn.execute("SELECT COUNT(*) FROM node_edges").fetchone()[0]
+
+    _run_migration(conn)
+    count_after_second = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+    edge_count_second = conn.execute("SELECT COUNT(*) FROM node_edges").fetchone()[0]
+
+    assert count_after_first == count_after_second, "Second run duplicated nodes"
+    assert edge_count_first == edge_count_second, "Second run duplicated node_edges"
+
+
+# ---------------------------------------------------------------------------
+# Old tables preserved test
+# ---------------------------------------------------------------------------
+
+
+def test_old_tables_still_present(tmp_path):
+    """After migration, all old tables remain unchanged."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    for old_table in ("threads", "graph_topics", "graph_tasks", "graph_edges"):
+        assert old_table in tables, f"Old table {old_table} was removed!"
+
+
+def test_old_table_rows_unchanged(tmp_path):
+    """Thread and graph row counts are unchanged after migration."""
+    conn = _make_db(tmp_path)
+
+    before = {
+        t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        for t in ("threads", "graph_topics", "graph_tasks", "graph_edges")
+    }
+
+    _run_migration(conn)
+
+    for t, count in before.items():
+        after = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        assert after == count, f"Old table {t} changed: was {count}, now {after}"

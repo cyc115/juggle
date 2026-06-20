@@ -308,6 +308,12 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     # covering indexes the wheel relies on.
     run_migration_slug_wheel(conn)
 
+    # Migration 44 (P1 unified-topic-graph): create nodes + node_edges tables
+    # and backfill from threads/graph_topics/graph_tasks/graph_edges. Purely
+    # additive — old tables stay; no read path changes.
+    from dbops.migrations_graph import apply_nodes_migration_44
+    apply_nodes_migration_44(conn)
+
 
 def run_migration_slug_wheel(conn: sqlite3.Connection) -> None:
     """Install the Topic Slug Wheel schema. Idempotent and guarded.

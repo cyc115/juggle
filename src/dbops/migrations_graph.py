@@ -159,6 +159,17 @@ def migrate_runs_vcs(conn: sqlite3.Connection) -> None:
         _log.warning("Migration 40 (agent_runs vcs) skipped: %s", e)
 
 
+def apply_nodes_migration_44(conn: sqlite3.Connection) -> None:
+    """Migration 44 (P1 unified-topic-graph): create nodes + node_edges + backfill.
+
+    Called by apply_recent_migrations AFTER apply_graph_migrations so that
+    the tables it reads (graph_topics, graph_tasks, graph_edges) are guaranteed
+    present. Delegates to dbops.migrations_nodes for the actual implementation.
+    """
+    from dbops.migrations_nodes import apply_nodes_migration
+    apply_nodes_migration(conn)
+
+
 def apply_graph_migrations(conn: sqlite3.Connection) -> None:
     """Apply migrations 35-37 + 39 (graph_tasks / graph_edges / graph_topics + rename)."""
     # Migration 39 runs FIRST: rename an existing node-era DB to task naming
