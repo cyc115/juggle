@@ -278,6 +278,16 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     except Exception:
         pass
 
+    # Watchdog-daemon reaper (2026-06-20 leak fix, RCA §6): kill any daemon whose
+    # worktree/DB has vanished, then enforce the global daemon cap. Nothing else
+    # reaps orphaned/over-cap daemons — this is the core gap. Fail-safe.
+    try:
+        from juggle_reaper import reap_watchdog_daemons_tick
+        _wd_cfg = get_settings().get("watchdog", {})
+        reap_watchdog_daemons_tick(int(_wd_cfg.get("max_daemons", 8)))
+    except Exception:
+        _log.exception("Watchdog: daemon reaper tick failed — continuing")
+
     # Graph claim-dispatch tick (autopilot Phase 2): the watchdog is the SOLE
     # dispatcher for the armed project's ready tasks (DA B4/M1). graph_tick is
     # internally fail-safe; this guard is belt-and-braces — a tick bug must

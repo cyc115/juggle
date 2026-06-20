@@ -145,6 +145,20 @@ DEFAULTS: dict = {
         "ready_poll_attempts": 120,
         "ready_poll_interval_secs": 1,
     },
+    # Watchdog daemon lifecycle (2026-06-20 daemon-leak hardening)
+    "watchdog": {
+        # Global backstop cap on concurrent juggle_watchdog_daemon.py processes.
+        # The per-DB flock bounds 1 daemon PER DB, never the TOTAL, so N tmp DBs
+        # could run N daemons (RCA P1). When exceeded, the reaper kills the
+        # oldest over the cap and LOGS it. Conservative default — normal
+        # operation is 1 (prod) plus a handful of transient worktree daemons.
+        # <= 0 disables the cap.
+        "max_daemons": 8,
+        # Cockpit ensure-watchdog debounce: suppress a respawn within this many
+        # seconds of the previous spawn even if the per-DB lock is momentarily
+        # free during a slow cold-start (RCA P0 — the 15s respawn storm).
+        "min_respawn_interval_secs": 60,
+    },
     # Hindsight
     "hindsight": {
         "enabled": False,
