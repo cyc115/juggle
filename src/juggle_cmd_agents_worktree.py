@@ -6,38 +6,22 @@ Owns: _create_worktree (isolated worktree per thread, used by send-task) and
 Must not own: command handler logic or DB access.
 """
 
-import json
-import os
 import subprocess
 from pathlib import Path
 
 
 def _register_worktree_trust(worktree_path: str) -> None:
-    """Pre-register worktree_path in ~/.claude.json projects map.
+    """Pre-register worktree_path as a trusted Claude Code project.
 
-    claude --dangerously-skip-permissions skips tool-permission prompts but NOT
-    the workspace-trust prompt. Claude Code records trusted directories in
-    ~/.claude.json under the 'projects' key; a directory absent from that map
-    triggers the 'Do you trust this folder?' prompt which swallows the task
-    submission (2026-06-11 bug E). Writing a minimal entry here makes the
-    directory trusted before the agent boots.
-
-    Env var JUGGLE_CLAUDE_JSON_PATH overrides the default path (used in tests).
+    Back-compat shim. The real logic — and the fix for the 2026-06-20 leak
+    (writing the ``hasTrustDialogAccepted`` flag Claude Code actually reads, not
+    just ``allowedTools``, which left the trust gate firing and the agent hung)
+    — lives in ``juggle_claude_trust.ensure_dir_trusted``. Env var
+    JUGGLE_CLAUDE_JSON_PATH still overrides the path (used in tests).
     """
-    claude_json_path = Path(
-        os.environ.get("JUGGLE_CLAUDE_JSON_PATH", Path.home() / ".claude.json")
-    )
-    try:
-        if claude_json_path.exists():
-            data = json.loads(claude_json_path.read_text())
-        else:
-            data = {}
-        projects = data.setdefault("projects", {})
-        if worktree_path not in projects:
-            projects[worktree_path] = {"allowedTools": []}
-            claude_json_path.write_text(json.dumps(data, indent=2))
-    except Exception:
-        pass  # best-effort; a failure here should never block agent dispatch
+    from juggle_claude_trust import ensure_dir_trusted
+
+    ensure_dir_trusted(worktree_path)
 
 
 def _finalize_worktree(thread: dict) -> tuple:

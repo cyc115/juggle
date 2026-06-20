@@ -16,6 +16,18 @@ from juggle_settings import get_settings as _get_settings
 from juggle_repo_binding import spawn_repo_path as _spawn_repo_path  # noqa: E402
 
 
+def _pretrust_spawn_dir(repo_path: str) -> None:
+    """Best-effort: pre-trust ``repo_path`` so Claude's folder-trust gate never
+    hangs a freshly-spawned agent (2026-06-20 leak). Thin seam over
+    ``juggle_claude_trust.ensure_dir_trusted`` so spawn_agent stays testable."""
+    try:
+        from juggle_claude_trust import ensure_dir_trusted
+
+        ensure_dir_trusted(repo_path)
+    except Exception:
+        pass  # never block a spawn on pre-trust
+
+
 # Built-in Claude Code markers — used as the fallback when the configured
 # harness adapter can't be resolved (see _harness_markers).
 _READY_MARKERS = ("bypass permissions on", "/effort")
@@ -547,19 +559,37 @@ class JuggleTmuxManager:
                 "Wait for one to finish before spawning more."
             )
 
+        # Bind repo_path at spawn time for get-agent --repo filtering. Canonical
+        # SOURCE repo, NOT cwd toplevel (2026-06-16 mis-binding incident).
+        repo_path = _spawn_repo_path()
+
         mock_pane = os.environ.get("JUGGLE_TMUX_MOCK_PANE")
         if mock_pane:
-            mock_repo = _spawn_repo_path()
-            agent_id = db.create_agent(role=role, pane_id=mock_pane, harness=harness_id, repo_path=mock_repo)
+            agent_id = db.create_agent(role=role, pane_id=mock_pane, harness=harness_id, repo_path=repo_path)
             return db.get_agent(agent_id)
+
+        # Pre-trust the spawn dir so Claude Code's folder-trust gate ("Do you
+        # trust the files in this folder?") never hangs the boot (2026-06-20
+        # leak: a never-trusted dir hung the agent at the trust screen, yet it
+        # was registered as a normal idle agent and leaked its pane forever).
+        _pretrust_spawn_dir(repo_path)
 
         self.ensure_session()
         pane_id = self.spawn_pane()
         self.start_agent_in_pane(pane_id, model=model, role=role, agent_cfg=agent_cfg)
 
-        # Bind repo_path at spawn time for get-agent --repo filtering. Canonical
-        # SOURCE repo, NOT cwd toplevel (2026-06-16 mis-binding incident).
-        repo_path = _spawn_repo_path()
+        # Verified spawn: an interactive harness MUST render its ready UI before
+        # we register the agent. If it never becomes ready (stuck at trust,
+        # crashed boot), kill the pane and FAIL — never register a stuck spawn as
+        # a usable idle agent (2026-06-20 leak root cause). One-shot harnesses
+        # (e.g. codex exec) render no up-front UI, so they skip the gate.
+        if adapter.is_interactive and not self.wait_for_ready_to_paste(pane_id):
+            self.kill_pane(pane_id)
+            raise RuntimeError(
+                f"agent spawn failed: pane {pane_id} never reached the ready "
+                f"state (likely stuck at the folder-trust prompt or a failed "
+                f"boot). Pane killed; no agent registered."
+            )
 
         agent_id = db.create_agent(role=role, pane_id=pane_id, harness=harness_id, repo_path=repo_path)
         return db.get_agent(agent_id)

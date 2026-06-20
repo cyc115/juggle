@@ -220,7 +220,9 @@ def test_spawn_agent_creates_db_record(mgr, tmp_path):
     with (
         patch.object(mgr, "ensure_session"),
         patch.object(mgr, "spawn_pane", return_value="%7"),
-        patch.object(mgr, "start_claude_in_pane"),
+        patch.object(mgr, "start_agent_in_pane"),
+        # Verified-spawn gate (2026-06-20 leak fix): the UI is ready here.
+        patch.object(mgr, "wait_for_ready_to_paste", return_value=True),
     ):
         agent = mgr.spawn_agent(db, role="coder")
 
