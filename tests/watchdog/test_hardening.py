@@ -388,7 +388,7 @@ def test_cmd_get_agent_does_not_reuse_wrong_role(db, tmp_path, monkeypatch):
     import juggle_cli_common as _common_mod
 
     monkeypatch.setattr(_com_mod, "get_db", lambda: db)
-    monkeypatch.setattr(_tmux_mod, "JuggleTmuxManager", lambda: FakeMgr())
+    monkeypatch.setattr(_com_mod, "JuggleTmuxManager", lambda: FakeMgr())
     # Bypass label resolution (labels map to full UUID)
     monkeypatch.setattr(_common_mod, "_resolve_thread", lambda _db, t: t)
     monkeypatch.setattr(_com_mod, "_resolve_thread", lambda _db, t: t)

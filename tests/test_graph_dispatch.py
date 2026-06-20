@@ -476,15 +476,13 @@ def test_cross_connection_thread_visibility(tmp_path):
     assert t["id"] == thread_id
 
 
-def test_dispatch_via_pool_passes_db_path_to_cmd_get_agent(tmp_path, monkeypatch):
-    """REGRESSION PIN (2026-06-10): _dispatch_via_pool must pass db.db_path to
-    cmd_get_agent so it opens the same database the tick wrote to.
-    Without this, cmd_get_agent calls _com.get_db() which uses
-    juggle_cli_common.DB_PATH (the global default). When that diverges from
-    the tick db's path — e.g. _JUGGLE_TEST_DB set in the watchdog env at
-    first-import time — the freshly-created thread is invisible and
-    cmd_get_agent prints 'no thread with id' + sys.exit(1)."""
-    import juggle_cmd_agents as jca
+def test_dispatch_via_pool_passes_same_db_to_dispatch_node(tmp_path, monkeypatch):
+    """REGRESSION PIN (2026-06-10, rewritten 2026-06-20 for P3 seam):
+    _dispatch_via_pool must pass the same db object to dispatch_node so the
+    tick and the dispatch layer operate on the same database instance.
+    Previously a db_path string was threaded through cmd_get_agent; now the
+    db object is passed directly — no path-divergence risk."""
+    import juggle_dispatch_core as _core
 
     db_local = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db_local.init_db()
@@ -492,42 +490,34 @@ def test_dispatch_via_pool_passes_db_path_to_cmd_get_agent(tmp_path, monkeypatch
 
     captured = {}
 
-    def spy_get_agent(ns):
-        captured["db_path"] = getattr(ns, "db_path", "NOT_PRESENT")
+    def spy_dispatch_node(db_, thread_id_, prompt_, task_, **kw):
+        captured["db"] = db_
 
-    monkeypatch.setattr(jca, "cmd_get_agent", spy_get_agent)
-    monkeypatch.setattr(jca, "cmd_send_task", lambda ns: None)
+    monkeypatch.setattr(_core, "dispatch_node", spy_dispatch_node)
 
-    try:
-        gd._dispatch_via_pool(db_local, thread_id, "prompt", {"id": "n1"})
-    except RuntimeError:
-        pass  # expected — spy_get_agent doesn't bind an agent
+    gd._dispatch_via_pool(db_local, thread_id, "prompt", {"id": "n1"})
 
-    assert captured.get("db_path") == str(tmp_path / "juggle.db"), (
-        f"cmd_get_agent Namespace must carry db_path from tick db; "
-        f"got {captured.get('db_path')!r}"
+    assert captured.get("db") is db_local, (
+        "dispatch_node must receive the same db object the tick uses"
     )
 
 
-def test_dispatch_via_pool_releases_agent_on_any_exception(db, monkeypatch):
-    """REGRESSION PIN (DA round-2 minor 2, 2026-06-10): _dispatch_via_pool
-    released the agent only on SystemExit from send-task — any other exception
-    leaked the agent 'busy' on an archived thread forever."""
-    import juggle_cmd_agents as jca
+def test_dispatch_via_pool_propagates_exception_from_dispatch_node(db, monkeypatch):
+    """REGRESSION PIN (DA round-2 minor 2, 2026-06-10, rewritten 2026-06-20 for P3 seam):
+    _dispatch_via_pool propagates exceptions from dispatch_node so the tick's
+    error-handling path (archive thread, bump fail counter) runs correctly.
+    Agent cleanup on exception is now handled inside dispatch_node itself
+    (see test_dispatch_node_releases_agent_on_send_failure)."""
+    import juggle_dispatch_core as _core
 
     tid = db.create_thread("t", session_id="s")
-    agent_id = db.create_agent(role="coder", pane_id="%1")
-    db.update_agent(agent_id, status="busy", assigned_thread=tid)
-    monkeypatch.setattr(jca, "cmd_get_agent", lambda ns: None)
 
-    def boom(ns):
+    def boom(db_, tid_, prompt_, task_, **kw):
         raise RuntimeError("tmux exploded mid-send")
 
-    monkeypatch.setattr(jca, "cmd_send_task", boom)
-    with pytest.raises(RuntimeError):
+    monkeypatch.setattr(_core, "dispatch_node", boom)
+    with pytest.raises(RuntimeError, match="tmux exploded mid-send"):
         gd._dispatch_via_pool(db, tid, "prompt", {"id": "a"})
-    assert db.get_agent(agent_id)["status"] == "idle"
-    assert db.get_agent(agent_id)["assigned_thread"] is None
 
 
 # ── multi-project TOPIC tick (R9, 2026-06-11) ─────────────────────────────────

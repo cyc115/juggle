@@ -18,7 +18,6 @@ settings table, DA M6 — the toggle command itself lands in Phase 4).
 from __future__ import annotations
 
 import logging
-import tempfile
 from datetime import datetime, timedelta, timezone
 
 from dbops import db_graph, db_topics
@@ -94,68 +93,15 @@ from juggle_graph_hydration import (  # noqa: E402, F401
 
 
 def _dispatch_via_pool(db, thread_id: str, prompt: str, task: dict) -> None:
-    """Dispatch ``prompt`` for ``thread_id`` through the existing CLI path:
-    cmd_get_agent (idle reuse or spawn) + cmd_send_task (worktree guard,
-    template, tmux). Raises CapacityError (pool full → defer) or RuntimeError.
+    """Dispatch ``prompt`` for ``thread_id`` via dispatch_node() (P3).
+
+    dispatch_node owns the acquire-agent + send-task logic so the tick no
+    longer routes through the user-facing get-agent/send-task CLI commands.
+    Raises CapacityError (pool full → defer) or RuntimeError.
     """
-    import contextlib
-    import io
-    from argparse import Namespace
+    from juggle_dispatch_core import dispatch_node
 
-    from juggle_cmd_agents import cmd_get_agent, cmd_send_task
-
-    buf = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(buf):
-            cmd_get_agent(
-                Namespace(
-                    thread_id=thread_id, role=TASK_ROLE, model=None,
-                    repo=None, harness=None, fresh=False,
-                    db_path=str(db.db_path),
-                )
-            )
-    except SystemExit:
-        out = buf.getvalue()
-        if "pool full" in out.lower():
-            raise CapacityError(f"agent pool full for task {task['id']}")
-        raise RuntimeError(f"agent acquisition failed: {out.strip()}")
-
-    agent = db.get_agent_by_thread(thread_id)
-    if not agent:
-        raise RuntimeError(f"no agent bound to thread {thread_id} after get-agent")
-
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=f"-{task['id']}.md", prefix="juggle-graph-", delete=False
-    ) as f:
-        f.write(prompt)
-        prompt_file = f.name
-    try:
-        cmd_send_task(
-            Namespace(
-                agent_id=agent["id"], prompt_file=prompt_file,
-                no_template=False, worktree_path=None, worktree_branch=None,
-                main_repo_path=None, allow_main=False,
-                force_task=True,  # the tick IS the sanctioned dispatcher
-                db_path=str(db.db_path),
-            )
-        )
-    except BaseException as e:
-        # Release the agent on ANY failure (DA round-2 minor 2, 2026-06-10:
-        # only SystemExit released it — other exceptions leaked the agent
-        # 'busy' on an archived thread forever).
-        db.update_agent(agent["id"], status="idle", assigned_thread=None)
-        if isinstance(e, SystemExit):
-            raise RuntimeError(
-                f"send-task failed for task {task['id']} (exit {e.code})"
-            )
-        raise
-    finally:
-        import os
-
-        try:
-            os.unlink(prompt_file)
-        except OSError:
-            pass
+    dispatch_node(db, thread_id, prompt, task, role=TASK_ROLE)
 
 
 def _give_up_dispatch(db, task_id: str, err: Exception) -> None:

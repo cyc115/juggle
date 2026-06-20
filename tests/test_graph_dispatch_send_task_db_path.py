@@ -86,41 +86,34 @@ def test_cmd_send_task_uses_injected_db_path(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_dispatch_via_pool_passes_db_path_to_send_task(tmp_path, monkeypatch):
-    """_dispatch_via_pool includes db_path in the Namespace for cmd_send_task.
-
-    Incident 2026-06-11: Namespace passed to cmd_send_task omitted db_path,
-    causing it to open the default DB and miss the watchdog-created agent.
+def test_dispatch_via_pool_passes_db_path_to_send_task_to_agent(tmp_path, monkeypatch):
+    """REGRESSION PIN (2026-06-11, rewritten 2026-06-20 for P3 seam):
+    dispatch_node (called by _dispatch_via_pool) must pass db_path to
+    send_task_to_agent so it opens the same database the tick created the
+    agent in. Previously db_path was threaded through a cmd_send_task Namespace;
+    now it is a kwarg to send_task_to_agent.
     """
     import juggle_graph_dispatch as gd
-    from dbops import db_graph as g
+    import juggle_dispatch_core as _core
 
     db = _make_db(tmp_path)
     thread_id = db.create_thread("graph-task-B", session_id="")
-    agent_id = db.create_agent(role="coder", pane_id="%1")
-    db.update_agent(agent_id, status="idle", assigned_thread=thread_id)
+    agent_id = db.create_agent(role="coder", pane_id="%1", harness="claude", repo_path="")
 
-    g.create_task(db, task_id="B", project_id="INBOX", title="B", prompt="do B")
-    task = g.get_task(db, "B")
+    captured: dict = {}
 
-    captured: list[Namespace] = []
+    def fake_acquire(db_, tid, **kw):
+        return db_.get_agent(agent_id)
 
-    def fake_get_agent(ns):
-        pass  # no-op: agent already bound
+    def fake_send(db_, aid, tid, prompt, **kw):
+        captured["db_path"] = kw.get("db_path")
 
-    def fake_send_task(ns):
-        captured.append(ns)
+    monkeypatch.setattr(_core, "acquire_agent", fake_acquire)
+    monkeypatch.setattr(_core, "send_task_to_agent", fake_send)
 
-    monkeypatch.setattr("juggle_cmd_agents.cmd_get_agent", fake_get_agent)
-    monkeypatch.setattr("juggle_cmd_agents.cmd_send_task", fake_send_task)
-    # Stub get_agent_by_thread to return a fake agent.
-    monkeypatch.setattr(db, "get_agent_by_thread", lambda _tid: {"id": agent_id})
+    gd._dispatch_via_pool(db, thread_id, "do B", {"id": "B", "title": "B"})
 
-    gd._dispatch_via_pool(db, thread_id, "do B", task)
-
-    assert captured, "_dispatch_via_pool never called cmd_send_task"
-    ns = captured[0]
-    assert hasattr(ns, "db_path"), "Namespace missing db_path"
-    assert ns.db_path == str(db.db_path), (
-        f"Expected db_path={db.db_path!r}, got {ns.db_path!r}"
+    assert "db_path" in captured, "send_task_to_agent was never called with db_path"
+    assert captured["db_path"] == str(db.db_path), (
+        f"Expected db_path={db.db_path!r}, got {captured['db_path']!r}"
     )

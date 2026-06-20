@@ -152,7 +152,7 @@ def test_cmd_get_agent_spawns_fresh_when_only_busy_agent_exists():
     mock_mgr.spawn_agent.return_value = spawned
 
     with patch("juggle_cmd_agents_common.get_db", return_value=db), \
-         patch("juggle_tmux.JuggleTmuxManager", mock_cls), \
+         patch("juggle_cmd_agents_common.JuggleTmuxManager", mock_cls), \
          patch("juggle_cmd_agents_common._resolve_thread", return_value="t-ZT"), \
          patch("juggle_cmd_agents_common._get_settings", return_value=_settings()):
         cmd_get_agent(_get_args())
@@ -197,7 +197,7 @@ def test_cmd_get_agent_cas_prevents_double_assign():
     mock_mgr.spawn_agent.return_value = spawned
 
     with patch("juggle_cmd_agents_common.get_db", return_value=db), \
-         patch("juggle_tmux.JuggleTmuxManager", mock_cls), \
+         patch("juggle_cmd_agents_common.JuggleTmuxManager", mock_cls), \
          patch("juggle_cmd_agents_common._resolve_thread", return_value="t-ZT"), \
          patch("juggle_cmd_agents_common._get_settings", return_value=_settings()):
         cmd_get_agent(_get_args())

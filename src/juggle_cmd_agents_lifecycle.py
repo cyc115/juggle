@@ -10,8 +10,6 @@ that tests can monkeypatch _com.<symbol> and have the patches take effect.
 """
 
 import json
-import os
-import subprocess
 import sys
 from datetime import datetime, timezone
 
@@ -23,104 +21,42 @@ def cmd_get_agent(args):
     db = _com.get_db(db_path=_db_path) if isinstance(_db_path, str) else _com.get_db()
     db.init_db()
     sys.path.insert(0, str(_com.SRC_DIR))
-    from juggle_tmux import JuggleTmuxManager
-    from juggle_db import MAX_BACKGROUND_AGENTS
 
     thread_uuid = _com._resolve_thread(db, args.thread_id)
-    mgr = JuggleTmuxManager()
 
-    all_agents = db.get_all_agents()
-    if len(all_agents) >= MAX_BACKGROUND_AGENTS:
+    # Snapshot existing agent IDs so we can detect whether acquire_agent spawned
+    # a new one (for the " new" suffix in output).
+    existing_ids = {a["id"] for a in db.get_all_agents()}
+
+    import juggle_dispatch_core as _dc
+    from juggle_graph_dispatch import CapacityError
+    from juggle_db import MAX_BACKGROUND_AGENTS
+
+    try:
+        agent = _dc.acquire_agent(
+            db,
+            thread_uuid,
+            role=args.role,
+            model=getattr(args, "model", None),
+            repo=getattr(args, "repo", None),
+            harness=getattr(args, "harness", None),
+            fresh=getattr(args, "fresh", False),
+        )
+    except CapacityError:
         print(
             f"Error: Agent pool full ({MAX_BACKGROUND_AGENTS} max). Wait for one to finish."
         )
         sys.exit(1)
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
-    # Resolve target repo for filtering. Default to the canonical SOURCE repo
-    # (cwd-INDEPENDENT) — NOT the orchestrator's cwd git toplevel, which is
-    # ~/.claude when launched from the plugin install dir (2026-06-16 mis-binding
-    # incident). _spawn_repo_path() prefers canonical_repo_path(), falling back
-    # to cwd toplevel only for non-juggle checkouts.
-    explicit_repo = getattr(args, "repo", None)
-    target_repo = explicit_repo
-    if target_repo is None:
-        from juggle_tmux import _spawn_repo_path
-
-        target_repo = _spawn_repo_path()
-
-    # Resolve requested harness: explicit --harness flag > config default
-    agent_cfg = _com._get_settings().get("agent", {})
-    requested_harness = getattr(args, "harness", None) or agent_cfg.get("harness") or "claude"
-
-    # Walk ranked idle candidates; pick the first one whose pane is actually
-    # ready at the Claude UI prompt (single-shot capture-pane check).  If none
-    # of the idle agents are ready — the pane may still be rendering, mid-
-    # shutdown, or have stray input — fall through to spawn a fresh agent.
-    agent = None
-    if not getattr(args, "fresh", False):
-        for candidate in db.get_ranked_idle_agents(thread_uuid, role=args.role):
-            # Filter by repo_path: NULL = pre-migration → incompatible; skip mismatched
-            agent_repo = candidate.get("repo_path")
-            if agent_repo is None:
-                continue  # pre-migration agent, unknown repo — skip
-            if target_repo and agent_repo != target_repo:
-                continue  # mismatched repo — skip, don't decommission
-            # hard role filter — role score (+1) is not enough to prevent a
-            # wrong-role agent (e.g. planner) winning on context score (+2) for a coder request.
-            if args.role and candidate.get("role") != args.role:
-                continue
-            if candidate.get("harness") != requested_harness:
-                continue  # harness mismatch — spawn fresh on correct harness
-            if not mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
-                continue
-            # CAS assign: only succeeds if the agent is still idle+unassigned at commit
-            # time. Guards against TOCTOU races where two concurrent get-agent calls
-            # both read the same idle agent; the loser's CAS returns False → tries next.
-            if not db.cas_assign_agent(candidate["id"], thread_uuid):
-                continue  # agent taken by a concurrent caller — try next candidate
-            # Reset pane cwd so a stranded agent starts clean
-            reset_dir = target_repo or os.path.expanduser("~")
-            mgr._run_tmux("send-keys", "-t", candidate["pane_id"], f"cd {reset_dir}", "Enter")
-            agent = candidate
-            break
-    is_new = agent is None
-
+    is_new = agent["id"] not in existing_ids
     if is_new:
-        try:
-            agent = mgr.spawn_agent(
-                db, args.role or "researcher", model=getattr(args, "model", None),
-                harness_override=requested_harness,
-            )
-            print(
-                f"[juggle] No idle agent available, spawned new agent {agent['id'][:8]}.",
-                file=sys.stderr,
-            )
-        except (RuntimeError, ValueError) as e:
-            print(f"Error: {e}")
-            sys.exit(1)
-        now = datetime.now(timezone.utc).isoformat()
-        _update_kw: dict = dict(
-            status="busy", assigned_thread=thread_uuid, last_active=now, busy_since=now
+        print(
+            f"[juggle] No idle agent available, spawned new agent {agent['id'][:8]}.",
+            file=sys.stderr,
         )
-        _model_arg = getattr(args, "model", None)
-        if _model_arg:
-            _update_kw["model"] = _model_arg
-        if explicit_repo:
-            _update_kw["repo_path"] = target_repo
-        db.update_agent(agent["id"], **_update_kw)
-    else:
-        # Reused agent: CAS already set status+assigned_thread; apply supplemental fields
-        _extra: dict = {}
-        _model_arg = getattr(args, "model", None)
-        if _model_arg:
-            _extra["model"] = _model_arg
-        if explicit_repo:
-            _extra["repo_path"] = target_repo
-        if _extra:
-            db.update_agent(agent["id"], **_extra)
-
-    db.update_thread(thread_uuid, status="background")
-
     suffix = " new" if is_new else ""
     print(f"{agent['id']} {agent['pane_id']}{suffix}")
 
