@@ -127,10 +127,12 @@ def test_load_legacy_spec_creates_synthetic_topics(db, tmp_path):
     assert g.get_task(db, "n1")["topic_id"] == "T-n1"
 
 
-def test_add_task_requires_topic_when_real_topics_exist(db, tmp_path):
+def test_add_task_no_topic_on_topic_project_succeeds(db, tmp_path):
+    """P6: missing --topic on a real-topic project no longer refuses — routes add_node."""
     cg.cmd_project_graph_load(_load_args(tmp_path, db, TOPIC_SPEC))
-    with pytest.raises(SystemExit):
-        cg.cmd_graph_add_task(_add_args(db, id="t3", deps="t1", topic=None))
+    # Should NOT raise (pre-P6 this raised SystemExit with "topic required")
+    cg.cmd_graph_add_task(_add_args(db, id="t3", deps="t1", topic=None))
+    assert g.get_task(db, "t3") is not None
 
 
 def test_add_task_with_topic_assigns_it(db, tmp_path):
@@ -139,8 +141,8 @@ def test_add_task_with_topic_assigns_it(db, tmp_path):
     assert g.get_task(db, "t3")["topic_id"] == "auth"
 
 
-def test_add_task_auto_creates_synthetic_topic_on_flat_project(db, tmp_path):
+def test_add_task_no_topic_on_flat_project_succeeds(db, tmp_path):
+    """P6: missing --topic on a flat project routes through add_node (no synthetic topic)."""
     cg.cmd_project_graph_load(_load_args(tmp_path, db, LEGACY_SPEC))
     cg.cmd_graph_add_task(_add_args(db, id="n3", deps="n1", topic=None))
-    assert g.get_task(db, "n3")["topic_id"] == "T-n3"
-    assert db_topics.get_topic(db, "T-n3") is not None
+    assert g.get_task(db, "n3") is not None

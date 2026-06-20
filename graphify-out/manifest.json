@@ -95,8 +95,8 @@
     "semantic_hash": ""
   },
   "tests/test_juggle_settings.py": {
-    "mtime": 1781997851.4018645,
-    "ast_hash": "436473022cc7919bc0e79e73c977a699",
+    "mtime": 1781999219.5863767,
+    "ast_hash": "9cb662a325473a793aef2447f88d1fef",
     "semantic_hash": ""
   },
   "tests/test_cockpit_snapshots.py": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "src/juggle_settings.py": {
-    "mtime": 1781997851.364319,
-    "ast_hash": "f3a74bf7f82842df2a6336e111dde6c7",
+    "mtime": 1781999219.5854983,
+    "ast_hash": "f15e5f4cdf4753f8ca3f830a4ccd847f",
     "semantic_hash": ""
   },
   "src/juggle_cockpit_widgets.py": {
@@ -590,8 +590,8 @@
     "semantic_hash": ""
   },
   "TODO.md": {
-    "mtime": 1781997851.25457,
-    "ast_hash": "e44793bfdb2b478a43af864019ea59ae",
+    "mtime": 1781999219.5668457,
+    "ast_hash": "1e47d8c4d9450547c3db2dd274bf068f",
     "semantic_hash": ""
   },
   "README.md": {
@@ -1010,8 +1010,8 @@
     "semantic_hash": ""
   },
   ".claude-plugin/plugin.json": {
-    "mtime": 1781997851.2505476,
-    "ast_hash": "1ccabfd16fccba35afed40c48d8b0ebc",
+    "mtime": 1781999219.5661893,
+    "ast_hash": "ffce28e856a252c7f86f1e097f2563bd",
     "semantic_hash": ""
   },
   ".claude/settings.json": {
@@ -1490,7 +1490,7 @@
     "semantic_hash": ""
   },
   "src/juggle_cmd_graph.py": {
-    "mtime": 1781998552.9798586,
+    "mtime": 1781999219.6575732,
     "ast_hash": "a43622b91b5296759dd9d685c68ebe10",
     "semantic_hash": ""
   },
@@ -1740,7 +1740,7 @@
     "semantic_hash": ""
   },
   "tests/test_graph_add_node.py": {
-    "mtime": 1781998980.6632102,
+    "mtime": 1781999219.6578438,
     "ast_hash": "87832c813b1be5564e7d7ede845cfbc1",
     "semantic_hash": ""
   },
@@ -1750,8 +1750,8 @@
     "semantic_hash": ""
   },
   "tests/test_graph_spec_topics.py": {
-    "mtime": 1781997851.3932204,
-    "ast_hash": "ed3d5cba56370a339ded1961f458d29b",
+    "mtime": 1781999254.413006,
+    "ast_hash": "4f37e35572e7ea3f2c0272e4bc947478",
     "semantic_hash": ""
   },
   "tests/test_migration_topics.py": {
@@ -2355,7 +2355,7 @@
     "semantic_hash": ""
   },
   "src/juggle_add_node.py": {
-    "mtime": 1781998548.2841134,
+    "mtime": 1781999219.6572988,
     "ast_hash": "cc3709139e5abe3d88697a25d716a09e",
     "semantic_hash": ""
   },
@@ -2370,7 +2370,7 @@
     "semantic_hash": ""
   },
   "tests/test_p6_projects_as_tags.py": {
-    "mtime": 1781998336.333239,
+    "mtime": 1781999219.6580727,
     "ast_hash": "e2e76e0fcd920ef4b1c92ddee9cc3e4e",
     "semantic_hash": ""
   }
