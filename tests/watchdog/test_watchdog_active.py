@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from juggle_watchdog_singleton import find_watchdog_pids
+
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 TEST_SESSION = "juggle-watchdog-test"
 
@@ -22,6 +24,22 @@ _watchdog = pytest.importorskip(
     "juggle_watchdog", reason="juggle_watchdog not yet implemented"
 )
 inspect_agent = _watchdog.inspect_agent
+
+
+@pytest.fixture(autouse=True)
+def assert_no_leaked_daemons():
+    """REGRESSION PIN (#4713): every test in this module must leave zero new
+    daemon processes behind. Module-level autouse means it only covers
+    test_watchdog_active.py — not other watchdog tests that spawn intentionally.
+    """
+    before = set(find_watchdog_pids())
+    yield
+    after = set(find_watchdog_pids())
+    new_leaks = after - before
+    assert not new_leaks, (
+        f"Watchdog daemon(s) leaked after test: PIDs {sorted(new_leaks)}. "
+        "Every test that can spawn a daemon MUST kill it in teardown."
+    )
 
 
 def _wait_pane(pane_id: str, marker: str, timeout: float = 5.0, interval: float = 0.05) -> str:

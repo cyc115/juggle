@@ -94,20 +94,3 @@ def fake_agent(tmux_pane, test_db):
         conn.execute("DELETE FROM threads WHERE id = ?", (tid,))
 
 
-@pytest.fixture(autouse=True)
-def assert_no_leaked_daemons():
-    """REGRESSION PIN (#4713): every watchdog-active test must leave zero
-    daemon processes behind. A leak here means a rogue daemon could tick
-    against the prod DB across the entire test session.
-
-    Checks both before (sanity) and after the test so a pre-existing leak
-    from outside the suite doesn't produce a false positive.
-    """
-    before = set(find_watchdog_pids())
-    yield
-    after = set(find_watchdog_pids())
-    new_leaks = after - before
-    assert not new_leaks, (
-        f"Watchdog daemon(s) leaked after test: PIDs {sorted(new_leaks)}. "
-        "Every test that can spawn a daemon MUST kill it in teardown."
-    )

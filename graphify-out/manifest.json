@@ -350,8 +350,8 @@
     "semantic_hash": ""
   },
   "tests/watchdog/conftest.py": {
-    "mtime": 1781972724.8177855,
-    "ast_hash": "0d160c066e7dc1b1ac0bb594a03a25e9",
+    "mtime": 1781974155.445654,
+    "ast_hash": "b7e47d5e8e8e272a73761578af9b8729",
     "semantic_hash": ""
   },
   "tests/watchdog/__init__.py": {
@@ -370,8 +370,8 @@
     "semantic_hash": ""
   },
   "tests/watchdog/test_watchdog_active.py": {
-    "mtime": 1781972857.6106625,
-    "ast_hash": "1eaefd7d1ebe2b6267df885777802db7",
+    "mtime": 1781974206.1696384,
+    "ast_hash": "70ea910da668897104aefb3ac8469a9a",
     "semantic_hash": ""
   },
   "scripts/measure_agent_compliance.py": {
