@@ -240,6 +240,12 @@ def recompute_topic_ready(db, project_id) -> list[str]:
             )
         if cur.rowcount == 1:
             newly.append(tid)
+    if newly:
+        try:
+            from juggle_watchdog_poke import poke_watchdog
+            poke_watchdog(db.db_path)
+        except Exception:
+            pass  # 30s backstop covers any poke failure
     return newly
 
 

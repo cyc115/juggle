@@ -15,6 +15,7 @@ import logging
 import os
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -138,11 +139,22 @@ _running = True
 # In-memory Enter retry count; resets on restart (stalled-silent is fallback)
 _enter_sent: dict[str, int] = {}
 
+# P4 tick-on-demand: threading.Event coalesces N concurrent SIGUSR1 signals
+# into at most one extra tick. The handler ONLY sets the event (async-signal-safe
+# in CPython: GIL + threading.Event.set() is lock-free in the signal context).
+# All DB/tmux work happens in the main loop thread after event.wait() returns.
+_tick_event = threading.Event()
+
+
+def _handle_sigusr1(signum, frame):
+    _tick_event.set()  # idempotent; coalesces multiple concurrent signals
+
 
 def _handle_sigterm(signum, frame):
     global _running
     _log.info("Watchdog: SIGTERM received, shutting down")
     _running = False
+    _tick_event.set()  # unblock event.wait() so the loop exits promptly
 
 
 def _get_dirs() -> tuple[Path, Path]:
@@ -347,6 +359,7 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
     signal.signal(signal.SIGINT, _handle_sigterm)
+    signal.signal(signal.SIGUSR1, _handle_sigusr1)
 
     try:
         db = JuggleDB(str(DB_PATH))
@@ -384,6 +397,13 @@ def main() -> None:
                         _SUPERVISOR_PID,
                     )
                     break
+            # P4: wait up to _POLL_INTERVAL for a SIGUSR1 poke or timeout.
+            # Clear BEFORE _poll_once so a signal arriving during the tick
+            # sets the event again → exactly one follow-up tick (coalescing).
+            _tick_event.wait(timeout=_POLL_INTERVAL)
+            _tick_event.clear()
+            if not _running:
+                break
             try:
                 _poll_once(db, mgr)
             except Exception as exc:
@@ -393,7 +413,6 @@ def main() -> None:
                     record_error(exc, "juggle_watchdog.poll")
                 except Exception:
                     pass
-            time.sleep(_POLL_INTERVAL)
     finally:
         _cleanup_singleton_pid()
         _log.info("Watchdog stopped.")

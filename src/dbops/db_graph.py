@@ -281,6 +281,12 @@ def recompute_ready(db, project_id: str) -> list[str]:
             )
         if cur.rowcount == 1:
             newly.append(task_id)
+    if newly:
+        try:
+            from juggle_watchdog_poke import poke_watchdog
+            poke_watchdog(db.db_path)
+        except Exception:
+            pass  # 30s backstop covers any poke failure
     return newly
 
 
