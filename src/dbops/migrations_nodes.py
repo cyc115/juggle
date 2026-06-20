@@ -65,25 +65,47 @@ def apply_nodes_migration(conn: sqlite3.Connection) -> None:
         _backfill_node_edges(conn)
         conn.commit()
         _log.info("Migration 44: backfill complete")
-    except sqlite3.OperationalError as e:
+    except Exception as e:
         conn.rollback()
-        _log.warning("Migration 44 (backfill) failed: %s", e)
+        _log.error("Migration 44 (backfill) FAILED — nodes table left empty: %s", e)
+        raise
+
+
+def _threads_columns(conn: sqlite3.Connection) -> frozenset:
+    """Return the set of column names that currently exist in threads."""
+    return frozenset(r[1] for r in conn.execute("PRAGMA table_info(threads)").fetchall())
 
 
 def _backfill_threads(conn: sqlite3.Connection) -> None:
-    """Step 2: threads → nodes (kind='conversation')."""
-    rows = conn.execute("""
-        SELECT id, topic, status, session_id, summary, key_decisions,
-               open_questions, last_user_intent, agent_task_id, agent_result,
-               show_in_list, summarized_msg_count,
-               last_dispatched_task, last_dispatched_role, last_dispatched_model,
-               worktree_path, worktree_branch, main_repo_path,
-               created_at, last_active
-        FROM threads
-    """).fetchall()
+    """Step 2: threads → nodes (kind='conversation').
+
+    Robust to older/minimal threads schemas: only selects columns that exist,
+    defaulting missing optional columns to None. This prevents a silent no-op
+    when threads lacks metadata columns added in later migrations.
+    """
+    existing = _threads_columns(conn)
+
+    # Always-present columns (part of the original threads schema)
+    # Optional columns default to NULL in SELECT if absent from table
+    optional = [
+        "session_id", "summary", "key_decisions", "open_questions",
+        "last_user_intent", "agent_task_id", "agent_result",
+        "show_in_list", "summarized_msg_count",
+        "last_dispatched_task", "last_dispatched_role", "last_dispatched_model",
+        "worktree_path", "worktree_branch", "main_repo_path",
+    ]
+    select_cols = ["id", "topic", "status", "created_at", "last_active"]
+    for col in optional:
+        select_cols.append(col if col in existing else f"NULL AS {col}")
+
+    rows = conn.execute(
+        f"SELECT {', '.join(select_cols)} FROM threads"
+    ).fetchall()
 
     for r in rows:
         state = _THREAD_STATUS_MAP.get(r["status"], "open")
+        # r[col] is already None for absent columns (NULL AS col in SELECT)
+        intent = r["last_user_intent"] or ""
         conn.execute("""
             INSERT OR IGNORE INTO nodes (
                 id, kind, title, objective, state,
@@ -105,12 +127,12 @@ def _backfill_threads(conn: sqlite3.Connection) -> None:
                 ?, ?
             )
         """, (
-            r["id"], r["topic"], r["last_user_intent"] or "", state,
+            r["id"], r["topic"], intent, state,
             r["worktree_path"], r["worktree_branch"], r["main_repo_path"],
             r["agent_task_id"], r["agent_result"],
             r["last_dispatched_task"], r["last_dispatched_role"], r["last_dispatched_model"],
             r["session_id"], r["summary"], r["key_decisions"], r["open_questions"],
-            r["last_user_intent"] or "", r["summarized_msg_count"], r["show_in_list"],
+            intent, r["summarized_msg_count"] or 0, r["show_in_list"] if r["show_in_list"] is not None else 1,
             r["created_at"], r["last_active"],
         ))
 

@@ -473,3 +473,103 @@ def test_old_table_rows_unchanged(tmp_path):
     for t, count in before.items():
         after = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
         assert after == count, f"Old table {t} changed: was {count}, now {after}"
+
+
+# ---------------------------------------------------------------------------
+# D2 regression pins: backfill robustness + no silent empty-nodes
+# (2026-06-20: migration 44 backfill silently no-op'd on minimal threads schema)
+# ---------------------------------------------------------------------------
+
+
+def _make_minimal_threads_db(tmp_path) -> sqlite3.Connection:
+    """Minimal threads table missing optional columns (summary, key_decisions, etc.).
+
+    Simulates an older/migrated DB where threads lacks nullable metadata columns
+    that the full canonical schema has. Migration 44 must still backfill thread
+    rows into nodes using only the columns that exist.
+    """
+    db_path = tmp_path / "minimal.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE threads (
+            id         TEXT PRIMARY KEY,
+            topic      TEXT NOT NULL,
+            status     TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            last_active TEXT NOT NULL
+        );
+        CREATE TABLE graph_topics (
+            id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+            title TEXT NOT NULL, objective TEXT NOT NULL DEFAULT '',
+            state TEXT NOT NULL DEFAULT 'ready',
+            thread_id TEXT, handoff TEXT, diffstat TEXT,
+            verified_at TEXT, merged_sha TEXT, is_mirror INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE graph_tasks (
+            id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+            title TEXT NOT NULL, prompt TEXT NOT NULL DEFAULT '',
+            verify_cmd TEXT, state TEXT NOT NULL DEFAULT 'ready',
+            thread_id TEXT, handoff TEXT, diffstat TEXT, verified_at TEXT,
+            topic_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE graph_edges (
+            task_id TEXT NOT NULL, depends_on_id TEXT NOT NULL,
+            PRIMARY KEY (task_id, depends_on_id)
+        );
+    """)
+    now = _now()
+    conn.execute(
+        "INSERT INTO threads (id, topic, status, created_at, last_active) VALUES (?, ?, ?, ?, ?)",
+        ("th-min-1", "Minimal thread", "active", now, now),
+    )
+    conn.commit()
+    return conn
+
+
+def test_backfill_threads_minimal_schema_still_populates_nodes(tmp_path):
+    """REGRESSION PIN (2026-06-20 D2): migration 44 against a minimal threads
+    table (missing summary, key_decisions, etc.) must still insert thread rows
+    into nodes — it must NOT silently no-op and leave nodes empty.
+
+    Pre-fix: _backfill_threads SELECT'd all columns including 'summary'; on a
+    minimal schema this threw OperationalError, which was caught+rolled back,
+    leaving nodes empty with only a WARNING log.
+    """
+    conn = _make_minimal_threads_db(tmp_path)
+    _run_migration(conn)
+
+    count = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+    assert count > 0, (
+        "nodes table is EMPTY after migration 44 against minimal threads schema — "
+        "backfill silently no-op'd (D2 regression)"
+    )
+
+    # The thread row must appear as a conversation node with correct fields
+    row = conn.execute(
+        "SELECT id, kind, title, state FROM nodes WHERE id='th-min-1'"
+    ).fetchone()
+    assert row is not None, "th-min-1 not backfilled into nodes"
+    assert row["kind"] == "conversation"
+    assert row["state"] == "open"  # 'active' → 'open'
+
+
+def test_backfill_threads_full_schema_populates_nodes(tmp_path):
+    """REGRESSION PIN (2026-06-20 D2): migration 44 against the full canonical
+    threads schema (with summary, key_decisions, etc.) must populate nodes.
+    This pins that the robust column-introspection fix doesn't break the
+    happy path for fully-migrated production DBs.
+    """
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+
+    count = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+    assert count > 0, "nodes table is EMPTY after migration 44 against full schema"
+
+    # Full schema: summary and last_user_intent should be preserved
+    row = conn.execute(
+        "SELECT summary, objective FROM nodes WHERE id='th-active'"
+    ).fetchone()
+    assert row is not None, "th-active not backfilled"
+    assert row["objective"] == "do stuff"  # last_user_intent mapped to objective
