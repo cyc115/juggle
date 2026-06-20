@@ -57,7 +57,16 @@ DEFAULTS: dict = {
             "(trading-edge: `uv run pytest -m pilot`; "
             "juggle: full pytest + doctor --dry-run on a tmp DB) "
             "and paste the suite summary line in your completion result. "
-            "Completion without harness evidence is invalid.\n"
+            "Completion without harness evidence is invalid.\n\n"
+            "### Terminal Checklist (REQUIRED before integrate)\n"
+            "1. Finish the work, or consciously decide its state.\n"
+            "2. Run `git status` + `git diff` — DECIDE whether the result is mergeable.\n"
+            "3. Commit ALL intended changes with a semantic message — OR if the work is\n"
+            "   half-baked or errored, do NOT commit; call complete-agent with 'PARTIAL'\n"
+            "   or 'BLOCKER' instead. Never call integrate on an empty or dirty branch.\n"
+            "4. Run `juggle integrate <thread>`, then verify the work landed on origin/main:\n"
+            "   `git fetch origin -q && git log origin/main --oneline -3`.\n"
+            "5. Call complete-agent ONLY after that verification passes.\n"
         ),
         "planner": (
             "## Role: Planner\n\n"

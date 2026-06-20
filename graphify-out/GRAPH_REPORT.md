@@ -1,16 +1,16 @@
-# Graph Report - juggle-juggle-CB  (2026-06-20)
+# Graph Report - juggle-juggle-CC  (2026-06-20)
 
 ## Corpus Check
-- 446 files · ~464,981 words
+- 447 files · ~466,047 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 11096 nodes · 18263 edges · 1597 communities (465 shown, 1132 thin omitted)
-- Extraction: 73% EXTRACTED · 27% INFERRED · 0% AMBIGUOUS · INFERRED: 4910 edges (avg confidence: 0.63)
+- 11151 nodes · 18359 edges · 1612 communities (480 shown, 1132 thin omitted)
+- Extraction: 73% EXTRACTED · 27% INFERRED · 0% AMBIGUOUS · INFERRED: 4916 edges (avg confidence: 0.64)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `eb8cfe89`
+- Built from commit: `8813346d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -1602,6 +1602,21 @@
 - [[_COMMUNITY_Community 1594|Community 1594]]
 - [[_COMMUNITY_Community 1595|Community 1595]]
 - [[_COMMUNITY_Community 1596|Community 1596]]
+- [[_COMMUNITY_Community 1597|Community 1597]]
+- [[_COMMUNITY_Community 1598|Community 1598]]
+- [[_COMMUNITY_Community 1599|Community 1599]]
+- [[_COMMUNITY_Community 1600|Community 1600]]
+- [[_COMMUNITY_Community 1601|Community 1601]]
+- [[_COMMUNITY_Community 1602|Community 1602]]
+- [[_COMMUNITY_Community 1603|Community 1603]]
+- [[_COMMUNITY_Community 1604|Community 1604]]
+- [[_COMMUNITY_Community 1605|Community 1605]]
+- [[_COMMUNITY_Community 1606|Community 1606]]
+- [[_COMMUNITY_Community 1607|Community 1607]]
+- [[_COMMUNITY_Community 1608|Community 1608]]
+- [[_COMMUNITY_Community 1609|Community 1609]]
+- [[_COMMUNITY_Community 1610|Community 1610]]
+- [[_COMMUNITY_Community 1611|Community 1611]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `JuggleDB` - 997 edges
@@ -1620,27 +1635,27 @@
   tests/test_graph_contract.py → src/juggle_cmd_agents_graph.py
 - `test_check_task_guard_refuses_tick_owned_states()` --calls--> `check_task_guard()`  [INFERRED]
   tests/test_graph_contract.py → src/juggle_cmd_agents_graph.py
-- `test_falls_back_to_thread_prefix_when_no_user_label()` --calls--> `_cell_text()`  [INFERRED]
-  tests/test_cockpit_graph_thread_label.py → src/juggle_cockpit_graph_panel.py
-- `test_running_node_shows_user_label_not_thread_uuid()` --calls--> `_cell_text()`  [INFERRED]
-  tests/test_cockpit_graph_thread_label.py → src/juggle_cockpit_graph_panel.py
-- `test_running_task_shows_user_label_not_thread_uuid()` --calls--> `_cell_text()`  [INFERRED]
-  tests/test_cockpit_graph_thread_label.py → src/juggle_cockpit_graph_panel.py
+- `CockpitApp` --uses--> `Convert a thread label like 'A' or 'AB' to a list of Textual key names.     Acti`  [INFERRED]
+  src/juggle_cockpit.py → tests/test_cockpit_keys.py
+- `CockpitApp` --uses--> `Convert a thread label like 'A' or 'AB' to a list of Textual key names.     Acti`  [INFERRED]
+  src/juggle_cockpit.py → tests/test_cockpit_keys.py
+- `CockpitApp` --uses--> `Pressing 's' with an unknown label shows a warning notification (no crash).`  [INFERRED]
+  src/juggle_cockpit.py → tests/test_cockpit_keys.py
 
 ## Import Cycles
 - 1-file cycle: `src/schedules/common.py -> src/schedules/common.py`
 - 1-file cycle: `src/harnesses/__init__.py -> src/harnesses/__init__.py`
 - 1-file cycle: `src/juggle_selfheal.py -> src/juggle_selfheal.py`
 
-## Communities (1597 total, 1132 thin omitted)
+## Communities (1612 total, 1132 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.02
-Nodes (188): Return the tail of text, capped at max_chars., Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Return the tail of text, capped at max_chars., Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words., OpenRouter (Tier 1) -> Haiku subprocess (Tier 2) -> None on total failure.     N, Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words. (+180 more)
+Nodes (230): Return the tail of text, capped at max_chars., Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Return the tail of text, capped at max_chars., Return the tail of text, capped at max_chars., Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words. (+222 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.04
-Nodes (212): App, ScheduledTask, CockpitApp, GraphDag, Lazily-loaded DAG for the armed project (graph mode only). Read-only., Lazily-loaded DAG for one armed project (graph mode only). Read-only., Generic one-line input modal. Dismisses with the stripped value or None.      di, Single-keypress y/N confirm gate.      Dismisses True on 'y', False on 'n' or Es (+204 more)
+Nodes (194): App, CockpitState, ScheduledTask, CockpitApp, GraphDag, Lazily-loaded DAG for the armed project (graph mode only). Read-only., Lazily-loaded DAG for one armed project (graph mode only). Read-only., Generic one-line input modal. Dismisses with the stripped value or None.      di (+186 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.07
@@ -1667,24 +1682,24 @@ Cohesion: 0.04
 Nodes (97): Panel, Cockpit screenshot rendering (PNG/JPG/SVG via Rich record + cairosvg).  Extracte, Render the cockpit to ``path`` (PNG/JPG/SVG). Returns the written path.      gra, save_screenshot(), _add_topic_row(), _pane_border(), pick_breakpoint(), Panel (+89 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.13
-Nodes (18): _capture_pane(), _cleanup_singleton_pid(), _get_dirs(), _is_pid_alive_local(), main(), Watchdog daemon loop — library logic behind scripts/juggle-agent-watchdog.  Owns, Configure root logging (file + stdout). Called from main() so importing     this, Mark this process as the orchestrator and chdir to a stable non-worktree dir. (+10 more)
+Cohesion: 0.11
+Nodes (25): JuggleTmuxManager, _capture_pane(), _cleanup_singleton_pid(), _get_dirs(), _is_pid_alive_local(), main(), prune_stale_watchdog_pidfiles(), JuggleDB (+17 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.09
 Nodes (26): check_orphaned_threads(), Scan background threads with no active agent; auto-recover or file action items., Scan background threads with no active agent; auto-recover or file action items., Scan background threads with no active agent; auto-recover or file action items., Scan background threads with no active agent; auto-recover or file action items., Scan background threads with no active agent; auto-recover or file action items., Orphan auto-recovery attempt (< max) → notification only., Orphan with max attempts already reached → action item with [RQ] + Decide. (+18 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.11
-Nodes (42): _attribute_tool_errors(), auto_approve_blocked_agents(), _autopilot_context(), _bash_write_pattern(), _classify_context(), _do_class_b_scan(), get_db(), _get_session_id() (+34 more)
+Cohesion: 0.10
+Nodes (44): _attribute_tool_errors(), auto_approve_blocked_agents(), _autopilot_context(), _bash_write_pattern(), _classify_context(), _do_class_b_scan(), get_db(), _get_session_id() (+36 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.06
 Nodes (99): _add_skip_markers(), _branch_name(), _build_pr_description(), _extract_relevant_src(), _find_or_create_schedule_thread(), _find_untested_functions(), fx1_ruff(), fx2_vulture() (+91 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.12
-Nodes (36): assign_project_background(), _build_classifier_prompt(), cmd_project_assign(), infer_project_id(), Pure function: build the LLM classification prompt from structured inputs., Pure function: build the LLM classification prompt from structured inputs., Returns (project_id, confidence). Falls back to (INBOX, 0.0) on any failure., Fire-and-forget background project assignment via detached subprocess.      Uses (+28 more)
+Cohesion: 0.16
+Nodes (34): _build_classifier_prompt(), cmd_project_edit(), infer_project_id(), Pure function: build the LLM classification prompt from structured inputs., Pure function: build the LLM classification prompt from structured inputs., Returns (project_id, confidence). Falls back to (INBOX, 0.0) on any failure., Returns (project_id, confidence). Falls back to (INBOX, 0.0) on any failure., _edit_args() (+26 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 0.11
@@ -1695,8 +1710,8 @@ Cohesion: 0.12
 Nodes (27): Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose, Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose, Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose, Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose, Reap agents idle longer than agent_idle_ttl_secs.      Always reaps agents whose, reap_stale_agents(), Tests for stale-agent reaping at 12h TTL., Reaper should never reap agent assigned to current thread. (+19 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.17
-Nodes (18): _integrate(), _node_thread(), Autopilot Phase 3 — verify_cmd pre-merge inside _run_integrate (DA M3) plus pre-, Regression pin (2026-06-10, DA M3): verify_cmd ran post-merge in rev 1     of th, Regression pin (2026-06-10, DA M3): verify_cmd ran post-merge in rev 1     of th, Diffstat is captured before verify runs — available for diagnosis., Diffstat is captured before verify runs — available for diagnosis., Repo test_cmd green but node verify_cmd red → no merge (both must pass). (+10 more)
+Cohesion: 0.16
+Nodes (19): _integrate(), _node_thread(), Autopilot Phase 3 — verify_cmd pre-merge inside _run_integrate (DA M3) plus pre-, Regression pin (2026-06-10, DA M3): verify_cmd ran post-merge in rev 1     of th, Regression pin (2026-06-10, DA M3): verify_cmd ran post-merge in rev 1     of th, Diffstat is captured before verify runs — available for diagnosis., Diffstat is captured before verify runs — available for diagnosis., Repo test_cmd green but node verify_cmd red → no merge (both must pass). (+11 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.06
@@ -1707,8 +1722,8 @@ Cohesion: 0.06
 Nodes (30): JuggleDB tests: archive_thread, get_archive_candidates, unarchive_thread (split, Already-archived threads are excluded from candidates., Background threads inactive > 48h are NOT candidates (excluded by status filter), unarchive_thread sets show_in_list=1., unarchive_thread sets status='active'., unarchive_thread return value matches the thread's (new) user_label., create → archive → unarchive produces expected state., create → archive → unarchive produces expected state.      T-slug-wheel: archive (+22 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.10
-Nodes (41): cmd_complete_agent(), cmd_complete_agent(), Mark agent complete: thread → closed, create notifications_v2 row,     convert a, Mark agent complete: thread → closed, create notifications_v2 row,     convert a, cmd_release_agent(), Mark agent complete: thread → closed, create notifications_v2 row,     convert a, Mark agent complete: thread → closed, create notifications_v2 row,     convert a, db() (+33 more)
+Cohesion: 0.09
+Nodes (38): cmd_complete_agent(), Mark agent complete: thread → closed, create notifications_v2 row,     convert a, Mark agent complete: thread → closed, create notifications_v2 row,     convert a, cmd_release_agent(), db(), _no_keyword_items(), Tests for A1–A3 auto-action-item generation (v1.21.2)., partial unique index' (SQL term) must not trigger draft detection. (+30 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.09
@@ -1724,7 +1739,7 @@ Nodes (23): dogfood run() exits early (rc=1) when agents are busy, dogfood run()
 
 ### Community 23 - "Community 23"
 Cohesion: 0.01
-Nodes (188): Record pending user decisions in current thread's open_questions., Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).      With -, Clear pending decisions by tool_use_id prefix., Record pending user decisions in current thread's open_questions., Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).      With -, Record pending user decisions in current thread's open_questions., Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).      With -, Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).      With - (+180 more)
+Nodes (284): MouseDown, MouseUp, Resize, Record pending user decisions in current thread's open_questions., Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).      With -, Clear pending decisions by tool_use_id prefix., Record pending user decisions in current thread's open_questions., Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).      With - (+276 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.27
@@ -1772,7 +1787,7 @@ Nodes (15): _configure_devices(), _load_talkback(), TDD tests for talkback event
 
 ### Community 35 - "Community 35"
 Cohesion: 0.14
-Nodes (21): mark_graph_node(), mark_graph_task(), _notify_failure(), Failure aftermath shared by completion marking and agent death:     Phase 3 prop, If the thread is bound to a graph node, record the completion outcome.      Maps, If the thread is bound to a graph node, record the completion outcome.      Maps, If the thread is bound to a graph task, record the completion outcome.      Maps, Failure aftermath shared by completion marking and agent death:     Phase 3 prop (+13 more)
+Nodes (30): branch_commits_ahead(), is_worktree_dirty(), Return True if the worktree has any uncommitted changes (staged or unstaged)., Return the number of commits on *branch* not yet in *target*; -1 on error., bare_repo(), _git(), _make_db(), _make_worktree() (+22 more)
 
 ### Community 36 - "Community 36"
 Cohesion: 0.13
@@ -1839,8 +1854,8 @@ Cohesion: 0.50
 Nodes (3): isolated_schedule_env(), Conftest for schedule tests — sets _JUGGLE_TEST_DB to an in-memory path., Redirect DB, state file, and reports dir for each test.
 
 ### Community 52 - "Community 52"
-Cohesion: 0.31
-Nodes (7): Persist column widths before handing off to Textual's exit machinery.          O, Persist column widths before handing off to Textual's exit machinery.          O, Write current column widths to config.json. Last-writer-wins on quit., Persist column widths before handing off to Textual's exit machinery.          O, Persist column widths before handing off to Textual's exit machinery.          O, Persist column widths before handing off to Textual's exit machinery.          O, Write current column widths to config.json. Last-writer-wins on quit.
+Cohesion: 0.21
+Nodes (10): Persist column widths before handing off to Textual's exit machinery.          O, Persist column widths before handing off to Textual's exit machinery.          O, Write current column widths to config.json. Last-writer-wins on quit., Persist column widths before handing off to Textual's exit machinery.          O, Persist column widths before handing off to Textual's exit machinery.          O, Persist column widths before handing off to Textual's exit machinery.          O, Persist column widths before handing off to Textual's exit machinery.          O, Write current column widths to config.json. Last-writer-wins on quit. (+2 more)
 
 ### Community 53 - "Community 53"
 Cohesion: 0.18
@@ -1859,52 +1874,52 @@ Cohesion: 0.18
 Nodes (6): Calls subprocess.run with gh command, Passes check parameter to subprocess.run, Captures output by default, Respects capture parameter, Returns CompletedProcess object, TestGhRun
 
 ### Community 60 - "Community 60"
-Cohesion: 0.12
-Nodes (25): _normalize_line(), parse_summary_response(), Topic summarizer — LLM-driven plain-language summary for the topic-info modal., Parse LLM response into {{context, why, what, result}}. Pure function., Normalize a line for header matching.      Returns (matched_key, remainder_text), Parse LLM response into {context, why, what, result}. Pure function.      Robust, _all_filled(), Regression pin (2026-06-17): parse_summary_response failed on markdown-wrapped h (+17 more)
+Cohesion: 0.15
+Nodes (22): parse_summary_response(), Parse LLM response into {{context, why, what, result}}. Pure function., Parse LLM response into {context, why, what, result}. Pure function.      Robust, _all_filled(), Regression pin (2026-06-17): parse_summary_response failed on markdown-wrapped h, CONTEXT: (uppercase) should also parse., Context - text (dash instead of colon) style., summarize_topic must return non-empty sections when LLM emits markdown headers. (+14 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.05
-Nodes (58): create_task(), backfill_mirror_topics(), mirror_delete_thread(), _mirror_state(), mirror_upsert_thread(), dbops.db_mirror — mirror-topic projection for graph-mirrors-threads (Option 1)., Idempotent backfill: create/update mirror topics for all non-archived     thread, Sync mirror topics for one project.      - Upsert mirrors for all live (non-term (+50 more)
+Cohesion: 0.07
+Nodes (39): backfill_mirror_topics(), mirror_delete_thread(), _mirror_state(), mirror_upsert_thread(), dbops.db_mirror — mirror-topic projection for graph-mirrors-threads (Option 1)., Idempotent backfill: create/update mirror topics for all non-archived     thread, Sync mirror topics for one project.      - Upsert mirrors for all live (non-term, Create or update the mirror topic for ``thread_id`` in ``project_id``.      Sing (+31 more)
 
 ### Community 62 - "Community 62"
 Cohesion: 0.10
 Nodes (43): _bind_merged(), db(), _mk_busy_agent(), _mk_project(), _mk_task(), _mk_topic(), JuggleDB, Path (+35 more)
 
 ### Community 75 - "Community 75"
-Cohesion: 0.16
-Nodes (19): _bind_merged(), db(), JuggleDB, Path, dbops.db_topics — topic CRUD, shared state machine, DERIVED topic deps (task edg, T-verified-merged-sha: topic→verified requires a recorded merged_sha that     is, Topic A depends on topic B iff any task of A has an edge to a task of B.     Int, The agent executes tasks sequentially in intra-topic dependency order. (+11 more)
+Cohesion: 0.21
+Nodes (16): _bind_merged(), dbops.db_topics — topic CRUD, shared state machine, DERIVED topic deps (task edg, T-verified-merged-sha: topic→verified requires a recorded merged_sha that     is, Topic A depends on topic B iff any task of A has an edge to a task of B.     Int, The agent executes tasks sequentially in intra-topic dependency order., Topic A depends on topic B iff any task of A has an edge to a task of B.     Int, The agent executes tasks sequentially in intra-topic dependency order., _task() (+8 more)
 
 ### Community 82 - "Community 82"
-Cohesion: 0.13
-Nodes (8): Request with one retry after auto-restart on failure., Attempt to restart the juggle-hindsight Docker service., Append error to log file., Check if Hindsight service is healthy., Recall memories matching query via vector search., Reflect on memories matching query. Returns LLM-synthesized answer or empty stri, Retain content as memory. Non-blocking — failures are logged, not raised., Make HTTP request to Hindsight API. Returns parsed JSON or empty dict.
+Cohesion: 0.14
+Nodes (15): _classify_failure(), cmd_fail_agent(), _classify_failure(), juggle_cmd_agents_common — Shared symbols and pure classifiers for agent command, Return 'transient' or 'persistent'. Case-insensitive substring match., Return 'transient' or 'persistent'. Case-insensitive substring match., Route agent failure: transient → leave running for retry; persistent → action_it, Return 'transient' or 'persistent'. Case-insensitive substring match. (+7 more)
 
 ### Community 84 - "Community 84"
-Cohesion: 0.16
-Nodes (24): _add_commit(), _git(), _make_repo(), _make_repo_with_remote(), _make_simple_db(), _make_worktree(), Regression pins: integrate phantom merged_sha + stranded-work bug (2026-06-16 in, 2026-06-16: _record_merged_sha with a branch NOT merged to main must NOT     wri (+16 more)
+Cohesion: 0.15
+Nodes (27): Record the merged commit (``ref`` tip, now on main) on the topic bound to     th, _record_merged_sha(), _add_commit(), _git(), _make_repo(), _make_repo_with_remote(), _make_simple_db(), _make_worktree() (+19 more)
 
 ### Community 150 - "Community 150"
-Cohesion: 0.07
-Nodes (44): cmd_get_agent(), cmd_decommission_agent(), cmd_get_agent(), cmd_list_agents(), cmd_spawn_agent(), juggle_cmd_agents_lifecycle — Agent pool lifecycle commands.  Owns: cmd_get_agen, _get_args(), Regression tests for get-agent busy-guard (2026-06-15).  Symptom: get-agent ZT r (+36 more)
+Cohesion: 0.24
+Nodes (21): cmd_get_agent(), cmd_get_agent(), _agent(), _get_args(), _mock_db(), TDD tests for Bug1 (auto-create repo resolution) and Bug2 (harness-aware reuse)., Idle agent with matching harness is reused (no fresh spawn)., Idle agent with different harness is skipped; fresh agent is spawned. (+13 more)
 
 ### Community 164 - "Community 164"
 Cohesion: 0.13
 Nodes (14): Acceptance Criteria (agent-verifiable), Devil's Advocate — Resolved Findings (now acceptance criteria), File Structure, Harness smoke gate (CLAUDE.md requirement), Risks, Scope Boundaries, Task 1: Repo config schema in settings, Task 2: `_create_worktree` helper (+6 more)
 
 ### Community 171 - "Community 171"
-Cohesion: 0.14
-Nodes (29): _add_skip_markers(), _branch_name(), _build_pr_description(), _extract_relevant_src(), _find_or_create_schedule_thread(), _find_untested_functions(), fx1_ruff(), fx2_vulture() (+21 more)
+Cohesion: 0.17
+Nodes (26): _add_skip_markers(), _branch_name(), _build_pr_description(), _extract_relevant_src(), _find_or_create_schedule_thread(), _find_untested_functions(), fx1_ruff(), fx2_vulture() (+18 more)
 
 ### Community 201 - "Community 201"
-Cohesion: 0.18
-Nodes (29): _existing_thread_titles(), _generate_title_for_thread(), Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words., Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words., Non-empty titles of all OTHER threads, for dedup-awareness. Fail-soft., Generate a specific, non-duplicate title. OpenRouter → Haiku → first 5 words., _cfg(), _db() (+21 more)
+Cohesion: 0.21
+Nodes (26): _generate_title_for_thread(), Generate a 5-10 word title. Fallback chain: OpenRouter → Haiku → first 5 words., Generate a specific, non-duplicate title. OpenRouter → Haiku → first 5 words., _cfg(), _db(), Tests for title generation fallback chain and settings defaults., OpenRouter is skipped when OPENROUTER_KEY env var is absent (new gating mechanis, _cheap_llm_call returns overlong OpenRouter text; _generate_title_for_thread (+18 more)
 
 ### Community 202 - "Community 202"
 Cohesion: 0.09
 Nodes (21): 1. Concrete Stall Mechanisms with Evidence, 2. Hypothesis Verdict, 3. Does Recovery Re-Use Bloated Agents?, 4. Ranked Fixes, 5. Agent-Verifiable Checks per Fix, 6. Summary Table, Executive Summary, Fix 1 ⭐ HIGHEST LEVERAGE — Context-threshold decommission in `execute_recovery` (CODE) (+13 more)
 
 ### Community 227 - "Community 227"
-Cohesion: 0.10
-Nodes (27): cmd_agent_tools(), _cmd_list_selfheal(), _deny_matches(), juggle_cmd_misc — Miscellaneous CLI command handlers.  Owns: cmd_cockpit (TUI la, True if tool_name is covered by a deny entry (exact or `prefix*` wildcard)., True if tool_name is covered by a deny entry (exact or `prefix*` wildcard)., True if tool_name is covered by a deny entry (exact or `prefix*` wildcard)., Report per-agent tool usage to systematically right-size the deny block.      Fo (+19 more)
+Cohesion: 0.20
+Nodes (16): db(), Tests for per-agent tool-usage telemetry — the data layer that lets `juggle agen, Agents may hit a DB before init_db ran — the inline CREATE keeps it safe., test_cli_report_flags_denied_but_used(), test_deny_matches_exact_and_wildcard(), test_get_filters_by_role(), test_log_agent_tool_use_never_raises(), test_log_agent_tool_use_skips_when_no_tool_name() (+8 more)
 
 ### Community 237 - "Community 237"
 Cohesion: 0.14
@@ -1931,8 +1946,8 @@ Cohesion: 0.20
 Nodes (5): Returns empty dict when STATE_FILE doesn't exist, Returns dict contents when STATE_FILE exists, Returns empty dict when JSON is invalid, Returns empty dict when file read raises exception, TestLoadState
 
 ### Community 258 - "Community 258"
-Cohesion: 0.15
-Nodes (22): acquire_repo_lock(), _canonical_main_ref(), _get_lock_path(), _graph_node_for_thread(), _graph_task_for_thread(), _pid_alive(), Path, Restart watchdog + talkback after a ff-merge of juggle's own repo.      Also kil (+14 more)
+Cohesion: 0.12
+Nodes (17): _graph_node_for_thread(), _graph_task_for_thread(), Restart watchdog + talkback after a ff-merge of juggle's own repo.      Also kil, Atomic fetch → rebase → test → ff-merge → push → cleanup for a worktree.      Fa, Atomic fetch → rebase → test → ff-merge → push → cleanup for a worktree.      Fa, Atomic fetch → rebase → test → ff-merge → push → cleanup for a worktree.      Fa, Atomic fetch → rebase → test → ff-merge → push → cleanup for a worktree.      Fa, Graph task bound to this thread, or None (pre-migration DB, Mock db). (+9 more)
 
 ### Community 296 - "Community 296"
 Cohesion: 0.10
@@ -1943,20 +1958,20 @@ Cohesion: 0.06
 Nodes (41): db(), _mk(), JuggleDB, Path, Tests for dbops.db_graph — graph_tasks/graph_edges plan store (project autopilot, REQUIRED PIN (DA B3, 2026-06-10 design): cmd_complete_agent closes the     threa, REQUIRED PIN (DA B3, 2026-06-10 design): cmd_complete_agent closes the     threa, REQUIRED PIN (DA B3, 2026-06-10 design): cmd_complete_agent closes the     threa (+33 more)
 
 ### Community 402 - "Community 402"
-Cohesion: 0.08
-Nodes (38): _cx(), find_cycle(), get_deps(), get_node(), get_task(), list_nodes(), mark_completion(), mark_completion() (+30 more)
+Cohesion: 0.06
+Nodes (45): _cx(), find_cycle(), get_deps(), get_node(), get_task(), list_nodes(), mark_completion(), mark_completion() (+37 more)
 
 ### Community 435 - "Community 435"
 Cohesion: 0.21
 Nodes (12): Logger, cleanup_singleton_pid(), is_process(), kill_existing_from_pidfile(), Logger, Path, daemon_pidfile — single source of truth for daemon pidfile/singleton logic.  Own, Remove pidfile if (and only if) it still records our own PID. (+4 more)
 
 ### Community 476 - "Community 476"
-Cohesion: 0.08
-Nodes (28): Read-only detail overlay for a thread/topic.      Shows label, title, status, an, Read-only detail overlay for a thread/topic.      Shows label, title, status, an, Read-only detail overlay for a thread/topic.      Header (label/title/state) ren, Read-only detail overlay for a thread/topic.      Header (label/title/state) ren, Fallback body when LLM summary is unavailable., Fallback body when LLM summary is unavailable., Render the four LLM sections + recent activity., Render the four LLM sections + recent activity. (+20 more)
+Cohesion: 0.05
+Nodes (53): Match query against topic.label (case-insensitive). Returns Topic or None., Match query against topic.label (case-insensitive). Returns Topic or None., Read-only detail overlay for a thread/topic.      Shows label, title, status, an, Read-only detail overlay for a thread/topic.      Shows label, title, status, an, Read-only detail overlay for a thread/topic.      Header (label/title/state) ren, Read-only detail overlay for a thread/topic.      Header (label/title/state) ren, Fallback body when LLM summary is unavailable., Fallback body when LLM summary is unavailable. (+45 more)
 
 ### Community 480 - "Community 480"
-Cohesion: 0.13
-Nodes (8): HarnessAdapter, Launch command: explicit per-harness, else legacy key, else the id., Flag fragment that applies per-role tool restrictions.          Base / template, Return the full shell command string to paste into a fresh pane., Return a one-shot shell command that runs ``prompt_file`` to completion., Base adapter — config-driven command, markers and task decoration.      Subclass, True when per-role tool restriction is delegated to the harness's own         co, Whether the harness runs as a long-lived interactive REPL pane.          Interac
+Cohesion: 0.08
+Nodes (23): ClaudeCodeAdapter, Built-in Claude Code adapter: per-role denies via a ``--settings`` overlay., _env_prefix(), external_restriction(), HarnessAdapter, is_interactive(), Launch command: explicit per-harness, else legacy key, else the id., Flag fragment that applies per-role tool restrictions.          Base / template (+15 more)
 
 ### Community 492 - "Community 492"
 Cohesion: 0.11
@@ -1964,7 +1979,7 @@ Nodes (24): branch_merged_to_main(), _git_ok(), dbops.graph_guards — durable i
 
 ### Community 500 - "Community 500"
 Cohesion: 0.12
-Nodes (27): _build_vocab(), cmd_project_close(), cmd_project_create(), cmd_project_critique(), cmd_project_list(), cmd_project_open(), cmd_project_show(), cmd_project_synth() (+19 more)
+Nodes (26): _build_vocab(), cmd_project_close(), cmd_project_create(), cmd_project_critique(), cmd_project_list(), cmd_project_open(), cmd_project_show(), _confirm_and_save() (+18 more)
 
 ### Community 516 - "Community 516"
 Cohesion: 0.19
@@ -1975,8 +1990,8 @@ Cohesion: 0.06
 Nodes (22): NotificationsMixin, Open action items ordered by (priority: high > normal > low), then created_at DE, Open action items ordered by (priority: high > normal > low), then created_at DE, Dismiss all open action items for thread_id. Returns count dismissed., Dismiss all open action items with thread_id IS NULL. Returns count dismissed., Dismiss all open action items for thread_id. Returns count dismissed., Mixin for notifications_v2 and action_items operations., Dismiss all open action items with thread_id IS NULL. Returns count dismissed. (+14 more)
 
 ### Community 558 - "Community 558"
-Cohesion: 0.24
-Nodes (11): _clamp_col_pct(), _make_cockpit_db(), _parse_psrecord_log(), _profile_worker_loop(), Create and initialise a JuggleDB for the cockpit.      snapshot() opens its own, Create and initialise a JuggleDB for the cockpit.      snapshot() opens its own, Create and initialise a JuggleDB for the cockpit.      snapshot() opens its own, run() (+3 more)
+Cohesion: 0.22
+Nodes (12): _clamp_col_pct(), _parse_psrecord_log(), _profile_worker_loop(), Atomically write column_ratios to config.json.      No-op if config file is miss, Validate and floor column_ratios loaded from config.      Returns ratios unchang, Parse a psrecord log and return summary stats.      psrecord log format::, Clamp an integer percent to [lo, hi].  Prevents 0% or 100% topics., Run the cockpit profiling harness.      Spawns a headless worker child (``--prof (+4 more)
 
 ### Community 566 - "Community 566"
 Cohesion: 0.09
@@ -1991,8 +2006,8 @@ Cohesion: 0.16
 Nodes (23): claude_p(), CostTracker, days_ago_iso(), db_query(), has_busy_agents(), Run `claude -p <prompt>` and return stdout. Updates cost_tracker if provided., Run `claude -p <prompt>` and return stdout. Updates cost_tracker if provided., Return True if any agent currently has status='busy'. (+15 more)
 
 ### Community 612 - "Community 612"
-Cohesion: 0.08
-Nodes (29): build_summarize_prompt(), format_recent_activity(), Return trimmed one-line bullets for the last `limit` messages. Pure function., Return trimmed one-line bullets for the last `limit` messages. Pure function., Build the LLM prompt for topic summarization. Pure function., Build the LLM prompt for topic summarization. Pure function., TDD tests for juggle_topic_summary — LLM-driven topic info modal summarizer.  Te, parse_summary_response returns '' for missing sections (partial LLM output). (+21 more)
+Cohesion: 0.11
+Nodes (20): format_recent_activity(), Return trimmed one-line bullets for the last `limit` messages. Pure function., Return trimmed one-line bullets for the last `limit` messages. Pure function., TDD tests for juggle_topic_summary — LLM-driven topic info modal summarizer.  Te, parse_summary_response returns '' for missing sections (partial LLM output)., parse_summary_response returns all-empty dict for empty LLM text., format_recent_activity returns one bullet per message, trimmed., format_recent_activity returns at most `limit` items (last N). (+12 more)
 
 ### Community 651 - "Community 651"
 Cohesion: 0.05
@@ -2023,8 +2038,8 @@ Cohesion: 0.10
 Nodes (15): _col_names(), Tests for watchdog-related DB schema and methods., send-task writes last_task, last_send_task_pane_hash (16 hex chars), last_send_t, release-agent copies last_task/role/model to thread before decommissioning agent, test_agents_has_busy_since(), test_agents_has_last_activity_at(), test_agents_has_last_send_task_at(), test_agents_has_last_send_task_pane_hash() (+7 more)
 
 ### Community 778 - "Community 778"
-Cohesion: 0.14
-Nodes (18): build_hydration(), claim_node(), claim_task(), _dispatch_flat_task_fallback(), _give_up_dispatch(), _hydrate_for_node(), Exception, juggle_graph_dispatch — watchdog-owned graph dispatcher (autopilot Phase 2).  Ow (+10 more)
+Cohesion: 0.11
+Nodes (25): build_hydration(), claim_node(), claim_task(), _dispatch_flat_task_fallback(), _give_up_dispatch(), graph_tick(), _hydrate_for_node(), Exception (+17 more)
 
 ### Community 793 - "Community 793"
 Cohesion: 0.08
@@ -2047,48 +2062,48 @@ Cohesion: 0.11
 Nodes (21): _ok(), JuggleTmuxManager tests: send_task paste/verify flow (split from test_juggle_tmu, send_task must not raise when a fast agent consumed the prompt before verificati, Dispatch false-negative repro (incident BK/of-init-optional-key).      paste-buf, Box cleared + no markers + live agent process → confirmed submitted (True)., Box cleared but NO live agent process → cannot confirm → False (no false-positiv, A genuinely stuck prompt (still in the input box) stays False even when the, Return a mock CompletedProcess with returncode=0. (+13 more)
 
 ### Community 798 - "Community 798"
-Cohesion: 0.05
-Nodes (52): _create_worktree(), Create an isolated git worktree for a thread.      Returns (success, worktree_pa, _create_worktree(), _main_worktree_root(), juggle_cmd_agents_worktree — Git worktree helpers for agent dispatch/completion., Create an isolated git worktree for a thread.      Returns (success, worktree_pa, Pre-register worktree_path in ~/.claude.json projects map.      claude --dangero, Resolve ``repo_path`` to the MAIN worktree root.      Critical for nested-dispat (+44 more)
+Cohesion: 0.14
+Nodes (26): _create_worktree(), Create an isolated git worktree for a thread.      Returns (success, worktree_pa, _create_worktree(), Create an isolated git worktree for a thread.      Returns (success, worktree_pa, Create an isolated git worktree for a thread.      Returns (success, worktree_pa, Create an isolated git worktree for a thread.      Returns (success, worktree_pa, _minimal_agent(), _minimal_send_task_args() (+18 more)
 
 ### Community 799 - "Community 799"
-Cohesion: 0.10
-Nodes (25): _make_db(), _monkeypatch_db(), TDD: Verify removal of auto recall+retain hooks and thread.summary column.  Thes, cmd_create_thread must not call HindsightClient.recall or HindsightClient.reflec, complete-agent --retain must not crash and must NOT call Hindsight., cmd_retain must still call Hindsight.retain (this path is kept)., _retain_conversation_turn must not exist in juggle_hooks_prompt after removal., _auto_recall must not exist in juggle_cmd_threads after removal. (+17 more)
+Cohesion: 0.08
+Nodes (33): _make_db(), _monkeypatch_db(), TDD: Verify removal of auto recall+retain hooks and thread.summary column.  Thes, cmd_create_thread must not call HindsightClient.recall or HindsightClient.reflec, complete-agent --retain must not crash and must NOT call Hindsight., cmd_retain must still call Hindsight.retain (this path is kept)., Create threads table with the 4 to-be-dropped columns + data., Import and run migration 41 against the given connection. (+25 more)
 
 ### Community 800 - "Community 800"
 Cohesion: 0.07
 Nodes (26): _args(), Tests for juggle_cmd_graph — `juggle project-graph load` (autopilot Phase 1).  C, Re-load is REFUSED for nodes in dispatching|running|integrating|verified., Re-load is REFUSED for tasks in dispatching|running|integrating|verified., REGRESSION PIN (DA round-2 BLOCKER-1, 2026-06-10): a mid-diamond failure     blo, REGRESSION PIN (DA round-2 BLOCKER-1 closure semantics, 2026-06-10):     a block, REGRESSION PIN (DA round-2 BLOCKER-1c, 2026-06-10): per-task commits in     cmd_, REGRESSION PIN (DA round-2 MAJOR-2, 2026-06-10): on push_mode='pr'     repos _ru (+18 more)
 
 ### Community 801 - "Community 801"
-Cohesion: 0.11
-Nodes (21): HindsightError, client(), MockHindsightHandler, Tests for juggle_hindsight.py — Hindsight HTTP API client., Recall against unreachable host should timeout and return empty., Recall against unreachable host should timeout and return empty., Test loading config from ~/.juggle/config.json., Test loading config from ~/.juggle/config.json. (+13 more)
+Cohesion: 0.05
+Nodes (36): from_config(), HindsightError, _hs(), _paths(), Hindsight HTTP API client for Juggle memory integration.  All Hindsight communic, Request with one retry after auto-restart on failure., Attempt to restart the juggle-hindsight Docker service., Append error to log file. (+28 more)
 
 ### Community 802 - "Community 802"
-Cohesion: 0.08
-Nodes (28): _get_oneshot_child_pid(), _get_pane_start_time(), _harness_markers(), oneshot_agent_alive(), _pane_has_juggle_agent_env(), Return ``(readiness, submission)`` marker tuples for the default harness.      R, Return ``(readiness, submission)`` marker tuples for the default harness.      R, Return ``(readiness, submission)`` marker tuples for the default harness.      R (+20 more)
+Cohesion: 0.07
+Nodes (30): _get_oneshot_child_pid(), _get_pane_start_time(), _harness_markers(), oneshot_agent_alive(), _pane_has_juggle_agent_env(), Return ``(readiness, submission)`` marker tuples for the default harness.      R, Return ``(readiness, submission)`` marker tuples for the default harness.      R, Side-effect confirmation that a prompt was submitted, after the         marker-p (+22 more)
 
 ### Community 803 - "Community 803"
 Cohesion: 0.12
-Nodes (12): _LateBodyHandle, Fake CockpitHandle whose body paints only on the 3rd frame() call —     models t, Regression pin (2026-06-10): `cockpit --smoke --all-viewports` captured a     si, Fake CockpitHandle whose body paints only on the 3rd frame() call —     models t, Companion to the 2026-06-10 blank-frame pin: a cockpit whose body NEVER     pain, Fake CockpitHandle whose body paints only on the 3rd frame() call —     models t, Regression pin (2026-06-10): `cockpit --smoke --all-viewports` captured a     si, Regression pin (2026-06-10): `cockpit --smoke --all-viewports` captured a     si (+4 more)
+Nodes (13): _LateBodyHandle, Nav: pressing 'j' 10 times scrolls the topics pane — grid differs from initial., Nav: pressing 'j' 10 times scrolls the topics pane — grid differs from initial., Nav: pressing 'j' 10 times scrolls the topics pane — grid differs from initial., Nav: focusing the Topics pane and pressing 'j' scrolls it — grid differs.      H, Fake CockpitHandle whose body paints only on the 3rd frame() call —     models t, Regression pin (2026-06-10): `cockpit --smoke --all-viewports` captured a     si, Fake CockpitHandle whose body paints only on the 3rd frame() call —     models t (+5 more)
 
 ### Community 804 - "Community 804"
-Cohesion: 0.14
-Nodes (14): Match query against topic.label (case-insensitive). Returns Topic or None., Match query against topic.label (case-insensitive). Returns Topic or None., Match query against topic.label (case-insensitive). Returns Topic or None., resolve_thread_detail(), resolve_thread_detail returns the Topic whose label matches the query., resolve_thread_detail matches case-insensitively., resolve_thread_detail returns None when no topic matches., resolve_thread_detail returns None for empty list. (+6 more)
+Cohesion: 0.11
+Nodes (18): Live tail overlay for a tmux pane.      Pops on top of the cockpit when the user, Live tail overlay for a tmux pane.      Pops on top of the cockpit when the user, Match query against topic.label (case-insensitive). Returns Topic or None., Live tail overlay for a tmux pane.      Pops on top of the cockpit when the user, Live tail overlay for a tmux pane.      Pops on top of the cockpit when the user, Live tail overlay for a tmux pane.      Pops on top of the cockpit when the user, Live tail overlay for a tmux pane.      Pops on top of the cockpit when the user, Live tail overlay for a tmux pane.      Pops on top of the cockpit when the user (+10 more)
 
 ### Community 805 - "Community 805"
 Cohesion: 0.13
-Nodes (25): _bind_topic_to_branch(), db(), _git(), _make_repo(), _now(), _project(), Path, Regression tests for the 2026-06-13 autopilot graph-machinery guards (G1–G6).  I (+17 more)
+Nodes (26): _bind_topic_to_branch(), db(), _git(), _make_repo(), _now(), _project(), JuggleDB, Path (+18 more)
 
 ### Community 818 - "Community 818"
 Cohesion: 0.13
 Nodes (17): CLI argparse regression pins: unknown-flag rejection (fixes TODO.md:38) (split f, Valid flags on request-action (--type, --priority) must not be rejected at parse, Run juggle_cli.py with a test DB path, override DB_PATH via env., Return (db_path, general_thread_uuid) after running `start`., Run CLI without _JUGGLE_TEST_DB so argparse errors fire before DB init., --tier is not a valid flag on request-action; argparse must reject it., --badarg is not a valid flag on complete-agent; argparse must reject it., --nosuchflag is not a valid flag on start; argparse must reject it. (+9 more)
 
 ### Community 819 - "Community 819"
-Cohesion: 0.06
-Nodes (47): _classify_failure(), cmd_fail_agent(), _classify_failure(), juggle_cmd_agents_common — Shared symbols and pure classifiers for agent command, Return 'transient' or 'persistent'. Case-insensitive substring match., cmd_fail_agent(), juggle_cmd_agents_complete — Agent completion and failure handlers.  Owns: cmd_c, Route agent failure: transient → leave running for retry; persistent → action_it (+39 more)
+Cohesion: 0.19
+Nodes (22): _bind_running_thread(), _bind_running_topic(), _fail(), _mk_graph(), Agent death must reach the graph (DA round-2 MAJOR-1, 2026-06-10).  Incident: cm, A thread with no bound task fails exactly as before., REGRESSION PIN (DA round-2 MAJOR-1, 2026-06-10): the watchdog     retry_blocked, (adapted to topics, R9 2026-06-11) Agent death on a TOPIC thread fails     the T (+14 more)
 
 ### Community 820 - "Community 820"
-Cohesion: 0.02
-Nodes (151): _apply_filter_actions(), _apply_filter_text(), _new_blocker_actions(), _newly_failed_agents(), _parse_filter(), Juggle Cockpit — pure module-level helpers and constants.  Extracted from juggle, Generic text-substring filter for Agent and Notification lists.      Matches aga, Return tier-0 (blocker) actions whose id was not in prev_ids. (+143 more)
+Cohesion: 0.03
+Nodes (135): _apply_filter_actions(), _apply_filter_text(), _new_blocker_actions(), _newly_failed_agents(), _parse_filter(), Juggle Cockpit — pure module-level helpers and constants.  Extracted from juggle, Generic text-substring filter for Agent and Notification lists.      Matches aga, Return tier-0 (blocker) actions whose id was not in prev_ids. (+127 more)
 
 ### Community 821 - "Community 821"
 Cohesion: 0.15
@@ -2111,12 +2126,12 @@ Cohesion: 0.09
 Nodes (26): _has_active_spinner(), _parse_context_pct(), Parse context usage fraction from a CC pane footer.      Matches patterns like ', Return True if content shows a CC active-thinking spinner or timer., Pure decision function: given parsed pane signals, return the recovery action., recovery_action(), _db_and_thread(), Tests for agent context-bloat stall fix (2026-06-15).  Incident: alive_slow agen (+18 more)
 
 ### Community 826 - "Community 826"
-Cohesion: 0.06
-Nodes (46): Pure resolver: match query against task id, unique id prefix, or _label.      Pr, Pure resolver: match query against task id, unique id prefix, or _label.      Pr, Pure resolver: match query against task id, unique id prefix, or _label.      Pr, Pure resolver: match query against task id, unique id prefix, or _label.      Pr, resolve_task_detail(), TDD tests for the T hotkey task-detail modal feature.  Covers:   1. resolve_task, Returns None when query matches nothing., Returns None for empty task list. (+38 more)
+Cohesion: 0.10
+Nodes (28): Pure resolver: match query against task id, unique id prefix, or _label.      Pr, Pure resolver: match query against task id, unique id prefix, or _label.      Pr, Pure resolver: match query against task id, unique id prefix, or _label.      Pr, Pure resolver: match query against task id, unique id prefix, or _label.      Pr, resolve_task_detail(), Returns None when query matches nothing., Returns None for empty task list., Returns deps list from the matched task's own deps field. (+20 more)
 
 ### Community 827 - "Community 827"
-Cohesion: 0.08
-Nodes (31): _release_singleton_lock(), acquire_singleton_lock(), _any_alive(), assert_launch_allowed(), canonical_repo_path(), find_watchdog_pids(), is_prod_db(), is_sanctioned() (+23 more)
+Cohesion: 0.10
+Nodes (26): _release_singleton_lock(), acquire_singleton_lock(), _any_alive(), assert_launch_allowed(), find_watchdog_pids(), is_prod_db(), is_sanctioned(), lock_path_for() (+18 more)
 
 ### Community 828 - "Community 828"
 Cohesion: 0.10
@@ -2127,32 +2142,32 @@ Cohesion: 0.12
 Nodes (14): Protocol, detect(), get_backend(), GitVCS, HgVCS, vcs — a tiny VCS abstraction for ledger provenance + per-task restore.  Owns: de, Run a command, returning stripped stdout, or None on any failure., A version-control backend. All methods are best-effort. (+6 more)
 
 ### Community 830 - "Community 830"
-Cohesion: 0.12
-Nodes (30): assign_ranks(), build_ranks(), collapse_ranks(), Fold foldable (verified/pending) ranks to counts until total <= budget.      Act, Fold foldable (verified/pending) ranks to counts until total <= budget.      Act, Map node id -> rank, rank = longest dependency depth (longest path).      Cycle-, Map task id -> rank, rank = longest dependency depth (longest path).      Cycle-, Group nodes into ordered Rank columns (stable by node id within a rank). (+22 more)
+Cohesion: 0.09
+Nodes (43): assign_ranks(), build_ranks(), collapse_ranks(), _fold(), GraphNode, Minimap, pan_window(), Rank (+35 more)
 
 ### Community 831 - "Community 831"
-Cohesion: 0.06
-Nodes (46): arm_project(), disarm_project(), get_armed_project(), get_armed_projects(), juggle_autopilot_state — armed-project SET accessors (multi-project autopilot)., Ordered, deduped armed project ids; [] when disarmed or pre-migration., Persist the set; empty list clears the key (disarmed)., Append ``pid`` to the armed set (idempotent). Returns the new set. (+38 more)
+Cohesion: 0.05
+Nodes (55): arm_project(), disarm_project(), get_armed_project(), get_armed_projects(), juggle_autopilot_state — armed-project SET accessors (multi-project autopilot)., Ordered, deduped armed project ids; [] when disarmed or pre-migration., Persist the set; empty list clears the key (disarmed)., Append ``pid`` to the armed set (idempotent). Returns the new set. (+47 more)
 
 ### Community 832 - "Community 832"
-Cohesion: 0.10
-Nodes (24): CockpitHandle, cmd_cockpit(), Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).      With -, capture_body_frame(), check_overflow(), check_real_estate(), check_truncation(), Path (+16 more)
+Cohesion: 0.13
+Nodes (21): CockpitHandle, capture_body_frame(), check_chrome_present(), check_overflow(), check_real_estate(), check_truncation(), Juggle cockpit viewport smoke harness.  Mechanism: pty+pyte (primary). Spawns `j, Count ellipsis (…) truncation markers across all rows.      Returns {"warn": boo (+13 more)
 
 ### Community 833 - "Community 833"
-Cohesion: 0.12
-Nodes (29): _armed_many_db(), _dag(), TDD tests for the graph panel Rich renderable builder.  build_graph_panel turns, 2026-06-16 (user feedback + screenshot): the [thread/topic id] badge must     su, 2026-06-16 (user feedback + screenshot): the [thread/topic id] badge must     su, T-cockpit-graph-pane-ux #1: section header renders '<id> · <name>',     not just, T-cockpit-graph-pane-ux #1: section header renders '<id> · <name>',     not just, REGRESSION PIN (2026-06-11): graph panel rendered only the first armed     DAG — (+21 more)
+Cohesion: 0.11
+Nodes (33): build_graph_panel(), Build the graph Panel. Pure — no I/O.      selection indexes the flat topologica, Build the graph Panel. Pure — no I/O.      selection indexes the flat topologica, _armed_many_db(), _dag(), TDD tests for the graph panel Rich renderable builder.  build_graph_panel turns, 2026-06-16 (user feedback + screenshot): the [thread/topic id] badge must     su, 2026-06-16 (user feedback + screenshot): the [thread/topic id] badge must     su (+25 more)
 
 ### Community 834 - "Community 834"
-Cohesion: 0.13
-Nodes (26): Remove the lock only if owned by the current process., release_repo_lock(), acquire_repo_lock(), _get_lock_path(), _pid_alive(), Path, juggle_integrate_lock — per-repo merge-queue file lock for integrate.  Owns: loc, Remove the lock only if owned by the current process. (+18 more)
+Cohesion: 0.17
+Nodes (19): acquire_repo_lock(), _get_lock_path(), _pid_alive(), Path, juggle_integrate_lock — per-repo merge-queue file lock for integrate.  Owns: loc, Remove the lock only if owned by the current process., Return (pid, timestamp) from lock file; (0, 0.0) on any parse error., Acquire a per-repo file lock. Returns the lock path.      Steals locks with a de (+11 more)
 
 ### Community 835 - "Community 835"
 Cohesion: 0.20
 Nodes (6): Return count of non-resolved error_events rows., Mixin for self-heal error_events table operations., Insert new error_events row or increment count on duplicate.          Returns ne, Update status (and optionally action_item_id) for an error_events row., Return all non-resolved error_events rows, newest last., SelfhealMixin
 
 ### Community 836 - "Community 836"
-Cohesion: 0.11
-Nodes (25): cmd_graph_add_node(), cmd_graph_add_task(), cmd_graph_mark_task(), cmd_graph_reconcile(), cmd_project_graph_load(), _content_changed(), _csv(), _git_root() (+17 more)
+Cohesion: 0.09
+Nodes (32): cmd_graph_add_node(), cmd_graph_add_task(), cmd_graph_mark_task(), cmd_graph_reconcile(), cmd_project_graph_load(), _content_changed(), _csv(), find_cycle() (+24 more)
 
 ### Community 837 - "Community 837"
 Cohesion: 0.10
@@ -2164,31 +2179,31 @@ Nodes (17): Watchdog hardening tests — 5 real failures from 2026-06-06 session
 
 ### Community 839 - "Community 839"
 Cohesion: 0.12
-Nodes (17): _make_db(), Path, Nav: pressing 'j' 10 times scrolls the topics pane — grid differs from initial., Nav: pressing 'j' 10 times scrolls the topics pane — grid differs from initial., Nav: pressing 'j' 10 times scrolls the topics pane — grid differs from initial., Nav: focusing the Topics pane and pressing 'j' scrolls it — grid differs.      H, --out render with incident config [0.0,0.45,0.55] must produce non-empty topics, --out render with incident config [0.0,0.45,0.55] must produce non-empty topics (+9 more)
+Nodes (17): _make_db(), Path, Integration: cockpit renders at 80x67 (2k_third), no overflow, frame dumped., Integration: cockpit renders at 80x67 (2k_third), no overflow, frame dumped., Integration: cockpit renders at 80x67 (2k_third), no overflow, frame dumped., Integration: cockpit renders at 80x67 (2k_third), no overflow, frame dumped., --out render with incident config [0.0,0.45,0.55] must produce non-empty topics, --out render with incident config [0.0,0.45,0.55] must produce non-empty topics (+9 more)
 
 ### Community 840 - "Community 840"
-Cohesion: 0.14
-Nodes (15): graph_tick(), One dispatcher tick for the armed project. Never raises.      Per ready node: at, One dispatcher tick across ALL armed projects, claiming TOPICS (R9).      Per pr, One dispatcher tick for the armed project. Never raises.      Per ready node: at, One dispatcher tick for the armed project. Never raises.      Per ready node: at, One dispatcher tick for the armed project. Never raises.      Per ready node: at, One dispatcher tick for the armed project. Never raises.      Per ready node: at, claim_topic() (+7 more)
+Cohesion: 0.22
+Nodes (8): claim_topic(), _give_up_topic_dispatch(), Exception, juggle_graph_dispatch_topics — TOPIC-level claim / sweep / give-up helpers.  Ext, Atomic ready→dispatching TOPIC claim (DA B4 pattern). True iff won., dispatching >10 min with no thread → ready (crash-safe, idempotent)., Retry cap reached: topic → failed-exec + derived-dependent blocking +     ONE fi, sweep_stale_topic_claims()
 
 ### Community 841 - "Community 841"
-Cohesion: 0.10
-Nodes (29): _finalize_worktree(), Finalize a worktree: ff-merge → remove → branch-delete.      Returns (success: b, Finalize a worktree: ff-merge → remove → branch-delete.      Returns (success: b, _finalize_worktree(), Finalize a worktree: ff-merge → remove → branch-delete.      Returns (success: b, Finalize a worktree: ff-merge → remove → branch-delete.      Returns (success: b, Path, test_plugin_version_is_1_11_0() (+21 more)
+Cohesion: 0.12
+Nodes (26): _finalize_worktree(), Finalize a worktree: ff-merge → remove → branch-delete.      Returns (success: b, Finalize a worktree: ff-merge → remove → branch-delete.      Returns (success: b, _finalize_worktree(), Finalize a worktree: ff-merge → remove → branch-delete.      Returns (success: b, Finalize a worktree: ff-merge → remove → branch-delete.      Returns (success: b, Path, test_plugin_version_is_1_11_0() (+18 more)
 
 ### Community 842 - "Community 842"
 Cohesion: 0.09
 Nodes (22): 1. Overview, 2.10 Backward compatibility (R6), 2.11 Armed-project dispatch guard (R8) — adapted to 3-tier, 2.1 Armed-set storage (R1, R6) — unchanged from rev 1, 2.2 Data model (R9) — `graph_topics` + `graph_nodes.topic_id`, 2.3 Execution model (R9) — hybrid topic-agent / task-commits, 2.4 Graph spec format + loading, 2.5 CLI surface (R1) (+14 more)
 
 ### Community 843 - "Community 843"
-Cohesion: 0.09
-Nodes (33): derived_topic_deps(), get_topic(), list_topics(), mark_topic_completion(), mark_topic_exec_failed(), propagate_topic_failure(), dbops.db_topics — graph_topics store (3-tier autopilot, R9 2026-06-11).  Owns: t, Record the merge commit (branch tip now on main) for ``topic_id``.      The sing (+25 more)
+Cohesion: 0.06
+Nodes (41): derived_topic_deps(), list_topic_tasks(), list_topics(), mark_topic_completion(), mark_topic_exec_failed(), propagate_topic_failure(), dbops.db_topics — graph_topics store (3-tier autopilot, R9 2026-06-11).  Owns: t, Record the merge commit (branch tip now on main) for ``topic_id``.      The sing (+33 more)
 
 ### Community 844 - "Community 844"
 Cohesion: 0.06
-Nodes (49): Test cmd_recall updates thread and prints when result is found., Test cmd_recall updates memory_loaded=1 when no result is found., Test cmd_recall returns early when client is None., Test cmd_recall calls _resolve_thread with correct arguments., Test cmd_recall handles falsy result (empty string) correctly., test_cmd_recall_client_disabled(), test_cmd_recall_empty_result(), test_cmd_recall_false_result() (+41 more)
+Nodes (46): Test cmd_recall updates thread and prints when result is found., Test cmd_recall updates memory_loaded=1 when no result is found., Test cmd_recall returns early when client is None., Test cmd_recall calls _resolve_thread with correct arguments., Test cmd_recall handles falsy result (empty string) correctly., test_cmd_recall_client_disabled(), test_cmd_recall_empty_result(), test_cmd_recall_false_result() (+38 more)
 
 ### Community 845 - "Community 845"
 Cohesion: 0.10
-Nodes (25): prune_stale_watchdog_pidfiles(), Remove watchdog-*.pid files whose recorded PID is no longer alive.      Keeps th, Pure decision: should the daemon sys.exit() to trigger a supervisor restart?, should_exit_for_reload(), Path, Tests for watchdog daemon fixes: supervised-reload guard, pidfile prune, cockpit, Regression pin (2026-06-14): launchd plist must NOT exist — watchdog is cockpit-, Regression pin: supervisor-gone check must be a pure function in the daemon. (+17 more)
+Nodes (23): Pure decision: should the daemon sys.exit() to trigger a supervisor restart?, should_exit_for_reload(), Path, Tests for watchdog daemon fixes: supervised-reload guard, pidfile prune, cockpit, Regression pin (2026-06-14): launchd plist must NOT exist — watchdog is cockpit-, Regression pin: supervisor-gone check must be a pure function in the daemon., Regression pin (2026-06-14): watchdog must be a cockpit child (no start_new_sess, When supervised and source is stale, should signal exit for restart. (+15 more)
 
 ### Community 852 - "Community 852"
 Cohesion: 0.33
@@ -2196,7 +2211,7 @@ Nodes (6): Pre-merge diffstat captured by integrate (hydration enrichment)., Pre
 
 ### Community 853 - "Community 853"
 Cohesion: 0.12
-Nodes (28): build_match_profile_prompt(), check_and_resynth_if_drifted(), drift_score(), Pure function: build synthesis prompt for one project's match_profile.      Weig, Pure function: build synthesis prompt for one project's match_profile.      Weig, Cosine distance in [0, 1]: 0 = identical direction, 1 = orthogonal., Cosine distance in [0, 1]: 0 = identical direction, 1 = orthogonal., Compute BoW centroid drift for project_id. Silent re-synth if above threshold. (+20 more)
+Nodes (29): build_match_profile_prompt(), check_and_resynth_if_drifted(), cmd_project_synth(), drift_score(), Pure function: build synthesis prompt for one project's match_profile.      Weig, Pure function: build synthesis prompt for one project's match_profile.      Weig, Synthesize match_profile for one project. Returns new profile or None if skipped, Synthesize match_profile for one project. Returns new profile or None if skipped (+21 more)
 
 ### Community 854 - "Community 854"
 Cohesion: 0.18
@@ -2215,12 +2230,12 @@ Cohesion: 0.09
 Nodes (21): `backfill_mirror_topics(db) → int`, Cockpit Changes, Critical Constraints, DA Resolutions, Doctor Integration, Graph Mirrors Threads — Option 1 Implementation Plan, Guard Bypass: `check_task_guard` in `juggle_cmd_agents_graph.py`, `juggle_cockpit_graph_dag.py` (+13 more)
 
 ### Community 858 - "Community 858"
-Cohesion: 0.16
-Nodes (21): apply_graph_migrations(), _cols(), _drop_old_task_indexes(), _merge_nodes_into_tasks(), migrate_is_mirror(), migrate_merged_sha(), _migrate_node_to_task(), migrate_runs_vcs() (+13 more)
+Cohesion: 0.18
+Nodes (18): _cols(), _drop_old_task_indexes(), _merge_nodes_into_tasks(), migrate_is_mirror(), migrate_merged_sha(), _migrate_node_to_task(), migrate_runs_vcs(), dbops.migrations_graph — autopilot graph/topic store migrations (35-37, 39).  Ow (+10 more)
 
 ### Community 859 - "Community 859"
-Cohesion: 0.12
-Nodes (19): Dep ids of ``node_id`` whose state is not 'verified' (blocking deps)., Dep ids of ``node_id`` whose state is not 'verified' (blocking deps)., Pending nodes of ``project_id`` whose deps are ALL 'verified'., Dep ids of ``node_id`` whose state is not 'verified' (blocking deps)., Promote every eligible pending node to 'ready'. Returns newly-ready ids., Pending nodes of ``project_id`` whose deps are ALL 'verified'., Dep ids of ``task_id`` whose state is not 'verified' (blocking deps)., Pending nodes of ``project_id`` whose deps are ALL 'verified'. (+11 more)
+Cohesion: 0.09
+Nodes (25): get_dependents(), Dep ids of ``node_id`` whose state is not 'verified' (blocking deps)., Dep ids of ``node_id`` whose state is not 'verified' (blocking deps)., Node ids that depend on ``node_id`` (reverse edges)., Pending nodes of ``project_id`` whose deps are ALL 'verified'., Node ids that depend on ``node_id`` (reverse edges)., Dep ids of ``node_id`` whose state is not 'verified' (blocking deps)., Promote every eligible pending node to 'ready'. Returns newly-ready ids. (+17 more)
 
 ### Community 860 - "Community 860"
 Cohesion: 0.19
@@ -2231,32 +2246,32 @@ Cohesion: 0.12
 Nodes (15): 1. Standardize the env var name, 2. Make `llm_call` the SOLE OpenRouter text-generation entry point, 3. Hard-require vs degrade, 4. juggle:init change, 5. Agent-first verification (per fix), Call-site inventory, Env var inconsistency, juggle:init today (+7 more)
 
 ### Community 862 - "Community 862"
-Cohesion: 0.13
-Nodes (18): capture_diffstat(), juggle_integrate_verify — pre-merge task verification + diffstat capture.  Owns:, Run ``verify_cmd`` in ``cwd``. Returns (ok, failure_detail).      shlex-split, s, Diffstat of the rebased branch vs the merge target (pre-merge)., Pre-merge task gate: store the diffstat, then run verify_cmd (if any).      Retu, run_verify_cmd(), verify_node_premerge(), verify_task_premerge() (+10 more)
+Cohesion: 0.14
+Nodes (17): capture_diffstat(), juggle_integrate_verify — pre-merge task verification + diffstat capture.  Owns:, Run ``verify_cmd`` in ``cwd``. Returns (ok, failure_detail).      shlex-split, s, Diffstat of the rebased branch vs the merge target (pre-merge)., Pre-merge task gate: store the diffstat, then run verify_cmd (if any).      Retu, run_verify_cmd(), verify_node_premerge(), verify_task_premerge() (+9 more)
 
 ### Community 863 - "Community 863"
 Cohesion: 0.10
 Nodes (7): Tests for the durable agent I/O ledger (agent_runs table + RunsMixin).  The ledg, A DB created before the agent_runs migration gets the table on re-open., _seed(), test_existing_db_without_table_gets_it(), test_get_runs_filter_by_each_key(), test_get_runs_ordering_newest_first_and_limit(), test_prune_runs_deletes_only_older_than_cutoff()
 
 ### Community 864 - "Community 864"
-Cohesion: 0.15
-Nodes (16): _fold(), Minimap, minimap_bar(), pan_window(), Rank, _rank_is_active(), Pure task-graph layout engine for the cockpit graph panel.  Turns (tasks, edges), A rank is 'active' (keep expanded) if any node is ready/running/failed. (+8 more)
+Cohesion: 0.50
+Nodes (4): minimap_bar(), Render a minimap bar '▁▁███▁ ranks 3–5/6' (1-based human label)., Render a minimap bar '▁▁███▁ ranks 3–5/6' (1-based human label)., test_minimap_bar_marks_visible_segment()
 
 ### Community 865 - "Community 865"
 Cohesion: 0.12
 Nodes (14): MessagesMixin, Return the last n Q/A pairs for a thread, most recent first.          Each item:, Mixin for per-thread message CRUD and context-window queries., Load messages newest-first until token budget is exhausted         (token estima, Count user messages for a thread, optionally excluding junk., Return the last user message and last assistant message for a thread.          R, _is_junk_message(), Return True if content is a junk/system message to be excluded from display. (+6 more)
 
 ### Community 866 - "Community 866"
-Cohesion: 0.08
-Nodes (24): MouseMove, Resize, GraphModeMixin, Graph-mode controller mixin for the cockpit App.  Owns the lower-right panel's N, Enter — open the read-only detail modal for the selected topic/task., Handle a key in graph mode. Return True if consumed (don't bubble)., Provides graph-mode behaviour to CockpitApp., Initialise graph view-state. Call from __init__. (+16 more)
+Cohesion: 0.11
+Nodes (12): GraphModeMixin, Graph-mode controller mixin for the cockpit App.  Owns the lower-right panel's N, Enter — open the read-only detail modal for the selected topic/task., Handle a key in graph mode. Return True if consumed (don't bubble)., Provides graph-mode behaviour to CockpitApp., Initialise graph view-state. Call from __init__., Recompute the unread badge from the current snapshot (text-based so         it's, Build the graph Panel from the snapshot's lazily-loaded DAGs. (+4 more)
 
 ### Community 867 - "Community 867"
 Cohesion: 0.15
 Nodes (6): Map changed files to the minimal set of test files that covers them.      Return, select_scoped_tests(), select_scoped_tests uses import_index as primary mapping strategy., TestCoreGlobs, TestImportReferenceMapping, TestSrcToTestMapping
 
 ### Community 868 - "Community 868"
-Cohesion: 0.19
-Nodes (22): _bind_running_thread(), _complete(), _mk_graph(), Tests for autopilot Phase 2 contracts: --handoff enforcement on complete-agent (, b has no dependents — the contract only binds tasks others consume., Double-completion of an already-terminal task keeps Phase 1 warn+no-op     behav, --force-task must be wired into the send-task parser., a → b (b depends on a); a promoted to ready. (+14 more)
+Cohesion: 0.15
+Nodes (26): _bind_running_thread(), _complete(), _mk_graph(), Tests for autopilot Phase 2 contracts: --handoff enforcement on complete-agent (, b has no dependents — the contract only binds tasks others consume., Double-completion of an already-terminal task keeps Phase 1 warn+no-op     behav, --force-task must be wired into the send-task parser., a → b (b depends on a); a promoted to ready. (+18 more)
 
 ### Community 869 - "Community 869"
 Cohesion: 0.25
@@ -2276,31 +2291,31 @@ Nodes (20): check_tmpfs_writable(), DbPaths, Path, juggle_db_path — pure DB-pa
 
 ### Community 873 - "Community 873"
 Cohesion: 0.12
-Nodes (31): _bind_thread(), _git(), _make_db(), Orphan guard: a completed topic must NEVER be silently closed/verified while its, A topic whose work is merged is not an orphan., Work not yet complete (a task still running) → not an orphan., G1 invariant: all tasks verified but no merged_sha → topic stays     'integratin, A proven-merged ('verified') topic is terminal — never re-flagged. (+23 more)
+Nodes (32): get_topic(), _bind_thread(), _git(), _make_db(), Orphan guard: a completed topic must NEVER be silently closed/verified while its, A topic whose work is merged is not an orphan., Work not yet complete (a task still running) → not an orphan., G1 invariant: all tasks verified but no merged_sha → topic stays     'integratin (+24 more)
 
 ### Community 874 - "Community 874"
 Cohesion: 0.13
 Nodes (14): Devil's Advocate (plan-level): weakest assumption per task, Multi-Project Parallel Autopilot (3-Tier) — Implementation Plan, Open questions, Task 0: Preflight — baseline green + WL assumption check, Task 10: Full gates, e2e scenario, version bump, Task 1: Armed-set accessors — new module `juggle_autopilot_state.py`, Task 2: Schema — `graph_topics` + `graph_nodes.topic_id` + migration 37, Task 3: Topic store — `src/dbops/db_topics.py` (+6 more)
 
 ### Community 875 - "Community 875"
-Cohesion: 0.19
-Nodes (10): PID recorded in this DB's watchdog lock file, or None., read_lock_pid(), _kill(), TDD: cockpit owns a lock-gated, DETACHED watchdog + W/R hotkeys (T-cockpit-watch, reap(), _spawn_lock_holder(), test_ensure_noop_when_live(), test_holder_is_detached_own_session() (+2 more)
+Cohesion: 0.11
+Nodes (19): _get_args(), Regression tests for get-agent busy-guard (2026-06-15).  Symptom: get-agent ZT r, cas_assign_agent returns False when assigned_thread IS NOT NULL, even if idle., cmd_get_agent must spawn fresh when only busy agents exist.      2026-06-15: get, cmd_get_agent spawns fresh when CAS assign fails (TOCTOU guard).      2026-06-15, A busy agent is never included in the ranked-idle list.      2026-06-15: get-age, An idle agent with non-null assigned_thread must be excluded.      2026-06-15: A, A clean idle agent (status=idle, assigned_thread=NULL) IS returned. (+11 more)
 
 ### Community 876 - "Community 876"
-Cohesion: 0.13
-Nodes (19): Pure decision: True if the watchdog should be (re)started., watchdog_needs_start(), TDD — watchdog_needs_start, start_watchdog_child, should_exit_supervisor_gone, a, No Popen call when a live watchdog already holds the pidfile + fresh heartbeat., Starts a new process when pid is alive but heartbeat is stale., T-cockpit-watchdog-owner: the watchdog is now a DETACHED daemon owned by     the, Popen must NOT pass start_new_session=True (child stays in same group)., JUGGLE_SUPERVISOR_PID env var must be set to the given supervisor_pid. (+11 more)
+Cohesion: 0.11
+Nodes (25): _is_pid_alive(), Path, Return seconds since last heartbeat, or None if the file is missing., Pure decision: True if the watchdog should be (re)started., Start the watchdog as a child process (same process group as caller).      Idemp, read_heartbeat_age(), start_watchdog_child(), watchdog_needs_start() (+17 more)
 
 ### Community 877 - "Community 877"
-Cohesion: 0.21
-Nodes (10): clear_retained(), mock_server(), End-to-end test: create thread → auto-recall → do work → retain → recall again., 1. Create thread (auto-recall, empty at first)     2. Retain learnings     3. Cr, All memory commands are no-ops when disabled., Mock that tracks retained content and returns it on recall., run_cli(), StatefulMockHandler (+2 more)
+Cohesion: 0.12
+Nodes (15): _arm(), _bind_merged_topic(), FakeDispatchJ, Regression pins for autopilot/graph machinery bugs surfaced 2026-06-11.  Bug F —, 2026-06-11: graphify watch hook regenerates tracked graphify-out/*.json     afte, 2026-06-11: new worktree dir not in ~/.claude.json projects map causes     Claud, T-verified-merged-sha: topic→verified requires a recorded merged_sha that     is, 2026-06-11: when an out-of-band integrate already moved the topic to     'verifi (+7 more)
 
 ### Community 878 - "Community 878"
-Cohesion: 0.05
-Nodes (40): ComposeResult, ModalScreen, _ConfirmModal, _GraphNodeModal, _GraphTaskModal, _HelpModal, ProjectArmRow, ComposeResult (+32 more)
+Cohesion: 0.06
+Nodes (26): ComposeResult, ModalScreen, _ConfirmModal, _GraphNodeModal, _GraphTaskModal, _HelpModal, ProjectArmRow, ComposeResult (+18 more)
 
 ### Community 879 - "Community 879"
-Cohesion: 0.05
-Nodes (33): CompletedProcess, CompletedProcess, Return True if pane_id exists in the juggle session., Return True if pane_id exists in the juggle session., Return True if pane_id exists in the juggle session., Return True if pane_id exists in the juggle session., Capture current pane content; return raw text or None on failure.          Used, Capture current pane content; return raw text or None on failure.          Used (+25 more)
+Cohesion: 0.12
+Nodes (13): Poll capture-pane until a Claude UI readiness marker appears.          Backoff:, Poll capture-pane until a Claude UI readiness marker appears.          Backoff:, Poll capture-pane until a Claude UI readiness marker appears.          Backoff:, Poll capture-pane until a Claude UI readiness marker appears.          Backoff:, Verify a pasted prompt was submitted; retry Enter if stuck.          Success: a, Verify a pasted prompt was submitted; retry Enter if stuck.          Success: a, Verify a pasted prompt was submitted; retry Enter if stuck.          Success: a, Verify a pasted prompt was submitted; retry Enter if stuck.          Success: a (+5 more)
 
 ### Community 880 - "Community 880"
 Cohesion: 0.19
@@ -2311,16 +2326,16 @@ Cohesion: 0.17
 Nodes (19): _dedupe_title(), _is_generic_title(), Lowercase alphanumeric tokens of a title with generic filler removed., True when a non-empty title is ALL filler — no specific content words.      Empt, True when two titles share the same set of content words.      Catches 'Improve, Disambiguate a title that is interchangeable with an existing topic's.      Appe, _title_content_words(), _titles_interchangeable() (+11 more)
 
 ### Community 882 - "Community 882"
-Cohesion: 0.19
-Nodes (13): cmd_create_thread(), _make_thread(), Gate 1: show_in_list=0 → reflect() never called., Gate 2: first call (last_reflect_msg_count=0) → reflect() fires., Gate 2: delta=2 < MIN_REFLECT_MSG_DELTA=5 → reflect() skipped., Gate 2: delta=5 >= MIN_REFLECT_MSG_DELTA → reflect() fires and updates count., test_cmd_create_thread_creates_and_sets_current(), test_cmd_create_thread_launches_background_threads() (+5 more)
+Cohesion: 0.14
+Nodes (12): create_topic(), set_topic_thread(), check_task_guard(), _now(), check_task_guard refuses send-task for a real topic in tick-owned state., check_task_guard bypasses (returns None) for is_mirror=1 topics.          Regres, Manual send-task to a NON-mirror topic is still allowed even when         the pr, is_mirror column exists on graph_topics after init_db. (+4 more)
 
 ### Community 883 - "Community 883"
-Cohesion: 0.09
-Nodes (18): autopilot_context(), juggle_hooks_autopilot — autopilot directive injection for UserPromptSubmit.  Ow, Return the autopilot directive if the flag file is set, else ''., Return the autopilot directive (+ armed-project context) if the flag     file is, Return the autopilot directive (+ armed-project context) if the flag     file is, _mk(), Tests for juggle_graph_status — display aggregates + hook injection (Phase 4)., 2026-06-10 DA m4: injection must NEVER exceed 500 chars, regardless of     how m (+10 more)
+Cohesion: 0.08
+Nodes (21): _armed_graph_context(), autopilot_context(), juggle_hooks_autopilot — autopilot directive injection for UserPromptSubmit.  Ow, Return the autopilot directive if the flag file is set, else ''., Carve-out + budgeted graph status when a project is armed, else ''.      Authori, Carve-out + budgeted topic status for EVERY armed project, else \'\'.      Autho, Return the autopilot directive (+ armed-project context) if the flag     file is, Return the autopilot directive (+ armed-project context) if the flag     file is (+13 more)
 
 ### Community 884 - "Community 884"
-Cohesion: 0.22
-Nodes (10): build_hydration(), hydrate_for_node(), hydrate_for_task(), hydrate_for_topic(), juggle_graph_hydration — pure dispatch-prompt builder for graph tasks.  Owns: ``, DB wrapper: dep-topic rows + topo-ordered tasks → build_topic_hydration., Build a dispatch prompt for ``task`` from its plan + upstream handoffs.      Pur, Phase 2 deferred the integrated-branch diffstat from hydration; it is     now ca (+2 more)
+Cohesion: 0.15
+Nodes (17): build_hydration(), build_topic_hydration(), hydrate_for_node(), hydrate_for_task(), hydrate_for_topic(), juggle_graph_hydration — pure dispatch-prompt builder for graph tasks.  Owns: ``, DB wrapper: dep-topic rows + topo-ordered tasks → build_topic_hydration., Build a dispatch prompt for ``task`` from its plan + upstream handoffs.      Pur (+9 more)
 
 ### Community 885 - "Community 885"
 Cohesion: 0.20
@@ -2336,7 +2351,7 @@ Nodes (13): Popen, Watchdog singleton + prod-launch guard (2026-06-16 incident).
 
 ### Community 888 - "Community 888"
 Cohesion: 0.18
-Nodes (17): _handle_cost_cap(), _ensure_dirs(), _ensure_gh_label(), gh_create_issue(), gh_issue_exists(), gh_pr_list_head(), gh_run(), last_run_ts() (+9 more)
+Nodes (17): _ensure_dirs(), _ensure_gh_label(), get_db(), gh_create_issue(), gh_issue_exists(), gh_pr_list_head(), gh_run(), last_run_ts() (+9 more)
 
 ### Community 889 - "Community 889"
 Cohesion: 0.25
@@ -2375,32 +2390,32 @@ Cohesion: 0.15
 Nodes (11): FakeDispatch, (adapted to topics, R9 2026-06-11), (adapted to topics, R9 2026-06-11), (adapted to topics, R9 2026-06-11), REGRESSION PIN (DA round-2 minor 6, 2026-06-10): EVERY ValueError from     creat, REGRESSION PIN (DA round-2 minor 6, 2026-06-10): EVERY ValueError from     creat, Records dispatches; optionally raises. No tmux, no LLM., test_tick_capacity_error_defers_quietly() (+3 more)
 
 ### Community 898 - "Community 898"
-Cohesion: 0.12
-Nodes (27): check_chrome_present(), load_viewports(), Header (top 3 rows) and footer (bottom 3 rows) must render.      Header marker:, Load viewport profiles from a YAML file.      Returns dict[name -> {"cols": int,, Load viewport profiles from a YAML file.      Returns dict[name -> {"cols": int,, Header (top 3 rows) and footer (bottom 3 rows) must render.      Header marker:, _arm_graph(), _make_grid() (+19 more)
+Cohesion: 0.24
+Nodes (15): _make_grid(), Tests for the cockpit viewport smoke harness (juggle_smoke).  Pure heuristic and, Synthetic grid: each row exactly `cols` chars, space-padded., test_check_chrome_present_header_footer_passes(), test_check_chrome_present_no_header_fails(), test_check_overflow_clean_grid_passes(), test_check_overflow_long_line_fails(), test_check_real_estate_full_grid_passes() (+7 more)
 
 ### Community 899 - "Community 899"
 Cohesion: 0.12
 Nodes (15): Acceptance, Circuit breaker (short-TTL), Cost + observability, Current-state verdict, Design, Devil's Advocate, Enforcement — CI guard test (the anti-drift mechanism), Fallback chain + error taxonomy (+7 more)
 
 ### Community 900 - "Community 900"
-Cohesion: 0.18
-Nodes (19): write_report(), _build_report(), _check_active_session(), _check_prior_dogfood_thread(), _ensure_reports_dir(), _file_action_item(), _find_or_create_schedule_thread(), Run research via claude -p (Path B — headless, no tmux required). (+11 more)
+Cohesion: 0.17
+Nodes (22): git_commit(), git_push(), write_report(), _build_report(), _check_active_session(), _check_prior_dogfood_thread(), _ensure_reports_dir(), _file_action_item() (+14 more)
 
 ### Community 901 - "Community 901"
-Cohesion: 0.12
-Nodes (19): cmd_project_graph_load(), juggle_graph_load — `project-graph load` orchestration (autopilot plan store)., Load (or guarded-upsert) a graph spec markdown file into graph_topics +     grap, content_changed(), parse_graph_spec(), parse_topics_spec(), juggle_graph_upsert — shared graph-spec validation + single-task upsert helpers., Parse a 3-tier spec: [{'id','title','objective','tasks':[task dicts]}].      LEG (+11 more)
+Cohesion: 0.10
+Nodes (25): cmd_project_graph_load(), juggle_graph_load — `project-graph load` orchestration (autopilot plan store)., Load (or guarded-upsert) a graph spec markdown file into graph_topics +     grap, content_changed(), find_cycle(), lint_verify_cmd(), parse_graph_spec(), parse_topics_spec() (+17 more)
 
 ### Community 902 - "Community 902"
 Cohesion: 0.15
 Nodes (7): db(), JuggleDB, Path, Tests for juggle_autopilot_state — CSV armed-set accessors (multi-project autopi, REGRESSION PIN (2026-06-10): scalar→set migration. A DB armed by the     OLD cod, test_legacy_scalar_reads_as_one_element_set(), test_pre_migration_db_degrades_to_empty()
 
 ### Community 903 - "Community 903"
-Cohesion: 0.33
-Nodes (6): _assign_thread_to_project(), Assign a thread and mark the old project dirty if the project changed., Assign a thread and mark the old project dirty if the project changed., mock_server(), Start a mock Hindsight server on a random port., Thread
+Cohesion: 0.17
+Nodes (12): assign_project_background(), _assign_thread_to_project(), Assign a thread and mark the old project dirty if the project changed., Assign a thread and mark the old project dirty if the project changed., Fire-and-forget background project assignment via detached subprocess.      Uses, mock_server(), Start a mock Hindsight server on a random port., Thread must be non-daemon so process waits for LLM assignment before exiting. (+4 more)
 
 ### Community 904 - "Community 904"
-Cohesion: 0.15
-Nodes (17): check_node_guard(), close_adhoc_run(), enforce_handoff_contract(), fail_graph_node(), fail_graph_task(), _node_for_thread(), juggle_cmd_agents_graph — graph-task glue for the agent CLI (autopilot).  Owns:, Agent death → graph (DA round-2 MAJOR-1, 2026-06-10).      cmd_fail_agent (unrec (+9 more)
+Cohesion: 0.14
+Nodes (20): close_adhoc_run(), enforce_handoff_contract(), fail_graph_node(), fail_graph_task(), mark_graph_node(), _node_for_thread(), _notify_failure(), juggle_cmd_agents_graph — graph-task glue for the agent CLI (autopilot).  Owns: (+12 more)
 
 ### Community 905 - "Community 905"
 Cohesion: 0.50
@@ -2419,8 +2434,8 @@ Cohesion: 0.40
 Nodes (4): juggle_cli_parsers_threads — Subparser registration for thread/session commands., Register thread/session subcommands on the given subparsers object., Register thread/session subcommands on the given subparsers object., register()
 
 ### Community 909 - "Community 909"
-Cohesion: 0.24
-Nodes (13): db(), _flat_node(), _flat_task(), _migrate(), JuggleDB, Path, Migration 37 — graph_topics backfill (3-tier R9, 2026-06-11).  REGRESSION-CRITIC, REGRESSION PIN (2026-06-11): flat→3-tier. Task state, thread binding,     and up (+5 more)
+Cohesion: 0.33
+Nodes (10): _flat_node(), _flat_task(), _migrate(), Migration 37 — graph_topics backfill (3-tier R9, 2026-06-11).  REGRESSION-CRITIC, REGRESSION PIN (2026-06-11): flat→3-tier. Task state, thread binding,     and up, A task literally named 'T-z' must not abort the migration when task 'z'     also, test_backfill_collision_uses_alternate_id(), test_backfill_is_idempotent() (+2 more)
 
 ### Community 910 - "Community 910"
 Cohesion: 0.33
@@ -2435,8 +2450,8 @@ Cohesion: 0.17
 Nodes (11): Brainstorm — Multi-Project Parallel Autopilot, D1 — How to store the armed SET, D2 — How the tick covers N graphs, D3 — Fair-sharing policy for the global budget, D4 — Cockpit (R5), D5 — Hooks (R7), D6 — CLI surface (R1), Ground-truth verification (brief claims vs. source) (+3 more)
 
 ### Community 913 - "Community 913"
-Cohesion: 0.06
-Nodes (54): get_repo_config(), Return integration config for repo_path with safe defaults.      Unknown repos g, Return integration config for repo_path with safe defaults.      Unknown repos g, Return integration config for repo_path with safe defaults.      Unknown repos g, Return integration config for repo_path with safe defaults.      Unknown repos g, _add_commit(), git_repo(), git_repo_with_remote() (+46 more)
+Cohesion: 0.05
+Nodes (59): get_repo_config(), Return integration config for repo_path with safe defaults.      Unknown repos g, Return integration config for repo_path with safe defaults.      Unknown repos g, Return integration config for repo_path with safe defaults.      Unknown repos g, Return integration config for repo_path with safe defaults.      Unknown repos g, Return integration config for repo_path with safe defaults.      Unknown repos g, _add_commit(), git_repo() (+51 more)
 
 ### Community 914 - "Community 914"
 Cohesion: 0.11
@@ -2467,8 +2482,8 @@ Cohesion: 0.04
 Nodes (50): _PromptModal, Generic one-line input modal. Dismisses with the stripped value or None.      di, Generic one-line input modal. Dismisses with the stripped value or None.      di, Generic one-line input modal. Dismisses with the stripped value or None.      di, s — switch active thread by label., s — switch active thread by label., a — ack all open action items on a thread by label., a — ack all open action items on a thread by label (Z = orphaned/null-thread). (+42 more)
 
 ### Community 921 - "Community 921"
-Cohesion: 0.04
-Nodes (60): _extract_decision_prompt(), _last_sentences(), Return the tail of text, capped at max_chars., Return the tail of text, capped at max_chars., Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Return the tail of text, capped at max_chars., Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la (+52 more)
+Cohesion: 0.16
+Nodes (15): _extract_decision_prompt(), Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Return a concise actionable prompt for a ⏸️ waiting thread.      Extracts the la, Extracts last sentence containing ? from assistant message., When no ? in assistant message, shows user message as 📬 prompt., Questions longer than 80 chars are truncated., User messages longer than 60 chars are truncated with ..., User messages longer than 60 chars are truncated with ... (+7 more)
 
 ### Community 922 - "Community 922"
 Cohesion: 0.30
@@ -2499,8 +2514,8 @@ Cohesion: 0.22
 Nodes (14): _args(), _git(), git_repo(), Tests for VCS provenance capture + `juggle runs restore` (T-vcs-checkpoint).  Co, --node remains a deprecated alias for --task (dest='task')., test_close_run_captures_after_sha(), test_insert_captures_vcs_provenance(), test_restore_happy_path_creates_safety_branch() (+6 more)
 
 ### Community 929 - "Community 929"
-Cohesion: 0.17
-Nodes (17): add_node(), add_task(), AddNodeError, AddTaskError, juggle_graph_add — validated, atomic, guarded single-task add into a live graph., Validated, atomic, guarded insert of ONE node into a live graph.      Validates, Validated, atomic, guarded insert of ONE task into a live graph.      Validates, Validation/guard failure for a single-task add. Carries a clean message;     the (+9 more)
+Cohesion: 0.26
+Nodes (11): add_node(), add_task(), AddNodeError, AddTaskError, juggle_graph_add — validated, atomic, guarded single-task add into a live graph., Validated, atomic, guarded insert of ONE node into a live graph.      Validates, Validated, atomic, guarded insert of ONE task into a live graph.      Validates, Validation/guard failure for a single-task add. Carries a clean message;     the (+3 more)
 
 ### Community 930 - "Community 930"
 Cohesion: 0.20
@@ -2511,8 +2526,8 @@ Cohesion: 0.17
 Nodes (15): _armed_set(), load_graph_dag(), load_graph_dags(), _load_one(), _load_one_legacy_tasks(), _project_name(), Lazy DAG loader for the cockpit graph panel.  Loads the armed project(s) topic g, Load topic-tier DAGs for all armed projects (CSV settings key), in order. (+7 more)
 
 ### Community 932 - "Community 932"
-Cohesion: 0.12
-Nodes (17): build_project_arm_rows(), Pure row builder for the project-arm modal — no I/O, fully unit-testable., Pure row builder for the project-arm modal — no I/O, fully unit-testable., arm-all logic arms every project whose graph is not complete., Armed projects get armed=True; others get armed=False., X/Y verified/total and running count come from task_counts., Projects with no graph tasks get hint '— no graph'., Projects with verified==total (and total>0) get hint '(complete)'. (+9 more)
+Cohesion: 0.13
+Nodes (3): CLI tests: thread lifecycle, archive/unarchive, show-topics, decision prompts (s, Return (db_path, general_thread_uuid) after running `start`., started_db()
 
 ### Community 933 - "Community 933"
 Cohesion: 0.10
@@ -2527,20 +2542,20 @@ Cohesion: 0.16
 Nodes (13): get_flush_status_line(), Path, juggle_cockpit_flush_status — compact flush-status string for the cockpit.  Used, Return a short status string (≤20 chars) for the cockpit footer.      Examples:, Tests for cockpit flush-status helper (Task 9)., Returns a safe string when no flush has occurred., Returns a string with age info after a flush., Returns an alert marker when flush is stale (old timestamp). (+5 more)
 
 ### Community 937 - "Community 937"
-Cohesion: 0.13
-Nodes (28): GraphNode, GraphTask, GraphNode, Build the graph Panel from the snapshot's lazily-loaded DAGs., _badge_segment(), build_graph_panel(), build_multi_graph_panel(), _cell_text() (+20 more)
+Cohesion: 0.12
+Nodes (26): GraphNode, GraphTask, _badge_segment(), build_multi_graph_panel(), _cell_text(), _flat_selectable(), _graph_section(), _progress_bar() (+18 more)
 
 ### Community 938 - "Community 938"
-Cohesion: 0.17
-Nodes (8): Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape., Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape., Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape., Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape., Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape., Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape., Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape., Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape.
+Cohesion: 0.10
+Nodes (17): Key, f — focus the tmux pane of an agent by 1-based index., f — focus the tmux pane of an agent by 1-based index., Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape., f — focus the tmux pane of an agent by 1-based index., Intercept Tab/Shift+Tab before Textual focus traversal; clear filter on Escape., f — focus the tmux pane of an agent by 1-based index., f — focus the tmux pane of an agent by 1-based index. (+9 more)
 
 ### Community 939 - "Community 939"
-Cohesion: 0.12
-Nodes (23): db(), JuggleDB, Path, Tests for cockpit graph-task visibility (autopilot Phase 4, DA m2).  Project row, REGRESSION PIN (DA round-2 minor 3, 2026-06-10): an armed project whose     task, Companion to the minor-3 pin: grouping used to require >1 project —     a lone a, 2026-06-10 DA m2 pin: a task-bound thread's cockpit glyph state comes     from g, _render_text() (+15 more)
+Cohesion: 0.14
+Nodes (20): Tests for cockpit graph-task visibility (autopilot Phase 4, DA m2).  Project row, REGRESSION PIN (DA round-2 minor 3, 2026-06-10): an armed project whose     task, Companion to the minor-3 pin: grouping used to require >1 project —     a lone a, 2026-06-10 DA m2 pin: a task-bound thread's cockpit glyph state comes     from g, _render_text(), test_armed_project_header_visible_with_zero_visible_topics(), test_graph_project_header_even_when_it_is_the_only_project(), test_node_bound_topic_uses_node_glyph_not_thread_status() (+12 more)
 
 ### Community 941 - "Community 941"
-Cohesion: 0.27
-Nodes (12): _build_old_schema_db(), _cols(), Connection, Migration 39 — rename graph primitive node -> task (T-rename-node-to-task).  REG, REGRESSION PIN (2026-06-13): init_db CREATEs an empty graph_tasks BEFORE     mig, Create a DB with the PRE-rename graph schema and a little data., _tables(), test_fresh_db_has_graph_tasks_not_graph_nodes() (+4 more)
+Cohesion: 0.23
+Nodes (15): apply_graph_migrations(), Apply migrations 35-37 + 39 (graph_tasks / graph_edges / graph_topics + rename)., Apply migrations 35-37 (graph_nodes / graph_edges / graph_topics)., _build_old_schema_db(), _cols(), Connection, Migration 39 — rename graph primitive node -> task (T-rename-node-to-task).  REG, REGRESSION PIN (2026-06-13): init_db CREATEs an empty graph_tasks BEFORE     mig (+7 more)
 
 ### Community 942 - "Community 942"
 Cohesion: 0.12
@@ -2567,8 +2582,8 @@ Cohesion: 0.04
 Nodes (87): BaseException, _cmd_selfheal_reset_diagnosing(), _cmd_selfheal_set_status(), _attribute_tool_errors(), _do_class_b_scan(), Path, juggle_hooks_classb — Class B transcript scan (Stop-hook, Juggle-caused errors)., Called from handle_stop(). Silently skips if no transcript_path. (+79 more)
 
 ### Community 1073 - "Community 1073"
-Cohesion: 0.10
-Nodes (22): _deep_merge(), get(), get_nested(), # NOTE: the claude.ai Google Workspace connectors (Drive,, # NOTE: the claude.ai Google Workspace connectors (Drive,, # NOTE: the claude.ai Google Workspace connectors (Drive,, # NOTE: the claude.ai Google Workspace connectors (Drive,, Recursively merge override into base. Returns a new dict. (+14 more)
+Cohesion: 0.08
+Nodes (26): _deep_merge(), get(), get_nested(), # NOTE: the claude.ai Google Workspace connectors (Drive,, # NOTE: the claude.ai Google Workspace connectors (Drive,, # NOTE: the claude.ai Google Workspace connectors (Drive,, # NOTE: the claude.ai Google Workspace connectors (Drive,, # NOTE: the claude.ai Google Workspace connectors (Drive, (+18 more)
 
 ### Community 1121 - "Community 1121"
 Cohesion: 0.24
@@ -2599,28 +2614,28 @@ Cohesion: 0.15
 Nodes (11): Functional Pilot tests for cockpit action_filter state cycling. Split from test_, Pressing Esc outside modal when filter is active clears filter + resets offset., Pressing Esc inside the filter prompt modal leaves existing filter unchanged., CockpitApp.__init__ initialises _filter dict with pane keys., `/` → type substring → enter sets _filter[pane] and resets offset to 0.      Not, `/` → blank submit clears existing filter and resets offset., test_action_filter_blank_submit_clears_filter(), test_action_filter_esc_in_modal_leaves_filter_unchanged() (+3 more)
 
 ### Community 1129 - "Community 1129"
-Cohesion: 0.23
-Nodes (12): _arm_many(), _mk_topic(), REGRESSION PIN (2026-06-10): the tick served get_armed_project() only —     a se, REGRESSION PIN (2026-06-10 spec DA): cross-project thread mis-binding     would, REGRESSION PIN (2026-06-10): old mid-batch guard stopped EVERYTHING on     disar, REGRESSION PIN (R4): a ready-scan exception used to abort the whole     tick; bl, Capacity is GLOBAL (MAX_THREADS bounds TOPICS — R9 budget model): a cap     hit, test_disarm_one_mid_batch_other_project_keeps_dispatching() (+4 more)
+Cohesion: 0.19
+Nodes (14): _arm_many(), _mk_topic(), REGRESSION PIN (DA round-2 MAJOR-4, 2026-06-10): the tick dispatched     BEFORE, REGRESSION PIN (2026-06-10): the tick served get_armed_project() only —     a se, REGRESSION PIN (2026-06-10 spec DA): cross-project thread mis-binding     would, REGRESSION PIN (2026-06-10): old mid-batch guard stopped EVERYTHING on     disar, REGRESSION PIN (R4): a ready-scan exception used to abort the whole     tick; bl, Capacity is GLOBAL (MAX_THREADS bounds TOPICS — R9 budget model): a cap     hit (+6 more)
 
 ### Community 1130 - "Community 1130"
 Cohesion: 0.15
-Nodes (15): ClaudeCodeAdapter, Built-in Claude Code adapter: per-role denies via a ``--settings`` overlay., _env_prefix(), external_restriction(), is_interactive(), Fully config-driven adapter (the "bring your own harness" path)., Register an adapter class under its ``type`` name (called at import time     fro, Build the shared ``env ...`` command prefix.      Two layers: juggle exports its (+7 more)
+Nodes (13): cmd_agent_tools(), cmd_cockpit(), _cmd_list_selfheal(), _deny_matches(), juggle_cmd_misc — Miscellaneous CLI command handlers.  Owns: cmd_cockpit (TUI la, Launch the Juggle Cockpit dashboard (Textual, mouse drag-to-resize).      With -, True if tool_name is covered by a deny entry (exact or `prefix*` wildcard)., True if tool_name is covered by a deny entry (exact or `prefix*` wildcard). (+5 more)
 
 ### Community 1131 - "Community 1131"
 Cohesion: 0.17
 Nodes (11): Cockpit bell-on-new-blocker tests: bell state attrs + _refresh diff firing rules, First _refresh (prev state empty) does NOT call self.bell()., CockpitApp.__init__ initialises _prev_action_ids and _prev_agent_statuses., CockpitApp.__init__ initialises _bell_enabled., New tier-0 action on 2nd _refresh fires self.bell(); 1st tick does not., Agent transitioning busy→stale on 2nd _refresh fires self.bell()., test_bell_enabled_attr_exists(), test_bell_fires_on_agent_failure() (+3 more)
 
 ### Community 1132 - "Community 1132"
-Cohesion: 0.26
-Nodes (13): _fail_node(), _fail_task(), Autopilot Phase 3 — failure propagation (design rev 2).  Any task entering faile, Regression pin (2026-06-10): blocked-failed tasks are operator     territory — t, Walk a task legally to its failed-* state without propagation., Regression pin (2026-06-10): through Phase 2, dependents of a failed     task we, A dependent reachable via two failed/blocked paths is blocked exactly     once;, A dependent already promoted to 'ready' (e.g. via a racing recompute)     is blo (+5 more)
+Cohesion: 0.18
+Nodes (21): _bind_thread(), _fail_node(), _fail_task(), _load_tree(), Autopilot Phase 3 — failure propagation (design rev 2).  Any task entering faile, Regression pin (2026-06-10): completing a mid-graph task with a failed     integ, The failed-verify exit (DA M3 channel) propagates identically., Regression pin (2026-06-10): blocked-failed tasks are operator     territory — t (+13 more)
 
 ### Community 1133 - "Community 1133"
 Cohesion: 0.15
 Nodes (13): UserPromptSubmit hook must fail-open on filesystem/OSError — never block a promp, Happy path: normal filesystem still injects context after fail-open hardening., Safety belt: main() must exit 0 (not 1) for UserPromptSubmit even if the handler, render_agent_role_anchor_for must not raise when Path.resolve() fails with ELOOP, Reload hook modules pointing at the test DB; return (juggle_hooks, juggle_hooks_, OSError during context-gathering must exit 0 (fail-open) AND write to stderr., Agent path: OSError during anchor-building must exit 0 with stderr warning., _reload() (+5 more)
 
 ### Community 1134 - "Community 1134"
-Cohesion: 0.03
-Nodes (112): MouseDown, MouseUp, ComposeResult, Return (offsets_copy, active_pane) atomically., Atomically write column_ratios to config.json.      No-op if config file is miss, Atomically write column_ratios to config.json.      No-op if config file is miss, Create and initialise a JuggleDB for the cockpit.      snapshot() opens its own, Create and initialise a JuggleDB for the cockpit.      snapshot() opens its own (+104 more)
+Cohesion: 0.25
+Nodes (7): p — show project arm/disarm overlay., p — show project arm/disarm overlay., p — show project arm/disarm overlay., p — show project arm/disarm overlay., p — show project arm/disarm overlay., p — show project arm/disarm overlay., p — show project arm/disarm overlay.
 
 ### Community 1135 - "Community 1135"
 Cohesion: 0.17
@@ -2635,8 +2650,8 @@ Cohesion: 0.19
 Nodes (13): _make_db(), Path, Tests for juggle_cmd_db_flush (Task 6)., flush_once copies live DB content to durable path atomically., flush_once leaves durable intact if interrupted (uses tmp+rename)., flush_status returns a dict with last_flush_at and age_s fields., flush_status returns None/null last_flush_at when no flush has occurred., age_s in flush_status is >= 0 after a flush. (+5 more)
 
 ### Community 1138 - "Community 1138"
-Cohesion: 0.22
-Nodes (11): RuntimeError, _mk(), REGRESSION PIN (DA round-2 minor 1, 2026-06-10): a permanently broken     dispat, REGRESSION PIN (DA round-2 minor 1, 2026-06-10): a permanently broken     dispat, One-off dispatch hiccups must not accumulate toward the give-up cap.     (adapte, One-off dispatch hiccups must not accumulate toward the give-up cap., test_claim_only_from_ready(), test_dispatch_retry_cap_marks_failed_exec_and_stops_flood() (+3 more)
+Cohesion: 0.13
+Nodes (22): RuntimeError, _arm(), _mk(), (adapted to topics, R9 2026-06-11), REGRESSION PIN (DA round-2 MAJOR-4, 2026-06-10): the tick dispatched     BEFORE, Guard for the MAJOR-4 reorder: defer/failure paths must clear the     binding th, Guard for the MAJOR-4 reorder: defer/failure paths must clear the     binding th, REGRESSION PIN (DA round-2 minor 1, 2026-06-10): a permanently broken     dispat (+14 more)
 
 ### Community 1139 - "Community 1139"
 Cohesion: 0.15
@@ -2667,12 +2682,12 @@ Cohesion: 0.20
 Nodes (9): Capture (reuse existing ledger choke points), Discoverability (part of DONE), Goal, Problem, Restore CLI — `juggle runs restore`, Schema (Migration 40), Tests, VCS abstraction — `src/vcs.py` (+1 more)
 
 ### Community 1164 - "Community 1164"
-Cohesion: 0.22
-Nodes (9): check_topic_completion_gate(), enforce_topic_gate(), fail_graph_topic(), mark_graph_topic(), juggle_cmd_agents_graph_topics — TOPIC completion/failure glue (R9 Task 7).  Ext, Agent death on a TOPIC thread → topic failed-exec + derived-dependent     blocki, R9/A10 gate: complete-agent on a topic thread refuses while any task is     non-, Print + exit(1) when the topic gate refuses (no side effects yet). (+1 more)
+Cohesion: 0.13
+Nodes (15): mark_graph_task(), If the thread is bound to a graph task, record the completion outcome.      Maps, check_topic_completion_gate(), enforce_topic_gate(), fail_graph_topic(), mark_graph_topic(), juggle_cmd_agents_graph_topics — TOPIC completion/failure glue (R9 Task 7).  Ext, Agent death on a TOPIC thread → topic failed-exec + derived-dependent     blocki (+7 more)
 
 ### Community 1169 - "Community 1169"
-Cohesion: 0.15
-Nodes (19): Validate and floor column_ratios loaded from config.      Returns ratios unchang, _sanitize_col_ratios(), Tests for cockpit v2 column-width persistence (column_ratios).  TDD cycles cover, Spurious Resize after palette close must NOT reset user-dragged column widths., [0.0, 0.45, 0.55] is a known-bad config — must return the default., Wrong-length list must return the default., Ratios that don't sum to ~1.0 must return the default., Healthy ratios must pass through unchanged. (+11 more)
+Cohesion: 0.20
+Nodes (10): Validate and floor column_ratios loaded from config.      Returns ratios unchang, _sanitize_col_ratios(), [0.0, 0.45, 0.55] is a known-bad config — must return the default., Wrong-length list must return the default., Ratios that don't sum to ~1.0 must return the default., Healthy ratios must pass through unchanged., test_sanitize_col_ratios_corrupted_returns_default(), test_sanitize_col_ratios_healthy_passthrough() (+2 more)
 
 ### Community 1170 - "Community 1170"
 Cohesion: 0.16
@@ -2687,8 +2702,8 @@ Cohesion: 0.18
 Nodes (10): 10.1 Simplified orphan_guard, 10. Deletion List, 11. Agent-First Acceptance Criteria, 14.1 Weakest assumptions and failure modes, 14. Devil's Advocate, 15. Spec Self-Review, 1. Goals, 2. Non-Goals / YAGNI Cuts (+2 more)
 
 ### Community 1192 - "Community 1192"
-Cohesion: 0.43
-Nodes (7): build_topic_hydration(), Dispatch prompt for a TOPIC (R9 hybrid): project objective + dep-topic     hando, Topic hydration (R9): objective + dep-TOPIC handoffs + SEQUENTIAL task list + th, _tasks(), test_topic_hydration_contains_contract_and_order(), test_verified_task_flagged_for_skip(), _topic()
+Cohesion: 0.14
+Nodes (14): _press_label(), Convert a thread label like 'A' or 'AB' to a list of Textual key names.     Acti, Convert a thread label like 'A' or 'AB' to a list of Textual key names.     Acti, Convert a thread label like 'A' or 'AB' to a list of Textual key names.     Acti, Pressing 's' with a valid label calls set_current_thread., Pressing 's' with a valid label calls set_current_thread., Pressing 'a' with no open actions shows a warning notification (no crash)., Pressing 'a' with no open actions shows a warning notification (no crash). (+6 more)
 
 ### Community 1193 - "Community 1193"
 Cohesion: 0.31
@@ -2715,8 +2730,8 @@ Cohesion: 0.04
 Nodes (44): 10. Devil's Advocate, 1. Files Changed, 2. DB Migration, 3. CLI Surface — Removed + Added, 4. Code Paths Simplified, 5. Config Migration, 6. `/juggle:doctor` — Auto-Migration Command, 7. Skills/Commands Updated (+36 more)
 
 ### Community 1240 - "Community 1240"
-Cohesion: 0.14
-Nodes (23): BaseHTTPRequestHandler, env(), mock_server(), MockHindsightHandler, Tests for memory-related CLI subcommands: recall, recall-if-cold, retain., Create a started DB with a thread, return thread label., Create a started DB with a thread, return thread label., When hindsight is disabled, retain is a silent no-op. (+15 more)
+Cohesion: 0.09
+Nodes (33): BaseHTTPRequestHandler, env(), mock_server(), MockHindsightHandler, Tests for memory-related CLI subcommands: recall, recall-if-cold, retain., Create a started DB with a thread, return thread label., Create a started DB with a thread, return thread label., When hindsight is disabled, retain is a silent no-op. (+25 more)
 
 ### Community 1241 - "Community 1241"
 Cohesion: 0.05
@@ -2744,11 +2759,11 @@ Nodes (13): Blocking worker: call LLM, update body via call_from_thread., Blocki
 
 ### Community 1274 - "Community 1274"
 Cohesion: 0.19
-Nodes (14): Display counts over graph_topics (same shape as juggle_graph_status)., Display counts over graph_topics (same shape as juggle_graph_status)., topic_counts(), _cmd_status(), build_graph_injection(), counts_from_states(), format_progress(), graph_counts() (+6 more)
+Nodes (13): Display counts over graph_topics (same shape as juggle_graph_status)., Display counts over graph_topics (same shape as juggle_graph_status)., topic_counts(), build_graph_injection(), counts_from_states(), format_progress(), graph_counts(), juggle_graph_status — read-only display aggregates over graph_tasks.  Owns: per- (+5 more)
 
 ### Community 1282 - "Community 1282"
-Cohesion: 0.13
-Nodes (14): W — toggle: stop a live watchdog, or start a detached one if none., W — toggle: stop a live watchdog, or start a detached one if none., R / shift+W — kill + relaunch from canonical main (latest code)., R — kill + relaunch from canonical main (latest code)., _is_pid_alive(), Path, Watchdog liveness detection and child-process start helper.  The watchdog calls, Return seconds since last heartbeat, or None if the file is missing. (+6 more)
+Cohesion: 0.26
+Nodes (10): MouseMove, MouseMove, _make_app(), TDD tests for cockpit resize breakpoint and splitter drag bugs.  Cycles:   1. on, After dragging topics narrow then triggering a resize, topics must remain visibl, topics must stay visible after resize when terminal is wide but topics pane is n, After an extreme left drag, topics width must be ≥ _MIN_TOPICS_PCT% of terminal., test_drag_then_resize_no_pane_collapse() (+2 more)
 
 ### Community 1290 - "Community 1290"
 Cohesion: 0.13
@@ -2771,8 +2786,8 @@ Cohesion: 0.06
 Nodes (32): 1. Feedback-loop reinforcement, 2. YAGNI — Matcher already worked after manual fix, 3. Re-sweep churn bounding, 4. Embedding cost (BoW vs. real embeddings), 5. `deepseek/deepseek-chat-v3-0324:free` model ID availability, 6. Confidence threshold calibration, 7. `infer_project_id` return type change breaks callers, Devil's Advocate (+24 more)
 
 ### Community 1386 - "Community 1386"
-Cohesion: 0.11
-Nodes (24): mock_db(), mock_get_db(), When CLAUDE_CODE_SESSION_ID is set, pidfile is session-scoped., When CLAUDE_CODE_SESSION_ID is unset, falls back to watchdog.pid., Second _start_watchdog() in same session SIGTERMs the old PID then starts fresh., _start_watchdog() must never read or kill another session's pidfile., Verify _start_watchdog calls pkill for stale watchdogs., When CLAUDE_CODE_SESSION_ID is set, pidfile is session-scoped. (+16 more)
+Cohesion: 0.09
+Nodes (37): cmd_create_thread(), _make_thread(), mock_db(), mock_get_db(), When CLAUDE_CODE_SESSION_ID is set, pidfile is session-scoped., When CLAUDE_CODE_SESSION_ID is unset, falls back to watchdog.pid., Second _start_watchdog() in same session SIGTERMs the old PID then starts fresh., Gate 1: show_in_list=0 → reflect() never called. (+29 more)
 
 ### Community 1387 - "Community 1387"
 Cohesion: 0.06
@@ -2803,12 +2818,12 @@ Cohesion: 0.39
 Nodes (3): apply_quarantine(), Prepend --deselect <path> flags for each quarantined test.      Flags are insert, TestApplyQuarantine
 
 ### Community 1394 - "Community 1394"
-Cohesion: 0.10
-Nodes (32): cmd_list_agents(), cmd_spawn_agent(), juggle_cmd_agents_pool — Agent pool spawn/list/status commands.  Owns: cmd_spawn, Reconcile stale busy one-shot agents: dead PID → idle + failure action item., Reconcile stale busy one-shot agents: dead PID → idle + failure action item., Reconcile stale busy one-shot agents: dead PID → idle + failure action item., Reconcile stale busy one-shot agents: dead PID → idle + failure action item., Reconcile stale busy one-shot agents: dead PID → idle + failure action item. (+24 more)
+Cohesion: 0.11
+Nodes (31): Reconcile stale busy one-shot agents: dead PID → idle + failure action item., Reconcile stale busy one-shot agents: dead PID → idle + failure action item., Reconcile stale busy one-shot agents: dead PID → idle + failure action item., Reconcile stale busy one-shot agents: dead PID → idle + failure action item., Reconcile stale busy one-shot agents: dead PID → idle + failure action item., reconcile_oneshot_agents(), db(), Tests for one-shot agent observability: harness tagging, PID liveness, reconcile (+23 more)
 
 ### Community 1395 - "Community 1395"
-Cohesion: 0.09
-Nodes (18): Launch the configured agent harness in a pane.          Command construction is, Launch the configured agent harness in a pane.          Command construction is, Launch the configured agent harness in a pane.          Command construction is, Spawn a new claude pane, register in DB, return agent dict.          db must be, Spawn a new claude pane, register in DB, return agent dict.          db must be, Spawn a new claude pane, register in DB, return agent dict.          db must be, Spawn a new claude pane, register in DB, return agent dict.          db must be, Spawn a new claude pane, register in DB, return agent dict.          db must be (+10 more)
+Cohesion: 0.06
+Nodes (27): CompletedProcess, CompletedProcess, Launch the configured agent harness in a pane.          Command construction is, Launch the configured agent harness in a pane.          Command construction is, Launch the configured agent harness in a pane.          Command construction is, Capture current pane content; return raw text or None on failure.          Used, Capture current pane content; return raw text or None on failure.          Used, Capture current pane content; return raw text or None on failure.          Used (+19 more)
 
 ### Community 1396 - "Community 1396"
 Cohesion: 0.14
@@ -2820,11 +2835,11 @@ Nodes (10): _dep_topic(), (adapted to topics, R9 2026-06-11), A completion that 
 
 ### Community 1398 - "Community 1398"
 Cohesion: 0.09
-Nodes (35): get_thread_state(), Return emoji state string for a thread dict.      Returns one of: "👉", "🏃‍♂️", ", get_thread_state(), JuggleDB, Render the topics tree as a string. Returns 'No topics.' if no visible threads., Render the topics tree as a string. Returns 'No topics.' if no visible threads., Return emoji state string for a thread dict.      Returns one of: "👉", "🏃‍♂️", ", render_topics_tree() (+27 more)
+Nodes (29): get_thread_state(), Return emoji state string for a thread dict.      Returns one of: "👉", "🏃‍♂️", ", JuggleDB tests: get_thread_state badge logic (split from test_juggle_db.py, 2026, current state wins over background., get_thread_state returns ⏸️ for done threads where last assistant msg ends with, get_thread_state returns ✅ for done threads where user replied after assistant q, get_thread_state returns ⏸️ for done threads where only junk messages follow the, get_last_exchange should skip junk user messages and fall back to the previous r (+21 more)
 
 ### Community 1399 - "Community 1399"
-Cohesion: 0.13
-Nodes (7): _make_state(), Unit tests for Juggle Cockpit v2 (Textual) — state logic and render reuse.  Test, _ScrollState, _splitter_resize(), TestBreakpointRouting, TestScrollState, TestSplitterMath
+Cohesion: 0.14
+Nodes (5): _ScrollState, _splitter_resize(), TestBreakpointRouting, TestScrollState, TestSplitterMath
 
 ### Community 1400 - "Community 1400"
 Cohesion: 0.08
@@ -2835,28 +2850,28 @@ Cohesion: 0.08
 Nodes (24): 1. Pattern brittleness (recoverable prompt), 2. Stuck-at-prompt mock fidelity, 3. Recovery side effects, 4. Race conditions, 5. DB state pollution, 6. Stall threshold sensitivity, `conftest.py` — Fixtures, `crashed.sh` (+16 more)
 
 ### Community 1402 - "Community 1402"
-Cohesion: 0.44
-Nodes (11): cmd_project_edit(), _edit_args(), _make_project_db(), test_project_edit_both_criterion_and_json_errors(), test_project_edit_clear_success_criteria(), test_project_edit_existing_flags_regression(), test_project_edit_success_criteria_json_invalid_json_errors(), test_project_edit_success_criteria_json_non_list_errors() (+3 more)
+Cohesion: 0.22
+Nodes (10): cmd_fail_agent(), juggle_cmd_agents_complete — Agent completion and failure handlers.  Owns: cmd_c, Route agent failure: transient → leave running for retry; persistent → action_it, Route agent failure: transient → leave running for retry; persistent → action_it, Route agent failure: transient → leave running for retry; persistent → action_it, Route agent failure: transient → leave running for retry; persistent → action_it, Route agent failure: transient → leave running for retry; persistent → action_it, _make_db() (+2 more)
 
 ### Community 1403 - "Community 1403"
 Cohesion: 0.43
 Nodes (6): Tests for the vault-path / vault-name CLI commands.  These wrap _get_vault_root(, test_cmd_vault_name_prints_name(), test_cmd_vault_path_prints_root(), test_vault_name_prefers_explicit_then_falls_back(), test_vault_root_handles_leading_slash(), test_vault_root_handles_tilde_prefix()
 
 ### Community 1404 - "Community 1404"
-Cohesion: 0.06
-Nodes (55): get_db(), _humanize_dt(), Return a human-friendly relative time string for an ISO-8601 UTC timestamp., Return a JuggleDB handle.      db_path: optional override; falls back to the mod, Return a JuggleDB handle.      db_path: optional override. When omitted, falls b, Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -, Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -, Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       - (+47 more)
+Cohesion: 0.08
+Nodes (46): get_db(), Return a JuggleDB handle.      db_path: optional override. When omitted, falls b, Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -, Resolve user-label or hex-prefix/full UUID to thread UUID.      Accepts:       -, _resolve_thread(), cmd_recall_if_cold(), Recall only if thread hasn't loaded memory yet., _cleanup_orphaned_threads() (+38 more)
 
 ### Community 1405 - "Community 1405"
-Cohesion: 0.08
-Nodes (39): _build(), build_context_string(), build_startup_output(), _current_session_id(), _get_juggle_version(), _graph_node_tag(), _graph_task_tag(), _minute_ts() (+31 more)
+Cohesion: 0.13
+Nodes (27): _build(), build_context_string(), build_startup_output(), _current_session_id(), _get_juggle_version(), get_thread_state(), _graph_node_tag(), _graph_task_tag() (+19 more)
 
 ### Community 1406 - "Community 1406"
 Cohesion: 0.40
 Nodes (4): Deprecated aliases (DO NOT REMOVE), Juggle autopilot primitives, Migration, Naming: `node` → `task` (2026-06-13)
 
 ### Community 1407 - "Community 1407"
-Cohesion: 0.15
-Nodes (16): is_watchdog_alive(), Tests for watchdog heartbeat health detection and CLI warning., is_watchdog_alive returns False for missing heartbeat — warning logic must branc, Fresh heartbeat file → watchdog is alive., Heartbeat file older than stale_secs → watchdog is dead., No heartbeat file → watchdog has never run., write_heartbeat must update mtime of an existing stale file., CLI main must print a stderr warning when watchdog heartbeat is stale. (+8 more)
+Cohesion: 0.12
+Nodes (20): is_watchdog_alive(), Watchdog liveness detection and child-process start helper.  The watchdog calls, write_heartbeat(), Tests for watchdog heartbeat health detection and CLI warning., is_watchdog_alive returns False for missing heartbeat — warning logic must branc, Fresh heartbeat file → watchdog is alive., Heartbeat file older than stale_secs → watchdog is dead., No heartbeat file → watchdog has never run. (+12 more)
 
 ### Community 1408 - "Community 1408"
 Cohesion: 0.40
@@ -2871,8 +2886,8 @@ Cohesion: 0.25
 Nodes (11): _bind_running_topic(), _merged_repo(), _mk_topic_task(), A real repo whose 'main' branch satisfies the G1 verified⟺merged guard., REGRESSION PIN (2026-06-11 R9/A10): complete-agent on a topic thread with     no, All tasks verified → topic 'verified', handoff stored; integrate stub     called, a1 verified, a2 failed-verify (terminal) → gate passes, verify_ok=False     → to, test_complete_agent_marks_topic_when_all_tasks_terminal() (+3 more)
 
 ### Community 1411 - "Community 1411"
-Cohesion: 0.16
-Nodes (26): test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script (+18 more)
+Cohesion: 0.15
+Nodes (27): test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script, test_graphify_hooks.sh script (+19 more)
 
 ### Community 1412 - "Community 1412"
 Cohesion: 0.09
@@ -2887,8 +2902,8 @@ Cohesion: 0.30
 Nodes (20): get_adapter(), Resolve the harness adapter for ``role``.      Selection precedence: ``agent.har, _cfg(), test_codex_audit_relaxes_sandbox(), test_codex_empty_model_falls_back_to_agent_model(), test_codex_extra_flags_appended(), test_codex_extra_restriction_flag_appended(), test_codex_hook_capable_override_skips_inline() (+12 more)
 
 ### Community 1416 - "Community 1416"
-Cohesion: 0.10
-Nodes (17): Key, _ProjectArmModal, Key, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate (+9 more)
+Cohesion: 0.15
+Nodes (11): Key, _ProjectArmModal, Key, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate, Project arm/disarm overlay (p key).      Multi-arm: armed is a SET. j/k navigate (+3 more)
 
 ### Community 1417 - "Community 1417"
 Cohesion: 0.10
@@ -2899,12 +2914,12 @@ Cohesion: 0.10
 Nodes (28): _make_active_db(), JuggleDB, Regression tests for orchestrator session-scoping in PreToolUse hook.  Bug (2026, Edit tool in a non-orchestrator session must also be allowed., Edit tool in a non-orchestrator session must also be allowed., The session that ran /juggle:start must still be blocked from Write/Edit.      R, The session that ran /juggle:start must still be blocked from Write/Edit.      R, When juggle is active but orchestrator_session_id was never set (old DB     or p (+20 more)
 
 ### Community 1419 - "Community 1419"
-Cohesion: 0.29
-Nodes (7): from_config(), _hs(), _paths(), Hindsight HTTP API client for Juggle memory integration.  All Hindsight communic, Shortcut: return the hindsight settings section., Shortcut: return the paths settings section., Load client from config. If config_path provided and exists, reads it directly.
+Cohesion: 0.21
+Nodes (11): _main_worktree_root(), juggle_cmd_agents_worktree — Git worktree helpers for agent dispatch/completion., Pre-register worktree_path in ~/.claude.json projects map.      claude --dangero, Resolve ``repo_path`` to the MAIN worktree root.      Critical for nested-dispat, Resolve ``repo_path`` to the MAIN worktree root.      Critical for nested-dispat, _register_worktree_trust(), _init_repo(), Path (+3 more)
 
 ### Community 1420 - "Community 1420"
-Cohesion: 0.08
-Nodes (33): cmd_ack_action(), cmd_check_agents(), cmd_decommission_agent(), cmd_list_actions(), cmd_list_agents(), cmd_notify(), cmd_release_agent(), cmd_request_action() (+25 more)
+Cohesion: 0.07
+Nodes (36): cmd_ack_action(), cmd_check_agents(), cmd_complete_agent(), cmd_decommission_agent(), cmd_list_actions(), cmd_list_agents(), cmd_notify(), cmd_release_agent() (+28 more)
 
 ### Community 1421 - "Community 1421"
 Cohesion: 0.22
@@ -2931,16 +2946,16 @@ Cohesion: 0.12
 Nodes (16): Category 3: Major Project (Superpowers Workflow), CLI Reference, Cockpit, Coder Agent Prompt, Dispatch Protocols, Examples, /juggle:start, Limits (+8 more)
 
 ### Community 1427 - "Community 1427"
-Cohesion: 0.15
-Nodes (14): cmd_send_message(), cmd_send_task(), juggle_cmd_agents_tasks — Task dispatch to pooled agents.  Owns: cmd_send_task (, REGRESSION PIN (DA B5, 2026-06-10): the autopilot LLM loop raced the     tick by, test_send_task_refuses_node_bound_thread_without_force(), test_send_task_refuses_task_bound_thread_without_force(), _make_db(), JuggleDB (+6 more)
+Cohesion: 0.28
+Nodes (8): _make_db(), JuggleDB, Path, Regression pin: cmd_send_task must honor db_path injection (2026-06-11).  Sympto, cmd_send_task with db_path finds agent in the non-default temp DB.      Incident, _dispatch_via_pool includes db_path in the Namespace for cmd_send_task.      Inc, test_cmd_send_task_uses_injected_db_path(), test_dispatch_via_pool_passes_db_path_to_send_task()
 
 ### Community 1428 - "Community 1428"
-Cohesion: 0.16
-Nodes (19): get_settings(), Return merged settings dict. Re-reads config on every call (no cache).      Load, Return merged settings dict. Re-reads config on every call (no cache).      Load, Return merged settings dict. Re-reads config on every call (no cache).      Load, Return merged settings dict. Re-reads config on every call (no cache).      Load, Return merged settings dict. Re-reads config on every call (no cache).      Load, Regression tests for juggle_settings — no lru_cache, config always fresh., Regression: without lru_cache, config changes are picked up immediately. (+11 more)
+Cohesion: 0.14
+Nodes (21): get_settings(), Return merged settings dict. Re-reads config on every call (no cache).      Load, Return merged settings dict. Re-reads config on every call (no cache).      Load, Return merged settings dict. Re-reads config on every call (no cache).      Load, Return merged settings dict. Re-reads config on every call (no cache).      Load, Return merged settings dict. Re-reads config on every call (no cache).      Load, Return merged settings dict. Re-reads config on every call (no cache).      Load, Regression tests for juggle_settings — no lru_cache, config always fresh. (+13 more)
 
 ### Community 1429 - "Community 1429"
 Cohesion: 0.06
-Nodes (44): build_diagnosis_prompt(), get_diagnosis_candidates(), _in_flight_exists(), maybe_dispatch_selfheal_diagnosis(), purge_expired_selfheal(), datetime, Return open class-A error rows with count >= min_count, ordered count DESC., Pure gate: return the top candidate row or None.      Returns None when disabled (+36 more)
+Nodes (43): build_diagnosis_prompt(), get_diagnosis_candidates(), _in_flight_exists(), maybe_dispatch_selfheal_diagnosis(), purge_expired_selfheal(), datetime, Return open class-A error rows with count >= min_count, ordered count DESC., Pure gate: return the top candidate row or None.      Returns None when disabled (+35 more)
 
 ### Community 1430 - "Community 1430"
 Cohesion: 0.12
@@ -2951,8 +2966,8 @@ Cohesion: 0.28
 Nodes (14): _codex_cfg(), test_claude_audit_env_appended(), test_claude_build_launch_command_matches_legacy(), test_claude_no_model_omits_model_flag(), test_decorate_task_claude_is_noop(), test_decorate_task_inlines_anchor_for_non_hook_harness(), test_decorate_task_non_hook_without_anchor_returns_prompt(), test_get_adapter_default_is_claude() (+6 more)
 
 ### Community 1433 - "Community 1433"
-Cohesion: 0.15
-Nodes (27): CockpitState, CockpitState, Juggle Cockpit Static — text renders of the cockpit without a TUI.  Owns: render, Remove ANSI SGR escape codes so width math runs on visible characters.      Rich, Render all four cockpit panes as plain text from a CockpitState.      Mirrors th, Render all four cockpit panes as plain text from a CockpitState.      Mirrors th, Snapshot the live juggle.db and render all four cockpit panes as plain text., Snapshot the live juggle.db and render all four cockpit panes as plain text. (+19 more)
+Cohesion: 0.16
+Nodes (26): CockpitState, Juggle Cockpit Static — text renders of the cockpit without a TUI.  Owns: render, Remove ANSI SGR escape codes so width math runs on visible characters.      Rich, Render all four cockpit panes as plain text from a CockpitState.      Mirrors th, Render all four cockpit panes as plain text from a CockpitState.      Mirrors th, Snapshot the live juggle.db and render all four cockpit panes as plain text., Snapshot the live juggle.db and render all four cockpit panes as plain text., Snapshot the live juggle.db and render all four cockpit panes as plain text. (+18 more)
 
 ### Community 1434 - "Community 1434"
 Cohesion: 0.31
@@ -3000,15 +3015,15 @@ Nodes (11): Cross-links, Juggle Weekly Digest — 2026-05-25, RF-1 Watchdog Heal
 
 ### Community 1447 - "Community 1447"
 Cohesion: 0.14
-Nodes (24): smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script (+16 more)
+Nodes (25): smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script, smoke_test_agent_compliance.sh script (+17 more)
 
 ### Community 1448 - "Community 1448"
 Cohesion: 0.17
 Nodes (11): Architecture, CLI, Cockpit Viewport Smoke Harness, Frame Dumps, Layout Heuristics, Problem, PTY Driver (`src/juggle_smoke.py`), Solution (+3 more)
 
 ### Community 1450 - "Community 1450"
-Cohesion: 0.14
-Nodes (21): _cheap_llm_call(), llm_call(), Profile-based LLM dispatcher.      Profiles defined in settings.llm_profiles (ch, Shim: delegates to llm_call(profile='cheap'). Kept for call-site compat., Shim: delegates to llm_call(profile='cheap'). Kept for call-site compat., Shim: delegates to llm_call(profile='cheap'). Kept for call-site compat., llm_call(), Logger (+13 more)
+Cohesion: 0.13
+Nodes (21): _cheap_llm_call(), _existing_thread_titles(), llm_call(), Shim: delegates to llm_call(profile='cheap'). Kept for call-site compat., Shim: delegates to llm_call(profile='cheap'). Kept for call-site compat., Non-empty titles of all OTHER threads, for dedup-awareness. Fail-soft., llm_call(), Logger (+13 more)
 
 ### Community 1452 - "Community 1452"
 Cohesion: 0.18
@@ -3023,8 +3038,8 @@ Cohesion: 0.18
 Nodes (11): 8.10 Confirmation bias loop — dogfood reading its own history, 8.1 Routine failure cascade — silent dead routines, 8.2 Bad auto-fix merges silently, 8.3 Issue spam with weak dedup, 8.4 Cross-repo bleed — D2 editing outside juggle, 8.5 Routines feature maturity — April 2026 = ~1 month old, 8.6 Dogfood cost ramp — $14/year for a single analysis section, 8.7 Schedule collision with manual work (+3 more)
 
 ### Community 1455 - "Community 1455"
-Cohesion: 0.31
-Nodes (12): _auto_archive_closed_threads(), Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou, _auto_archive_closed_threads(), Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou, Archive any closed thread whose last_active_at exceeds the TTL.      Returns cou, db(), Tests for Task 7 auto-archive hook., _set_last_active() (+4 more)
+Cohesion: 0.15
+Nodes (22): _auto_archive_closed_threads(), _auto_archive_closed_threads(), build_startup_output(), _get_juggle_version(), JuggleDB, juggle_context_startup — topics tree, thread-state badges, startup output.  Owns, Return up to 2 Hindsight snippet lines for a topic. Empty list on any failure., Render the topics tree as a string. Returns 'No topics.' if no visible threads. (+14 more)
 
 ### Community 1457 - "Community 1457"
 Cohesion: 0.18
@@ -3127,8 +3142,8 @@ Cohesion: 0.29
 Nodes (7): 7.1 Claude Code Routines API — exact interface, 7.2 `juggle.db` access from cloud Routines, 7.3 GitHub auth — App vs PAT, 7.4 Routines cost billing, 7.5 Watchdog snapshot path for F1/FX-4, 7.6 Claude Code session JSONL format for B3/IS-2, 7. Open Questions
 
 ### Community 1493 - "Community 1493"
-Cohesion: 0.14
-Nodes (13): Parse last_active ISO timestamp, return seconds since now, or None., Parse last_active ISO timestamp, return seconds since now, or None., Parse last_active ISO timestamp, return seconds since now, or None., Parse last_active ISO timestamp, return seconds since now, or None., Parse last_active ISO timestamp, return seconds since now, or None., _thread_age_seconds(), build_startup_output(), _get_juggle_version() (+5 more)
+Cohesion: 0.33
+Nodes (6): Parse last_active ISO timestamp, return seconds since now, or None., Parse last_active ISO timestamp, return seconds since now, or None., Parse last_active ISO timestamp, return seconds since now, or None., Parse last_active ISO timestamp, return seconds since now, or None., Parse last_active ISO timestamp, return seconds since now, or None., _thread_age_seconds()
 
 ### Community 1494 - "Community 1494"
 Cohesion: 0.33
@@ -3207,8 +3222,8 @@ Cohesion: 0.38
 Nodes (6): Armed-project carve-out (tick-owned nodes), /juggle:toggle-autopilot, /juggle:toggle-autopilot [project] [--auto-approve] | off, Learned rules, Project arming flow (`/juggle:toggle-autopilot <project>`), Status loop (auto-scheduled while work is pending)
 
 ### Community 1513 - "Community 1513"
-Cohesion: 0.14
-Nodes (11): _clamp_col_pct(), Clamp an integer percent to [lo, hi].  Prevents 0% or 100% topics., _cockpit_subtitle(), _get_version(), Cockpit title-bar version (single source of truth: .claude-plugin/plugin.json)., Read the juggle version from plugin.json. Returns '?' on failure., Build the Header sub_title with the version appended.      Wide: "Cockpit v2 · v, 0% topics must be raised to _MIN_TOPICS_PCT. (+3 more)
+Cohesion: 0.13
+Nodes (13): _clamp_col_pct(), Clamp an integer percent to [lo, hi].  Prevents 0% or 100% topics., _cockpit_subtitle(), _get_version(), Cockpit title-bar version (single source of truth: .claude-plugin/plugin.json)., Read the juggle version from plugin.json. Returns '?' on failure., Build the Header sub_title with the version appended.      Wide: "Cockpit v2 · v, 0% topics must be raised to _MIN_TOPICS_PCT. (+5 more)
 
 ### Community 1514 - "Community 1514"
 Cohesion: 0.40
@@ -3220,19 +3235,19 @@ Nodes (9): _check_tmpfs_writable(), Tests for split-brain guard (Task 7).  If db
 
 ### Community 1518 - "Community 1518"
 Cohesion: 0.11
-Nodes (17): LANG, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script (+9 more)
+Nodes (18): LANG, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script, stuck-at-prompt.sh script (+10 more)
 
 ### Community 1519 - "Community 1519"
 Cohesion: 0.25
 Nodes (6): Unarchive: status=active, show_in_list=1, user_label preserved., Look up a thread by its UUID `id`. Returns None if not found., Look up a thread by its UUID `id`. Returns None if not found., Unarchive: status=active, show_in_list=1.          T-slug-wheel: the archived ro, Unarchive: status=active, show_in_list=1.          T-slug-wheel: the archived ro, Look up a thread by its UUID `id`. Returns None if not found.
 
 ### Community 1520 - "Community 1520"
-Cohesion: 0.29
-Nodes (8): Create threads table with the 4 to-be-dropped columns + data., Import and run migration 41 against the given connection., Migration 41 must drop the 4 dead columns, keep summarized_msg_count and rows., Running migration 41 twice must not error and must be a no-op on second run., _run_migration_41(), _seed_old_schema(), test_migration_41_drops_dead_columns(), test_migration_41_idempotent()
+Cohesion: 0.17
+Nodes (12): Run juggle_cli.py with a test DB path, override DB_PATH via env., Prints 'No archive candidates.' when nothing qualifies., Prints 'No archive candidates.' when nothing qualifies., show-topics does not display threads with show_in_list=0., show-topics does not display threads with show_in_list=0., run_cli(), test_get_archive_candidates_none(), test_get_messages_plain() (+4 more)
 
 ### Community 1521 - "Community 1521"
-Cohesion: 0.12
-Nodes (21): _compute_ratios(), _compute_ratios(), Normalize actual rendered cell widths to [topics, actions, agents] ratios summin, If topics renders at 0 cells (collapsed), result must floor to _MIN_TOPICS_RATIO, Very small (but non-zero) topics must still be floored to _MIN_TOPICS_RATIO., Every column has a minimum; all floors must be respected after renorm., Healthy widths (all well above floor) must not be distorted., Normalized ratios always sum to 1.0 (last element absorbs rounding error). (+13 more)
+Cohesion: 0.15
+Nodes (23): _compute_ratios(), _compute_ratios(), Normalize actual rendered cell widths to [topics, actions, agents] ratios summin, Normalize actual rendered cell widths to [topics, actions, agents] ratios summin, Tests for cockpit v2 column-width persistence (column_ratios).  TDD cycles cover, Spurious Resize after palette close must NOT reset user-dragged column widths., If topics renders at 0 cells (collapsed), result must floor to _MIN_TOPICS_RATIO, Very small (but non-zero) topics must still be floored to _MIN_TOPICS_RATIO. (+15 more)
 
 ### Community 1522 - "Community 1522"
 Cohesion: 0.33
@@ -3247,8 +3262,8 @@ Cohesion: 0.17
 Nodes (12): assert_migration_allowed(), is_agent_context(), is_shared_prod_db(), True when running inside a dispatched AGENT / worktree process.      JUGGLE_ORCH, True when running inside a dispatched AGENT / worktree process.      JUGGLE_ORCH, True iff ``db_path`` resolves to the shared operational DB., An agent/worktree process tried to migrate the shared prod DB., G2 gate: refuse migrating the shared prod DB from an agent context.      Only th (+4 more)
 
 ### Community 1525 - "Community 1525"
-Cohesion: 0.15
-Nodes (13): cmd_integrate(), get_db(), juggle integrate <thread> — rebase-aware atomic worktree finalization., juggle integrate <thread> — rebase-aware atomic worktree finalization., juggle integrate <thread> — rebase-aware atomic worktree finalization., juggle integrate <thread> — rebase-aware atomic worktree finalization., juggle integrate <thread> — rebase-aware atomic worktree finalization., juggle integrate <thread> — rebase-aware atomic worktree finalization. (+5 more)
+Cohesion: 0.10
+Nodes (28): acquire_repo_lock(), _canonical_main_ref(), cmd_integrate(), get_db(), _get_lock_path(), _pid_alive(), Path, juggle integrate <thread> — rebase-aware atomic worktree finalization. (+20 more)
 
 ### Community 1526 - "Community 1526"
 Cohesion: 0.20
@@ -3259,16 +3274,16 @@ Cohesion: 0.18
 Nodes (10): ? — show help overlay., ? — show help overlay., ? — show help overlay., ? — show help overlay., ? — show help overlay., ? — show help overlay., ? — show help overlay., ? — show help overlay. (+2 more)
 
 ### Community 1528 - "Community 1528"
-Cohesion: 0.38
-Nodes (7): JuggleTmuxManager, JuggleDB, Path, A watchdog tried to run against prod without the orchestrator sanction., A second watchdog tried to start while another holds the singleton lock., WatchdogAlreadyRunning, WatchdogLaunchRefused
+Cohesion: 0.20
+Nodes (10): check_node_guard(), DA B5: manual send-task to a tick-owned node is a double-dispatch race.      Ret, cmd_send_message(), cmd_send_task(), juggle_cmd_agents_tasks — Task dispatch to pooled agents.  Owns: cmd_send_task (, REGRESSION PIN (DA B5, 2026-06-10): the autopilot LLM loop raced the     tick by, test_check_node_guard_allows_operator_states_and_unbound(), test_check_node_guard_refuses_tick_owned_states() (+2 more)
 
 ### Community 1529 - "Community 1529"
 Cohesion: 0.33
 Nodes (10): fts_search_kb(), get_embedding(), haiku_filter(), _load_env(), main(), _open_kb(), Namespace, Keyword-only KB search — no embeddings provider required. (+2 more)
 
 ### Community 1530 - "Community 1530"
-Cohesion: 0.20
-Nodes (11): assert_source_binding(), canonical_main_ref(), is_plugin_install_dir(), main_worktree_of(), Deterministic project→repo binding + integrate source-binding guard.  Single sou, Guard against mis-bound integrate (2026-06-16 multi-repo incident).      For an, The canonical SOURCE repo an agent binds to at spawn time.      DETERMINISTIC an, Return the best canonical main ref for ``repo``.      Prefers origin/<main> afte (+3 more)
+Cohesion: 0.11
+Nodes (18): W — toggle: stop a live watchdog, or start a detached one if none., W — toggle: stop a live watchdog, or start a detached one if none., R / shift+W — kill + relaunch from canonical main (latest code)., R — kill + relaunch from canonical main (latest code)., assert_source_binding(), canonical_main_ref(), is_plugin_install_dir(), main_worktree_of() (+10 more)
 
 ### Community 1531 - "Community 1531"
 Cohesion: 0.43
@@ -3283,28 +3298,28 @@ Cohesion: 0.40
 Nodes (5): _make_modal_instance(), Regression pin (2026-06-17): _TopicDetailModal._fetch_summary called self.call_f, Build a minimal stand-in for _TopicDetailModal with no call_from_thread., _fetch_summary must call self.app.call_from_thread, not self.call_from_thread., test_fetch_summary_uses_app_call_from_thread()
 
 ### Community 1534 - "Community 1534"
-Cohesion: 0.33
-Nodes (7): find_cycle(), lint_verify_cmd(), Return an error string if ``cmd`` fails the lint, else None., Return a list of validation error strings (empty = valid)., Kahn's algorithm over (node_id, depends_on_id) pairs. Pure.      Returns the lis, Return a list of validation error strings (empty = valid)., validate_graph()
+Cohesion: 0.18
+Nodes (9): Return True if pane_id exists in the juggle session., Return True if pane_id exists in the juggle session., Return True if pane_id exists in the juggle session., Return True if pane_id exists in the juggle session., Send a steering message to an already-running agent pane.          Unlike send_t, Send a steering message to an already-running agent pane.          Unlike send_t, Send a steering message to an already-running agent pane.          Unlike send_t, Send a steering message to an already-running agent pane.          Unlike send_t (+1 more)
 
 ### Community 1547 - "Community 1547"
-Cohesion: 0.12
-Nodes (16): crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script (+8 more)
+Cohesion: 0.11
+Nodes (17): crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script, crashed.sh script (+9 more)
 
 ### Community 1548 - "Community 1548"
-Cohesion: 0.12
-Nodes (16): recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script (+8 more)
+Cohesion: 0.11
+Nodes (17): recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script, recoverable-prompt.sh script (+9 more)
 
 ### Community 1549 - "Community 1549"
-Cohesion: 0.12
-Nodes (16): stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script (+8 more)
+Cohesion: 0.11
+Nodes (17): stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script, stalled-silent.sh script (+9 more)
 
 ### Community 1550 - "Community 1550"
-Cohesion: 0.12
-Nodes (16): working.sh script, working.sh script, working.sh script, working.sh script, working.sh script, working.sh script, working.sh script, working.sh script (+8 more)
+Cohesion: 0.11
+Nodes (17): working.sh script, working.sh script, working.sh script, working.sh script, working.sh script, working.sh script, working.sh script, working.sh script (+9 more)
 
 ### Community 1551 - "Community 1551"
-Cohesion: 0.29
-Nodes (6): Return the AGENT ROLE anchor block for an explicit ``role``.      Shared by the, Return the AGENT ROLE anchor block for an explicit ``role``.      Shared by the, Return the AGENT ROLE anchor block for an explicit ``role``.      Shared by the, Return the AGENT ROLE anchor block for an explicit ``role``.      Shared by the, render_agent_role_anchor_for(), Adjust a task prompt before it is pasted into the agent.          Default strate
+Cohesion: 0.20
+Nodes (9): Return the AGENT ROLE anchor block for an explicit ``role``.      Shared by the, Return the AGENT ROLE anchor block for an explicit ``role``.      Shared by the, Return the AGENT ROLE anchor block for an explicit ``role``.      Shared by the, Return the AGENT ROLE anchor block for agent panes. Empty string otherwise., Return the AGENT ROLE anchor block for agent panes. Empty string otherwise., Return the AGENT ROLE anchor block for agent panes. Empty string otherwise., _render_agent_role_anchor(), render_agent_role_anchor_for() (+1 more)
 
 ### Community 1552 - "Community 1552"
 Cohesion: 0.08
@@ -3320,7 +3335,7 @@ Nodes (3): Resolve the DB path, honoring `JUGGLE_DB_PATH`; default unchanged., _
 
 ### Community 1555 - "Community 1555"
 Cohesion: 0.12
-Nodes (16): Resize: TIOCSWINSZ mid-session from 240x67 to 80x67 reflows without overflow., Resize: TIOCSWINSZ mid-session from 240x67 to 80x67 reflows without overflow., Flow: Tab cycles focused pane — grid must differ from initial after 2 tabs., Resize: TIOCSWINSZ mid-session from 240x67 to 80x67 reflows without overflow., Flow: Tab cycles focused pane — grid must differ from initial after 2 tabs., Flow: Tab cycles focused pane — grid must differ from initial after 2 tabs., Unit guard: the exact incident config [0.0, 0.45, 0.55] self-heals on load., Resize: TIOCSWINSZ mid-session from 240x67 to 80x67 reflows without overflow. (+8 more)
+Nodes (17): load_viewports(), Path, Load viewport profiles from a YAML file.      Returns dict[name -> {"cols": int,, Load viewport profiles from a YAML file.      Returns dict[name -> {"cols": int,, Resize: TIOCSWINSZ mid-session from 240x67 to 80x67 reflows without overflow., Resize: TIOCSWINSZ mid-session from 240x67 to 80x67 reflows without overflow., Flow: Tab cycles focused pane — grid must differ from initial after 2 tabs., Resize: TIOCSWINSZ mid-session from 240x67 to 80x67 reflows without overflow. (+9 more)
 
 ### Community 1556 - "Community 1556"
 Cohesion: 0.33
@@ -3331,8 +3346,8 @@ Cohesion: 0.12
 Nodes (15): Acceptance-criteria scorecard (vs plan), Baseline notes, Before / After, Before / After (FINAL — end of Phase 5, 2026-06-10), Deferrals carried forward (post-refactor follow-ups), Follow-ups (deferred behavior changes), loc_gate allowlist after Phase 2, Phase 3 (2026-06-10, second session) (+7 more)
 
 ### Community 1564 - "Community 1564"
-Cohesion: 0.15
-Nodes (13): _arm(), (adapted to topics, R9 2026-06-11), REGRESSION PIN (DA round-2 MAJOR-4, 2026-06-10): the tick dispatched     BEFORE, REGRESSION PIN (DA round-2 MAJOR-4, 2026-06-10): the tick dispatched     BEFORE, Guard for the MAJOR-4 reorder: defer/failure paths must clear the     binding th, Guard for the MAJOR-4 reorder: defer/failure paths must clear the     binding th, R6 pin: a 1-element armed set with synthetic 1-task topics behaves like     the, test_capacity_defer_clears_thread_binding() (+5 more)
+Cohesion: 0.20
+Nodes (10): _last_sentences(), Return the tail of text, capped at max_chars., Return the tail of text, capped at max_chars., _last_sentences returns up to max_chars of stripped text., Text longer than max_chars is truncated., _last_sentences returns up to max_chars of stripped text., Text longer than max_chars is truncated., test_last_sentences_basic_truncation() (+2 more)
 
 ### Community 1565 - "Community 1565"
 Cohesion: 0.33
@@ -3340,7 +3355,7 @@ Nodes (6): 8.1 Principles, 8.2 Row Mapping Rules, 8.3 Field Backfill, 8.4 Migrat
 
 ### Community 1566 - "Community 1566"
 Cohesion: 0.12
-Nodes (15): install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script (+7 more)
+Nodes (16): install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script, install-graphify-hooks.sh script (+8 more)
 
 ### Community 1567 - "Community 1567"
 Cohesion: 0.36
@@ -3367,20 +3382,20 @@ Cohesion: 0.32
 Nodes (7): db(), _git_init(), JuggleDB, Path, Regression: autopilot dispatch must bind agents/threads to the CANONICAL source, spawn_agent must tag agent.repo_path with canonical_repo_path(), NOT the     orc, test_spawn_agent_repo_is_canonical_not_cwd()
 
 ### Community 1573 - "Community 1573"
-Cohesion: 0.27
-Nodes (12): get_classification_candidates(), get_classification_candidates(), Return threads eligible for topic classification match.      Only threads with s, Return threads eligible for topic classification match.      Only threads with s, Return threads eligible for topic classification match.      Only threads with s, Return threads eligible for topic classification match.      Only threads with s, _make_thread(), test_classification_candidates_all_closed_returns_empty() (+4 more)
+Cohesion: 0.31
+Nodes (11): get_classification_candidates(), get_classification_candidates(), Return threads eligible for topic classification match.      Only threads with s, Return threads eligible for topic classification match.      Only threads with s, Return threads eligible for topic classification match.      Only threads with s, _make_thread(), test_classification_candidates_all_closed_returns_empty(), test_classification_candidates_empty_input() (+3 more)
 
 ### Community 1575 - "Community 1575"
-Cohesion: 0.29
-Nodes (7): create_node(), Insert a new node in state 'pending'. Raises on duplicate id., Insert a new node in state 'pending'. Raises on duplicate id., Insert a new node in state 'pending'. Raises on duplicate id., Insert a new task in state 'pending'. Raises on duplicate id., Insert a new node in state 'pending'. Raises on duplicate id., Insert a new node in state 'pending'. Raises on duplicate id.
+Cohesion: 0.12
+Nodes (16): create_node(), create_task(), Insert a new node in state 'pending'. Raises on duplicate id., Insert a new node in state 'pending'. Raises on duplicate id., Insert a new node in state 'pending'. Raises on duplicate id., Insert a new task in state 'pending'. Raises on duplicate id., Insert a new node in state 'pending'. Raises on duplicate id., Insert a new node in state 'pending'. Raises on duplicate id. (+8 more)
 
 ### Community 1576 - "Community 1576"
-Cohesion: 0.29
-Nodes (7): Update plan content (title/prompt/verify_cmd). Never touches state., Update plan content (title/prompt/verify_cmd). Never touches state., Update plan content (title/prompt/verify_cmd). Never touches state., Update plan content (title/prompt/verify_cmd). Never touches state., Update plan content (title/prompt/verify_cmd). Never touches state., Update plan content (title/prompt/verify_cmd). Never touches state., update_node_content()
+Cohesion: 0.22
+Nodes (9): build_summarize_prompt(), Build the LLM prompt for topic summarization. Pure function., Build the LLM prompt for topic summarization. Pure function., build_summarize_prompt includes label, task input, and result in output., build_summarize_prompt returns same output for same inputs (no side effects)., build_summarize_prompt handles empty task_input and result_output gracefully., test_build_prompt_contains_key_fields(), test_build_prompt_empty_inputs() (+1 more)
 
 ### Community 1577 - "Community 1577"
-Cohesion: 0.40
-Nodes (5): Integration: cockpit renders at 80x67 (2k_third), no overflow, frame dumped., Integration: cockpit renders at 80x67 (2k_third), no overflow, frame dumped., Integration: cockpit renders at 80x67 (2k_third), no overflow, frame dumped., Integration: cockpit renders at 80x67 (2k_third), no overflow, frame dumped., test_render_2k_third_no_overflow_and_frame_file_written()
+Cohesion: 0.25
+Nodes (8): _humanize_dt(), Return a human-friendly relative time string for an ISO-8601 UTC timestamp., Return a human-friendly relative time string for an ISO-8601 UTC timestamp., Render a structured context briefing for a thread. Template rendering — no LLM c, Render a structured context briefing for a thread. Template rendering — no LLM c, Render a structured context briefing for a thread. Template rendering — no LLM c, Render a structured context briefing for a thread. Template rendering — no LLM c, _render_briefing()
 
 ### Community 1578 - "Community 1578"
 Cohesion: 0.50
@@ -3388,7 +3403,7 @@ Nodes (3): Tests for CostCapExceeded exception, CostCapExceeded is an Exception,
 
 ### Community 1579 - "Community 1579"
 Cohesion: 0.29
-Nodes (6): Path, juggle_cockpit_layout — Column-ratio helpers for the cockpit splitter panels.  O, Atomically write column_ratios to config.json.      No-op if config file is miss, _write_ratios(), _compute_ratios + _write_ratios stores correct column_ratios to config.json., test_persist_ratios_writes_normalized_config()
+Nodes (6): Path, juggle_cockpit_layout — Column-ratio helpers for the cockpit splitter panels.  O, Atomically write column_ratios to config.json.      No-op if config file is miss, _write_ratios(), _write_ratios is a no-op when config.json does not exist., test_persist_ratios_missing_config_no_exception()
 
 ### Community 1580 - "Community 1580"
 Cohesion: 0.50
@@ -3404,7 +3419,7 @@ Nodes (4): ensure_tmux_session(), fake_agent(), test_db(), tmux_pane()
 
 ### Community 1583 - "Community 1583"
 Cohesion: 0.33
-Nodes (6): get_dependents(), Node ids that depend on ``node_id`` (reverse edges)., Node ids that depend on ``node_id`` (reverse edges)., Task ids that depend on ``task_id`` (reverse edges)., Node ids that depend on ``node_id`` (reverse edges)., Node ids that depend on ``node_id`` (reverse edges).
+Nodes (7): cmd_project_assign(), _make_args(), test_cmd_project_assign_archived_thread(), test_cmd_project_assign_bulk(), test_cmd_project_assign_logs_correction_when_project_changes(), test_cmd_project_assign_no_correction_when_same_project(), test_cmd_project_assign_sets_assigned_by_human()
 
 ### Community 1585 - "Community 1585"
 Cohesion: 0.33
@@ -3424,15 +3439,15 @@ Nodes (4): Register the `autopilot` subcommand tree on the main CLI parser., Reg
 
 ### Community 1589 - "Community 1589"
 Cohesion: 0.33
-Nodes (6): Pending topics whose DERIVED dep topics are all 'verified'., CAS-promote eligible pending topics to 'ready' (same race discipline as     db_g, Pending topics whose DERIVED dep topics are all 'verified' AND that have     at, CAS-promote eligible pending topics to 'ready' (same race discipline as     db_g, recompute_topic_ready(), topic_ready_eligible()
+Nodes (4): cmd_decommission_agent(), cmd_list_agents(), cmd_spawn_agent(), juggle_cmd_agents_lifecycle — Agent pool lifecycle commands.  Owns: cmd_get_agen
 
 ### Community 1590 - "Community 1590"
-Cohesion: 0.22
-Nodes (6): db(), JuggleDB, Path, Hooks inject the FULL armed set with TOPIC-level status (R7/R9)., REGRESSION PIN (2026-06-10): the carve-out named ONE project — an agent     coul, test_carveout_names_every_armed_project_and_addtask_route()
+Cohesion: 0.33
+Nodes (3): Hooks inject the FULL armed set with TOPIC-level status (R7/R9)., REGRESSION PIN (2026-06-10): the carve-out named ONE project — an agent     coul, test_carveout_names_every_armed_project_and_addtask_route()
 
 ### Community 1591 - "Community 1591"
-Cohesion: 0.12
-Nodes (18): ensure_watchdog(), is_watchdog_alive(), True iff a LIVE watchdog currently holds this DB's singleton lock.      Probe by, Lock-gated ensure-exists: start a detached watchdog only if none is live.      R, Lock-gated ensure-exists: start a detached watchdog only if none is live.      R, W hotkey: stop a live watchdog, or start one if none. Returns the action., R hotkey: kill the existing watchdog and relaunch from the canonical main     pa, W hotkey: stop a live watchdog, or start one if none. Returns the action. (+10 more)
+Cohesion: 0.07
+Nodes (32): ensure_watchdog(), is_watchdog_alive(), _pid_alive(), PID recorded in this DB's watchdog lock file, or None., True iff a LIVE watchdog currently holds this DB's singleton lock.      Probe by, Lock-gated ensure-exists: start a detached watchdog only if none is live.      R, Lock-gated ensure-exists: start a detached watchdog only if none is live.      R, Gracefully stop the watchdog holding this DB's lock (SIGTERM→SIGKILL).      Kill (+24 more)
 
 ### Community 1592 - "Community 1592"
 Cohesion: 0.67
@@ -3443,31 +3458,91 @@ Cohesion: 0.33
 Nodes (5): Regression pins: the watchdog daemon module must run as a real entrypoint.  Inci, Cheap headless pin: the module must call main() under a __main__ guard., Integration pin: spawning the daemon EXACTLY as the singleton spawner does     (, test_daemon_module_has_main_guard(), test_sanctioned_direct_launch_stays_alive()
 
 ### Community 1594 - "Community 1594"
-Cohesion: 0.40
-Nodes (4): Graph panel shows readable A-Z topic label on in-progress tasks., test_falls_back_to_thread_prefix_when_no_user_label(), test_running_node_shows_user_label_not_thread_uuid(), test_running_task_shows_user_label_not_thread_uuid()
+Cohesion: 0.33
+Nodes (6): Unit guard: _compute_ratios never returns 0.0 for topics (no PTY needed)., Unit guard: _compute_ratios never returns 0.0 for topics (no PTY needed)., Unit guard: _compute_ratios never returns 0.0 for topics (no PTY needed)., Unit guard: _compute_ratios never returns 0.0 for topics (no PTY needed)., Unit guard: _compute_ratios never returns 0.0 for topics (no PTY needed)., test_compute_ratios_floor_no_pty()
 
 ### Community 1595 - "Community 1595"
-Cohesion: 0.67
-Nodes (3): list_topic_tasks(), Tasks of a topic in intra-topic topological order (created_at,id ties).      The, Tasks of a topic in intra-topic topological order (created_at,id ties).      The
+Cohesion: 0.33
+Nodes (6): Unit guard: the exact incident config [0.0, 0.45, 0.55] self-heals on load., Resize: TIOCSWINSZ mid-session from 240x67 to 80x67 reflows without overflow., Unit guard: the exact incident config [0.0, 0.45, 0.55] self-heals on load., Unit guard: the exact incident config [0.0, 0.45, 0.55] self-heals on load., Unit guard: the exact incident config [0.0, 0.45, 0.55] self-heals on load., test_sanitize_col_ratios_incident_config_no_pty()
 
 ### Community 1596 - "Community 1596"
 Cohesion: 0.50
 Nodes (4): Regression pin (2026-06-10): `cockpit --smoke --viewport X --json` crashed     w, Regression pin (2026-06-10): `cockpit --smoke --viewport X --json` crashed     w, Regression pin (2026-06-10): `cockpit --smoke --viewport X --json` crashed     w, test_smoke_json_single_viewport_exits_cleanly()
 
+### Community 1597 - "Community 1597"
+Cohesion: 0.33
+Nodes (6): Companion to the 2026-06-10 blank-frame pin: a cockpit whose body NEVER     pain, REGRESSION PIN (2026-06-10): close() must be safe to call twice — the     second, REGRESSION PIN (2026-06-10): close() must be safe to call twice — the     second, Companion to the 2026-06-10 blank-frame pin: a cockpit whose body NEVER     pain, test_cockpit_pty_close_is_idempotent(), test_smoke_genuinely_blank_body_still_fails()
+
+### Community 1598 - "Community 1598"
+Cohesion: 0.40
+Nodes (3): cmd_list_agents(), cmd_spawn_agent(), juggle_cmd_agents_pool — Agent pool spawn/list/status commands.  Owns: cmd_spawn
+
+### Community 1599 - "Community 1599"
+Cohesion: 0.40
+Nodes (5): _TailModal dismisses itself when 't' is pressed., _TailModal dismisses itself when 't' is pressed., _TailModal dismisses itself when 't' is pressed., _TailModal dismisses itself when 't' is pressed., test_tail_modal_dismiss_on_t()
+
+### Community 1600 - "Community 1600"
+Cohesion: 0.40
+Nodes (5): CockpitApp must NOT have a #tail Static widget — drawer is removed., CockpitApp must NOT have a #tail Static widget — drawer is removed., CockpitApp must NOT have a #tail Static widget — drawer is removed., CockpitApp must NOT have a #tail Static widget — drawer is removed., test_no_tail_widget_in_cockpit()
+
+### Community 1601 - "Community 1601"
+Cohesion: 0.50
+Nodes (3): TDD test: juggle_hooks must ignore CLAUDE_PLUGIN_DATA (leaks from codex plugin), CLAUDE_PLUGIN_DATA set to a bogus codex path must not affect data_dir., test_resolve_data_dir_ignores_claude_plugin_data_env()
+
+### Community 1602 - "Community 1602"
+Cohesion: 0.50
+Nodes (3): _normalize_line(), Topic summarizer — LLM-driven plain-language summary for the topic-info modal., Normalize a line for header matching.      Returns (matched_key, remainder_text)
+
+### Community 1603 - "Community 1603"
+Cohesion: 0.50
+Nodes (4): CockpitApp must have an action_task_detail method., CockpitApp must have an action_task_detail method., CockpitApp must have an action_task_detail method., test_action_task_detail_method_exists()
+
+### Community 1604 - "Community 1604"
+Cohesion: 0.50
+Nodes (4): _arm_graph(), Seed an armed project + a small DAG so graph mode renders a real graph., Graph mode (press g) at 80x67 (2k_third) renders without overflow.      Headline, test_graph_mode_smoke_2k_third_no_overflow()
+
+### Community 1605 - "Community 1605"
+Cohesion: 0.67
+Nodes (3): archive-thread sets status=archived and prints confirmation., archive-thread sets status=archived and prints confirmation., test_archive_thread_cli()
+
+### Community 1606 - "Community 1606"
+Cohesion: 0.67
+Nodes (3): Lists a done non-current thread as a candidate., Lists a done non-current thread as a candidate., test_get_archive_candidates_finds_done()
+
+### Community 1607 - "Community 1607"
+Cohesion: 0.67
+Nodes (3): Already-archived threads do not appear in candidate list., Already-archived threads do not appear in candidate list., test_get_archive_candidates_excludes_archived()
+
+### Community 1608 - "Community 1608"
+Cohesion: 0.67
+Nodes (3): unarchive-thread restores thread and prints 'Thread X unarchived., unarchive-thread restores thread and prints 'Thread X unarchived., test_unarchive_thread_cli()
+
+### Community 1609 - "Community 1609"
+Cohesion: 0.67
+Nodes (3): unarchive-thread accepts full UUID., unarchive-thread accepts full UUID., test_unarchive_thread_cli_by_uuid()
+
+### Community 1610 - "Community 1610"
+Cohesion: 0.67
+Nodes (3): ⏸️ thread shows 🤔 decision prompt instead of Last: Q/A block., ⏸️ thread shows 🤔 decision prompt instead of Last: Q/A block., test_show_topics_waiting_thread_shows_decision_prompt()
+
+### Community 1611 - "Community 1611"
+Cohesion: 0.67
+Nodes (3): Pressing 'a' then 'Z' must dismiss all thread_id IS NULL action items.      Regr, Pressing 'a' then 'Z' must dismiss all thread_id IS NULL action items.      Regr, test_action_ack_z_dismisses_orphaned_actions()
+
 ## Knowledge Gaps
-- **1089 isolated node(s):** `name`, `name`, `plugins`, `name`, `description` (+1084 more)
+- **1095 isolated node(s):** `name`, `name`, `plugins`, `name`, `description` (+1090 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **1132 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `JuggleDB` connect `Community 0` to `Community 1`, `Community 4`, `Community 8`, `Community 11`, `Community 12`, `Community 13`, `Community 1551`, `Community 1554`, `Community 1043`, `Community 19`, `Community 21`, `Community 1555`, `Community 23`, `Community 24`, `Community 25`, `Community 26`, `Community 29`, `Community 30`, `Community 543`, `Community 32`, `Community 1570`, `Community 1572`, `Community 1573`, `Community 39`, `Community 41`, `Community 1577`, `Community 1579`, `Community 558`, `Community 46`, `Community 48`, `Community 1582`, `Community 52`, `Community 566`, `Community 1590`, `Community 61`, `Community 62`, `Community 75`, `Community 602`, `Community 1134`, `Community 1137`, `Community 1141`, `Community 1169`, `Community 171`, `Community 1195`, `Community 707`, `Community 201`, `Community 1243`, `Community 227`, `Community 795`, `Community 798`, `Community 803`, `Community 805`, `Community 296`, `Community 819`, `Community 820`, `Community 821`, `Community 828`, `Community 835`, `Community 839`, `Community 841`, `Community 844`, `Community 853`, `Community 854`, `Community 865`, `Community 866`, `Community 1394`, `Community 1398`, `Community 888`, `Community 1402`, `Community 1404`, `Community 893`, `Community 1405`, `Community 895`, `Community 896`, `Community 897`, `Community 898`, `Community 389`, `Community 902`, `Community 1417`, `Community 1418`, `Community 1420`, `Community 909`, `Community 911`, `Community 1427`, `Community 916`, `Community 1429`, `Community 917`, `Community 920`, `Community 1433`, `Community 921`, `Community 925`, `Community 934`, `Community 1450`, `Community 939`, `Community 941`, `Community 1455`, `Community 944`, `Community 1475`, `Community 1513`, `Community 1521`, `Community 1527`, `Community 1528`, `Community 1531`?**
-  _High betweenness centrality (0.279) - this node is a cross-community bridge._
-- **Why does `datetime` connect `Community 893` to `Community 0`, `Community 1`, `Community 900`, `Community 773`, `Community 778`, `Community 1420`, `Community 1020`, `Community 14`, `Community 12`, `Community 15`, `Community 1427`, `Community 1043`, `Community 1429`, `Community 150`, `Community 1434`, `Community 32`, `Community 805`, `Community 171`, `Community 1582`, `Community 1455`, `Community 50`, `Community 819`, `Community 822`, `Community 828`, `Community 61`, `Community 707`, `Community 838`, `Community 840`, `Community 844`, `Community 1242`, `Community 1121`, `Community 1122`, `Community 880`, `Community 1394`, `Community 243`, `Community 888`, `Community 1404`?**
-  _High betweenness centrality (0.091) - this node is a cross-community bridge._
-- **Why does `Path` connect `Community 841` to `Community 896`, `Community 0`, `Community 898`, `Community 4`, `Community 6`, `Community 1419`, `Community 1420`, `Community 11`, `Community 12`, `Community 17`, `Community 1554`, `Community 1043`, `Community 1428`, `Community 1431`, `Community 1434`, `Community 1439`, `Community 31`, `Community 1567`, `Community 1571`, `Community 38`, `Community 42`, `Community 43`, `Community 558`, `Community 47`, `Community 52`, `Community 822`, `Community 832`, `Community 839`, `Community 844`, `Community 82`, `Community 855`, `Community 879`, `Community 1392`, `Community 1395`, `Community 1396`, `Community 1529`, `Community 890`, `Community 1403`, `Community 1404`, `Community 1405`?**
-  _High betweenness centrality (0.059) - this node is a cross-community bridge._
+- **Why does `JuggleDB` connect `Community 0` to `Community 1`, `Community 4`, `Community 8`, `Community 9`, `Community 11`, `Community 12`, `Community 13`, `Community 1554`, `Community 1043`, `Community 19`, `Community 21`, `Community 1555`, `Community 23`, `Community 24`, `Community 25`, `Community 26`, `Community 29`, `Community 30`, `Community 543`, `Community 32`, `Community 1570`, `Community 1572`, `Community 39`, `Community 1575`, `Community 41`, `Community 1579`, `Community 558`, `Community 46`, `Community 48`, `Community 1583`, `Community 1582`, `Community 52`, `Community 566`, `Community 1594`, `Community 1595`, `Community 61`, `Community 62`, `Community 1599`, `Community 1600`, `Community 82`, `Community 602`, `Community 1134`, `Community 1137`, `Community 1141`, `Community 1169`, `Community 1192`, `Community 1195`, `Community 707`, `Community 1243`, `Community 227`, `Community 1282`, `Community 795`, `Community 803`, `Community 805`, `Community 296`, `Community 820`, `Community 821`, `Community 828`, `Community 835`, `Community 839`, `Community 841`, `Community 844`, `Community 853`, `Community 854`, `Community 865`, `Community 877`, `Community 882`, `Community 1394`, `Community 888`, `Community 1402`, `Community 1404`, `Community 893`, `Community 1405`, `Community 895`, `Community 896`, `Community 897`, `Community 898`, `Community 900`, `Community 389`, `Community 902`, `Community 903`, `Community 1417`, `Community 1418`, `Community 1420`, `Community 911`, `Community 1427`, `Community 916`, `Community 1429`, `Community 917`, `Community 920`, `Community 1433`, `Community 925`, `Community 934`, `Community 938`, `Community 941`, `Community 1455`, `Community 944`, `Community 1475`, `Community 1513`, `Community 1521`, `Community 1527`, `Community 1531`?**
+  _High betweenness centrality (0.318) - this node is a cross-community bridge._
+- **Why does `datetime` connect `Community 893` to `Community 0`, `Community 1`, `Community 900`, `Community 773`, `Community 778`, `Community 1420`, `Community 12`, `Community 14`, `Community 15`, `Community 1043`, `Community 1429`, `Community 1434`, `Community 32`, `Community 805`, `Community 1450`, `Community 171`, `Community 1582`, `Community 1455`, `Community 50`, `Community 1589`, `Community 822`, `Community 828`, `Community 61`, `Community 1598`, `Community 707`, `Community 838`, `Community 840`, `Community 844`, `Community 1242`, `Community 1121`, `Community 1122`, `Community 880`, `Community 1394`, `Community 243`, `Community 888`, `Community 1528`, `Community 1402`, `Community 1020`?**
+  _High betweenness centrality (0.077) - this node is a cross-community bridge._
+- **Why does `Path` connect `Community 841` to `Community 896`, `Community 0`, `Community 4`, `Community 6`, `Community 11`, `Community 1420`, `Community 12`, `Community 17`, `Community 1554`, `Community 1043`, `Community 1428`, `Community 1555`, `Community 1431`, `Community 1434`, `Community 1439`, `Community 31`, `Community 801`, `Community 1567`, `Community 1571`, `Community 38`, `Community 42`, `Community 43`, `Community 558`, `Community 47`, `Community 52`, `Community 822`, `Community 832`, `Community 1601`, `Community 839`, `Community 844`, `Community 855`, `Community 879`, `Community 1392`, `Community 1395`, `Community 1396`, `Community 1529`, `Community 890`, `Community 1403`, `Community 1404`, `Community 1405`, `Community 1534`?**
+  _High betweenness centrality (0.062) - this node is a cross-community bridge._
 - **Are the 909 inferred relationships involving `JuggleDB` (e.g. with `BaseException` and `CockpitState`) actually correct?**
   _`JuggleDB` has 909 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 356 inferred relationships involving `JuggleTmuxManager` (e.g. with `JuggleTmuxManager` and `MouseMove`) actually correct?**

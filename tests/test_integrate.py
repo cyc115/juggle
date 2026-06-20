@@ -401,10 +401,14 @@ def test_integrate_red_tests_prevents_merge(git_repo, tmp_path):
 
 
 def test_integrate_already_merged_skips_straight_to_cleanup(git_repo, tmp_path):
-    """Branch with 0 commits ahead of main → skip rebase/merge, clean up."""
+    """Branch with 0 commits ahead of main → G2 refuses, worktree preserved.
+
+    G2 (empty-branch guard, 2026-06-20) replaces the old auto-cleanup path:
+    0-commit branches are now always refused so the agent must explicitly
+    decide (commit / PARTIAL / manual cleanup).  Worktree is preserved.
+    """
     from juggle_cmd_integrate import _run_integrate
 
-    # Worktree on branch that has no extra commits (== main HEAD)
     wt = _make_worktree(git_repo, str(tmp_path), "GH")
 
     thread = {"id": "t-1", "worktree_path": wt,
@@ -416,9 +420,9 @@ def test_integrate_already_merged_skips_straight_to_cleanup(git_repo, tmp_path):
             with patch("juggle_cmd_integrate._restart_juggle_daemons"):
                 ok, msg = _run_integrate(thread, db)
 
-    assert ok, msg
-    assert "already merged" in msg.lower() or "no commits ahead" in msg.lower()
-    assert not Path(wt).exists()   # worktree cleaned up
+    assert not ok, "G2 must refuse 0-commit branch"
+    assert "nothing to merge" in msg.lower() or "0 commits" in msg.lower()
+    assert Path(wt).exists(), "worktree must be preserved on G2 refusal"
 
 
 def test_integrate_idempotent_missing_worktree_returns_error(git_repo, tmp_path):

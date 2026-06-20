@@ -100,6 +100,29 @@ def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
 from juggle_integrate_selfrepo import _restart_juggle_daemons  # noqa: E402,F401
 
 
+# ── Pre-merge guard helpers (pure where possible; tested independently) ───────
+
+
+def is_worktree_dirty(worktree_path: str) -> bool:
+    """Return True if the worktree has any uncommitted changes (staged or unstaged)."""
+    result = subprocess.run(
+        ["git", "-C", worktree_path, "status", "--porcelain"],
+        capture_output=True, text=True,
+    )
+    return bool(result.stdout.strip())
+
+
+def branch_commits_ahead(repo_path: str, branch: str, target: str) -> int:
+    """Return the number of commits on *branch* not yet in *target*; -1 on error."""
+    result = subprocess.run(
+        ["git", "-C", repo_path, "rev-list", "--count", f"{target}..{branch}"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return -1
+    return int(result.stdout.strip() or "0")
+
+
 # ── Core integration pipeline ─────────────────────────────────────────────────
 
 def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, str]:
@@ -166,6 +189,21 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         return False, reason
 
     try:
+        # ── G1: Dirty-worktree gate (refuse; never auto-commit) ───────────────
+        # Run FIRST — before any git side effects — so uncommitted work is never
+        # silently destroyed by worktree cleanup on a subsequent path.
+        if is_worktree_dirty(worktree_path):
+            dirty_files = subprocess.run(
+                ["git", "-C", worktree_path, "status", "--porcelain"],
+                capture_output=True, text=True,
+            ).stdout.strip()
+            n = len(dirty_files.splitlines())
+            return _fail(
+                f"integrate refused: uncommitted changes in {worktree_path} "
+                f"({n} file(s)). Commit what should merge, or discard, then retry.\n"
+                f"Files:\n{dirty_files}"
+            )
+
         # ── 0. Abort any in-progress rebase (idempotency) ────────────────────
         git_dir_result = subprocess.run(
             ["git", "-C", worktree_path, "rev-parse", "--git-dir"],
@@ -198,59 +236,25 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         if rebase_onto is None:
             return _fail("Cannot determine main branch (no main/master ref found)")
 
-        # ── 3. Idempotency: already merged? skip to cleanup ───────────────────
-        ahead_result = subprocess.run(
-            ["git", "-C", main_repo_path, "rev-list", "--count",
-             f"{rebase_onto}..{worktree_branch}"],
-            capture_output=True, text=True,
-        )
-        ahead_count = (
-            int(ahead_result.stdout.strip() or "0")
-            if ahead_result.returncode == 0 else 1
-        )
+        # ── 3. G2: Empty-branch guard ─────────────────────────────────────────
+        # Use branch_commits_ahead; fall back to 1 so an error doesn't block a
+        # real branch (conservative: assume work exists when count is unknown).
+        ahead_count = branch_commits_ahead(main_repo_path, worktree_branch, rebase_onto)
+        if ahead_count < 0:
+            ahead_count = 1  # unknown — assume work exists, proceed to rebase
 
         if ahead_count == 0:
-            # Guard (2026-06-16 phantom-SHA fix): rebase_onto may be stale
-            # (failed fetch, local-only main).  Explicitly confirm the branch
-            # tip is a true ancestor of the canonical main before tearing down.
-            # If not, fall through to the real ff-merge/push path instead of
-            # stranding the work.
-            canonical_for_shortcut = rebase_onto
-            if not rebase_onto.startswith("origin/"):
-                for _cand in ("origin/main", "origin/master"):
-                    if subprocess.run(
-                        ["git", "-C", main_repo_path, "rev-parse", "--verify", _cand],
-                        capture_output=True, text=True,
-                    ).returncode == 0:
-                        canonical_for_shortcut = _cand
-                        break
-            shortcut_ancestor = subprocess.run(
-                ["git", "-C", main_repo_path, "merge-base", "--is-ancestor",
-                 worktree_branch, canonical_for_shortcut],
-                capture_output=True, text=True,
-            ).returncode == 0
-            if not shortcut_ancestor:
-                return _fail(
-                    f"Branch {worktree_branch} appeared 0 commits ahead of "
-                    f"{rebase_onto} but is NOT a true ancestor of "
-                    f"{canonical_for_shortcut} — work preserved; "
-                    f"re-run integrate to merge properly."
-                )
-
-            # Already merged: the branch tip is a verified ancestor of canonical
-            # main. Record merged_sha BEFORE deleting the branch ref.
-            _record_merged_sha(db, thread_uuid, main_repo_path, worktree_branch)
-            subprocess.run(
-                ["git", "-C", main_repo_path, "worktree", "remove", "--force", worktree_path],
-                capture_output=True, text=True,
+            # G1 already ruled out dirty tree above, so the worktree is clean.
+            # A clean tree with 0 commits ahead means no work was ever committed
+            # on this branch.  Silently cleaning up here was the data-loss path
+            # (2026-06-20: 857-line spec deleted when integrate ff-merged an
+            # empty branch and the worktree cleanup deleted uncommitted files).
+            # Refuse loudly so the agent can investigate and decide.
+            return _fail(
+                f"integrate refused: nothing to merge on {worktree_branch} "
+                f"(0 commits ahead of {rebase_onto}). "
+                f"Commit your work, or call complete-agent with ⚠️ PARTIAL/BLOCKER."
             )
-            subprocess.run(
-                ["git", "-C", main_repo_path, "branch", "-D", worktree_branch],
-                capture_output=True, text=True,
-            )
-            db.update_thread(thread_uuid, worktree_path="", worktree_branch="", main_repo_path="")
-            release_repo_lock(lock_path)
-            return True, f"Branch {worktree_branch} already merged into {rebase_onto} — cleaned up."
 
         # ── 4. Rebase ─────────────────────────────────────────────────────────
         result = subprocess.run(

@@ -263,14 +263,16 @@ def test_shortcut_non_ancestor_preserves_worktree_and_branch(tmp_path):
 
 
 def test_shortcut_genuine_ancestor_cleans_up(tmp_path):
-    """GREEN path: ahead_count==0 with branch genuinely on main → correct teardown."""
+    """G2: ahead_count==0 (empty branch, == main tip) → refused, worktree preserved.
+
+    G2 (empty-branch guard, 2026-06-20) replaced the old auto-cleanup shortcut.
+    A branch with 0 commits ahead is always refused so the agent must decide
+    explicitly.  Worktree and branch are preserved for manual inspection.
+    """
     from juggle_cmd_integrate import _run_integrate
 
     repo = _make_repo(tmp_path)
     wt = _make_worktree(repo, str(tmp_path), "GN")
-
-    # Worktree branch has NO extra commits (== main tip) so it IS an ancestor
-    # Leave it empty (0 commits ahead)
 
     db = _make_simple_db()
     thread = {
@@ -287,28 +289,30 @@ def test_shortcut_genuine_ancestor_cleans_up(tmp_path):
             with patch("juggle_cmd_integrate._restart_juggle_daemons"):
                 ok, msg = _run_integrate(thread, db)
 
-    assert ok, f"integrate should succeed for genuine already-merged branch: {msg}"
-    assert not Path(wt).exists(), "worktree should be cleaned up after genuine merge"
-    branches = subprocess.run(
-        ["git", "-C", repo, "branch"], capture_output=True, text=True,
-    ).stdout
-    assert "cyc_GN" not in branches, "branch should be cleaned up"
+    assert not ok, "G2 must refuse 0-commit branch"
+    assert "nothing to merge" in msg.lower() or "0 commits" in msg.lower()
+    assert Path(wt).exists(), "worktree must be preserved on G2 refusal"
 
 
 def test_shortcut_genuine_ancestor_with_remote_cleans_up(tmp_path):
-    """GREEN path with remote: branch pushed to origin, ahead_count==0 → correct teardown."""
+    """G2: ahead_count==0 (branch manually merged to remote) → refused, worktree preserved.
+
+    G2 (empty-branch guard, 2026-06-20) replaced the old auto-cleanup shortcut.
+    Even when work was manually merged externally, G2 refuses the 0-commit path
+    so the agent must explicitly confirm and manually clean up the worktree.
+    This avoids any silent worktree teardown on a branch that juggle didn't merge.
+    """
     from juggle_cmd_integrate import _run_integrate
 
     local, remote = _make_repo_with_remote(tmp_path, "lcl")
     wt = _make_worktree(local, str(tmp_path), "GR")
     _add_commit(wt, "feat.py", "y = 2\n", "feat: add y")
 
-    # Push the feature branch to origin and ff-merge → local + remote both at same tip
+    # Manually ff-merge + push → local + remote both at same tip → ahead_count = 0
     subprocess.run(["git", "-C", local, "merge", "--ff-only", "cyc_GR"],
                    check=True, capture_output=True)
     subprocess.run(["git", "-C", local, "push", "origin", "main"],
                    check=True, capture_output=True)
-    # Now origin/main == local main == cyc_GR tip → ahead_count = 0
 
     db = _make_simple_db()
     thread = {
@@ -325,5 +329,6 @@ def test_shortcut_genuine_ancestor_with_remote_cleans_up(tmp_path):
             with patch("juggle_cmd_integrate._restart_juggle_daemons"):
                 ok, msg = _run_integrate(thread, db)
 
-    assert ok, f"should clean up when branch is genuinely merged to origin/main: {msg}"
-    assert not Path(wt).exists()
+    assert not ok, "G2 must refuse 0-ahead branch even when manually merged"
+    assert "nothing to merge" in msg.lower() or "0 commits" in msg.lower()
+    assert Path(wt).exists(), "worktree must be preserved on G2 refusal"
