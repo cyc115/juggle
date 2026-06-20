@@ -20,6 +20,23 @@ from dbops.db_node_machine import node_transition, _KIND_LEGAL  # noqa: F401
 
 VALID_KINDS = frozenset({"task", "research", "conversation", "decision"})
 
+INBOX_PROJECT_ID = "INBOX"
+
+
+def ensure_inbox_project(db) -> None:
+    """Create the INBOX project row if it doesn't already exist (idempotent)."""
+    if db.get_project(INBOX_PROJECT_ID) is not None:
+        return
+    now = _now()
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO projects "
+            "(id, name, objective, success_criteria, out_of_scope, status, created_at, last_active) "
+            "VALUES (?, 'INBOX', 'Default inbox for untagged nodes', '[]', '', 'active', ?, ?)",
+            (INBOX_PROJECT_ID, now, now),
+        )
+        conn.commit()
+
 
 class AddNodeError(ValueError):
     """Validation or guard failure for add_node. Nothing written on raise."""
@@ -68,6 +85,7 @@ def add_node(
     required_by: list[str] | None = None,
     verify_cmd: str | None = None,
     parent_id: str | None = None,
+    node_id: str | None = None,
 ) -> dict:
     """Create a new unified node. Returns {'node_id': str, 'state': str}.
 
@@ -110,6 +128,7 @@ def add_node(
         required_by=required_by,
         verify_cmd=verify_cmd,
         parent_id=parent_id,
+        node_id=node_id,
     )
 
 
@@ -146,6 +165,7 @@ def _add_task_node(
     required_by: list[str],
     verify_cmd: str | None,
     parent_id: str | None,
+    node_id: str | None = None,
 ) -> dict:
     """Create a task node with dual-write to graph_tasks + edges."""
     from juggle_graph_upsert import find_cycle, lint_verify_cmd
@@ -155,7 +175,7 @@ def _add_task_node(
         if err:
             raise AddNodeError(f"verify_cmd invalid: {err}")
 
-    node_id = str(uuid.uuid4())
+    node_id = node_id or str(uuid.uuid4())
     now = _now()
 
     conn = db._connect()

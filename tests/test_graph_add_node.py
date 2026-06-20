@@ -271,11 +271,12 @@ def _args(db, **kw):
 
 
 def test_cli_add_task_success(db, capsys):
+    # P6: no --topic → routes through add_node (state vocab is "open", not "pending")
     _diamond(db)
     cg.cmd_graph_add_task(_args(db, deps="a"))
     assert g.get_task(db, "x") is not None
     out = capsys.readouterr().out
-    assert "x" in out and "pending" in out
+    assert "x" in out and ("open" in out or "pending" in out)
 
 
 def test_cli_add_task_reads_prompt_from_stdin(db, monkeypatch):
