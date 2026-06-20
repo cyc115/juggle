@@ -93,3 +93,31 @@ def test_coder_template_includes_harness_gate():
     from juggle_settings import DEFAULTS
     coder = DEFAULTS["task_templates"]["coder"]
     assert "HARNESS GATE" in coder
+
+
+def test_coder_template_includes_incremental_commit_guidance():
+    """Regression (2026-06-20): a dispatched coder agent died with ZERO output
+    because it batched all work into a single never-reached final commit, losing
+    everything. The coder task template MUST instruct incremental commits so an
+    interrupted/crashed run preserves partial progress.
+
+    Pinned on the in-repo DEFAULT so the rule ships with the code and cannot be
+    silently lost to a missing or overriding user config.
+    """
+    from juggle_settings import DEFAULTS
+
+    coder = DEFAULTS["task_templates"]["coder"]
+    low = coder.lower()
+    assert "commit incrementally" in low, (
+        "coder template lost its incremental-commit guidance"
+    )
+    # Names the mechanism (committed increments survive a crash) and the safety rail.
+    assert "survive" in low, "guidance must explain committed increments survive a crash"
+    assert "never commit to main" in low, "guidance must keep the no-commit-to-main rail"
+
+    # Coder-only: the rule applies only to roles that produce commits, so it
+    # belongs to the role template — not the universal preamble or other roles.
+    for role in ("planner", "researcher"):
+        assert "commit incrementally" not in DEFAULTS["task_templates"][role].lower(), (
+            f"incremental-commit guidance leaked into the {role} template"
+        )

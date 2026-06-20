@@ -8,6 +8,7 @@
 
 ## Done
 
+- [x] coder agents commit incrementally (v1.76.2) — added a "Commit Incrementally" section to the coder task template (`src/juggle_settings.py` `task_templates.coder`): for any multi-step/long-running task, `git commit` each test-passing unit to the worktree branch instead of deferring to one final commit, so an interrupted/crashed run preserves partial progress (never commit to main). Incident: 2026-06-20 a dispatched coder agent died with ZERO output because it batched all work into a single never-reached final commit. Coder-only (not the universal preamble). Integrate verified multi-commit-safe (rebase entire branch → `merge --ff-only`; `ahead_count==0` only skips, no single-commit assumption). Regression-pinned in tests/test_juggle_settings.py::test_coder_template_includes_incremental_commit_guidance (RED-first). ✅ 2026-06-20
 - [x] fix watchdog daemon __main__ guard — daemon module now runs as a real entrypoint (direct `uv run python src/juggle_watchdog_daemon.py` launch ticks + acquires the singleton lock instead of exiting 0 instantly) (v1.76.1) ✅ 2026-06-17
 - [x] ensure/restart watchdog survive verification — ensure_watchdog/restart_watchdog poll the singleton lock and report True only when the daemon actually came up; spawn output captured to watchdog-spawn.log; cockpit notifies an error on no-survive (v1.76.1) ✅ 2026-06-17
 - [x] remove shift+w watchdog-restart alias — `r` already restarts; dropped the redundant duplicate binding (v1.76.1) ✅ 2026-06-17
