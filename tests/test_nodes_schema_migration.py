@@ -573,3 +573,51 @@ def test_backfill_threads_full_schema_populates_nodes(tmp_path):
     ).fetchone()
     assert row is not None, "th-active not backfilled"
     assert row["objective"] == "do stuff"  # last_user_intent mapped to objective
+
+
+def test_backfill_threads_id_topic_only_schema(tmp_path):
+    """REGRESSION PIN (2026-06-20): migration 44 against an absolute-minimal
+    threads table with only (id, topic) — no status, created_at, last_active —
+    must NOT raise and must backfill a conversation node with state='open'
+    (NULL status → 'open' via _THREAD_STATUS_MAP fallback).
+
+    Pre-fix: status/created_at/last_active were hardcoded in select_cols so
+    the SELECT raised sqlite3.OperationalError: no such column: status on any
+    pre-migration DB lacking those columns (e.g. test_db_graph.py fixture).
+    """
+    db_path = tmp_path / "idtopic.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE threads (id TEXT PRIMARY KEY, topic TEXT NOT NULL);
+        CREATE TABLE graph_topics (
+            id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+            title TEXT NOT NULL, objective TEXT NOT NULL DEFAULT '',
+            state TEXT NOT NULL DEFAULT 'ready',
+            thread_id TEXT, handoff TEXT, diffstat TEXT,
+            verified_at TEXT, merged_sha TEXT, is_mirror INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE graph_tasks (
+            id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+            title TEXT NOT NULL, prompt TEXT NOT NULL DEFAULT '',
+            verify_cmd TEXT, state TEXT NOT NULL DEFAULT 'ready',
+            thread_id TEXT, handoff TEXT, diffstat TEXT, verified_at TEXT,
+            topic_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE graph_edges (
+            task_id TEXT NOT NULL, depends_on_id TEXT NOT NULL,
+            PRIMARY KEY (task_id, depends_on_id)
+        );
+    """)
+    conn.execute("INSERT INTO threads (id, topic) VALUES ('th-bare', 'Bare thread')")
+    conn.commit()
+
+    _run_migration(conn)
+
+    row = conn.execute(
+        "SELECT id, kind, state FROM nodes WHERE id='th-bare'"
+    ).fetchone()
+    assert row is not None, "th-bare not backfilled into nodes (D2 regression)"
+    assert row["kind"] == "conversation"
+    assert row["state"] == "open"  # NULL status → 'open' via fallback

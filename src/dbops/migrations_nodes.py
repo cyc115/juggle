@@ -85,23 +85,24 @@ def _backfill_threads(conn: sqlite3.Connection) -> None:
     """
     existing = _threads_columns(conn)
 
-    # Always-present columns (part of the original threads schema)
-    # Optional columns default to NULL in SELECT if absent from table
-    optional = [
+    # Only id and topic are truly required; all other columns are introspection-guarded.
+    guarded = [
+        "status", "created_at", "last_active",
         "session_id", "summary", "key_decisions", "open_questions",
         "last_user_intent", "agent_task_id", "agent_result",
         "show_in_list", "summarized_msg_count",
         "last_dispatched_task", "last_dispatched_role", "last_dispatched_model",
         "worktree_path", "worktree_branch", "main_repo_path",
     ]
-    select_cols = ["id", "topic", "status", "created_at", "last_active"]
-    for col in optional:
-        select_cols.append(col if col in existing else f"NULL AS {col}")
+    select_cols = ["id", "topic"] + [
+        col if col in existing else f"NULL AS {col}" for col in guarded
+    ]
 
     rows = conn.execute(
         f"SELECT {', '.join(select_cols)} FROM threads"
     ).fetchall()
 
+    _EPOCH = "1970-01-01T00:00:00"
     for r in rows:
         state = _THREAD_STATUS_MAP.get(r["status"], "open")
         # r[col] is already None for absent columns (NULL AS col in SELECT)
@@ -133,7 +134,7 @@ def _backfill_threads(conn: sqlite3.Connection) -> None:
             r["last_dispatched_task"], r["last_dispatched_role"], r["last_dispatched_model"],
             r["session_id"], r["summary"], r["key_decisions"], r["open_questions"],
             intent, r["summarized_msg_count"] or 0, r["show_in_list"] if r["show_in_list"] is not None else 1,
-            r["created_at"], r["last_active"],
+            r["created_at"] or _EPOCH, r["last_active"] or _EPOCH,
         ))
 
 
