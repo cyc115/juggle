@@ -197,24 +197,76 @@ def start_watchdog_detached(db_path, *, repo_path: str | None = None) -> int:
     return proc.pid
 
 
+def _spawn_stamp_path(db_path) -> Path:
+    """Sidecar that records the last ensure-spawn time for this DB's watchdog."""
+    p = Path(db_path)
+    return p.parent / f".{p.name}.watchdog.spawned"
+
+
+def _read_last_spawn(db_path) -> float | None:
+    try:
+        return float(_spawn_stamp_path(db_path).read_text().strip())
+    except (FileNotFoundError, ValueError, OSError):
+        return None
+
+
+def _record_spawn(db_path, when: float) -> None:
+    try:
+        stamp = _spawn_stamp_path(db_path)
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(str(when))
+    except OSError:
+        pass
+
+
+def _default_min_respawn_interval() -> float:
+    try:
+        from juggle_settings import get_settings
+        return float(get_settings().get("watchdog", {}).get("min_respawn_interval_secs", 60))
+    except Exception:
+        return 60.0
+
+
 def ensure_watchdog(
     db_path,
     *,
     repo_path: str | None = None,
     spawn=None,
     survive_timeout: float = 2.0,
+    min_respawn_interval: float | None = None,
+    force: bool = False,
 ) -> bool:
     """Lock-gated ensure-exists: start a detached watchdog only if none is live.
 
     Returns True only if a NEW watchdog was launched AND it came up alive
     (acquired the singleton lock) within ``survive_timeout``. Returns False if a
-    live watchdog already holds the lock (no-op) OR if the spawned daemon never
-    survived to acquire the lock. The lock — not this check — is the
-    authoritative singleton, so a racing second launch is harmless: the loser
-    fails to acquire and exits.
+    live watchdog already holds the lock (no-op), if a recent spawn is still
+    inside the debounce window, OR if the spawned daemon never survived to
+    acquire the lock. The lock — not this check — is the authoritative
+    singleton, so a racing second launch is harmless.
+
+    Debounce (2026-06-20 respawn-storm fix): the cockpit polls this every 15s.
+    A slow `uv run` cold-start hasn't acquired the lock yet, so a naive
+    ``is_watchdog_alive`` check sees 'no daemon' and respawns AGAIN — 15s after
+    15s. ``min_respawn_interval`` suppresses a respawn within that many seconds
+    of the previous spawn even when the lock is not yet held, giving the booting
+    daemon time to take it. Defaults from ``watchdog.min_respawn_interval_secs``.
     """
     if is_watchdog_alive(db_path):
         return False
+
+    if min_respawn_interval is None:
+        min_respawn_interval = _default_min_respawn_interval()
+    now = time.monotonic()
+    if not force:
+        last = _read_last_spawn(db_path)
+        if last is not None and (now - last) < min_respawn_interval:
+            # A spawn is in-flight (or just landed) — give it time to take the
+            # lock instead of piling on another daemon (the respawn storm).
+            # ``force`` (explicit W/R hotkey) bypasses this throttle.
+            return False
+
+    _record_spawn(db_path, now)
     (spawn or start_watchdog_detached)(db_path, repo_path=repo_path)
     deadline = time.monotonic() + survive_timeout
     while time.monotonic() < deadline:
@@ -259,11 +311,15 @@ def stop_watchdog(db_path, *, timeout: float = 3.0) -> bool:
 
 
 def toggle_watchdog(db_path, *, repo_path: str | None = None, spawn=None) -> str:
-    """W hotkey: stop a live watchdog, or start one if none. Returns the action."""
+    """W hotkey: stop a live watchdog, or start one if none. Returns the action.
+
+    ``force=True`` on the start path: an explicit user action must never be
+    swallowed by the respawn debounce (which only throttles the automatic 15s
+    cockpit ensure)."""
     if is_watchdog_alive(db_path):
         stop_watchdog(db_path)
         return "stopped"
-    ensure_watchdog(db_path, repo_path=repo_path, spawn=spawn)
+    ensure_watchdog(db_path, repo_path=repo_path, spawn=spawn, force=True)
     return "started"
 
 
@@ -281,8 +337,10 @@ def restart_watchdog(
     deadline = time.monotonic() + 3.0
     while is_watchdog_alive(db_path) and time.monotonic() < deadline:
         time.sleep(0.05)
+    # force=True: an explicit restart must bypass the respawn debounce.
     return ensure_watchdog(
-        db_path, repo_path=repo_path, spawn=spawn, survive_timeout=survive_timeout
+        db_path, repo_path=repo_path, spawn=spawn,
+        survive_timeout=survive_timeout, force=True,
     )
 
 
