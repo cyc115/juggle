@@ -7,7 +7,7 @@
 
 
 <!-- Session 2026-06-20 — incident recovery (watchdog/pane leaks) + CB project. Check off as completed. -->
-- [ ] **CB P8 — read-collapse + legacy-table DROP (DO LAST + BACKUP)** — user-approved 2026-06-20: run ONLY after all other actionable items land; back up the prod DB (`~/.claude/juggle/juggle.db`) before the destructive drop; CP/cyc_CP holds until then (watchdog frozen to stop auto-integrate). Irreversible — verify `--pre-p8-check` zero-references first.
+- [ ] **CB P8 — legacy-table DROP (BLOCKED: large + irreversible)** — read-collapse merged (42ef016), but ~10 modules + dual-write STILL reference threads/graph_topics/graph_tasks; dropping now crashes them. Remaining work BEFORE the irreversible drop: (1) migrate ALL legacy-table reads/writes → nodes (~10 modules), (2) build `--pre-p8-check` (assert zero refs), (3) backup prod DB, (4) drop migration (tested on tmp). Irreversible — needs explicit go-ahead for the multi-step effort. User pre-approved 'do last + backup'; surfacing that it's a project, not a quick step.
 - [ ] #need-clarification **Test-suite runtime / simplify** — underspecified: is the deliverable (a) just MEASURE current full-suite runtime, (b) SPEED IT UP (parallelize/split), or (c) SIMPLIFY structure (merge/prune suites)? "Simplify" has no concrete target. Need the intended outcome. Original: How long does it take for all test suites to run? Can I simplify 
 
 ## Backlog
