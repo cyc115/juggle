@@ -153,17 +153,19 @@ def _cmd_list_selfheal(args):
     import json as _json
     from pathlib import Path as _Path
     db = get_db(getattr(args, "db_path", None), init=True)
-    rows = db.get_open_error_events()
+    status = getattr(args, "status", None)
+    include_hidden = getattr(args, "all", False)
+    rows = db.get_open_error_events(status=status, include_hidden=include_hidden)
     if getattr(args, "json", False):
         print(_json.dumps(rows, default=str))
         return
     if not rows:
-        print("No pending self-heal errors.")
+        print("No matching self-heal errors.")
         return
     for row in rows:
         sig8 = (row["signature_hash"] or "")[:8]
         cls = row["error_class"]
-        status = row["status"]
+        st = row["status"]
         count = row["count"]
         last = (row["last_seen"] or "")[:16]
         if cls == "A":
@@ -171,14 +173,19 @@ def _cmd_list_selfheal(args):
         else:
             ref = _Path(row["juggle_ref"] or "").name or row["juggle_ref"] or "?"
             detail = f"{row['entrypoint'] or '?'} error via {ref}"
-        print(f"{row['id']:>4}  [{cls}]  {status:<20} count={count}  last={last}  sig={sig8}  {detail}")
+        # Grey proposed-benign rows so they read as low-priority in the default view.
+        prefix = "\033[2m" if st == "non_issue_proposed" else ""
+        suffix = "\033[0m" if prefix else ""
+        print(f"{prefix}{row['id']:>4}  [{cls}]  {st:<20} count={count}  "
+              f"last={last}  sig={sig8}  {detail}{suffix}")
 
 
 def _cmd_selfheal_set_status(args):
+    from dbops.schema import VALID_ERROR_STATUSES
     db = get_db(getattr(args, "db_path", None), init=True)
-    valid = ("open", "diagnosing", "awaiting_approval", "resolved")
-    if args.status not in valid:
-        print(f"error: invalid status {args.status!r}; choose from {valid}")
+    if args.status not in VALID_ERROR_STATUSES:
+        print(f"error: invalid status {args.status!r}; "
+              f"choose from {sorted(VALID_ERROR_STATUSES)}")
         sys.exit(1)
     updated = db.set_error_event_status(args.id, args.status, action_item_id=args.action_item_id)
     if updated:

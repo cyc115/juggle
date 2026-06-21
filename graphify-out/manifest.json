@@ -500,8 +500,8 @@
     "semantic_hash": ""
   },
   "src/juggle_selfheal.py": {
-    "mtime": 1782065956.5513923,
-    "ast_hash": "78fcfa089d8b470dbef40d8fde1b8690",
+    "mtime": 1782066265.4363935,
+    "ast_hash": "c6477e48c5830852a89fedeae2e31e7d",
     "semantic_hash": ""
   },
   "src/juggle_cli_common.py": {
@@ -1205,8 +1205,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cli_parsers_misc.py": {
-    "mtime": 1782065661.8450859,
-    "ast_hash": "65966bf169d5a789f03a7f8805a22b21",
+    "mtime": 1782066286.9741476,
+    "ast_hash": "e72e161bd55e879e49ccbe9bb8d6589f",
     "semantic_hash": ""
   },
   "src/juggle_cli_parsers_threads.py": {
@@ -1215,8 +1215,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cmd_misc.py": {
-    "mtime": 1782065661.8496006,
-    "ast_hash": "b7a731bc3c3c0e6d93f6fb0056058724",
+    "mtime": 1782066279.1130726,
+    "ast_hash": "d5f06c01e97d3b15bd2ef0e1aa9b0884",
     "semantic_hash": ""
   },
   "src/schedules/__init__.py": {
@@ -1280,8 +1280,8 @@
     "semantic_hash": ""
   },
   "src/dbops/selfheal.py": {
-    "mtime": 1782066205.9007795,
-    "ast_hash": "3b8ebef7c3c381c5874396e3cc216db4",
+    "mtime": 1782066250.995105,
+    "ast_hash": "6cb115d1c4b4f88eac758fb2b86ad67a",
     "semantic_hash": ""
   },
   "src/dbops/session.py": {
@@ -2480,8 +2480,8 @@
     "semantic_hash": ""
   },
   "tests/test_selfheal_asymmetry.py": {
-    "mtime": 1782066194.9224596,
-    "ast_hash": "2c0adb7b8f5af0ced5bd1035ff93cca4",
+    "mtime": 1782066233.846912,
+    "ast_hash": "e2c10b2323aa282054373af96e431986",
     "semantic_hash": ""
   },
   "tests/test_selfheal_migration_p1.py": {

@@ -101,20 +101,45 @@ class SelfhealMixin:
             conn.commit()
             return cur.rowcount == 1
 
-    def get_open_error_events(self) -> list[dict]:
-        """Return all non-resolved error_events rows, newest last."""
+    def get_open_error_events(
+        self, status: str | None = None, include_hidden: bool = False
+    ) -> list[dict]:
+        """Return error_events rows for the triage view.
+
+        Default (status=None, include_hidden=False): the actionable view —
+        status NOT IN ('resolved','non_issue'). So open/diagnosing/
+        awaiting_approval/non_issue_proposed surface (the last greyed by the
+        caller). include_hidden=True returns all rows; status='X' filters to
+        exactly that status (selfheal-triage-v2 P1, spec §4.2).
+        """
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM error_events WHERE status != 'resolved' ORDER BY id ASC"
-            ).fetchall()
+            if status is not None:
+                rows = conn.execute(
+                    "SELECT * FROM error_events WHERE status = ? ORDER BY id ASC",
+                    (status,),
+                ).fetchall()
+            elif include_hidden:
+                rows = conn.execute(
+                    "SELECT * FROM error_events ORDER BY id ASC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM error_events "
+                    "WHERE status NOT IN ('resolved','non_issue') ORDER BY id ASC"
+                ).fetchall()
         return [dict(r) for r in rows]
 
     def get_pending_selfheal_count(self) -> int:
-        """Return count of non-resolved error_events rows."""
+        """Count actionable (non-resolved, non-non_issue) error_events rows.
+
+        Mirrors the default list view so the cockpit badge counts what an
+        operator would act on (selfheal-triage-v2 P1).
+        """
         try:
             with self._connect() as conn:
                 row = conn.execute(
-                    "SELECT COUNT(*) FROM error_events WHERE status != 'resolved'"
+                    "SELECT COUNT(*) FROM error_events "
+                    "WHERE status NOT IN ('resolved','non_issue')"
                 ).fetchone()
                 return row[0] if row else 0
         except Exception:

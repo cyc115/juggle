@@ -128,11 +128,15 @@ def record_orchestration_error(
 
 
 def _get_pending_selfheal_count(db) -> int:
-    """Return count of non-resolved error_events. Safe to call even if table absent."""
+    """Return count of actionable error_events. Safe to call even if table absent.
+
+    Mirrors the default list view (selfheal-triage-v2 P1): excludes both
+    resolved and the new sticky non_issue so the badge counts only actionable rows.
+    """
     try:
         with db._connect() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) FROM error_events WHERE status != 'resolved'"
+                "SELECT COUNT(*) FROM error_events WHERE status NOT IN ('resolved','non_issue')"
             ).fetchone()
             return row[0] if row else 0
     except Exception:
