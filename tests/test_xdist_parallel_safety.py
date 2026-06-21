@@ -81,6 +81,25 @@ def test_autouse_guard_blocks_prod_pidfile_write():
         dp.write_singleton_pid(prod_pidfile)
 
 
+@pytest.mark.slow
+@pytest.mark.xdist_group("serial")
+def test_full_suite_parallel_stability_contract():
+    """speedup-tier (2026-06-21): META-PIN documenting the -n auto acceptance
+    contract — the full suite is green and pass-count stable under -n auto across
+    reruns. The ENFORCING evidence is the integrate/CI run (full suite, -n auto);
+    this pin asserts the contract's MECHANISM still exists so it cannot be
+    silently dropped, without recursively spawning pytest inside pytest."""
+    import tomllib
+
+    root = Path(__file__).parent.parent
+    ini = tomllib.loads((root / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"]
+    marker_names = [m.split(":", 1)[0] for m in ini["markers"]]
+    # The two-axis parallel mechanism (slow tier + serial group) must persist.
+    assert "slow" in marker_names and "serial" in marker_names
+    # The audit deliverable classifying every shared-resource family must persist.
+    assert (root / "tests" / "PARALLEL_SAFETY_AUDIT.md").exists()
+
+
 def test_watchdog_session_name_is_worker_scoped(monkeypatch):
     """speedup-tier (2026-06-21): two xdist workers must NOT share one real tmux
     session — the session name is keyed to PYTEST_XDIST_WORKER so parallel
