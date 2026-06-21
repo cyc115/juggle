@@ -103,3 +103,52 @@ def _guard_worktree_under_tmp(tmp_path, monkeypatch):
         if _mod is not None and hasattr(_mod, "_create_worktree"):
             monkeypatch.setattr(_mod, "_create_worktree", _guarded_create)
     yield
+
+
+# ── Prod-artifact guard (speedup-tier xdist safety, 2026-06-21) ───────────────
+# Under `-n auto` many workers run concurrently. `_isolate_db_from_prod` already
+# RAISES on a prod-DB *connection*; this guard additionally fails any test that
+# tries to WRITE the prod watchdog lock or a prod pidfile.
+#
+# B1 (critique): the plan's original design — a global st_mtime_ns snapshot of
+# the prod DB/lock/pidfile before/after each test — was REJECTED. A live watchdog
+# bumps exactly those mtimes every tick, so on the dogfooding dev machine (where
+# the fast inner loop most needs to be reliable) a snapshot guard flakes whenever
+# a test's window straddles a tick. Instead — mirroring the hermetic
+# `_guard_worktree_under_tmp` seam wrapper above — we wrap the two functions that
+# WRITE a prod artifact and assert, PER CALL, that the target is not a prod path,
+# BEFORE any IO. This inspects only the calls the test under test actually makes,
+# so it is immune to concurrent daemons.
+
+
+@pytest.fixture(autouse=True)
+def _guard_no_prod_artifacts(monkeypatch):
+    import daemon_pidfile as _dp
+    import juggle_watchdog_singleton as _wd
+    from _xdist_isolation import assert_not_prod_artifact
+
+    _orig_lock = _wd.acquire_singleton_lock
+
+    def _guarded_lock(db_path):
+        assert_not_prod_artifact(_wd.lock_path_for(db_path))
+        return _orig_lock(db_path)
+
+    _guarded_lock._prod_artifact_guarded = True
+
+    _orig_pid = _dp.write_singleton_pid
+
+    def _guarded_pid(pidfile, **kwargs):
+        assert_not_prod_artifact(pidfile)
+        return _orig_pid(pidfile, **kwargs)
+
+    _guarded_pid._prod_artifact_guarded = True
+
+    monkeypatch.setattr(_wd, "acquire_singleton_lock", _guarded_lock)
+    monkeypatch.setattr(_dp, "write_singleton_pid", _guarded_pid)
+    yield
+
+
+@pytest.fixture
+def _guard_no_prod_artifacts_active(_guard_no_prod_artifacts):  # noqa: ARG001
+    """Expose the guard's activeness to a pin (the autouse guard yields None)."""
+    return True

@@ -23,6 +23,7 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-asyncio",
+    "pytest-xdist",
     "numpy",
     "sqlite-vec",
     "flask",
@@ -37,7 +38,15 @@ asyncio_mode = "auto"
 markers = [
     "asyncio: mark an async test to run under pytest-asyncio",
     "watchdog_proc: spawns/kills REAL watchdog-like host processes; DESELECTED by default (opt-in with `-m watchdog_proc`) so a normal `pytest` run never touches the live canonical watchdog (T-watchdog-test-proc-scope, 2026-06-16 incident)",
+    "slow: heavy bucket (cockpit/Textual render, watchdog real-daemon/gap, subprocess/tmux shell-outs). Tiers ONLY the opt-in developer inner loop (`make test-fast` / `-m 'not slow and not watchdog_proc'`). NEVER deselected by default addopts — bare `pytest` stays the FULL suite so the always-full-suite integrate gate cannot be silently downgraded (speedup-tier B2, 2026-06-21).",
+    "serial: must run on a single xdist worker (shared global state not isolatable per-worker). Honored via --dist loadgroup + xdist_group. Independent of `slow`.",
 ]
 # Process-scope isolation: the harness-gate full-suite run must never pkill the
 # host canonical watchdog. Destructive proc-spawning tests are opt-in only.
+#
+# B2 (2026-06-21): `not slow` is DELIBERATELY ABSENT here. The integrate gate runs
+# its configured test_cmd VERBATIM and inherits this addopts; baking `not slow`
+# in would silently downgrade a bare-`pytest` integrate gate to fast-tier-only,
+# violating the always-full-suite directive. The fast tier is OPT-IN only
+# (`make test-fast`). Pinned by tests/test_marker_tier.py.
 addopts = "-m 'not watchdog_proc'"
