@@ -1205,8 +1205,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cli_parsers_misc.py": {
-    "mtime": 1782078999.8061488,
-    "ast_hash": "6227a25e52bf57209268aadb6a552a52",
+    "mtime": 1782079259.548957,
+    "ast_hash": "aeecd6b915681952b1be2906c78d3090",
     "semantic_hash": ""
   },
   "src/juggle_cli_parsers_threads.py": {
@@ -2557,6 +2557,11 @@
   "tests/test_daemon_survivor_guard.py": {
     "mtime": 1782078880.1607997,
     "ast_hash": "bdccca0caf0995a795d6f2655b715164",
+    "semantic_hash": ""
+  },
+  "src/juggle_cli_parsers_selfheal.py": {
+    "mtime": 1782079245.2346592,
+    "ast_hash": "781da93c50a8925445ca4e7de644fd62",
     "semantic_hash": ""
   }
 }
