@@ -95,6 +95,31 @@ def test_cmd_complete_agent_preserves_feature_topic_with_user_messages(db):
     assert db.get_thread(tid)["status"] != "closed"
 
 
+def test_cmd_complete_agent_closes_thread_with_only_orchestrator_chatter(db):
+    """Regression (2026-06-21): an agent/orchestrator thread whose only 'user'
+    messages are automated chatter (task-notifications, '# Autonomous loop tick'
+    headers) is NOT a feature topic and MUST close on complete-agent.
+
+    Guards against the message-count false-positive: such chatter accumulates on
+    any thread that was 'current' during loop ticks, so a plain user-message
+    count would wrongly preserve a finished agent thread.
+    """
+    from juggle_cmd_agents import cmd_complete_agent
+
+    tid = db.create_thread("agent task", session_id="sessA")
+    db.add_message(tid, "user", "<task-notification>\n<task-id>abc</task-id>\n</task-notification>")
+    db.add_message(tid, "user", "# Autonomous loop tick (dynamic pacing)\n\nRun the check.")
+    db.update_thread(tid, status="background")
+    db._set_session_key_external("session_id", "sessA")
+    args = argparse.Namespace(
+        thread_id=tid, result_summary="agent done", retain_text=None,
+        open_questions=None,
+    )
+    cmd_complete_agent(args)
+    # No real human message → agent-owned ephemeral thread → closes.
+    assert db.get_thread(tid)["status"] == "closed"
+
+
 def test_cmd_complete_agent_does_not_reopen_closed_feature_topic(db):
     """Idempotency (2026-06-21 Codex review): complete-agent on an ALREADY
     closed user-message thread must NOT resurrect it to 'active'. The preserve

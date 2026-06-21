@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from dbops.schema import _get_settings, _is_junk_message
+from dbops.schema import _get_settings, _is_junk_message, is_auto_topic_eligible
 
 
 class MessagesMixin:
@@ -83,6 +83,28 @@ class MessagesMixin:
             if not _is_junk_message(row["content"]):
                 count += 1
         return count
+
+    def has_human_user_message(self, thread_id: str) -> bool:
+        """True if the thread has ≥1 real human-authored user message.
+
+        Excludes BOTH junk (task-notifications, slash commands — _is_junk_message)
+        AND orchestrator chatter (autopilot cards, '# Autonomous loop tick'
+        headers, JUGGLE ACTIVE blocks — is_auto_topic_eligible). The latter
+        accumulate on ANY thread that was 'current' during loop ticks, so a plain
+        user-message count would mis-flag a finished agent/orchestrator thread as
+        a feature topic. Uses the same canonical classifier that gates auto-topic
+        creation, so a feature topic (seeded by an eligible human message) reads
+        as human-owned while an agent-owned ephemeral thread does not.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT content FROM messages WHERE thread_id = ? AND role = 'user'",
+                (thread_id,),
+            ).fetchall()
+        return any(
+            not _is_junk_message(r["content"]) and is_auto_topic_eligible(r["content"])
+            for r in rows
+        )
 
     def get_last_exchange(self, thread_id: str) -> dict:
         """Return the last user message and last assistant message for a thread.

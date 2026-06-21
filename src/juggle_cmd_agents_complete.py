@@ -104,11 +104,12 @@ def cmd_complete_agent(args):
     # 3. Transition thread: close agent-owned ephemeral threads, but PRESERVE a
     #    user-facing feature topic an agent was wrongly bound to (2026-06-21:
     #    transient researcher 6238df03 closed feature Topic CQ on complete, had
-    #    to unarchive). A thread carrying real (non-junk) user messages is a
-    #    feature topic — never an agent-owned ephemeral dispatch thread, which
-    #    receives its prompt via send-task, not as a stored 'user' message. Code
-    #    over prompts: don't rely on the orchestrator create-thread'ing first.
-    preserve_feature_topic = db.get_message_count(thread_uuid) > 0
+    #    to unarchive). A thread with ≥1 real human-authored message is a feature
+    #    topic; an agent-owned ephemeral thread has none — only automated chatter
+    #    (task-notifications, '# Autonomous loop tick' headers) which the canonical
+    #    classifier excludes. Code over prompts: don't rely on the orchestrator
+    #    create-thread'ing a fresh ephemeral thread first.
+    preserve_feature_topic = db.has_human_user_message(thread_uuid)
     if not preserve_feature_topic:
         db.set_thread_status(thread_uuid, "closed")
     elif (thread.get("status") or "") in ("background", "running"):
