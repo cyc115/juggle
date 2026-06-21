@@ -57,3 +57,6 @@ data/cockpit-viewport-review/*.txt
 
 # Local secrets
 docker/.env
+
+# Juggle agent worktrees (ephemeral; never commit)
+.claude/worktrees/
