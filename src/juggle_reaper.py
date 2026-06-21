@@ -1,20 +1,15 @@
-"""Watchdog-daemon reaper — the lifecycle sweep the daemon loop was missing.
+"""Watchdog-daemon reaper + process enumeration / kill-ALL.
 
-RCA 2026-06-20 (research/2026-06-20-watchdog-daemon-leak-rca.md §6): NOTHING
-reaped a watchdog daemon whose worktree/DB had vanished. A daemon launched
-against /private/tmp/juggle-repo-XXX kept ticking forever after that worktree
-was deleted, and the per-DB flock is not a global cap, so N distinct tmp DBs
-could run N daemons at once → ~109 detached daemons accumulated over ~8h.
-
-This module adds two backstops, wired into the watchdog tick:
-  1. reap_orphan_watchdog_daemons — SIGTERM any daemon whose JUGGLE_DB_PATH
-     file OR working-directory no longer exists.
-  2. enforce_daemon_cap — a global count cap that kills the oldest daemons over
-     the cap and ALWAYS logs when it fires (no silent cap).
-
-Pure seams: every process-introspection / kill / log dependency is injected so
-the policy is unit-testable without real processes. The default readers shell
-out to ``ps``/``lsof`` (macOS) or ``/proc`` (Linux).
+RCA 2026-06-20 §6: NOTHING reaped a watchdog daemon whose worktree/DB had
+vanished (it kept ticking forever), and the per-DB flock is not a global cap, so
+N tmp DBs ran N daemons → ~109 detached daemons over ~8h. Two backstops, wired
+into the watchdog tick: ``reap_orphan_watchdog_daemons`` (SIGTERM any daemon
+whose JUGGLE_DB_PATH file or cwd is gone) and ``enforce_daemon_cap`` (global cap;
+kills the oldest over the cap and ALWAYS logs — no silent cap). Also the
+``find_watchdog_pids`` / ``terminate_all_watchdogs`` kill-ALL helpers (process
+killing is the reaper's domain). Pure seams: process-introspection / kill / log
+are injected so policy is unit-testable; default readers shell out to
+``ps``/``lsof`` (macOS) or ``/proc`` (Linux).
 """
 from __future__ import annotations
 
@@ -110,6 +105,78 @@ def _default_killer(pid: int) -> None:
         pass
 
 
+# --- Watchdog process enumeration + kill-ALL (re-exported from singleton) -----
+
+
+def find_watchdog_pids(pattern: str | None = None) -> list[int]:
+    """Return PIDs of every running watchdog process (excluding ourselves).
+
+    ``pattern`` overrides the default production patterns (used by tests to
+    target a unique marker without touching the real watchdog).
+    """
+    from juggle_watchdog_singleton import WATCHDOG_PROC_PATTERNS
+
+    patterns = [pattern] if pattern else list(WATCHDOG_PROC_PATTERNS)
+    pids: set[int] = set()
+    me = os.getpid()
+    for pat in patterns:
+        try:
+            res = subprocess.run(
+                ["pgrep", "-f", pat], capture_output=True, text=True, timeout=5
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+        for tok in res.stdout.split():
+            try:
+                pid = int(tok)
+            except ValueError:
+                continue
+            if pid != me:
+                pids.add(pid)
+    return sorted(pids)
+
+
+def _any_alive(pids: list[int]) -> bool:
+    for pid in pids:
+        try:
+            os.kill(pid, 0)
+            return True
+        except (ProcessLookupError, PermissionError):
+            continue
+    return False
+
+
+def terminate_all_watchdogs(
+    pattern: str | None = None, *, timeout: float = 3.0
+) -> list[int]:
+    """SIGTERM every watchdog process, escalating to SIGKILL after ``timeout``.
+
+    Returns the list of PIDs that were signalled. A freeze must actually freeze
+    everything, so this targets ALL matching processes — not just a recorded
+    pidfile entry.
+    """
+    import time as _time
+
+    pids = find_watchdog_pids(pattern)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    deadline = _time.monotonic() + timeout
+    while _time.monotonic() < deadline:
+        if not _any_alive(pids):
+            break
+        _time.sleep(0.1)
+    for pid in pids:
+        try:
+            os.kill(pid, 0)
+            os.kill(pid, signal.SIGKILL)  # still alive — escalate
+        except (ProcessLookupError, PermissionError):
+            pass
+    return pids
+
+
 # ---------------------------------------------------------------------------
 # Predicate
 # ---------------------------------------------------------------------------
@@ -152,7 +219,6 @@ def reap_orphan_watchdog_daemons(
     """
     emit = log or _log.warning
     if pids is None:
-        from juggle_watchdog_singleton import find_watchdog_pids
         pids = find_watchdog_pids()
 
     reaped: list[int] = []
@@ -188,7 +254,6 @@ def enforce_daemon_cap(
     if max_daemons <= 0:
         return []
     if pids is None:
-        from juggle_watchdog_singleton import find_watchdog_pids
         pids = find_watchdog_pids()
 
     if len(pids) <= max_daemons:

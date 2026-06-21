@@ -185,8 +185,14 @@ def test_proc_spawning_tests_are_deselected_by_default():
 def test_terminate_all_watchdogs_logic_is_mocked_no_real_procs(monkeypatch):
     """Kill-all logic unit-tested against a MOCKED process list — no real
     processes are spawned or signalled. SIGTERM goes to every reported pid; a
-    pid still alive after the grace window is escalated to SIGKILL."""
-    monkeypatch.setattr(ws, "find_watchdog_pids", lambda pattern=None: [4242, 4243])
+    pid still alive after the grace window is escalated to SIGKILL.
+
+    NOTE: terminate_all_watchdogs / find_watchdog_pids moved to juggle_reaper
+    (2026-06-20) and are re-exported from ws; patch them in the reaper namespace
+    (where terminate_all_watchdogs resolves find_watchdog_pids). The public
+    surface exercised here is still ws.terminate_all_watchdogs."""
+    import juggle_reaper as _r
+    monkeypatch.setattr(_r, "find_watchdog_pids", lambda pattern=None: [4242, 4243])
 
     sent: list[tuple[int, int]] = []
     alive = {4243}  # 4243 ignores SIGTERM → must be escalated to SIGKILL

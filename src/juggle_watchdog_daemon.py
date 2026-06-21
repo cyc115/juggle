@@ -25,8 +25,6 @@ from juggle_settings import get_settings
 from juggle_tmux import JuggleTmuxManager
 from juggle_watchdog_health import write_heartbeat
 from juggle_watchdog import (
-    _classify_agent_state,
-    _is_source_stale,
     _kill_existing_watchdog_from_pidfile,
     check_orphaned_threads,
     classify_pane_state,
@@ -34,7 +32,6 @@ from juggle_watchdog import (
     get_session_id,
     get_threshold_seconds,
     handle_prompt,
-    nudge_and_notify,
     read_snapshot,
     write_snapshot,
 )

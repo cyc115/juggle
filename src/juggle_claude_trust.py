@@ -62,3 +62,16 @@ def ensure_dir_trusted(dir_path: str, claude_json_path: Path | str | None = None
         return True
     except Exception:
         return False  # best-effort; never block dispatch
+
+
+def pretrust_spawn_dir(repo_path: str) -> None:
+    """Best-effort pre-trust of an agent's spawn dir (never raises).
+
+    Wrapper around ``ensure_dir_trusted`` used by spawn_agent so a folder-trust
+    gate never hangs a freshly-spawned agent (2026-06-20 leak); a failure here
+    must never block the spawn.
+    """
+    try:
+        ensure_dir_trusted(repo_path)
+    except Exception:
+        pass

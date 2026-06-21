@@ -183,23 +183,32 @@ def cmd_set_watchdog(args):
         print(f"Watchdog threshold for agent {args.agent_id[:8]} set to {minutes} min.")
 
 
-def cmd_stop_watchdog(_args):
+def cmd_stop_watchdog(args):
     """Terminate EVERY running watchdog process — a freeze must freeze them all.
 
     2026-06-16 incident: stopping only the recorded PID let a rogue watchdog
     (started from a worktree) survive and keep ticking against the prod DB.
+
+    --freeze (2026-06-20 incident): also set the freeze sentinel so the cockpit's
+    15s ensure cannot respawn the daemon — the defect-protocol freeze can finally
+    hold. An explicit `start` / W / R hotkey clears it.
     """
     from juggle_settings import get_settings
-    from juggle_watchdog_singleton import terminate_all_watchdogs
+    from juggle_watchdog_singleton import freeze_watchdog, terminate_all_watchdogs
 
     # Best-effort cleanup of any recorded pidfiles (session-scoped + legacy).
     config_dir = Path(get_settings()["paths"]["config_dir"])
     for pid_file in [config_dir / "watchdog.pid", *config_dir.glob("watchdog-*.pid")]:
         pid_file.unlink(missing_ok=True)
 
+    if getattr(args, "freeze", False):
+        from dbops.schema import _resolve_db_path
+        freeze_watchdog(str(_resolve_db_path()))
+
     killed = terminate_all_watchdogs()
+    frozen_note = " + frozen (no respawn until start)" if getattr(args, "freeze", False) else ""
     if killed:
         print(f"Watchdog stopped ({len(killed)} process(es): "
-              f"{', '.join(str(p) for p in killed)}).")
+              f"{', '.join(str(p) for p in killed)}){frozen_note}.")
     else:
-        print("Watchdog is not running.")
+        print(f"Watchdog is not running{frozen_note}.")

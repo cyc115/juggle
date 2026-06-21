@@ -197,34 +197,20 @@ def start_watchdog_detached(db_path, *, repo_path: str | None = None) -> int:
     return proc.pid
 
 
-def _spawn_stamp_path(db_path) -> Path:
-    """Sidecar that records the last ensure-spawn time for this DB's watchdog."""
-    p = Path(db_path)
-    return p.parent / f".{p.name}.watchdog.spawned"
-
-
-def _read_last_spawn(db_path) -> float | None:
-    try:
-        return float(_spawn_stamp_path(db_path).read_text().strip())
-    except (FileNotFoundError, ValueError, OSError):
-        return None
-
-
-def _record_spawn(db_path, when: float) -> None:
-    try:
-        stamp = _spawn_stamp_path(db_path)
-        stamp.parent.mkdir(parents=True, exist_ok=True)
-        stamp.write_text(str(when))
-    except OSError:
-        pass
-
-
-def _default_min_respawn_interval() -> float:
-    try:
-        from juggle_settings import get_settings
-        return float(get_settings().get("watchdog", {}).get("min_respawn_interval_secs", 60))
-    except Exception:
-        return 60.0
+# Spawn-lifecycle gates (respawn debounce + freeze sentinel) live in
+# juggle_watchdog_lifecycle (extracted 2026-06-20 to keep this module under its
+# LOC budget). Re-exported here so the historical call/import surface is intact.
+from juggle_watchdog_lifecycle import (  # noqa: E402,F401
+    default_min_respawn_interval,
+    freeze_sentinel_path,
+    freeze_watchdog,
+    is_watchdog_frozen,
+    read_last_spawn,
+    record_spawn,
+    should_suppress_spawn,
+    spawn_stamp_path,
+    unfreeze_watchdog,
+)
 
 
 def ensure_watchdog(
@@ -238,35 +224,31 @@ def ensure_watchdog(
 ) -> bool:
     """Lock-gated ensure-exists: start a detached watchdog only if none is live.
 
-    Returns True only if a NEW watchdog was launched AND it came up alive
-    (acquired the singleton lock) within ``survive_timeout``. Returns False if a
-    live watchdog already holds the lock (no-op), if a recent spawn is still
-    inside the debounce window, OR if the spawned daemon never survived to
-    acquire the lock. The lock — not this check — is the authoritative
-    singleton, so a racing second launch is harmless.
+    Returns True only if a NEW watchdog was launched AND came up alive (acquired
+    the lock) within ``survive_timeout``. Returns False if a live watchdog holds
+    the lock, if the freeze sentinel or respawn debounce suppresses the spawn, or
+    if the spawned daemon never survived. The lock is the authoritative singleton
+    — a racing second launch is harmless (the loser fails to acquire and exits).
 
-    Debounce (2026-06-20 respawn-storm fix): the cockpit polls this every 15s.
-    A slow `uv run` cold-start hasn't acquired the lock yet, so a naive
-    ``is_watchdog_alive`` check sees 'no daemon' and respawns AGAIN — 15s after
-    15s. ``min_respawn_interval`` suppresses a respawn within that many seconds
-    of the previous spawn even when the lock is not yet held, giving the booting
-    daemon time to take it. Defaults from ``watchdog.min_respawn_interval_secs``.
+    Spawn gates (2026-06-20 leak): ``should_suppress_spawn`` folds (a) the freeze
+    sentinel — a hard no-op even under ``force`` so ``stop-watchdog --freeze``
+    holds against the 15s cockpit ensure — and (b) the respawn debounce — within
+    ``min_respawn_interval`` (default ``watchdog.min_respawn_interval_secs``) of
+    the last spawn, suppress a respawn even when the lock isn't held yet, so a
+    slow cold-start isn't re-spawned 15s after 15s. ``force`` (W/R hotkey)
+    bypasses the debounce but never the freeze.
     """
     if is_watchdog_alive(db_path):
         return False
-
     if min_respawn_interval is None:
-        min_respawn_interval = _default_min_respawn_interval()
+        min_respawn_interval = default_min_respawn_interval()
     now = time.monotonic()
-    if not force:
-        last = _read_last_spawn(db_path)
-        if last is not None and (now - last) < min_respawn_interval:
-            # A spawn is in-flight (or just landed) — give it time to take the
-            # lock instead of piling on another daemon (the respawn storm).
-            # ``force`` (explicit W/R hotkey) bypasses this throttle.
-            return False
+    if should_suppress_spawn(
+        db_path, now=now, min_respawn_interval=min_respawn_interval, force=force
+    ):
+        return False
 
-    _record_spawn(db_path, now)
+    record_spawn(db_path, now)
     (spawn or start_watchdog_detached)(db_path, repo_path=repo_path)
     deadline = time.monotonic() + survive_timeout
     while time.monotonic() < deadline:
@@ -319,6 +301,8 @@ def toggle_watchdog(db_path, *, repo_path: str | None = None, spawn=None) -> str
     if is_watchdog_alive(db_path):
         stop_watchdog(db_path)
         return "stopped"
+    # Explicit start is an explicit unfreeze — lift any freeze before spawning.
+    unfreeze_watchdog(db_path)
     ensure_watchdog(db_path, repo_path=repo_path, spawn=spawn, force=True)
     return "started"
 
@@ -337,7 +321,9 @@ def restart_watchdog(
     deadline = time.monotonic() + 3.0
     while is_watchdog_alive(db_path) and time.monotonic() < deadline:
         time.sleep(0.05)
-    # force=True: an explicit restart must bypass the respawn debounce.
+    # Explicit restart is an explicit unfreeze; force=True also bypasses the
+    # respawn debounce.
+    unfreeze_watchdog(db_path)
     return ensure_watchdog(
         db_path, repo_path=repo_path, spawn=spawn,
         survive_timeout=survive_timeout, force=True,
@@ -355,71 +341,12 @@ def release_singleton_lock(fd) -> None:
         pass
 
 
-# ---------------------------------------------------------------------------
-# Kill-ALL helper for stop-watchdog
-# ---------------------------------------------------------------------------
-
-
-def find_watchdog_pids(pattern: str | None = None) -> list[int]:
-    """Return PIDs of every running watchdog process (excluding ourselves).
-
-    ``pattern`` overrides the default production patterns (used by tests to
-    target a unique marker without touching the real watchdog).
-    """
-    patterns = [pattern] if pattern else list(WATCHDOG_PROC_PATTERNS)
-    pids: set[int] = set()
-    me = os.getpid()
-    for pat in patterns:
-        try:
-            res = subprocess.run(
-                ["pgrep", "-f", pat], capture_output=True, text=True, timeout=5
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
-        for tok in res.stdout.split():
-            try:
-                pid = int(tok)
-            except ValueError:
-                continue
-            if pid != me:
-                pids.add(pid)
-    return sorted(pids)
-
-
-def terminate_all_watchdogs(
-    pattern: str | None = None, *, timeout: float = 3.0
-) -> list[int]:
-    """SIGTERM every watchdog process, escalating to SIGKILL after ``timeout``.
-
-    Returns the list of PIDs that were signalled. A freeze must actually freeze
-    everything, so this targets ALL matching processes — not just a recorded
-    pidfile entry.
-    """
-    pids = find_watchdog_pids(pattern)
-    for pid in pids:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            pass
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if not _any_alive(pids):
-            break
-        time.sleep(0.1)
-    for pid in pids:
-        try:
-            os.kill(pid, 0)
-            os.kill(pid, signal.SIGKILL)  # still alive — escalate
-        except (ProcessLookupError, PermissionError):
-            pass
-    return pids
-
-
-def _any_alive(pids: list[int]) -> bool:
-    for pid in pids:
-        try:
-            os.kill(pid, 0)
-            return True
-        except (ProcessLookupError, PermissionError):
-            continue
-    return False
+# Watchdog process enumeration + kill-ALL moved to juggle_reaper (process killing
+# is the reaper's domain). Re-exported so `from juggle_watchdog_singleton import
+# find_watchdog_pids / terminate_all_watchdogs` keeps working (stop-watchdog,
+# tests). WATCHDOG_PROC_PATTERNS stays here as the canonical 'what is a watchdog'
+# definition; the reaper imports it lazily to avoid an import cycle.
+from juggle_reaper import (  # noqa: E402,F401
+    find_watchdog_pids,
+    terminate_all_watchdogs,
+)

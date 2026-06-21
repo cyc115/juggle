@@ -15,17 +15,10 @@ from juggle_settings import get_settings as _get_settings
 # juggle_repo_binding; aliased here for the existing call/test surface.
 from juggle_repo_binding import spawn_repo_path as _spawn_repo_path  # noqa: E402
 
-
-def _pretrust_spawn_dir(repo_path: str) -> None:
-    """Best-effort: pre-trust ``repo_path`` so Claude's folder-trust gate never
-    hangs a freshly-spawned agent (2026-06-20 leak). Thin seam over
-    ``juggle_claude_trust.ensure_dir_trusted`` so spawn_agent stays testable."""
-    try:
-        from juggle_claude_trust import ensure_dir_trusted
-
-        ensure_dir_trusted(repo_path)
-    except Exception:
-        pass  # never block a spawn on pre-trust
+# Pre-trust seam (2026-06-20 leak): spawn_agent pre-trusts its spawn dir so
+# Claude's folder-trust gate never hangs the agent. Aliased into this module so
+# the existing test patch surface (juggle_tmux._pretrust_spawn_dir) is intact.
+from juggle_claude_trust import pretrust_spawn_dir as _pretrust_spawn_dir  # noqa: E402,F401
 
 
 # Built-in Claude Code markers — used as the fallback when the configured
@@ -568,21 +561,18 @@ class JuggleTmuxManager:
             agent_id = db.create_agent(role=role, pane_id=mock_pane, harness=harness_id, repo_path=repo_path)
             return db.get_agent(agent_id)
 
-        # Pre-trust the spawn dir so Claude Code's folder-trust gate ("Do you
-        # trust the files in this folder?") never hangs the boot (2026-06-20
-        # leak: a never-trusted dir hung the agent at the trust screen, yet it
-        # was registered as a normal idle agent and leaked its pane forever).
+        # Pre-trust the spawn dir so Claude's folder-trust gate never hangs the
+        # boot (2026-06-20 leak: stuck-at-trust agents leaked their panes).
         _pretrust_spawn_dir(repo_path)
 
         self.ensure_session()
         pane_id = self.spawn_pane()
         self.start_agent_in_pane(pane_id, model=model, role=role, agent_cfg=agent_cfg)
 
-        # Verified spawn: an interactive harness MUST render its ready UI before
-        # we register the agent. If it never becomes ready (stuck at trust,
-        # crashed boot), kill the pane and FAIL — never register a stuck spawn as
-        # a usable idle agent (2026-06-20 leak root cause). One-shot harnesses
-        # (e.g. codex exec) render no up-front UI, so they skip the gate.
+        # Verified spawn (2026-06-20 leak root cause): an interactive harness MUST
+        # render its ready UI before we register the agent; if it never does
+        # (stuck at trust / crashed boot), kill the pane and FAIL rather than
+        # register a stuck spawn. One-shot harnesses render no UI → skip the gate.
         if adapter.is_interactive and not self.wait_for_ready_to_paste(pane_id):
             self.kill_pane(pane_id)
             raise RuntimeError(
@@ -611,82 +601,13 @@ class JuggleTmuxManager:
             db.delete_agent(agent_id)
 
 
-def _pane_has_juggle_agent_env(pane_id: str) -> bool:
-    """Return True if any child process of the pane has JUGGLE_IS_AGENT=1."""
-    import subprocess as _sp
-
-    try:
-        pane_pid = _sp.run(
-            ["tmux", "display-message", "-t", pane_id, "-p", "#{pane_pid}"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-        ).stdout.strip()
-        if not pane_pid:
-            return False
-        children = (
-            _sp.run(
-                ["pgrep", "-P", pane_pid],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-            .stdout.strip()
-            .splitlines()
-        )
-        for child in children:
-            env_out = _sp.run(
-                ["ps", "eww", "-p", child],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            ).stdout
-            if "JUGGLE_IS_AGENT=1" in env_out:
-                return True
-    except Exception:
-        pass
-    return False
-
-
-def _get_oneshot_child_pid(pane_id: str) -> int | None:
-    """Return the PID of a one-shot child process in *pane_id*, or None.
-
-    Finds the pane's shell PID then looks for a child with JUGGLE_IS_AGENT=1
-    in its environment — the same technique ``_pane_has_juggle_agent_env`` uses.
-    """
-    import subprocess as _sp
-
-    try:
-        pane_pid = _sp.run(
-            ["tmux", "display-message", "-t", pane_id, "-p", "#{pane_pid}"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-        ).stdout.strip()
-        if not pane_pid:
-            return None
-        children = (
-            _sp.run(
-                ["pgrep", "-P", pane_pid],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-            .stdout.strip()
-            .splitlines()
-        )
-        for child in children:
-            env_out = _sp.run(
-                ["ps", "eww", "-p", child],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            ).stdout
-            if "JUGGLE_IS_AGENT=1" in env_out:
-                return int(child)
-    except Exception:
-        pass
-    return None
+# Pane introspection helpers extracted to juggle_pane_introspect (de-duped the
+# shared ps-eww/pgrep routine). Re-imported under the historical underscore names
+# so the existing juggle_tmux._pane_has_juggle_agent_env patch surface is intact.
+from juggle_pane_introspect import (  # noqa: E402
+    get_oneshot_child_pid as _get_oneshot_child_pid,
+    pane_has_juggle_agent_env as _pane_has_juggle_agent_env,
+)
 
 
 def oneshot_agent_alive(agent: dict) -> bool:
