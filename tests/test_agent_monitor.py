@@ -205,14 +205,14 @@ def test_sigterm_leaves_no_stale_pidfile(tmp_path):
     """
     home = tmp_path / "home"
     home.mkdir()
-    pidfile = home / ".juggle" / "monitor.pid"
+    pidfile = home / ".juggle" / "monitor-sig.pid"
 
     repo = Path(__file__).parent.parent
     boot = (
         "import sys; sys.path.insert(0, 'src'); "
         "from juggle_monitor_daemon import main; main()"
     )
-    env = {**os.environ, "HOME": str(home)}
+    env = {**os.environ, "HOME": str(home), "JUGGLE_MONITOR_SESSION": "sig"}
     proc = subprocess.Popen(
         [sys.executable, "-c", boot], env=env, cwd=str(repo),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -285,3 +285,130 @@ def test_cursor_reemits_unconsumed_completion_across_restart(db, tmp_path):
     # Restart again: cursor persisted -> NOT duplicated.
     lines3, _ = _poll()
     assert lines3 == [], "delivered completion must not be re-fired after restart"
+
+
+# ---------------------------------------------------------------------------
+# Multi-instance pins
+# Incident 2026-06-21: multi-instance monitor eviction + cursor starvation.
+# A GLOBAL pidfile made instance B's kill-before-restart SIGTERM instance A's
+# monitor (recurring exit 143); a GLOBAL cursor let instance A mark completions
+# delivered that instance B never emitted (cross-instance starvation).
+# ---------------------------------------------------------------------------
+
+
+def test_pidfile_and_cursor_are_per_session():
+    """Different session ids must map to DISTINCT pidfile + cursor paths."""
+    mod = _load_monitor()
+    assert mod._pidfile_for("A") != mod._pidfile_for("B")
+    assert mod._cursor_for("A") != mod._cursor_for("B")
+    assert "A" in mod._pidfile_for("A").name
+    assert "B" in mod._cursor_for("B").name
+
+
+def test_session_id_prefers_explicit_env(monkeypatch):
+    """JUGGLE_MONITOR_SESSION wins; else CLAUDE_CODE_SESSION_ID; else non-empty."""
+    mod = _load_monitor()
+    monkeypatch.setenv("JUGGLE_MONITOR_SESSION", "explicit")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "claude")
+    assert mod._session_id() == "explicit"
+
+    monkeypatch.delenv("JUGGLE_MONITOR_SESSION", raising=False)
+    assert mod._session_id() == "claude"
+
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    assert mod._session_id()  # non-empty fallback (e.g. ppid-derived)
+
+
+def test_per_session_cursor_no_cross_starvation(db, tmp_path, monkeypatch):
+    """2026-06-21: each session's cursor delivers EVERY completion to its own
+    consumer; one session advancing its cursor must not starve another.
+
+    Pre-fix a single GLOBAL cursor file meant ``_cursor_for("A")`` and
+    ``_cursor_for("B")`` resolved to the same path, so once A advanced it B
+    resumed past completions B never emitted.
+    """
+    import sqlite3 as _sql
+
+    mod = _load_monitor()
+    monkeypatch.setattr(mod, "_JUGGLE_DIR", tmp_path)
+    dbpath = Path(db.db_path)
+    cur_a = mod._cursor_for("A")
+    cur_b = mod._cursor_for("B")
+
+    # Both sessions started before any completion -> both baseline at 0.
+    assert mod._load_cursor(cur_a, dbpath) == 0
+    assert mod._load_cursor(cur_b, dbpath) == 0
+
+    tid = db.create_thread("task", session_id="s")
+    db.update_thread(tid, title="task", status="closed")
+    db.add_notification_v2(tid, "task: done", "s")
+
+    def _poll(cursor):
+        with db._connect() as conn:
+            conn.row_factory = _sql.Row
+            return mod._poll_once(conn, mod._load_cursor(cursor, dbpath))
+
+    # Session A delivers the completion and durably advances ITS cursor.
+    lines_a, new_a = _poll(cur_a)
+    assert len(lines_a) == 1
+    mod._save_cursor(cur_a, new_a)
+
+    # Session B (separate cursor) STILL delivers the same completion — A's
+    # advance must not have marked it delivered for B.
+    lines_b, _ = _poll(cur_b)
+    assert len(lines_b) == 1, "per-session cursor must not starve another session"
+
+
+def test_different_sessions_coexist_no_eviction(tmp_path):
+    """2026-06-21: two monitors with DIFFERENT session ids must coexist —
+    neither SIGTERMs the other.
+
+    Pre-fix both wrote ~/.juggle/monitor.pid, so the second instance's
+    kill-before-restart evicted the first (recurring exit 143).
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    repo = Path(__file__).parent.parent
+    script = repo / "scripts" / "juggle-agent-monitor"
+
+    def spawn(sid):
+        env = {**os.environ, "HOME": str(home), "JUGGLE_MONITOR_SESSION": sid}
+        return subprocess.Popen(
+            [sys.executable, str(script)], env=env, cwd=str(repo),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+
+    def wait_pidfile(sid):
+        pf = home / ".juggle" / f"monitor-{sid}.pid"
+        for _ in range(50):
+            if pf.exists():
+                return pf
+            time.sleep(0.1)
+        return pf
+
+    proc_a = spawn("A")
+    procs = [proc_a]
+    try:
+        pf_a = wait_pidfile("A")
+        assert pf_a.exists(), "monitor A never wrote its pidfile"
+
+        proc_b = spawn("B")
+        procs.append(proc_b)
+        pf_b = wait_pidfile("B")
+        assert pf_b.exists(), "monitor B never wrote its pidfile"
+
+        # Give B's kill-before-restart time to (wrongly) evict A pre-fix.
+        time.sleep(1.5)
+
+        assert proc_a.poll() is None, "monitor A was evicted by monitor B"
+        assert proc_b.poll() is None, "monitor B died"
+        assert pf_a.exists() and pf_b.exists(), "both session pidfiles must survive"
+    finally:
+        for p in procs:
+            if p.poll() is None:
+                p.terminate()
+                try:
+                    p.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    p.kill()
+                    p.wait(timeout=5)

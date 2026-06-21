@@ -9,6 +9,8 @@ in the watchdog modules. Entry point: ``main()``, invoked by the thin
 """
 
 import atexit
+import os
+import re
 import signal
 import sqlite3
 import sys
@@ -18,8 +20,40 @@ from pathlib import Path
 import daemon_pidfile
 from juggle_settings import get_settings
 
-SINGLETON_PID_FILE = Path.home() / ".juggle" / "monitor.pid"
-CURSOR_FILE = Path.home() / ".juggle" / "monitor.cursor"
+_JUGGLE_DIR = Path.home() / ".juggle"
+# Defaults; main() reassigns these to the per-session paths (see _session_id).
+SINGLETON_PID_FILE = _JUGGLE_DIR / "monitor.pid"
+CURSOR_FILE = _JUGGLE_DIR / "monitor.cursor"
+
+
+def _session_id() -> str:
+    """Best-effort orchestrator/session key for the per-session pidfile + cursor.
+
+    Multiple orchestrator instances share one juggle DB; a GLOBAL pidfile made
+    them evict each other's monitor (kill-before-restart), and a GLOBAL cursor
+    let one instance mark completions delivered that another never emitted
+    (cross-instance starvation). Keying both by session id makes monitors from
+    different sessions coexist while a same-session re-arm still dedups/resumes.
+
+    Source priority: explicit JUGGLE_MONITOR_SESSION, else the Claude Code
+    session id (CLAUDE_CODE_SESSION_ID, set by the launching orchestrator),
+    else a stable fallback derived from the parent (launcher) PID. Sanitized to
+    a filename-safe token.
+    """
+    raw = (
+        os.environ.get("JUGGLE_MONITOR_SESSION")
+        or os.environ.get("CLAUDE_CODE_SESSION_ID")
+        or f"ppid{os.getppid()}"
+    )
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", raw)[:64] or "default"
+
+
+def _pidfile_for(session_id: str) -> Path:
+    return _JUGGLE_DIR / f"monitor-{session_id}.pid"
+
+
+def _cursor_for(session_id: str) -> Path:
+    return _JUGGLE_DIR / f"monitor-{session_id}.cursor"
 
 
 def _db_path() -> Path:
@@ -144,6 +178,14 @@ def _handle_term(signum, frame) -> None:
 
 
 def main() -> None:
+    # Resolve per-session paths so monitors from different orchestrator sessions
+    # coexist (no kill-before-restart eviction) and each keeps its own delivery
+    # cursor (no cross-instance starvation). Same-session re-arm reuses both.
+    global SINGLETON_PID_FILE, CURSOR_FILE
+    session_id = _session_id()
+    SINGLETON_PID_FILE = _pidfile_for(session_id)
+    CURSOR_FILE = _cursor_for(session_id)
+
     _kill_existing_monitor_from_pidfile(SINGLETON_PID_FILE)
     _write_singleton_pid()
     atexit.register(_cleanup_singleton_pid)
