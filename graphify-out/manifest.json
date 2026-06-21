@@ -590,8 +590,8 @@
     "semantic_hash": ""
   },
   "TODO.md": {
-    "mtime": 1782007513.8043342,
-    "ast_hash": "9534201f0c888cf673467786c7bcf9e0",
+    "mtime": 1782007588.7893846,
+    "ast_hash": "9f4e6d4b00084cd3e9d58c7f8143eb7a",
     "semantic_hash": ""
   },
   "README.md": {
@@ -1010,7 +1010,7 @@
     "semantic_hash": ""
   },
   ".claude-plugin/plugin.json": {
-    "mtime": 1782007514.4620786,
+    "mtime": 1782007543.7171395,
     "ast_hash": "8879c4ecfe8a572527c2951fc327f503",
     "semantic_hash": ""
   },
@@ -1085,7 +1085,7 @@
     "semantic_hash": ""
   },
   "tests/test_worktree_setup.py": {
-    "mtime": 1782007487.4852953,
+    "mtime": 1782007543.7355754,
     "ast_hash": "ba182de2fa3711eebea117d35de5706e",
     "semantic_hash": ""
   },
@@ -1195,7 +1195,7 @@
     "semantic_hash": ""
   },
   "src/juggle_cmd_agents_worktree.py": {
-    "mtime": 1782007487.3781044,
+    "mtime": 1782007543.7343712,
     "ast_hash": "aefd73cecc8bd5903c791c090ca47add",
     "semantic_hash": ""
   },
@@ -1855,7 +1855,7 @@
     "semantic_hash": ""
   },
   "tests/conftest.py": {
-    "mtime": 1782007514.1843452,
+    "mtime": 1782007543.7348437,
     "ast_hash": "fa32fa2750ff6ae1b5752abb64485237",
     "semantic_hash": ""
   },
@@ -1945,7 +1945,7 @@
     "semantic_hash": ""
   },
   "tests/test_machinery_bugs_2026_06_11.py": {
-    "mtime": 1782007487.4850383,
+    "mtime": 1782007543.7350826,
     "ast_hash": "eee089abc595d7a888b6bbeedec7981c",
     "semantic_hash": ""
   },
@@ -2335,7 +2335,7 @@
     "semantic_hash": ""
   },
   "src/juggle_dispatch_core.py": {
-    "mtime": 1782007514.3817275,
+    "mtime": 1782007543.7345963,
     "ast_hash": "fba033f3ffd1a8e5cf8264dcbdf8b3e0",
     "semantic_hash": ""
   },
@@ -2445,27 +2445,27 @@
     "semantic_hash": ""
   },
   "plan/2026-06-17-llm-gateway.md": {
-    "mtime": 1781735536.7523417,
+    "mtime": 1782007543.7330241,
     "ast_hash": "39a9cccfc89fbe5203f02f61e43bb6ae",
     "semantic_hash": ""
   },
   "research/2026-06-17-openrouter-fallback-facts.md": {
-    "mtime": 1781733295.7452168,
+    "mtime": 1782007543.7333863,
     "ast_hash": "42f8181de086b29d92272840a6f10d14",
     "semantic_hash": ""
   },
   "research/2026-06-18-topic-graph-src-facts.md": {
-    "mtime": 1781839331.0133626,
+    "mtime": 1782007543.73361,
     "ast_hash": "0203d104f09ce97a4cb85101f38ea65d",
     "semantic_hash": ""
   },
   "research/2026-06-18-vcs-abstraction.md": {
-    "mtime": 1781940520.5921147,
+    "mtime": 1782007543.733857,
     "ast_hash": "4b5ab5516c4e16308da413821301a7ca",
     "semantic_hash": ""
   },
   "specs/2026-06-17-llm-gateway.md": {
-    "mtime": 1781735484.3353705,
+    "mtime": 1782007543.734119,
     "ast_hash": "7ec2c95623c5b48de58bf36bf37c1b01",
     "semantic_hash": ""
   }
