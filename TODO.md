@@ -26,7 +26,6 @@ Real application exceptions surfaced from `error_events` (the 16 `[A]` rows kept
 - [ ] #bug **RuntimeError "send_task: submission not verified for pane %NNNN after retries"** in `juggle_cli.main` (sig 20f69693, ×21) — dispatch could not confirm the task text reached the tmux pane; task not sent, watchdog files an action item. Core dispatch-reliability defect (pane-readiness race or tmux send-keys verification gap). Investigate the send_task verify loop + pane liveness check.
 
 **Medium**
-- [ ] #bug **UnboundLocalError `any_fail` in cockpit `--smoke`** (`juggle_cli.main`, sigs e2a3c04c/fde16473, ×4) — `any_fail` read before assignment on a code path through the smoke harness (likely the early-return/empty-viewport branch). Straightforward init-before-use fix.
 - [ ] #bug **Thread-label allocator exhaustion** (×4 combined) — `ValueError: All 702 user labels in use. Archive threads first.` (sig db8dfb62, ×2) + `IntegrityError: UNIQUE constraint failed: threads.user_label` (sig 6198bc24, ×2). The 2-letter label space is exhausted and the create path races/duplicates. Fix: graceful exhaustion handling + atomic label allocation; consider widening the label space or auto-archiving.
 - [ ] #bug **OperationalError `no such column: node_id`** (`juggle_cli.main`, sig e9fb0502, ×1) — schema drift: a query references `node_id` that doesn't exist on the target table (likely unified-topic-graph CB migration vs query mismatch). Audit nodes/threads queries against the live schema.
 
@@ -58,6 +57,7 @@ Real application exceptions surfaced from `error_events` (the 16 `[A]` rows kept
 - [ ] Juggle worktrees + `depends_on` ordering — extend the TE worktree pattern (`cyc_<label>` branch + `/tmp/juggle-<label>`) to juggle-repo topics, and add a `depends_on` field to `juggle new` so dispatch blocks until dependencies close. Evidence: 2 juggle same-repo concurrent pairs with real file overlap observed in 2 days (UD∩UI on `juggle_cmd_agents.py`; SY∩TB on `.claude-plugin/plugin.json`); 0 actual conflicts but resolved by timing luck. DDL already designed in TF doc. Evidence: [[knowledge/projects/juggle/2026-06-07-topic-dag-evaluation]]. Scope: lighter alternative to full DAG — ~50 LOC + migration 35; skip `_dag_tick` auto-dispatch and auto-decomposer.
 
 ## Done
+- [x] #bug cockpit `--smoke` `any_fail` UnboundLocalError — **ALREADY FIXED** (953030c, 2026-06-10: hoisted `any_fail` out of the non-JSON branch); error_events e2a3c04c/fde16473 were pre-fix stale. Verified via phased reproduce-first investigation (CS) ✅ 2026-06-21
 - [x] Codex pre-PR adversarial review fixed — `~/.codex/config.toml` model `gpt-5.3-codex`→`gpt-5.5` (supported on free ChatGPT auth); next adversarial review runs clean ✅ 2026-06-21
 - [x] Stale quarantine config keys resolved — live `~/.juggle/config.json` integrate section now empty (keys gone); `juggle doctor` v1.81.0 INERT_KEYS registry auto-detects+prunes `integrate.test_scope`/`core_tests`/`quarantine_tests` going forward; full-suite directive run was 2480 passed ✅ 2026-06-21
 - [x] Revise README to v1.80.0 + integrate to main (`84d12e2`, README-only, pushed) ✅ 2026-06-21
