@@ -134,6 +134,12 @@ def build_diagnosis_prompt(row: dict) -> str:
         f"Do NOT auto-merge the fix — this is operator-gated.\n"
         f"3. When done, FINISH WITH: `request-action HIGH` summarizing "
         f"the RCA and your branch name so the operator can review and merge.\n\n"
+        f"### If this is actually BENIGN (transient/non-bug)\n"
+        f"Do NOT silently hide it. Instead finish with: "
+        f"`juggle selfheal-propose-nonissue {row.get('id','?')}` — this sets the "
+        f"row to `non_issue_proposed` (VISIBLE, greyed) for one-click operator "
+        f"confirmation to `non_issue`. Only the operator turns a proposal into a "
+        f"sticky non_issue. (selfheal-triage-v2 P1 — no silent auto-hide.)\n\n"
         f"**IMPORTANT**: Do not self-merge. Operator approval is required before "
         f"any fix lands in main. Never auto-merge self-heal fixes.\n"
     )
@@ -161,6 +167,16 @@ def maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=None) -> bool:
     # Reset stale diagnosing rows BEFORE checking in-flight — otherwise a crash
     # mid-dispatch leaves the row stuck forever, permanently blocking new dispatch.
     reset_stale_diagnosing_rows(db, datetime.now(timezone.utc))
+
+    # Deterministic allowlist sweep BEFORE candidate selection (spec §4.3 tier 1).
+    # The only silent-hide path in P1; every suppression is audit-logged.
+    if cfg.get("allowlist_sweep_enabled", True):
+        from selfheal_triage import classify_allowlist, ALLOWLIST_VERSION
+        for s in db.sweep_allowlist_to_nonissue(classify_allowlist, ALLOWLIST_VERSION):
+            _log.info(
+                "selfheal.allowlist sweep id=%s rule=%s v%s sig=%s",
+                s["id"], s["rule_id"], ALLOWLIST_VERSION, (s["signature_hash"] or "")[:8],
+            )
 
     candidates = get_diagnosis_candidates(db, min_count=min_count)
     in_flight = _in_flight_exists(db)

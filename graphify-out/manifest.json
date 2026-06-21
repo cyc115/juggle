@@ -1205,8 +1205,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cli_parsers_misc.py": {
-    "mtime": 1782066286.9741476,
-    "ast_hash": "e72e161bd55e879e49ccbe9bb8d6589f",
+    "mtime": 1782066571.2999544,
+    "ast_hash": "ab7d8a81e602003394dc650390794ec7",
     "semantic_hash": ""
   },
   "src/juggle_cli_parsers_threads.py": {
@@ -1215,8 +1215,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cmd_misc.py": {
-    "mtime": 1782066279.1130726,
-    "ast_hash": "d5f06c01e97d3b15bd2ef0e1aa9b0884",
+    "mtime": 1782066559.2817523,
+    "ast_hash": "62cd94e376a2d2d70a5f3d5189faf386",
     "semantic_hash": ""
   },
   "src/schedules/__init__.py": {
@@ -2235,8 +2235,8 @@
     "semantic_hash": ""
   },
   "tests/test_selfheal_diagnosis.py": {
-    "mtime": 1782066486.7808993,
-    "ast_hash": "9e5d2b78f132ad3aa8a55d24016269a0",
+    "mtime": 1782066532.8678935,
+    "ast_hash": "94fb15dcf719dd8601f9884028c7459a",
     "semantic_hash": ""
   },
   "projects/selfheal-diagnosis/plan/2026-06-17-selfheal-diagnosis-loop.md": {
@@ -2475,8 +2475,8 @@
     "semantic_hash": ""
   },
   "src/juggle_selfheal_diagnosis.py": {
-    "mtime": 1782066460.4277973,
-    "ast_hash": "e935f766cfbbc505163d8565b023f614",
+    "mtime": 1782066554.3640487,
+    "ast_hash": "e581a7aec2bd5df4c97ce06bc0208297",
     "semantic_hash": ""
   },
   "tests/test_selfheal_asymmetry.py": {

@@ -195,6 +195,16 @@ def _cmd_selfheal_set_status(args):
         sys.exit(1)
 
 
+def _cmd_selfheal_propose_nonissue(args):
+    db = get_db(getattr(args, "db_path", None), init=True)
+    updated = db.set_error_event_status(args.id, "non_issue_proposed")
+    if updated:
+        print(f"error_event {args.id} status → non_issue_proposed (awaiting operator confirm)")
+    else:
+        print(f"error: row {args.id} not found")
+        sys.exit(1)
+
+
 def _cmd_selfheal_reset_diagnosing(args):
     db = get_db(getattr(args, "db_path", None), init=True)
     with db._connect() as conn:

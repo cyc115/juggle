@@ -17,6 +17,7 @@ from juggle_cmd_context import (
 )
 from juggle_cmd_misc import (
     _cmd_list_selfheal,
+    _cmd_selfheal_propose_nonissue,
     _cmd_selfheal_reset_diagnosing,
     _cmd_selfheal_set_status,
     cmd_agent_tools,
@@ -83,6 +84,12 @@ def register(subparsers, *, vault_path_default: str) -> None:
     p_sh_reset = subparsers.add_parser("selfheal-reset-diagnosing", help="Reset stuck diagnosing->open")
     p_sh_reset.add_argument("id", type=int, help="error_events.id")
     p_sh_reset.set_defaults(func=_cmd_selfheal_reset_diagnosing)
+
+    p_sh_propose = subparsers.add_parser(
+        "selfheal-propose-nonissue",
+        help="Mark an error_event as non_issue_proposed (visible benign proposal)")
+    p_sh_propose.add_argument("id", type=int, help="error_events.id")
+    p_sh_propose.set_defaults(func=_cmd_selfheal_propose_nonissue)
 
     # grep-vault
     p_grep = subparsers.add_parser(

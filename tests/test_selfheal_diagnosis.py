@@ -455,3 +455,45 @@ def test_list_selfheal_json_output(tmp_path, capsys):
     assert isinstance(data, list)
     assert len(data) == 1
     assert data[0]["signature_hash"] == "sjson"
+
+
+# ---------------------------------------------------------------------------
+# selfheal-triage-v2 P1 — visible benign proposals + tick allowlist sweep
+# ---------------------------------------------------------------------------
+
+def test_diagnosis_prompt_offers_benign_proposal_path():
+    """selfheal-v2 P1 (2026-06-21): prompt must give the agent a VISIBLE benign path, not silent hide."""
+    from juggle_selfheal import build_diagnosis_prompt
+    p = build_diagnosis_prompt({"signature_hash": "abc", "exc_type": "E", "id": 7})
+    assert "selfheal-propose-nonissue" in p
+    assert "non_issue_proposed" in p
+    assert "non_issue" in p  # benign confirm target named
+
+
+def test_propose_nonissue_sets_proposed_status(tmp_path, capsys):
+    """selfheal-v2 P1 (2026-06-21): benign verdict -> non_issue_proposed (visible), NOT non_issue."""
+    from argparse import Namespace
+    from juggle_cmd_misc import _cmd_selfheal_propose_nonissue
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "t.db"))
+    db.init_db()
+    rid = db.dedup_or_insert_error("s", "B", None, "tb", "ep", "{}")
+    _cmd_selfheal_propose_nonissue(Namespace(db_path=str(tmp_path / "t.db"), id=rid))
+    with db._connect() as conn:
+        st = conn.execute("SELECT status FROM error_events WHERE id=?", (rid,)).fetchone()[0]
+    assert st == "non_issue_proposed"
+
+
+def test_tick_runs_allowlist_sweep_before_dispatch(tmp_path):
+    """selfheal-v2 P1 (2026-06-21): tick hides allowlisted transients before picking a candidate."""
+    from juggle_selfheal import maybe_dispatch_selfheal_diagnosis
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "t.db"))
+    db.init_db()
+    db.dedup_or_insert_error("s_sleep", "B", None,
+                             "sleep: command timed out after 120 seconds", "Bash", "{}")
+    # enabled=False (default) -> no dispatch, but the sweep must still hide the transient.
+    maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=lambda *a, **k: None)
+    with db._connect() as conn:
+        st = conn.execute("SELECT status FROM error_events WHERE signature_hash='s_sleep'").fetchone()[0]
+    assert st == "non_issue"
