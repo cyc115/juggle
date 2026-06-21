@@ -43,8 +43,12 @@ def test_selfheal_config_retention_days_default_14():
 # Task 2 — get_diagnosis_candidates (DB query)
 # ---------------------------------------------------------------------------
 
-def test_get_diagnosis_candidates_returns_open_class_a_above_min(tmp_path):
-    """Only open class-A rows with count >= min_count are returned."""
+def test_get_diagnosis_candidates_includes_b_class_above_min(tmp_path):
+    """selfheal-v2 P1 (2026-06-21): the diagnoser now EATS B-class too (verdict != origin).
+
+    Supersedes the pre-P1 'class-A only' behavior: open A AND B rows with
+    count >= min_count are returned, A ranked above equal-count B by signal.
+    """
     from juggle_db import JuggleDB
     from juggle_selfheal import get_diagnosis_candidates
 
@@ -63,7 +67,7 @@ def test_get_diagnosis_candidates_returns_open_class_a_above_min(tmp_path):
         conn.execute("UPDATE error_events SET count=2 WHERE signature_hash='sig2'")
         conn.commit()
 
-    # Insert: open B count=5 → class B, should NOT appear
+    # Insert: open B count=5 → now INCLUDED (P1 eats B-class)
     db.dedup_or_insert_error("sig3", "B", None, "tb", "tool", "{}", juggle_ref="ref")
     with db._connect() as conn:
         conn.execute("UPDATE error_events SET count=5 WHERE signature_hash='sig3'")
@@ -76,8 +80,8 @@ def test_get_diagnosis_candidates_returns_open_class_a_above_min(tmp_path):
         conn.commit()
 
     rows = get_diagnosis_candidates(db, min_count=3)
-    assert len(rows) == 1
-    assert rows[0]["signature_hash"] == "sig1"
+    assert {r["signature_hash"] for r in rows} == {"sig1", "sig3"}  # B now included
+    assert rows[0]["signature_hash"] == "sig1"  # A (signal 2) ranks above equal-count B (signal 1)
 
 
 def test_get_diagnosis_candidates_ordered_by_count_desc(tmp_path):

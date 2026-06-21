@@ -69,3 +69,18 @@ def classify_allowlist(exc_type: str | None, entrypoint: str | None, text: str) 
         if rule.text_regex.search(norm):
             return rule.rule_id
     return None
+
+
+def signal_strength(row: dict) -> int:
+    """Real-bug signal score for diagnoser ordering. Higher = investigate sooner."""
+    text = (row.get("traceback") or "") + " " + (row.get("command_args") or "")
+    if STRONG_SIGNAL_REGEX.search(text):
+        return 3  # malformed juggle_cli self-call — strongest real-bug signal
+    if (row.get("error_class") or "") == "A":
+        return 2  # application exception
+    return 1      # other B-class tool exit
+
+
+def order_candidates(rows: list[dict]) -> list[dict]:
+    """Stable order by (signal_strength DESC, count DESC) — anti-starvation (spec §4.3)."""
+    return sorted(rows, key=lambda r: (signal_strength(r), r.get("count") or 0), reverse=True)

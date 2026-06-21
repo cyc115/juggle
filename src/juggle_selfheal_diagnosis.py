@@ -39,15 +39,20 @@ def _try_claim_diagnosis_slot(db, error_event_id: int) -> bool:
 
 
 def get_diagnosis_candidates(db, min_count: int = 3) -> list[dict]:
-    """Return open class-A error rows with count >= min_count, ordered count DESC."""
+    """Return open class-A AND class-B error rows with count >= min_count,
+    ordered by real-bug signal strength (anti-starvation), not raw count.
+
+    selfheal-triage-v2 P1 (spec §4.3): the diagnoser now eats B-class too;
+    a strong-signal low-count bug must not starve behind a high-count noise group.
+    """
+    from selfheal_triage import order_candidates
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT * FROM error_events "
-            "WHERE status='open' AND error_class='A' AND count >= ? "
-            "ORDER BY count DESC",
+            "WHERE status='open' AND count >= ? ",
             (min_count,),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return order_candidates([dict(r) for r in rows])
 
 
 def select_diagnosis_candidate(

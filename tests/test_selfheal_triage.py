@@ -54,3 +54,16 @@ def test_sweep_sets_matching_open_rows_to_non_issue(tmp_path):
     rows = {r["signature_hash"]: r["status"] for r in db.get_open_error_events(include_hidden=True)}
     assert rows["s_sleep"] == "non_issue"
     assert rows["s_real"] == "open"
+
+
+def test_strong_signal_beats_high_count_noise():
+    """selfheal-v2 P1 (2026-06-21): low-count argparse self-call outranks high-count noise."""
+    from selfheal_triage import signal_strength, order_candidates
+    noise = {"id": 1, "error_class": "B", "exc_type": None, "count": 900,
+             "traceback": "git: fatal: not a repo", "command_args": "{}"}
+    real = {"id": 2, "error_class": "B", "exc_type": None, "count": 4,
+            "traceback": "juggle_cli.py: error: argument command: invalid choice: 'x'",
+            "command_args": "{}"}
+    ordered = order_candidates([noise, real])
+    assert ordered[0]["id"] == 2  # strong signal first despite count 4 vs 900
+    assert signal_strength(real) > signal_strength(noise)
