@@ -60,6 +60,7 @@ After `/juggle:start`, talk normally. Juggle detects topic shifts and opens new 
 - **Cockpit** — a live dashboard (Topics | Action Items | Agents) updated every second. Textual-based with mouse drag-to-resize between panels (tmux mouse mode required).
 - **Action Items** — persistent follow-ups created by agents or manually. Survive sessions until dismissed from the cockpit.
 - **Hindsight memory** — opt-in long-term memory across sessions. Enable via `hindsight.enabled` in `~/.juggle/config.json`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Self-healing watchdog** — a background daemon keeps agents and the cockpit alive. It reaps orphaned daemons under a global cap, debounces respawns, and verifies each agent actually started before use (a fresh worktree's trust prompt can't leak an idle agent). `juggle stop-watchdog --freeze` holds it down; `juggle start` clears the freeze and brings it back up.
 
 ## Project Autopilot
 
@@ -181,7 +182,7 @@ Defaults in `src/juggle_settings.py`. Override in `~/.juggle/config.json` (deep-
 | `hindsight.enabled` | `false` | Long-term memory across sessions |
 | `talkback.enabled` | `false` | TTS completion notifications (macOS) |
 
-Data and logs: `$CLAUDE_PLUGIN_DATA/juggle.db` and `juggle.log` — preserved across plugin upgrades.
+Data and logs live at `$CLAUDE_PLUGIN_DATA/juggle.db` and `juggle.log`, preserved across plugin upgrades. `juggle integrate` always runs the full test suite before merging (the older `test_scope` / `quarantine_tests` keys are inert).
 
 ## Docs
 
