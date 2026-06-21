@@ -144,3 +144,31 @@ class SelfhealMixin:
                 return row[0] if row else 0
         except Exception:
             return 0
+
+    def sweep_allowlist_to_nonissue(self, classify_fn, version: int) -> list[dict]:
+        """Set open rows matching the deterministic allowlist to non_issue.
+
+        classify_fn(exc_type, entrypoint, text) -> rule_id|None. Returns the list
+        of swept rows ({id, rule_id, signature_hash}); the caller emits the audit
+        log. The ONLY silent-hide path allowed in P1 (spec §4.3 tier 1).
+        """
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        swept: list[dict] = []
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, exc_type, entrypoint, traceback, command_args, signature_hash "
+                "FROM error_events WHERE status = 'open'"
+            ).fetchall()
+            for r in rows:
+                text = (r["traceback"] or "") + " " + (r["command_args"] or "")
+                rule_id = classify_fn(r["exc_type"], r["entrypoint"], text)
+                if rule_id is None:
+                    continue
+                conn.execute(
+                    "UPDATE error_events SET status='non_issue', last_seen=? WHERE id=?",
+                    (now, r["id"]),
+                )
+                swept.append({"id": r["id"], "rule_id": rule_id,
+                              "signature_hash": r["signature_hash"]})
+            conn.commit()
+        return swept

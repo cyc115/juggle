@@ -363,6 +363,11 @@ DEFAULTS: dict = {
         "enabled": False,
         "min_count": 3,
         "retention_days": 14,
+        # selfheal-triage-v2 P1
+        "allowlist_sweep_enabled": True,   # deterministic anchored sweep -> non_issue
+        "resurface_surge_count": 20,       # count jump since classification that re-alerts
+        "resurface_absolute_count": 100,   # cumulative count ceiling (slow-burn catch)
+        "resurface_lease_days": 30,        # periodic re-confirm of still-benign groups
     },
 }
 
