@@ -4,7 +4,6 @@
 import json
 import logging
 import os
-import signal
 import sys
 from pathlib import Path
 import threading
@@ -23,135 +22,6 @@ from juggle_context import get_thread_state
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
 from juggle_settings import get_settings as _get_settings
 from dbops.schema import is_auto_topic_eligible
-
-
-def _main_repo_root() -> _Path:
-    """The MAIN worktree root, even when this module is imported from a linked
-    worktree.
-
-    `juggle integrate` runs inside an agent's worktree, so __file__ points into
-    that worktree; launching the watchdog from there leaves it running with a
-    path that vanishes once the worktree is GC'd post-integrate — every later
-    tick dispatch then fails with `No module named juggle_cmd_agents`. Resolve
-    to the primary worktree so the daemon always runs from a stable checkout.
-    """
-    here = _Path(__file__).resolve().parent.parent
-    try:
-        from juggle_cmd_agents_worktree import _main_worktree_root
-        return _Path(_main_worktree_root(str(here)))
-    except Exception:
-        return here
-
-
-def _watchdog_script() -> _Path:
-    return _main_repo_root() / "scripts" / "juggle-agent-watchdog"
-
-
-def _watchdog_pid_file() -> _Path:
-    """Return the session-scoped watchdog pidfile path.
-
-    If CLAUDE_CODE_SESSION_ID is set (i.e. we are running inside a Claude Code
-    session) the pidfile is scoped to that session so multiple concurrent Claude
-    sessions never share or clobber each other's watchdog.  Outside Claude Code
-    (tests, manual invocations) the legacy name ``watchdog.pid`` is used.
-    """
-    from juggle_settings import get_settings
-
-    config_dir = _Path(get_settings()["paths"]["config_dir"])
-    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
-    if session_id:
-        return config_dir / f"watchdog-{session_id}.pid"
-    return config_dir / "watchdog.pid"
-
-
-def _start_watchdog() -> None:
-    """Start the watchdog for this session, kill-then-restart if one is already running.
-
-    Idempotent within a session: if THIS session's pidfile points to a live
-    watchdog process it is SIGTERMed (with a SIGKILL escalation after ~2 s)
-    before a fresh process is launched.  Another session's pidfile is NEVER
-    touched.
-    """
-    import subprocess
-    import time
-
-    # Step 0: Global sweep — kill any stale watchdog processes
-    # regardless of session (pidfiles may be lost).
-    try:
-        subprocess.run(
-            ["pkill", "-f", "juggle-agent-watchdog"],
-            capture_output=True,
-            timeout=5,
-        )
-        time.sleep(0.5)  # Let processes exit cleanly
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass  # pkill not available or timed out — continue
-
-    pid_file = _watchdog_pid_file()
-
-    # Kill any prior watchdog for this session (idempotent restart).
-    if pid_file.exists():
-        try:
-            pid = int(pid_file.read_text().strip())
-            os.kill(pid, 0)  # check alive
-            # It's alive — terminate it.
-            _log.info("Watchdog: terminating stale watchdog PID=%d for this session", pid)
-            os.kill(pid, signal.SIGTERM)
-            # Poll up to ~2 s for exit, then escalate to SIGKILL.
-            deadline = time.monotonic() + 2.0
-            while time.monotonic() < deadline:
-                time.sleep(0.1)
-                try:
-                    os.kill(pid, 0)
-                except OSError:
-                    break  # process gone
-            else:
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except OSError:
-                    pass
-        except (OSError, ValueError):
-            pass
-        pid_file.unlink(missing_ok=True)
-
-    log_path = pid_file.parent / "watchdog.log"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    script = _watchdog_script()
-    if not script.exists():
-        _log.warning("Watchdog script not found at %s — skipping", script)
-        return
-
-    # Sanction this launch: only the orchestrator entrypoint may start the prod
-    # watchdog (2026-06-16 incident — worktree/test daemons abort without this).
-    env = os.environ.copy()
-    env["JUGGLE_WATCHDOG_SANCTIONED"] = "1"
-    with open(log_path, "a") as log_fh:
-        proc = subprocess.Popen(
-            [sys.executable, str(script)],
-            stdout=log_fh,
-            stderr=log_fh,
-            start_new_session=True,
-            cwd=str(_main_repo_root()),
-            env=env,
-        )
-    # Persist the new PID so _stop_watchdog / the next _start_watchdog can find it.
-    pid_file.write_text(str(proc.pid))
-    time.sleep(1)
-    _log.info("Watchdog started (PID=%d)", proc.pid)
-
-
-def _stop_watchdog() -> None:
-    pid_file = _watchdog_pid_file()
-    if not pid_file.exists():
-        return
-    try:
-        pid = int(pid_file.read_text().strip())
-        os.kill(pid, signal.SIGTERM)
-        _log.info("Watchdog stopped (PID=%d)", pid)
-    except (OSError, ValueError, ProcessLookupError):
-        pass
-    finally:
-        pid_file.unlink(missing_ok=True)
 
 
 def _get_version():
@@ -269,7 +139,14 @@ def cmd_stop(_):
     else:
         print("No topics.")
 
-    _stop_watchdog()
+    # Stop the watchdog via the flock-based singleton — the ONE coordination
+    # primitive (the per-DB lock IS singleton truth). Fail-silent so a watchdog
+    # hiccup never blocks session deactivation.
+    try:
+        from juggle_watchdog_singleton import stop_watchdog
+        stop_watchdog(str(db.db_path))
+    except Exception:
+        _log.warning("cmd_stop: watchdog stop failed", exc_info=True)
     print("Juggle stopped.")
 
 
