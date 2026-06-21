@@ -43,7 +43,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cmd_projects.py": 755,
     "src/juggle_cmd_threads.py": 670,
     "src/schedules/reflect.py": 584,
-    "src/dbops/threads.py": 560,
+    "src/dbops/threads.py": 559,  # slug-alloc extracted to dbops/slug_alloc.py (2026-06-21)
     "src/juggle_scheduler.py": 494,
     # selfheal-triage-v2 P1 (2026-06-21) re-baseline: irreducible plan-mandated
     # growth — a config key in DEFAULTS, a status constant the tests import from
@@ -54,7 +54,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cmd_integrate.py": 450,
     "src/juggle_cockpit_view.py": 461,
     "src/juggle_cockpit_model.py": 439,
-    "src/dbops/migrations_recent.py": 443,
+    "src/dbops/migrations_recent.py": 442,
     "scripts/talkback": 415,
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,

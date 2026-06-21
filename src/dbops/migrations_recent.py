@@ -330,22 +330,27 @@ def run_migration_slug_wheel(conn: sqlite3.Connection) -> None:
 
     - juggle_meta(key, value) durable key/value table (holds label_seq).
     - DROP the global unique index idx_threads_user_label.
-    - ADD partial unique idx_threads_live_label: no two LIVE topics share a slug.
+    - REPAIR pre-existing duplicate live labels, then (re)ADD the partial unique
+      idx_threads_live_label over ALL live states (active/running/background) so
+      no two LIVE topics share a slug (2026-06-21: 'background' was omitted).
     - ADD covering idx_threads_label_created for newest-wins lookups.
     - Seed label_seq from the highest in-use wheel position (or 0 if none).
 
     DO NOT run against the shared production DB directly; apply via juggle doctor.
     """
+    from dbops.slug_alloc import repair_duplicate_live_labels
     try:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS juggle_meta "
             "(key TEXT PRIMARY KEY, value TEXT)"
         )
         conn.execute("DROP INDEX IF EXISTS idx_threads_user_label")
+        conn.execute("DROP INDEX IF EXISTS idx_threads_live_label")
+        repair_duplicate_live_labels(conn)
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_threads_live_label "
-            "ON threads(user_label) "
-            "WHERE user_label IS NOT NULL AND status IN ('active','running')"
+            "ON threads(user_label) WHERE user_label IS NOT NULL "
+            "AND status IN ('active','running','background')"
         )
         # Covering index for newest-wins lookup — only if created_at exists
         # (defensive: some hand-rolled/legacy schemas may lack it).
@@ -360,19 +365,13 @@ def run_migration_slug_wheel(conn: sqlite3.Connection) -> None:
             "SELECT value FROM juggle_meta WHERE key = 'label_seq'"
         ).fetchone()
         if row is None:
-            labels = [
-                r[0]
-                for r in conn.execute(
+            seen_idx = [
+                i for r in conn.execute(
                     "SELECT DISTINCT user_label FROM threads "
                     "WHERE user_label IS NOT NULL"
-                ).fetchall()
+                ).fetchall() if (i := _wheel_index(r[0])) is not None
             ]
-            max_idx = -1
-            for lbl in labels:
-                idx = _wheel_index(lbl)
-                if idx is not None and idx > max_idx:
-                    max_idx = idx
-            seed = max_idx + 1 if max_idx >= 0 else 0
+            seed = (max(seen_idx) + 1) if seen_idx else 0
             conn.execute(
                 "INSERT OR IGNORE INTO juggle_meta(key, value) "
                 "VALUES ('label_seq', ?)",

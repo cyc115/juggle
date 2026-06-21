@@ -11,19 +11,23 @@ import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
+from typing import NoReturn
 
 import dbops.schema as _schema
 from dbops.schema import (
-    WHEEL_SIZE,
     _get_settings,
     _is_junk_message,
-    _slug_from_wheel,
     _thread_age_seconds,
 )
+from dbops.slug_alloc import LIVE_SLUG_STATES, next_wheel_slug
 
 # Read MAX_THREADS via module reference so tests can patch dbops.threads.MAX_THREADS
 # (or dbops.schema.MAX_THREADS) to bypass the cap in seeding fixtures.
 MAX_THREADS = _schema.MAX_THREADS
+
+# Bounded retries for the atomic BEGIN IMMEDIATE allocation loop (lock-contention
+# backstop; the write lock itself prevents duplicate-slug races).
+_ALLOC_ATTEMPTS = 5
 
 # ---------------------------------------------------------------------------
 # Lexical thread-dedup guard (v1 — deterministic, NO LLM)
@@ -44,7 +48,9 @@ THREAD_DEDUP_THRESHOLD = 2 / 3
 
 # Statuses considered OPEN (live work). Closed/archived threads are historical
 # and are NEVER reuse targets.
-_OPEN_THREAD_STATES = ("active", "running", "background")
+# Open/live thread states — the SINGLE source of truth lives in dbops.slug_alloc
+# (must match the partial unique index idx_threads_live_label).
+_OPEN_THREAD_STATES = LIVE_SLUG_STATES
 
 # Leading "[T-<id>] " graph-topic prefix stamped onto dispatch-thread titles.
 _TOPIC_PREFIX_RE = re.compile(r"^\s*\[t-[^\]]+\]\s*", re.IGNORECASE)
@@ -235,37 +241,31 @@ class ThreadsMixin:
         existing = self._find_duplicate_open_thread(topic, project_id)
         if existing is not None:
             return existing
+        new_id = str(uuid.uuid4())
+        now_iso = datetime.now(timezone.utc).isoformat()
+        now_min = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        # ATOMIC allocation (2026-06-21): take the write lock with BEGIN IMMEDIATE
+        # BEFORE reading label_seq so the read-modify-write of the counter and the
+        # live-set scan are serialized across processes — no two creates can land
+        # on the same slug. The retry loop is a backstop for lock contention.
         with self._connect() as conn:
-            rows = conn.execute("SELECT id, status FROM threads").fetchall()
-            active_count = sum(1 for row in rows if row["status"] != "archived")
-            if active_count >= MAX_THREADS:  # noqa: SIM102 — patched by test fixtures
-                candidates = self.get_archive_candidates()
-                if candidates:
-                    cmds = ", ".join(
-                        f"[{t.get('user_label') or t.get('label')}] "
-                        f"{(t.get('title') or t.get('topic') or '')[:40]}"
-                        f" → archive-thread {t.get('user_label') or t.get('label')}"
-                        for t in candidates[:5]
-                    )
-                    raise ValueError(
-                        f"Maximum of {MAX_THREADS} threads already exist. "
-                        f"Archivable: {cmds}"
-                    )
-                else:
-                    raise ValueError(
-                        f"Maximum of {MAX_THREADS} threads already exist. "
-                        "No immediate candidates — close or archive a thread manually."
-                    )
-            new_id = str(uuid.uuid4())
-            now_iso = datetime.now(timezone.utc).isoformat()
-            now_min = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-            # Allocate a slug from the rotating wheel (skip-live). The retry loop
-            # is a backstop: if a live holder raced onto the slug between alloc
-            # and INSERT, the partial unique index rejects it and we advance the
-            # wheel for another attempt.
-            for _attempt in range(3):
-                user_label = self._next_wheel_slug(conn)
+            conn.isolation_level = None  # manual transaction control
+            last_exc: Exception | None = None
+            for _attempt in range(_ALLOC_ATTEMPTS):
                 try:
+                    conn.execute("BEGIN IMMEDIATE")
+                except sqlite3.OperationalError as exc:
+                    last_exc = exc  # busy; retry
+                    continue
+                try:
+                    rows = conn.execute("SELECT status FROM threads").fetchall()
+                    active_count = sum(
+                        1 for r in rows if r["status"] != "archived"
+                    )
+                    if active_count >= MAX_THREADS:
+                        conn.execute("ROLLBACK")
+                        break  # over cap — raise structured guidance below
+                    user_label = self._next_wheel_slug(conn)
                     conn.execute(
                         """
                         INSERT INTO threads
@@ -277,49 +277,46 @@ class ThreadsMixin:
                         """,
                         (new_id, user_label, session_id, topic, now_iso, now_iso, now_min),
                     )
-                    conn.commit()
+                    conn.execute("COMMIT")
                     return new_id
                 except sqlite3.IntegrityError as exc:
+                    conn.execute("ROLLBACK")
+                    last_exc = exc
                     if "user_label" not in str(exc) and "idx_threads_live_label" not in str(exc):
                         raise
-                    # A live holder raced onto this slug; loop advances the wheel.
-                    continue
-            raise RuntimeError(
-                "create_thread: could not assign a slug after retries"
+                    continue  # backstop; BEGIN IMMEDIATE should prevent this
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
+            else:
+                raise RuntimeError(
+                    f"create_thread: could not allocate a slug after "
+                    f"{_ALLOC_ATTEMPTS} attempts"
+                ) from last_exc
+        self._raise_thread_cap()  # reached only via the over-cap break
+
+    def _raise_thread_cap(self) -> NoReturn:
+        """Raise a ValueError when MAX_THREADS live threads already exist,
+        surfacing the archivable candidates as actionable guidance."""
+        candidates = self.get_archive_candidates()
+        if candidates:
+            cmds = ", ".join(
+                f"[{t.get('user_label') or t.get('label')}] "
+                f"{(t.get('title') or t.get('topic') or '')[:40]}"
+                f" → archive-thread {t.get('user_label') or t.get('label')}"
+                for t in candidates[:5]
             )
+            raise ValueError(
+                f"Maximum of {MAX_THREADS} threads already exist. Archivable: {cmds}"
+            )
+        raise ValueError(
+            f"Maximum of {MAX_THREADS} threads already exist. "
+            "No immediate candidates — close or archive a thread manually."
+        )
 
     def _next_wheel_slug(self, conn) -> str:
-        """Allocate the next slug off the wheel, skipping live-held slots.
-
-        Reads + increments the durable monotonic counter ``label_seq`` in
-        juggle_meta inside the caller's write transaction (SQLite serializes
-        writers). Advances past any slug currently held by a live thread
-        ('active'/'running'). Raises RuntimeError if the entire wheel is live.
-        """
-        row = conn.execute(
-            "SELECT value FROM juggle_meta WHERE key = 'label_seq'"
-        ).fetchone()
-        seq = int(row["value"]) if row and row["value"] is not None else 0
-        live = {
-            r["user_label"]
-            for r in conn.execute(
-                "SELECT user_label FROM threads WHERE user_label IS NOT NULL "
-                "AND status IN ('active','running')"
-            ).fetchall()
-        }
-        for _ in range(WHEEL_SIZE):
-            slug = _slug_from_wheel(seq)
-            seq += 1
-            if slug not in live:
-                conn.execute(
-                    "INSERT INTO juggle_meta(key, value) VALUES ('label_seq', ?) "
-                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    (str(seq),),
-                )
-                return slug
-        raise RuntimeError(
-            "slug wheel exhausted: all 676 slots held by live threads"
-        )
+        """Thin seam over slug_alloc.next_wheel_slug (caller holds write lock)."""
+        return next_wheel_slug(conn)
 
     def get_thread(self, thread_id: str) -> dict | None:
         """Look up a thread by its UUID `id`. Returns None if not found."""
@@ -344,13 +341,14 @@ class ThreadsMixin:
         """
         if not label:
             return None
+        _ph = ",".join("?" * len(LIVE_SLUG_STATES))
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM threads WHERE user_label = ? COLLATE NOCASE "
-                "ORDER BY (CASE WHEN status IN ('active','running') THEN 0 ELSE 1 END), "
+                f"ORDER BY (CASE WHEN status IN ({_ph}) THEN 0 ELSE 1 END), "
                 "created_at DESC "
                 "LIMIT 1",
-                (label,),
+                (label, *LIVE_SLUG_STATES),
             ).fetchone()
         return dict(row) if row else None
 
@@ -460,12 +458,13 @@ class ThreadsMixin:
                 "SELECT user_label FROM threads WHERE id = ?", (thread_id,)
             ).fetchone()
             existing = cur["user_label"] if cur else None
+            _ph = ",".join("?" * len(LIVE_SLUG_STATES))
             live = {
                 row["user_label"]
                 for row in conn.execute(
                     "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
-                    " AND status IN ('active','running') AND id != ?",
-                    (thread_id,),
+                    f" AND status IN ({_ph}) AND id != ?",
+                    (*LIVE_SLUG_STATES, thread_id),
                 ).fetchall()
             }
             new_label = (
