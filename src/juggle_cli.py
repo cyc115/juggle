@@ -89,6 +89,9 @@ def cmd_verify(args):
     quarantine = get_settings()["integrate"].get("quarantine_tests", [])
     # Build the deselect-bearing base, then append passthrough args as-is so an
     # arg containing spaces (e.g. -k "a or b") is never re-split into tokens.
+    # Invariant: the base + quarantine paths are space-free (pytest node ids),
+    # so the .split() round-trip is safe; passthrough args (which CAN contain
+    # spaces) are added as discrete list items below, never via split.
     cmd = apply_quarantine("uv run pytest -q", quarantine).split()
     cmd += list(args.pytest_args or [])
     result = subprocess.run(cmd)
