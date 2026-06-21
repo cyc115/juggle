@@ -689,3 +689,59 @@ def test_integrate_direct_test_retry_merges_on_transient_failure_pin(git_repo_wi
         capture_output=True, text=True,
     ).stdout
     assert "add feature" in remote_log
+
+
+# ── Regression pin: full-suite directive (2026-06-20) ────────────────────────
+
+def test_integrate_runs_full_suite_no_deselect_no_scoping_pin(git_repo, tmp_path):
+    """Regression pin (2026-06-20): user directive 'always run the FULL test
+    suite, never a subset'. Symptom pre-fix: integrate scoped tests to
+    branch-changed files (test_scope='changed') and prepended --deselect flags
+    for integrate.quarantine_tests, so a green integrate could skip whole
+    swaths of the suite. After the flip the assembled command under DEFAULT
+    config must be the bare test_cmd: NO --deselect anywhere, and NO extra
+    path-scoping args appended (the command the agent configured runs verbatim)."""
+    import juggle_cmd_integrate as jci
+
+    wt = _make_worktree(git_repo, str(tmp_path), "FS")
+    # Change a SOURCE file with no obvious test mapping — pre-fix this would
+    # have triggered scoped/full-fallback selection logic; post-fix it is
+    # irrelevant because the full test_cmd always runs verbatim.
+    _add_commit(wt, "src_thing.py", "q = 9\n", "feat: add src_thing")
+
+    base_cmd = "uv run pytest -q"
+    captured = {}
+    real_run = jci.subprocess.run
+
+    def spy_run(cmd, *a, **k):
+        # The test_cmd invocation is the shell=True call whose cmd contains pytest.
+        if k.get("shell") and isinstance(cmd, str) and "pytest" in cmd:
+            captured["cmd"] = cmd
+            # Pretend the suite passed so the rest of integrate proceeds.
+            class _R:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+            return _R()
+        return real_run(cmd, *a, **k)
+
+    thread = {"id": "t-fs", "worktree_path": wt,
+              "worktree_branch": "cyc_FS", "main_repo_path": git_repo}
+    db = _make_db()
+
+    with patch("juggle_cmd_integrate.get_repo_config",
+               return_value={"push_mode": "direct", "test_cmd": base_cmd}):
+        with patch.object(jci.subprocess, "run", side_effect=spy_run):
+            with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+                with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                    jci._run_integrate(thread, db)
+
+    assert "cmd" in captured, "test_cmd (pytest) was never invoked by integrate"
+    run_cmd = captured["cmd"]
+    # The directive: no deselect, no path-scoping — the bare configured command.
+    assert "--deselect" not in run_cmd, (
+        f"integrate still deselects tests under default config: {run_cmd!r}"
+    )
+    assert run_cmd == base_cmd, (
+        f"integrate scoped/altered the test command (must run it verbatim): {run_cmd!r}"
+    )

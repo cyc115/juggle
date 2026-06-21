@@ -1,10 +1,10 @@
 """CLI tests: `juggle verify` — the agent-facing one-shot verification helper.
 
-Regression context (2026-06-20): coder agents zombie-looped re-running the FULL
-suite on pre-existing quarantined reds (loc_gate/data_migration/test_integrate).
-`juggle verify` exists so agents call ONE deterministic command that auto-applies
-the quarantine --deselect flags and runs the suite ONCE, synchronously — no
-hand-rolled pytest, no background-poll loop. These tests pin that contract.
+Regression context (2026-06-20): coder agents zombie-looped re-running the suite
+as a background job and polling it forever. `juggle verify` exists so agents call
+ONE deterministic command that runs the FULL suite ONCE, synchronously — no
+hand-rolled pytest, no background-poll loop, no subset/--deselect (the full-suite
+directive). These tests pin that contract.
 """
 
 import os
@@ -17,16 +17,6 @@ import pytest
 SRC_DIR_TOP = str(Path(__file__).parent.parent / "src")
 if SRC_DIR_TOP not in sys.path:
     sys.path.insert(0, SRC_DIR_TOP)
-
-
-def _pair(cmd, qt):
-    """Return the [--deselect, qt] slice if present in a list-form cmd, else []."""
-    if isinstance(cmd, str):
-        return []
-    for i, tok in enumerate(cmd[:-1]):
-        if tok == "--deselect" and cmd[i + 1] == qt:
-            return ["--deselect", qt]
-    return []
 
 
 def _run_verify(extra_argv=None):
@@ -55,20 +45,17 @@ def test_verify_runs_pytest_once_synchronously():
     assert code == 0
 
 
-def test_verify_auto_applies_quarantine_deselects():
-    """The exec'd pytest command deselects every integrate.quarantine_tests path."""
-    from juggle_settings import get_settings
-
+def test_verify_runs_full_suite_no_deselect():
+    """Full-suite directive (2026-06-20): `juggle verify` runs the WHOLE suite —
+    the exec'd pytest command carries NO --deselect (no subset, no quarantine).
+    Pre-fix it read integrate.quarantine_tests and prepended --deselect flags."""
     mock_run, _ = _run_verify()
     cmd = mock_run.call_args.args[0]
     flat = cmd if isinstance(cmd, str) else " ".join(cmd)
-    quarantine = get_settings()["integrate"]["quarantine_tests"]
-    assert quarantine, "precondition: quarantine list is non-empty in defaults"
-    for qt in quarantine:
-        assert f"--deselect {qt}" in flat or _pair(cmd, qt) == ["--deselect", qt], (
-            f"verify did not deselect quarantined test {qt}: {flat}"
-        )
-    # It IS pytest.
+    assert "--deselect" not in flat, (
+        f"verify must run the FULL suite with no deselect: {flat}"
+    )
+    # It IS pytest, run as the bare full-suite command.
     assert "pytest" in flat
 
 
@@ -90,7 +77,7 @@ def test_verify_exit_code_propagates_failure():
 def test_verify_passthrough_arg_with_spaces_not_resplit():
     """An arg containing spaces (e.g. -k "a or b") must reach pytest as a single
     token, not be re-split. Guards the cmd_verify arg-handling against a lossy
-    string round-trip through apply_quarantine."""
+    string round-trip (passthrough args are kept as discrete list items)."""
     mock_run, _ = _run_verify(["-k", "a or b"])
     cmd = mock_run.call_args.args[0]
     assert isinstance(cmd, list), "verify must exec a token list, not a shell string"

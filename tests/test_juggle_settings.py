@@ -122,21 +122,17 @@ def test_coder_template_includes_incremental_commit_guidance():
             f"incremental-commit guidance leaked into the {role} template"
         )
 
-def test_coder_template_includes_verify_once_quarantine_guidance():
-    """Regression (2026-06-20): 3 coder agents (a928632a, a72993f9, a198279f)
-    zombie-looped — each burned 100k-330k tokens. In final verification they ran
-    the FULL suite (which includes the PRE-EXISTING quarantined reds loc_gate /
-    data_migration / test_integrate), saw red, concluded "not done", and/or
-    launched the suite as a BACKGROUND job then polled it forever — re-spawning
-    suite runs in an infinite loop, never calling complete-agent.
-
-    The coder template MUST tell agents to: (1) deselect the quarantined tests
-    when self-verifying with the full suite, (2) run the suite ONCE,
-    synchronously (no background-poll, no re-run loop) with a HARD-bounded
+def test_coder_template_mandates_full_suite_once_no_subset():
+    """Regression (2026-06-20): coder agents zombie-looped — burned 100k-330k
+    tokens each — by launching the suite as a BACKGROUND job and polling it
+    forever, never calling complete-agent. The earlier mitigation deselected a
+    quarantine list; the 2026-06-20 user directive REPLACED that with "always
+    run the FULL test suite, never a subset". The coder template MUST now tell
+    agents to: (1) run the FULL suite (no subset, no --deselect), (2) run it
+    ONCE, synchronously (no background-poll, no re-run loop) with a HARD-bounded
     fix-and-re-run cycle (one fix attempt, then STOP), and (3) end by calling
-    complete-agent/fail-agent. The template must NOT also carry a bare
-    "full test suite"/"full pytest" instruction elsewhere that bypasses the
-    deselect (that contradiction is what re-licensed the loop — DA I1).
+    complete-agent/fail-agent. The template must NOT carry any --deselect /
+    quarantine routing (that would contradict the full-suite directive).
     Pinned on the in-repo DEFAULT so the rule ships with the code and cannot be
     lost to a missing/overriding user config.
     """
@@ -145,17 +141,20 @@ def test_coder_template_includes_verify_once_quarantine_guidance():
     coder = DEFAULTS["task_templates"]["coder"]
     low = coder.lower()
 
-    # (1) A dedicated Verification subsection exists.
+    # (1) A dedicated Verification subsection exists and mandates the FULL suite.
     assert "verification" in low, "coder template lost its Verification subsection"
+    assert "full suite" in low or "full test suite" in low, (
+        "Verification guidance must mandate the FULL suite (directive 2026-06-20)"
+    )
 
-    # (1) Names the quarantine-deselect mechanism, and every quarantined test
-    #     path the agent must deselect appears verbatim (so the guidance stays
-    #     in lock-step with integrate.quarantine_tests).
-    assert "--deselect" in coder, "Verification guidance must show --deselect flags"
-    for qt in DEFAULTS["integrate"]["quarantine_tests"]:
-        assert qt in coder, (
-            f"quarantined test {qt} not named in coder Verification guidance "
-            "(it must be deselected by the self-verify command)"
+    # (1) The full-suite directive forbids subset/deselect: the template must NOT
+    #     instruct agents to deselect anything.  A bare `--deselect tests/...`
+    #     command (the old quarantine routing) must be absent — only descriptive
+    #     "no --deselect" phrasing is allowed, so we assert no quarantine path is
+    #     named as something to deselect.
+    for qt in ("tests/test_loc_gate.py", "tests/test_data_migration.py"):
+        assert f"--deselect {qt}" not in coder, (
+            f"coder template still deselects {qt} — contradicts full-suite directive"
         )
 
     # (2) Run-once / synchronous / anti-loop language.
@@ -169,18 +168,6 @@ def test_coder_template_includes_verify_once_quarantine_guidance():
         "Verification guidance must require ending on complete-agent/fail-agent"
     )
 
-    # (I1) No competing instruction may tell the agent to run the WHOLE suite
-    #      without the deselect — that contradiction is what re-licensed the
-    #      loop. Every "full ... suite" / "full pytest" mention must co-occur
-    #      with the deselect/verify routing (we assert the dangerous bare forms
-    #      are simply absent).
-    assert "full pytest" not in low, (
-        "template still tells agents to run `full pytest` without deselect (DA I1)"
-    )
-    assert "run the full test suite" not in low, (
-        "template still says `run the full test suite` without deselect (DA I1)"
-    )
-
     # (I2) The fix-and-re-run cycle must be HARD-bounded (one attempt, then
     #      stop) — not an open-ended "re-run once per fix" that loops forever.
     assert "second" in low and ("partial" in low or "blocker" in low), (
@@ -188,10 +175,24 @@ def test_coder_template_includes_verify_once_quarantine_guidance():
         "(no second fix; bail to PARTIAL/BLOCKER) — DA I2"
     )
 
-    # Coder-only: pre-existing-reds verify guidance must NOT leak into the
-    # planner/researcher templates (they don't run the suite).
+    # Coder-only: the verify guidance must NOT leak into the planner/researcher
+    # templates (they don't run the suite).
     for role in ("planner", "researcher"):
         other = DEFAULTS["task_templates"][role].lower()
         assert "--deselect" not in other and "quarantine" not in other, (
-            f"verify-once/quarantine guidance leaked into the {role} template"
+            f"verify-once guidance leaked into the {role} template"
         )
+
+
+def test_integrate_defaults_are_full_suite_no_quarantine():
+    """Directive (2026-06-20): integrate ALWAYS runs the FULL suite, never a
+    subset. The shipped DEFAULTS must reflect that — test_scope 'full' and an
+    EMPTY quarantine list — so a fresh install (no config.json) never scopes or
+    deselects. Pinned so the directive cannot silently regress in DEFAULTS."""
+    from juggle_settings import DEFAULTS
+
+    integ = DEFAULTS["integrate"]
+    assert integ["test_scope"] == "full", "DEFAULTS must run the full suite"
+    assert integ["quarantine_tests"] == [], (
+        "DEFAULTS quarantine_tests must be empty (no subset/deselect)"
+    )

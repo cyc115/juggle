@@ -44,19 +44,14 @@ DEFAULTS: dict = {
     "task_templates": TASK_TEMPLATES,
     # Integrate command options
     "integrate": {
-        # "changed" = scope tests to branch-changed files (default).
-        # "full"    = always run the full test_cmd (old behaviour).
-        "test_scope": "changed",
-        # fnmatch globs (relative to repo root) always added to scoped runs.
+        # Directive (2026-06-20): integrate ALWAYS runs the FULL test suite,
+        # never a subset. "full" is the only path — there is no scoping and no
+        # --deselect quarantine. These keys are retained as inert config (empty)
+        # only so existing config.json files that still set them do not crash;
+        # juggle_cmd_integrate no longer reads them.
+        "test_scope": "full",
         "core_tests": [],
-        # Pre-existing RED tests excluded from both scoped and full runs via
-        # --deselect.  Shrinks as each is fixed: loc_gate awaits dbops refactor
-        # + budget-lower; data_migration awaits triage.  NOT permanent.
-        "quarantine_tests": [
-            "tests/test_loc_gate.py",
-            "tests/test_data_migration.py",
-            "tests/test_integrate.py",
-        ],
+        "quarantine_tests": [],
     },
     # Cockpit Display
     "cockpit": {

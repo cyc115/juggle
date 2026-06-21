@@ -5,7 +5,8 @@ Extracted from juggle_settings.py (2026-06-20, architecture-gate: settings.py
 exceeded its LOC budget). The single source of truth for the per-role preamble
 strings; imported back into ``DEFAULTS["task_templates"]`` so the runtime
 structure is unchanged (``DEFAULTS["task_templates"]["coder"]`` etc. resolve
-byte-identically).
+byte-identically). The coder Verification guidance now mandates the FULL
+suite ONCE (no subset, no --deselect) per the 2026-06-20 directive.
 """
 
 # Task Templates — prepended to agent prompts by role
@@ -16,15 +17,13 @@ TASK_TEMPLATES: dict[str, str] = {
         "### TDD Discipline\n"
         "1. Write failing tests FIRST — confirm they FAIL before implementation\n"
         "2. Implement the minimum code to pass tests\n"
-        "3. Run the suite per the Verification section (quarantined reds deselected) — fix regressions in YOUR files\n"
+        "3. Run the FULL suite (foreground, ONCE) per the Verification section — fix regressions in YOUR files\n"
         "4. Run pre-pr quality gate ({quality_gate_skill}) before completion\n\n"
         "### Verification\n"
-        "Self-verify with the suite ONCE, synchronously (foreground/blocking) — "
-        "ALWAYS deselect the pre-existing quarantined reds (they are NOT your "
-        "responsibility, per Universal rule 2). Use the helper:\n"
-        "`juggle verify` (auto-applies the deselects), or run it by hand:\n"
-        "`uv run pytest -q --deselect tests/test_loc_gate.py "
-        "--deselect tests/test_data_migration.py --deselect tests/test_integrate.py`\n"
+        "Self-verify with the FULL suite ONCE, synchronously (foreground/blocking). "
+        "Use the helper `juggle verify` (runs the whole suite — no subset, no "
+        "deselect), or run it by hand:\n"
+        "`uv run pytest -q`\n"
         "Do NOT launch the suite as a background job and poll it; do NOT re-run it "
         "in a loop. One green run = done. If it is red because of YOUR changed "
         "files, make ONE fix attempt and re-run once; if STILL red, STOP and "
@@ -44,7 +43,7 @@ TASK_TEMPLATES: dict[str, str] = {
         "These per-step commits are expected even though a half-baked or errored FINAL state should not be committed (see the Terminal Checklist).\n\n"
         "HARNESS GATE: run the repo's harness smoke suite "
         "(trading-edge: `uv run pytest -m pilot`; "
-        "juggle: `juggle verify` (suite ONCE, quarantined reds deselected — see Verification) + doctor --dry-run on a tmp DB) "
+        "juggle: `juggle verify` (FULL suite ONCE — see Verification) + doctor --dry-run on a tmp DB) "
         "and paste the suite summary line in your completion result. "
         "Completion without harness evidence is invalid.\n\n"
         "### Terminal Checklist (REQUIRED before integrate)\n"

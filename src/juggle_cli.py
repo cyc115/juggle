@@ -75,24 +75,19 @@ def cmd_vault_name(args):
 
 
 def cmd_verify(args):
-    """Run the test suite ONCE, synchronously, with the quarantined reds deselected.
+    """Run the FULL test suite ONCE, synchronously.
 
     Agent-facing helper (2026-06-20): coder agents zombie-looped re-running the
-    FULL suite on pre-existing quarantined tests. `juggle verify` is the single
-    deterministic command they call instead of hand-rolling pytest — it reads
-    integrate.quarantine_tests and prepends the --deselect flags, then execs
-    pytest in the foreground exactly once. Extra args after `verify` pass through
+    suite as a background job and polling it forever. `juggle verify` is the
+    single deterministic command they call instead of hand-rolling pytest — it
+    execs the WHOLE suite in the foreground exactly once (no subset, no
+    --deselect: the full-suite directive). Extra args after `verify` pass through
     to pytest. Exit code is pytest's, so `juggle verify && ...` fails loudly.
     """
-    from juggle_integrate_testscope import apply_quarantine
-
-    quarantine = get_settings()["integrate"].get("quarantine_tests", [])
-    # Build the deselect-bearing base, then append passthrough args as-is so an
-    # arg containing spaces (e.g. -k "a or b") is never re-split into tokens.
-    # Invariant: the base + quarantine paths are space-free (pytest node ids),
-    # so the .split() round-trip is safe; passthrough args (which CAN contain
-    # spaces) are added as discrete list items below, never via split.
-    cmd = apply_quarantine("uv run pytest -q", quarantine).split()
+    # Base is the bare full-suite command (space-free tokens); passthrough args
+    # (which CAN contain spaces, e.g. -k "a or b") are appended as discrete list
+    # items so they are never re-split.
+    cmd = ["uv", "run", "pytest", "-q"]
     cmd += list(args.pytest_args or [])
     result = subprocess.run(cmd)
     sys.exit(result.returncode)
@@ -190,13 +185,12 @@ def main():
     p_vault_name = subparsers.add_parser("vault-name", help="Print vault name (for obsidian:// URIs)")
     p_vault_name.set_defaults(func=cmd_vault_name)
 
-    # verify — run the suite ONCE with quarantined reds deselected (agent helper).
-    # Extra args (incl. leading-flag forms like `-k foo`) flow through via
-    # parse_known_args below, so no REMAINDER positional (which mishandles a
-    # leading flag) is declared here.
+    # verify — run the FULL suite ONCE (agent helper). Extra args (incl.
+    # leading-flag forms like `-k foo`) flow through via parse_known_args below,
+    # so no REMAINDER positional (which mishandles a leading flag) is declared.
     p_verify = subparsers.add_parser(
         "verify",
-        help="Run the test suite once with quarantined reds deselected "
+        help="Run the FULL test suite once "
         "(extra args pass through to pytest)",
     )
     p_verify.set_defaults(func=cmd_verify, pytest_args=[])

@@ -95,8 +95,8 @@
     "semantic_hash": ""
   },
   "tests/test_juggle_settings.py": {
-    "mtime": 1782009441.8710434,
-    "ast_hash": "0bf09080bc6fc6213dabe100fe4b3be6",
+    "mtime": 1782009902.9899774,
+    "ast_hash": "56b7a461bf10ae9bd1b9b5c6eb7db248",
     "semantic_hash": ""
   },
   "tests/test_cockpit_snapshots.py": {
@@ -455,8 +455,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cli.py": {
-    "mtime": 1782009441.825419,
-    "ast_hash": "54c62ed5eaeb4a702229be410f25903f",
+    "mtime": 1782009817.4883704,
+    "ast_hash": "422baeb13f604010c299d8b065b75f47",
     "semantic_hash": ""
   },
   "src/juggle_scheduler.py": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "src/juggle_settings.py": {
-    "mtime": 1782009664.2974832,
-    "ast_hash": "eef1a6dc14b859e071d71360cb4f0e50",
+    "mtime": 1782009773.8630173,
+    "ast_hash": "248f3ea3d9a1181dc68c9f85823e0cd8",
     "semantic_hash": ""
   },
   "src/juggle_cockpit_widgets.py": {
@@ -1075,13 +1075,13 @@
     "semantic_hash": ""
   },
   "src/juggle_cmd_integrate.py": {
-    "mtime": 1782009441.830004,
-    "ast_hash": "593f05828fdd5038057234dcf191ec89",
+    "mtime": 1782009791.4752858,
+    "ast_hash": "6a98262adb7cd036e1b902e15892fa77",
     "semantic_hash": ""
   },
   "tests/test_integrate.py": {
-    "mtime": 1782009441.8676574,
-    "ast_hash": "edccab23fe04b0ed9d81ae36646ff545",
+    "mtime": 1782009753.7251823,
+    "ast_hash": "84118a910d072469bb07f159c3e4cae0",
     "semantic_hash": ""
   },
   "tests/test_worktree_setup.py": {
@@ -2069,11 +2069,6 @@
     "ast_hash": "cbf1e4e847ce1ac11668196084bac6d9",
     "semantic_hash": ""
   },
-  "src/juggle_integrate_testscope.py": {
-    "mtime": 1782009441.8399699,
-    "ast_hash": "a286af5c7cecec79c842a631d20626b0",
-    "semantic_hash": ""
-  },
   "tests/test_cockpit_watchdog_owner.py": {
     "mtime": 1782009441.8583386,
     "ast_hash": "2b6e59dcb1da0176d7f982da997b3607",
@@ -2082,11 +2077,6 @@
   "tests/test_integrate_phantom_sha.py": {
     "mtime": 1782009441.8683312,
     "ast_hash": "5cf5559b507e91feff1f1bf875d09ddd",
-    "semantic_hash": ""
-  },
-  "tests/test_integrate_testscope.py": {
-    "mtime": 1782009441.8686674,
-    "ast_hash": "1e9ad20cbf760a46867fbfa9b50c1eca",
     "semantic_hash": ""
   },
   "docs/incidents/2026-06-15-agent-bloat-stall-rca.md": {
@@ -2470,13 +2460,13 @@
     "semantic_hash": ""
   },
   "tests/test_cli_verify.py": {
-    "mtime": 1782009441.8517554,
-    "ast_hash": "9562bb17d48e3987450767fc8084d4b9",
+    "mtime": 1782009853.9613461,
+    "ast_hash": "f7dfcc92bd31d41d741dfd1ef0ff16c9",
     "semantic_hash": ""
   },
   "src/juggle_task_templates.py": {
-    "mtime": 1782009653.9060736,
-    "ast_hash": "388ae081034550af8660ad4d488c5415",
+    "mtime": 1782009871.0625398,
+    "ast_hash": "bf942319448eae793abbe827aa1bae64",
     "semantic_hash": ""
   }
 }

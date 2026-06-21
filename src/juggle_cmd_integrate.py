@@ -280,71 +280,27 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
                 f"NOTE: semantic line-conflicts are not auto-resolved — this is expected behavior."
             )
 
-        # ── 5. Run test_cmd (only when configured AND push_mode != none) ──────
+        # ── 5. Run the FULL test suite (only when test_cmd set AND push != none) ─
+        # Directive (2026-06-20): integrate ALWAYS runs the FULL suite verbatim —
+        # never a subset. No branch-change scoping, no --deselect quarantine; the
+        # configured test_cmd runs exactly as written. (Removed: test_scope /
+        # quarantine_tests branches + juggle_integrate_testscope import.)
         if test_cmd and push_mode != "none":
-            from juggle_settings import get_nested
-            from juggle_integrate_testscope import (
-                apply_quarantine,
-                build_import_index,
-                build_test_command,
-                select_scoped_tests,
+            result = subprocess.run(
+                test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
             )
-            import glob as _glob
-
-            test_scope = get_nested("integrate", "test_scope", "changed")
-            core_tests = get_nested("integrate", "core_tests", [])
-            quarantine = get_nested("integrate", "quarantine_tests", [])
-
-            run_cmd = test_cmd
-            if test_scope == "changed":
-                changed_r = subprocess.run(
-                    ["git", "-C", worktree_path, "diff", "--name-only",
-                     f"{rebase_onto}...HEAD"],
-                    capture_output=True, text=True,
-                )
-                changed_files = [l for l in changed_r.stdout.splitlines() if l.strip()]
-                tests_dir = Path(worktree_path) / "tests"
-                existing_tests = set(
-                    str(p.relative_to(worktree_path)).replace("\\", "/")
-                    for p in tests_dir.rglob("*.py")
-                ) if tests_dir.exists() else set()
-                import_index = build_import_index(tests_dir) if tests_dir.exists() else {}
-                scope = select_scoped_tests(
-                    changed_files, existing_tests,
-                    import_index=import_index,
-                    core_globs=core_tests or None,
-                )
-                print(
-                    f"[integrate] scope={scope['mode']} "
-                    f"({len(scope['paths'])} file(s)): {scope['reason']}",
-                    flush=True,
-                )
-                if scope["mode"] == "skip":
-                    run_cmd = None
-                elif scope["mode"] == "scoped":
-                    run_cmd = build_test_command(test_cmd, scope["paths"])
-                # "full" → run_cmd stays as test_cmd (full suite)
-
-            if run_cmd and quarantine:
-                run_cmd = apply_quarantine(run_cmd, quarantine)
-                print(f"[integrate] quarantine: --deselect x{len(quarantine)}", flush=True)
-
-            if run_cmd:
+            if result.returncode != 0:
+                # One retry for transient flakes (pilot/Textual tests flake under
+                # load). Only abort if both attempts fail.
                 result = subprocess.run(
-                    run_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
+                    test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
                 )
-                if result.returncode != 0:
-                    # One retry for transient flakes (pilot/Textual tests flake under
-                    # load). Only abort if both attempts fail.
-                    result = subprocess.run(
-                        run_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
-                    )
-                if result.returncode != 0:
-                    return _fail(
-                        f"Tests failed (exit {result.returncode}) for {worktree_branch}. "
-                        f"No merge performed. "
-                        f"stdout tail: {result.stdout[-300:].strip()}"
-                    )
+            if result.returncode != 0:
+                return _fail(
+                    f"Tests failed (exit {result.returncode}) for {worktree_branch}. "
+                    f"No merge performed. "
+                    f"stdout tail: {result.stdout[-300:].strip()}"
+                )
 
         # ── 5b. Graph-task gate: pre-merge diffstat + verify_cmd (DA M3) ──────
         # Runs in the worktree, post-rebase, BEFORE any merge/push — alongside
