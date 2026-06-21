@@ -322,7 +322,7 @@ def test_maybe_dispatch_does_nothing_when_disabled(tmp_path):
         conn.commit()
 
     dispatched = []
-    with patch("juggle_selfheal.get_settings", return_value={"selfheal": {"enabled": False, "min_count": 3, "retention_days": 14}}):
+    with patch("juggle_selfheal_diagnosis.get_settings", return_value={"selfheal": {"enabled": False, "min_count": 3, "retention_days": 14}}):
         maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=lambda *a, **kw: dispatched.append(a))
 
     assert dispatched == []
@@ -343,7 +343,7 @@ def test_maybe_dispatch_dispatches_when_enabled(tmp_path):
 
     dispatched = []
     settings = {"selfheal": {"enabled": True, "min_count": 3, "retention_days": 14}}
-    with patch("juggle_selfheal.get_settings", return_value=settings):
+    with patch("juggle_selfheal_diagnosis.get_settings", return_value=settings):
         maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=lambda db, thread_id, prompt: dispatched.append((thread_id, prompt)))
 
     assert len(dispatched) == 1
@@ -370,7 +370,7 @@ def test_maybe_dispatch_does_not_dispatch_when_in_flight(tmp_path):
 
     dispatched = []
     settings = {"selfheal": {"enabled": True, "min_count": 3, "retention_days": 14}}
-    with patch("juggle_selfheal.get_settings", return_value=settings):
+    with patch("juggle_selfheal_diagnosis.get_settings", return_value=settings):
         maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=lambda *a: dispatched.append(a))
 
     assert dispatched == []
@@ -390,7 +390,7 @@ def test_maybe_dispatch_sets_row_to_awaiting_approval_after_dispatch(tmp_path):
         conn.commit()
 
     settings = {"selfheal": {"enabled": True, "min_count": 3, "retention_days": 14}}
-    with patch("juggle_selfheal.get_settings", return_value=settings):
+    with patch("juggle_selfheal_diagnosis.get_settings", return_value=settings):
         maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=lambda db, tid, prompt: None)
 
     with db._connect() as conn:
@@ -421,7 +421,7 @@ def test_reentrancy_guard_env_var_set_during_dispatch(tmp_path):
         env_during_dispatch.append(os.environ.get(_SELFHEAL_ENV))
 
     settings = {"selfheal": {"enabled": True, "min_count": 3, "retention_days": 14}}
-    with patch("juggle_selfheal.get_settings", return_value=settings):
+    with patch("juggle_selfheal_diagnosis.get_settings", return_value=settings):
         maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=capturing_dispatch)
 
     assert env_during_dispatch == ["1"]

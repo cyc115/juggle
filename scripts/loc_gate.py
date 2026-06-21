@@ -60,7 +60,6 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cockpit_graph_panel.py": 334,
     "src/juggle_hooks_tooluse.py": 334,
     "src/juggle_dispatch_core.py": 321,
-    "src/juggle_selfheal.py": 325,
     "src/juggle_add_node.py": 318,
     "src/juggle_cli_parsers_misc.py": 316,
     "src/dbops/agents.py": 320,
