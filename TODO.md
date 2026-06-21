@@ -59,6 +59,7 @@ Real application exceptions surfaced from `error_events` (the 16 `[A]` rows kept
 - [ ] Juggle worktrees + `depends_on` ordering — extend the TE worktree pattern (`cyc_<label>` branch + `/tmp/juggle-<label>`) to juggle-repo topics, and add a `depends_on` field to `juggle new` so dispatch blocks until dependencies close. Evidence: 2 juggle same-repo concurrent pairs with real file overlap observed in 2 days (UD∩UI on `juggle_cmd_agents.py`; SY∩TB on `.claude-plugin/plugin.json`); 0 actual conflicts but resolved by timing luck. DDL already designed in TF doc. Evidence: [[knowledge/projects/juggle/2026-06-07-topic-dag-evaluation]]. Scope: lighter alternative to full DAG — ~50 LOC + migration 35; skip `_dag_tick` auto-dispatch and auto-decomposer.
 
 ## Done
+- [x] Revise README to v1.80.0 + integrate to main (`84d12e2`, README-only, pushed) ✅ 2026-06-21
 
 - [x] **LOC-budget trim** — settings.py back under budget via task_templates extraction (522→446); loc_gate budgets ratcheted down. Folded into the full-suite directive (b320ecd). ✅ 2026-06-20
 
