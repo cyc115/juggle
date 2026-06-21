@@ -18,6 +18,23 @@
 - [ ] **Version-bump collisions across parallel branches** — concurrently-dispatched branches each bumped `plugin.json` independently (e.g. two branches both → 1.78.0), forcing a manual version + TODO conflict resolution on every integrate this session. Consider a bump-at-integrate convention (orchestrator sets the version at merge, not the agent) or a coordination guard.
 - [ ] **(low) `git stash clear` dropped ~10 old stashes** — during TODO-conflict cleanup I cleared the whole stash list, which included pre-session WIP stashes (cyc_schema-migration-37, cyc_XY/WU/WP, etc.). Verify none held needed work (likely abandoned, but unrecoverable now).
 
+## Bugs (#bug — from self-heal triage 2026-06-20)
+
+Real application exceptions surfaced from `error_events` (the 16 `[A]` rows kept open after resolving 49 tool-noise entries). Grouped by signature; counts are occurrences.
+
+**High**
+- [ ] #bug **OSError `[Errno 62] Too many levels of symbolic links` in `juggle_hooks.UserPromptSubmit`** — ×67 across 8 sigs (61964f64,62ea1b51,f8157f97,db18bbff,b8287325,25164fc6,116bf900,e487bcf7). The prompt-submit hook walks a path containing a circular symlink and throws on *every* prompt. Almost certainly the in-repo agent worktrees (`.claude/worktrees/`, untracked in d8cb41f) — a worktree's `.git`/nested path forms a loop. Fix: make the hook's path walk ELOOP-safe (catch + skip) AND stop walking worktree dirs. Regression-pin with a symlink-loop fixture.
+- [ ] #bug **RuntimeError "send_task: submission not verified for pane %NNNN after retries"** in `juggle_cli.main` (sig 20f69693, ×21) — dispatch could not confirm the task text reached the tmux pane; task not sent, watchdog files an action item. Core dispatch-reliability defect (pane-readiness race or tmux send-keys verification gap). Investigate the send_task verify loop + pane liveness check.
+
+**Medium**
+- [ ] #bug **UnboundLocalError `any_fail` in cockpit `--smoke`** (`juggle_cli.main`, sigs e2a3c04c/fde16473, ×4) — `any_fail` read before assignment on a code path through the smoke harness (likely the early-return/empty-viewport branch). Straightforward init-before-use fix.
+- [ ] #bug **Thread-label allocator exhaustion** (×4 combined) — `ValueError: All 702 user labels in use. Archive threads first.` (sig db8dfb62, ×2) + `IntegrityError: UNIQUE constraint failed: threads.user_label` (sig 6198bc24, ×2). The 2-letter label space is exhausted and the create path races/duplicates. Fix: graceful exhaustion handling + atomic label allocation; consider widening the label space or auto-archiving.
+- [ ] #bug **OperationalError `no such column: node_id`** (`juggle_cli.main`, sig e9fb0502, ×1) — schema drift: a query references `node_id` that doesn't exist on the target table (likely unified-topic-graph CB migration vs query mismatch). Audit nodes/threads queries against the live schema.
+
+**Low**
+- [ ] #bug **JSONDecodeError `Expecting value: line 1 column 1` in `project create`** (sig 64a4b608, ×1) — parsing empty/non-JSON input during project creation. Add input validation + clear error.
+- [ ] #bug **ValueError `invalid literal for int(): 'ce80ef'` in `juggle_cli.main`** (sig 01a161e4, ×1) — a short hash id was passed where an int row-id was expected. CLI should accept hash-or-int (or validate + error clearly) instead of crashing.
+
 ## Projects (multi-session / deferred)
 
 ### CB P8 — Legacy-Table Drop (IRREVERSIBLE; user-deferred 2026-06-20)
