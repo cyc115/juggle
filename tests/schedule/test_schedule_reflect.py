@@ -21,8 +21,7 @@ def test_dry_run_writes_digest(tmp_path, monkeypatch):
 
     # M1 (2026-06-21): isolate the dry-run sample to a fresh tmp dir (no stale
     # /tmp false-green).
-    sample_dir = tmp_path / "samples"
-    monkeypatch.setenv("JUGGLE_SCHEDULE_SAMPLE_DIR", str(sample_dir))
+    monkeypatch.setenv("JUGGLE_SCHEDULE_SAMPLE_DIR", str(tmp_path))
     with patch.object(reflect, "get_db", return_value=mock_db), \
          patch.object(reflect, "db_query", return_value=[]), \
          patch.object(common, "gh_pr_list_head", return_value=[]), \
@@ -40,7 +39,7 @@ def test_dry_run_writes_digest(tmp_path, monkeypatch):
         result = reflect.run(dry_run=True)
 
     assert result == 0
-    out = sample_dir / "schedule-reflect-sample-digest.md"
+    out = tmp_path / "schedule-reflect-sample-digest.md"
     assert out.exists()
     content = out.read_text()
     assert "Juggle Weekly Digest" in content

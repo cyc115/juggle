@@ -55,15 +55,20 @@ def test_integrate_fullsuite_guard_rejects_subsetting_and_allows_full():
 
 
 def test_integrate_invokes_fullsuite_guard_and_runs_verbatim():
-    """B2 regression pin: integrate calls the full-suite guard BEFORE running the
-    test_cmd, and still runs that test_cmd VERBATIM (no command-munging — the
-    2026-06-20 directive). A loud refusal is not munging; the command is intact."""
-    src = (_ROOT / "src" / "juggle_cmd_integrate.py").read_text()
-    assert "full_suite_violations" in src, (
-        "integrate must invoke the B2 full-suite guard before running test_cmd"
+    """B2 regression pin: integrate delegates the suite run to the guarded runner,
+    which checks for subsetting BEFORE running and still runs test_cmd VERBATIM
+    (no command-munging — the 2026-06-20 directive). A loud refusal is not munging;
+    the command is intact."""
+    integrate_src = (_ROOT / "src" / "juggle_cmd_integrate.py").read_text()
+    fullsuite_src = (_ROOT / "src" / "juggle_integrate_fullsuite.py").read_text()
+    assert "run_test_cmd_full" in integrate_src, (
+        "integrate must delegate the test_cmd run to the B2-guarded runner"
     )
-    assert "test_cmd, shell=True" in src, (
-        "integrate must still run test_cmd verbatim (no munging)"
+    assert "full_suite_violations" in fullsuite_src, (
+        "the runner must check for subsetting before running test_cmd"
+    )
+    assert "test_cmd, shell=True" in fullsuite_src, (
+        "the runner must still run test_cmd verbatim (no munging)"
     )
 
 

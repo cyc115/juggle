@@ -257,17 +257,6 @@ def write_report(path: Path, content: str, dry_run: bool = False, tmp_override: 
     return path
 
 
-def dry_run_sample_path(filename: str) -> Path:
-    """Path for a dry-run's throwaway SAMPLE report.
-
-    Defaults to /tmp (so an operator's `--dry-run` drops a sample they can
-    eyeball). Overridable via JUGGLE_SCHEDULE_SAMPLE_DIR — read lazily so tests
-    can point it at a fresh tmp_path, isolating the sample so its existence
-    assertion can't false-green on a stale file from a prior run (M1, 2026-06-21).
-    """
-    return Path(os.environ.get("JUGGLE_SCHEDULE_SAMPLE_DIR", "/tmp")) / filename
-
-
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------

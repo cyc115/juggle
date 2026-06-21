@@ -36,8 +36,7 @@ def test_dry_run_writes_report(tmp_path, monkeypatch):
 
     # M1 (2026-06-21): isolate the dry-run sample to a fresh tmp dir (no stale
     # /tmp false-green).
-    sample_dir = tmp_path / "samples"
-    monkeypatch.setenv("JUGGLE_SCHEDULE_SAMPLE_DIR", str(sample_dir))
+    monkeypatch.setenv("JUGGLE_SCHEDULE_SAMPLE_DIR", str(tmp_path))
     with patch.object(dogfood, "get_db", return_value=mock_db), \
          patch.object(dogfood, "db_query", return_value=[]), \
          patch.object(dogfood, "_check_prior_dogfood_thread", return_value=None), \
@@ -49,7 +48,7 @@ def test_dry_run_writes_report(tmp_path, monkeypatch):
         result = dogfood.run(dry_run=True)
 
     assert result == 0
-    report = sample_dir / "schedule-dogfood-sample-report.md"
+    report = tmp_path / "schedule-dogfood-sample-report.md"
     assert report.exists()
     content = report.read_text()
     assert "DRY RUN" in content or "Juggle Self-Analysis" in content

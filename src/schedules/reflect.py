@@ -7,6 +7,7 @@ commits it and files up to 5 GitHub issues.
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -23,7 +24,6 @@ from schedules.common import (  # noqa: E402
     claude_p,
     days_ago_iso,
     db_query,
-    dry_run_sample_path,
     get_db,
     gh_create_issue,
     gh_issue_exists,
@@ -549,7 +549,8 @@ def run(dry_run: bool = False) -> int:
     digest = _build_digest(today, sections, autofix_ref)
 
     out_path = REPORTS_DIR / f"reflect-{today}.md"
-    tmp_path = dry_run_sample_path("schedule-reflect-sample-digest.md") if dry_run else None
+    # Dry-run SAMPLE dir: /tmp default; tests set JUGGLE_SCHEDULE_SAMPLE_DIR=tmp_path (M1).
+    tmp_path = Path(os.environ.get("JUGGLE_SCHEDULE_SAMPLE_DIR", "/tmp")) / "schedule-reflect-sample-digest.md" if dry_run else None
     write_report(out_path, digest, dry_run=dry_run, tmp_override=tmp_path)
 
     if dry_run:

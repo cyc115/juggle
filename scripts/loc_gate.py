@@ -35,11 +35,14 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cockpit.py": 1075,
     "src/juggle_watchdog.py": 1051,
     "src/juggle_tmux.py": 881,
-    "src/schedules/autofix.py": 823,
+    # speedup-tier M1 (2026-06-21) re-baseline: isolating the dry-run sample dir
+    # to tmp_path needs one `import os` per schedule routine (the env override is
+    # read at the existing write site; nothing to extract for a 1-line read).
+    "src/schedules/autofix.py": 825,
     "src/juggle_cockpit_modals.py": 810,
     "src/juggle_cmd_projects.py": 755,
     "src/juggle_cmd_threads.py": 670,
-    "src/schedules/reflect.py": 582,
+    "src/schedules/reflect.py": 584,
     "src/dbops/threads.py": 560,
     "src/juggle_scheduler.py": 494,
     # selfheal-triage-v2 P1 (2026-06-21) re-baseline: irreducible plan-mandated
@@ -53,7 +56,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cockpit_model.py": 439,
     "src/dbops/migrations_recent.py": 443,
     "scripts/talkback": 415,
-    "src/schedules/dogfood.py": 406,
+    "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
     "src/juggle_graph_dispatch.py": 397,
     "src/juggle_watchdog_daemon.py": 427,

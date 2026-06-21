@@ -40,8 +40,7 @@ def test_existing_pr_blocks_run(tmp_path):
 def test_dry_run_writes_pr_description(tmp_path, monkeypatch):
     # M1 (2026-06-21): isolate the dry-run sample to a fresh tmp dir so the
     # assertion can't false-green on a stale /tmp file from a prior run.
-    sample_dir = tmp_path / "samples"
-    monkeypatch.setenv("JUGGLE_SCHEDULE_SAMPLE_DIR", str(sample_dir))
+    monkeypatch.setenv("JUGGLE_SCHEDULE_SAMPLE_DIR", str(tmp_path))
     with patch("schedules.autofix.gh_pr_list_head", return_value=[]), \
          patch.object(autofix, "get_db", return_value=MagicMock()), \
          patch.object(autofix, "db_query", return_value=[]), \
@@ -60,7 +59,7 @@ def test_dry_run_writes_pr_description(tmp_path, monkeypatch):
         result = autofix.run(dry_run=True)
 
     assert result == 0
-    out = sample_dir / "schedule-autofix-sample-PR.md"
+    out = tmp_path / "schedule-autofix-sample-PR.md"
     assert out.exists()
     assert "autofix:" in out.read_text()
 
