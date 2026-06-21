@@ -286,6 +286,23 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         # configured test_cmd runs exactly as written. (Removed: test_scope /
         # quarantine_tests branches + juggle_integrate_testscope import.)
         if test_cmd and push_mode != "none":
+            # B2 (2026-06-21): fail LOUD if the configured test_cmd would silently
+            # SUBSET the suite (e.g. `-m 'not slow'`, `--deselect`, `--ignore`).
+            # The speedup-tier `slow` marker tiers only the opt-in inner loop —
+            # integrate ALWAYS runs the full suite. A refusal is not munging: the
+            # command is left verbatim; we just abort instead of running a subset.
+            from juggle_integrate_fullsuite import full_suite_violations
+            _fs_viol = full_suite_violations(test_cmd)
+            if _fs_viol:
+                return _fail(
+                    f"Configured test_cmd would NOT run the FULL suite for "
+                    f"{worktree_branch} (always-full-suite directive, B2): "
+                    + "; ".join(_fs_viol)
+                    + ". The `slow` marker tiers only the opt-in `make test-fast` "
+                    "inner loop — never integrate. Set test_cmd to run the full "
+                    "suite (e.g. `uv run pytest -n auto --dist loadgroup "
+                    "-m 'not watchdog_proc'`)."
+                )
             result = subprocess.run(
                 test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path,
             )

@@ -152,3 +152,41 @@ def _guard_no_prod_artifacts(monkeypatch):
 def _guard_no_prod_artifacts_active(_guard_no_prod_artifacts):  # noqa: ARG001
     """Expose the guard's activeness to a pin (the autouse guard yields None)."""
     return True
+
+
+# ── Slow-tier marking (speedup-tier B2, 2026-06-21) ───────────────────────────
+# Heavy modules (cockpit/Textual render, watchdog real-daemon/gap, `uv run`
+# shell-outs) are marked `slow` so the OPT-IN inner loop
+# (`make test-fast` / `-m 'not slow and not watchdog_proc'`) skips them. They STAY
+# in the default/integrate FULL suite — `slow` is NEVER in global addopts (B2).
+#
+# Marking here in ONE place (vs a `pytestmark` line in 40+ modules) is a single
+# source of truth and — critically — does NOT edit the watchdog test files that
+# the unlanded 2026-06-20 watchdog-hardening plan also edits, avoiding a merge
+# collision (M3). When that plan's frozen-clock de-clock lands and the watchdog
+# gap tests become fast, drop their suffixes from _SLOW_MODULE_SUFFIXES below.
+
+_SLOW_MODULE_SUFFIXES = (
+    "test_juggle_smoke.py",
+    "test_graph_dispatch.py",
+    "test_cmd_graph.py",
+    "test_ensure_watchdog_debounce.py",
+    "test_watchdog_daemon_main_entry.py",
+    "test_integrate.py",
+    "test_watchdog_freeze.py",
+    # watchdog real-daemon/gap modules (coordinate w/ 2026-06-20 plan — M3):
+    "watchdog/test_baseline.py",
+    "watchdog/test_watchdog_active.py",
+    "watchdog/test_watchdog.py",
+    "watchdog/test_hardening.py",
+)
+
+
+def pytest_collection_modifyitems(config, items):  # noqa: ARG001
+    for item in items:
+        path = str(item.fspath).replace(os.sep, "/")
+        fname = path.rsplit("/", 1)[-1]
+        if fname.startswith("test_cockpit_") or any(
+            path.endswith(suffix) for suffix in _SLOW_MODULE_SUFFIXES
+        ):
+            item.add_marker(pytest.mark.slow)

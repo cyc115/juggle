@@ -610,8 +610,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1782068546.0100482,
-    "ast_hash": "4985451afbaf928beaee1a24d7a4ff8a",
+    "mtime": 1782070000.0495627,
+    "ast_hash": "093e6a278cac263c39349b9557b9fe3c",
     "semantic_hash": ""
   },
   "docker/docker-compose.yml": {
@@ -1075,8 +1075,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cmd_integrate.py": {
-    "mtime": 1782068546.0745165,
-    "ast_hash": "381467456b2de4cfd3a81f839bdced6c",
+    "mtime": 1782069834.904622,
+    "ast_hash": "194cbdc80ae55aff60adbcfc1d7964a7",
     "semantic_hash": ""
   },
   "tests/test_integrate.py": {
@@ -1855,8 +1855,8 @@
     "semantic_hash": ""
   },
   "tests/conftest.py": {
-    "mtime": 1782069037.5630584,
-    "ast_hash": "11eca9e1b7ce5ab5c54ecf1d8b8e99e1",
+    "mtime": 1782069849.3856258,
+    "ast_hash": "b00cfce9d8865bbc8e8dddeeace44f9d",
     "semantic_hash": ""
   },
   "tests/test_agent_runs.py": {
@@ -2210,8 +2210,8 @@
     "semantic_hash": ""
   },
   "config.example.md": {
-    "mtime": 1782068546.0138946,
-    "ast_hash": "35e92015b1e86d88489b28ff4539ee7d",
+    "mtime": 1782069930.1108463,
+    "ast_hash": "03095e5fed75d089788e526536687765",
     "semantic_hash": ""
   },
   "tests/test_parse_summary_markdown.py": {
@@ -2527,6 +2527,16 @@
   "tests/PARALLEL_SAFETY_AUDIT.md": {
     "mtime": 1782069630.2995677,
     "ast_hash": "d902d8f791f98cbcde17bddeea447203",
+    "semantic_hash": ""
+  },
+  "src/juggle_integrate_fullsuite.py": {
+    "mtime": 1782069823.7559068,
+    "ast_hash": "84624902c669f716c597abd976cb755f",
+    "semantic_hash": ""
+  },
+  "tests/test_marker_tier.py": {
+    "mtime": 1782069894.354911,
+    "ast_hash": "fc3bb795e521aa04068260d273353a8e",
     "semantic_hash": ""
   }
 }

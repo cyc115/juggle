@@ -93,9 +93,10 @@
   },
 
   "repos": {
+    "_comment_test_cmd": "test_cmd runs VERBATIM at integrate — always the FULL suite. The speedup-tier `slow` marker tiers only the opt-in `make test-fast` inner loop; a test_cmd containing `not slow`/`--deselect`/`--ignore` is REJECTED fail-loud (B2). `-n auto` parallelizes; `--dist loadgroup` honors serial-grouped tests.",
     "/home/user/myproject": {
       "push_mode": "direct",
-      "test_cmd": "uv run pytest -q"
+      "test_cmd": "uv run pytest -n auto --dist loadgroup -m 'not watchdog_proc'"
     }
   },
 

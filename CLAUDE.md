@@ -10,29 +10,31 @@ Required environment variables (no defaults):
 
 # Testing
 
-Most tests use an isolated `tmp_path` DB and need no setup. Tests that exercise
-the hooks (e.g. `test_juggle_hooks.py`) run against the **shared** DB at
-`~/.claude/juggle/juggle.db` (the path `juggle_hooks.DB_PATH` resolves from
-`paths.data_dir`, independent of `_JUGGLE_TEST_DB`). Without setup they fail with
-`no such table: session`; some also assert active/inactive state.
-
-Set up the shared DB once per fresh checkout/container before running the suite:
+Every test isolates to a per-test `tmp_path` DB and needs NO DB setup. The global
+`tests/conftest.py` redirects `JUGGLE_DB_PATH` to a throwaway DB per test and
+fail-closed-guards the prod DB (`_connect` raises on any prod-DB open). This
+INCLUDES the hook tests (`test_juggle_hooks.py`): they build a `JuggleDB` under
+`tmp_path` and monkeypatch `juggle_hooks.DB_PATH` / `CLAUDE_PLUGIN_DATA` to it,
+so they do NOT touch the shared `~/.claude/juggle/juggle.db`. The full suite is
+green from a fresh checkout with no `init-db` / `start` (the env vars below are
+still required — they are read at import).
 
 ```bash
 export CLAUDE_PLUGIN_DATA="$HOME/.claude/juggle"
 export JUGGLE_MAX_BACKGROUND_AGENTS=5 JUGGLE_MAX_THREADS=10
-uv run python src/juggle_cli.py init-db   # create all tables (fresh DB)
-uv run python src/juggle_cli.py start     # activate session (hook tests need active state)
-uv run pytest -q
+make test          # FULL suite, parallel (-n auto) — same scope integrate runs
+# or: uv run pytest -q   # FULL suite, serial
+make test-fast     # OPT-IN fast inner loop — deselects the heavy `slow` bucket
 ```
 
-Notes:
-- `juggle:doctor` only **migrates** an existing/stale DB — it does NOT create a
-  fresh one (it prints "will be created on first juggle command"). Use `init-db`
-  on a fresh checkout, then `doctor` for schema migrations on an existing DB.
-- The hook tests share the active-state of the one DB, so a few that assert
-  `juggle inactive` will fail once `start` has activated it — a known
-  test-isolation limitation, unrelated to product code.
+The `slow` marker tiers ONLY the opt-in `make test-fast` loop — bare `pytest`
+and integrate ALWAYS run the FULL suite (`slow` is never in `addopts`; a
+subsetting `test_cmd` is rejected fail-loud — B2, 2026-06-21).
+
+Note: `juggle:doctor` only **migrates** an existing/stale DB — it does NOT create
+a fresh one (it prints "will be created on first juggle command"). To stand up a
+real DB for driving the CLI/cockpit manually (NOT needed for tests), use
+`uv run python src/juggle_cli.py init-db`, then `doctor` for later migrations.
 
 ## Cockpit Development
 
