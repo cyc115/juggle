@@ -112,8 +112,13 @@ def cmd_ack_action(args):
     import juggle_cli_common as _common
 
     db = _common.get_db()
-    db.dismiss_action_item(int(args.action_id))
-    print(f"Action item #{args.action_id} dismissed.")
+    try:
+        action_id = int(args.action_id)
+    except ValueError:
+        print(f"Error: expected a numeric action id, got {args.action_id!r}.")
+        sys.exit(1)
+    db.dismiss_action_item(action_id)
+    print(f"Action item #{action_id} dismissed.")
 
 
 def cmd_list_actions(_):

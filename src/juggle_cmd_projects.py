@@ -566,6 +566,14 @@ def cmd_project_assign(args):
         print(f"Thread [{tid_input}] -> project {project_id} ({p['name']})")
 
 
+def _loads_criteria_or_exit(raw, flag):
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"Error: {flag} is not valid JSON: {e}")
+        sys.exit(1)
+
+
 def cmd_project_edit(args):
     db = get_db(init=True)
     if not db.get_project(args.project_id):
@@ -593,16 +601,9 @@ def cmd_project_edit(args):
     elif has_criterion:
         updates["success_criteria"] = json.dumps(args.success_criterion)
     elif has_json:
-        try:
-            parsed = json.loads(args.success_criteria_json)
-        except json.JSONDecodeError:
-            print("Error: --success-criteria-json is not valid JSON.")
-            sys.exit(1)
-        if not isinstance(parsed, list):
-            print("Error: --success-criteria-json must be a JSON array.")
-            sys.exit(1)
-        if not all(isinstance(c, str) for c in parsed):
-            print("Error: --success-criteria-json items must all be strings.")
+        parsed = _loads_criteria_or_exit(args.success_criteria_json, "--success-criteria-json")
+        if not isinstance(parsed, list) or not all(isinstance(c, str) for c in parsed):
+            print("Error: --success-criteria-json must be a JSON array of strings.")
             sys.exit(1)
         updates["success_criteria"] = json.dumps(parsed)
 
@@ -647,11 +648,10 @@ def cmd_project_create(args):
         if not args.name or not args.objective:
             print("--force requires --name and --objective")
             sys.exit(1)
-        criteria = json.loads(args.success_criteria) if args.success_criteria else []
+        criteria = _loads_criteria_or_exit(args.success_criteria, "--success-criteria") if args.success_criteria else []
         pid = db.create_project(
-            name=args.name, objective=args.objective,
-            success_criteria=json.dumps(criteria), out_of_scope=args.out_of_scope or "",
-        )
+            name=args.name, objective=args.objective, out_of_scope=args.out_of_scope or "",
+            success_criteria=json.dumps(criteria))
         print(f"Created project {pid}: {args.name}")
         _init_project_mirror(db, pid)
         return
