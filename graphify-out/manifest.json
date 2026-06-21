@@ -95,8 +95,8 @@
     "semantic_hash": ""
   },
   "tests/test_juggle_settings.py": {
-    "mtime": 1781998160.2831244,
-    "ast_hash": "9cb662a325473a793aef2447f88d1fef",
+    "mtime": 1782009246.0027447,
+    "ast_hash": "0bf09080bc6fc6213dabe100fe4b3be6",
     "semantic_hash": ""
   },
   "tests/test_cockpit_snapshots.py": {
@@ -455,8 +455,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cli.py": {
-    "mtime": 1781129904.2104654,
-    "ast_hash": "146424588e297fc483d58f3c924b1e02",
+    "mtime": 1782009246.0020638,
+    "ast_hash": "54c62ed5eaeb4a702229be410f25903f",
     "semantic_hash": ""
   },
   "src/juggle_scheduler.py": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "src/juggle_settings.py": {
-    "mtime": 1782000936.416234,
-    "ast_hash": "fd5adfcf508c07b4ddff2cc5a8aedc3a",
+    "mtime": 1782009246.00229,
+    "ast_hash": "ee6061d5e546918a7930614a36691235",
     "semantic_hash": ""
   },
   "src/juggle_cockpit_widgets.py": {
@@ -590,8 +590,8 @@
     "semantic_hash": ""
   },
   "TODO.md": {
-    "mtime": 1782007588.7893846,
-    "ast_hash": "9f4e6d4b00084cd3e9d58c7f8143eb7a",
+    "mtime": 1782009337.4831767,
+    "ast_hash": "b15342e7362e9e146b7138718ed652be",
     "semantic_hash": ""
   },
   "README.md": {
@@ -1010,8 +1010,8 @@
     "semantic_hash": ""
   },
   ".claude-plugin/plugin.json": {
-    "mtime": 1782007543.7171395,
-    "ast_hash": "8879c4ecfe8a572527c2951fc327f503",
+    "mtime": 1782009246.0015275,
+    "ast_hash": "3ac01a9a0118f28ab0a94e4d75eaac7d",
     "semantic_hash": ""
   },
   ".claude/settings.json": {
@@ -2467,6 +2467,11 @@
   "specs/2026-06-17-llm-gateway.md": {
     "mtime": 1782007543.734119,
     "ast_hash": "7ec2c95623c5b48de58bf36bf37c1b01",
+    "semantic_hash": ""
+  },
+  "tests/test_cli_verify.py": {
+    "mtime": 1782009246.0025132,
+    "ast_hash": "9562bb17d48e3987450767fc8084d4b9",
     "semantic_hash": ""
   }
 }

@@ -4,14 +4,12 @@
 
 
 
+
 <!-- Session 2026-06-20 — incident recovery (watchdog/pane leaks) + CB project. Check off as completed. -->
 - [ ] **"Always full suite" directive** — make the quarantined tests green (`tests/test_loc_gate.py`, `tests/test_data_migration.py`, `tests/test_integrate.py`), then flip `src/juggle_settings.py` `integrate.test_scope` -> `"full"` + `quarantine_tests` -> `[]`. CM's de-flake landed but the full-suite flip (`03354c8`) did NOT make it onto main.
 - [ ] **LOC-budget trim (v1.77.0 follow-up)** — `juggle_settings.py` (509/493, new watchdog block) and `juggle_watchdog_daemon.py` (427/422, reaper wiring) exceed grandfathered budgets. Trim/extract back under (architecture gate). loc_gate quarantined so non-blocking.
 - [ ] **CB P8 — read-collapse + legacy-table DROP (DO LAST + BACKUP)** — user-approved 2026-06-20: run ONLY after all other actionable items land; back up the prod DB (`~/.claude/juggle/juggle.db`) before the destructive drop; CP/cyc_CP holds until then (watchdog frozen to stop auto-integrate). Irreversible — verify `--pre-p8-check` zero-references first.
 - [ ] #need-clarification **Test-suite runtime / simplify** — underspecified: is the deliverable (a) just MEASURE current full-suite runtime, (b) SPEED IT UP (parallelize/split), or (c) SIMPLIFY structure (merge/prune suites)? "Simplify" has no concrete target. Need the intended outcome. Original: How long does it take for all test suites to run? Can I simplify 
-
-
-- [ ] **Agent verify-loop defect (workable now)** — a coder agent runs the FULL suite, hits a pre-existing quarantined-red (loc_gate), concludes "not done", and re-spawns full-suite background jobs forever (today's zombie a928632a: bjy7n41cz→b3oyouinj→b6fz9htu7→bv70nq56g, 332k tokens). Fix: agent self-verify must deselect quarantined tests (match `integrate`) AND/OR the harness caps verify retries. High-value stability fix.
 
 ## Backlog
 
@@ -19,6 +17,8 @@
 - [ ] Juggle worktrees + `depends_on` ordering — extend the TE worktree pattern (`cyc_<label>` branch + `/tmp/juggle-<label>`) to juggle-repo topics, and add a `depends_on` field to `juggle new` so dispatch blocks until dependencies close. Evidence: 2 juggle same-repo concurrent pairs with real file overlap observed in 2 days (UD∩UI on `juggle_cmd_agents.py`; SY∩TB on `.claude-plugin/plugin.json`); 0 actual conflicts but resolved by timing luck. DDL already designed in TF doc. Evidence: [[knowledge/projects/juggle/2026-06-07-topic-dag-evaluation]]. Scope: lighter alternative to full DAG — ~50 LOC + migration 35; skip `_dag_tick` auto-dispatch and auto-decomposer.
 
 ## Done
+
+- [x] **Agent verify-loop defect** — coder template now mandates verify-ONCE with quarantine deselect; added `juggle verify` one-shot CLI (code-enforced). Kills the zombie-loop that burned 100k+ tokens/agent × 3 today. Merged bc514f3 (v1.79.2). ✅ 2026-06-20
 
 - [x] **Worktree-root leaky default (#4717)** — `_create_worktree` worktree_root now required + hermetic autouse leak guard. Merged fd44a16 (v1.79.1). ✅ 2026-06-20
 - [x] **CLI unfreeze gap → `juggle start` starts/unfreezes watchdog** — merged ef43017 (v1.79.0). ✅ 2026-06-20
