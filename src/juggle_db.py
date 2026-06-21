@@ -33,6 +33,7 @@ from dbops.schema import (  # noqa: E402, F401
     CREATE_AGENT_TOOL_EVENTS,
     CREATE_AGENTS,
     CREATE_ERROR_EVENTS,
+    CREATE_SELFHEAL_AUDIT,
     CREATE_GRAPH_EDGES,
     CREATE_GRAPH_TASKS,
     CREATE_GRAPH_TOPICS,
@@ -61,6 +62,7 @@ from dbops.notifications import NotificationsMixin  # noqa: E402, F401
 from dbops.projects import ProjectsMixin  # noqa: E402, F401
 from dbops.runs import RunsMixin  # noqa: E402, F401
 from dbops.selfheal import SelfhealMixin  # noqa: E402, F401
+from dbops.selfheal_audit import SelfhealAuditMixin  # noqa: E402, F401
 from dbops.session import SessionMixin  # noqa: E402, F401
 from dbops.threads import ThreadsMixin  # noqa: E402, F401
 
@@ -76,6 +78,7 @@ class JuggleDB(
     MessagesMixin,
     NotificationsMixin,
     SelfhealMixin,
+    SelfhealAuditMixin,
     AgentsMixin,
     RunsMixin,
 ):
@@ -147,6 +150,7 @@ class JuggleDB(
             conn.execute(CREATE_WATCHDOG_EVENTS)
             conn.execute(CREATE_AGENT_TOOL_EVENTS)
             conn.execute(CREATE_ERROR_EVENTS)
+            conn.execute(CREATE_SELFHEAL_AUDIT)
             conn.execute(CREATE_PROJECTS)
             conn.execute(CREATE_GRAPH_TASKS)
             conn.execute(CREATE_GRAPH_EDGES)
@@ -166,6 +170,14 @@ class JuggleDB(
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_error_events_status "
                 "ON error_events(status)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_error_events_group_key "
+                "ON error_events(group_key)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_selfheal_audit_action "
+                "ON selfheal_audit(action)"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_notifications_v2_session "

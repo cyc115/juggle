@@ -62,7 +62,7 @@ def register(subparsers, *, vault_path_default: str) -> None:
     )
     p_agent_tools.set_defaults(func=cmd_agent_tools)
 
-    # selfheal subcommands (list/show/set-status/reset/propose)
+    # selfheal subcommands (list/show/audit/set-status/reset/propose)
     register_selfheal_parsers(subparsers)
 
     # grep-vault

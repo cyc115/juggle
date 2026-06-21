@@ -149,103 +149,14 @@ def cmd_agent_tools(args):
                 print(f"    {t}")
 
 
-def _cmd_list_selfheal(args):
-    import json as _json
-    from pathlib import Path as _Path
-    db = get_db(getattr(args, "db_path", None), init=True)
-    status = getattr(args, "status", None)
-    include_hidden = getattr(args, "all", False)
-    rows = db.get_open_error_events(status=status, include_hidden=include_hidden)
-    if getattr(args, "json", False):
-        print(_json.dumps(rows, default=str))
-        return
-    if not rows:
-        print("No matching self-heal errors.")
-        return
-    for row in rows:
-        sig8 = (row["signature_hash"] or "")[:8]
-        cls = row["error_class"]
-        st = row["status"]
-        count = row["count"]
-        last = (row["last_seen"] or "")[:16]
-        if cls == "A":
-            detail = f"{row['exc_type'] or '?'} in {row['entrypoint'] or '?'}"
-        else:
-            ref = _Path(row["juggle_ref"] or "").name or row["juggle_ref"] or "?"
-            detail = f"{row['entrypoint'] or '?'} error via {ref}"
-        # Grey proposed-benign rows so they read as low-priority in the default view.
-        prefix = "\033[2m" if st == "non_issue_proposed" else ""
-        suffix = "\033[0m" if prefix else ""
-        print(f"{prefix}{row['id']:>4}  [{cls}]  {st:<20} count={count}  "
-              f"last={last}  sig={sig8}  {detail}{suffix}")
-
-
-def _cmd_selfheal_set_status(args):
-    from dbops.schema import VALID_ERROR_STATUSES
-    db = get_db(getattr(args, "db_path", None), init=True)
-    if args.status not in VALID_ERROR_STATUSES:
-        print(f"error: invalid status {args.status!r}; "
-              f"choose from {sorted(VALID_ERROR_STATUSES)}")
-        sys.exit(1)
-    updated = db.set_error_event_status(args.id, args.status, action_item_id=args.action_item_id)
-    if updated:
-        print(f"error_event {args.id} status → {args.status}")
-    else:
-        print(f"error: row {args.id} not found")
-        sys.exit(1)
-
-
-def _cmd_selfheal_propose_nonissue(args):
-    db = get_db(getattr(args, "db_path", None), init=True)
-    updated = db.set_error_event_status(args.id, "non_issue_proposed")
-    if updated:
-        print(f"error_event {args.id} status → non_issue_proposed (awaiting operator confirm)")
-    else:
-        print(f"error: row {args.id} not found")
-        sys.exit(1)
-
-
-def _cmd_selfheal_reset_diagnosing(args):
-    db = get_db(getattr(args, "db_path", None), init=True)
-    with db._connect() as conn:
-        row = conn.execute(
-            "SELECT status FROM error_events WHERE id = ?", (args.id,)
-        ).fetchone()
-    if not row:
-        print(f"error: row {args.id} not found")
-        sys.exit(1)
-    if row["status"] != "diagnosing":
-        print(f"error: row {args.id} not in diagnosing state (current: {row['status']})")
-        sys.exit(1)
-    db.set_error_event_status(args.id, "open")
-    print(f"reset error_event {args.id} diagnosing→open")
-
-
-def _cmd_show_selfheal(args):
-    """Print one error_event's full triage detail (command_args + traceback +
-    status + counts). Single-entry complement to list-selfheal."""
-    import json as _json
-    db = get_db(getattr(args, "db_path", None), init=True)
-    row = db.get_error_event(args.id)
-    if row is None:
-        print(f"error: error_event {args.id} not found")
-        sys.exit(1)
-    if getattr(args, "json", False):
-        print(_json.dumps(row, default=str))
-        return
-    sig = row["signature_hash"] or ""
-    print(f"error_event {row['id']}  [class {row['error_class']}]  status={row['status']}")
-    print(f"  signature : {sig}")
-    print(f"  exc_type  : {row['exc_type'] or '-'}")
-    print(f"  entrypoint: {row['entrypoint'] or '-'}")
-    print(f"  surface   : {row['surface'] or '-'}")
-    print(f"  juggle_ref: {row['juggle_ref'] or '-'}")
-    print(f"  count     : {row['count']}")
-    print(f"  first_seen: {row['first_seen']}")
-    print(f"  last_seen : {row['last_seen']}")
-    print(f"  action_item_id: {row['action_item_id'] if row['action_item_id'] is not None else '-'}")
-    print(f"  command_args:\n    {row['command_args'] or '-'}")
-    print("  traceback:")
-    tb = row["traceback"] or "-"
-    for line in tb.splitlines() or [tb]:
-        print(f"    {line}")
+# Self-heal command handlers extracted to juggle_cmd_selfheal (architecture gate).
+# Re-exported so existing `from juggle_cmd_misc import _cmd_list_selfheal, ...`
+# imports (juggle_cli, parsers) keep working.
+from juggle_cmd_selfheal import (  # noqa: E402,F401
+    _cmd_list_selfheal,
+    _cmd_selfheal_audit,
+    _cmd_selfheal_propose_nonissue,
+    _cmd_selfheal_reset_diagnosing,
+    _cmd_selfheal_set_status,
+    _cmd_show_selfheal,
+)

@@ -191,32 +191,13 @@ CREATE TABLE IF NOT EXISTS agent_tool_events (
 """
 
 
-CREATE_ERROR_EVENTS = """
-CREATE TABLE IF NOT EXISTS error_events (
-  id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  signature_hash   TEXT    NOT NULL,
-  error_class      TEXT    NOT NULL CHECK(error_class IN ('A', 'B')),
-  exc_type         TEXT,
-  traceback        TEXT,
-  entrypoint       TEXT,
-  surface          TEXT,
-  command_args     TEXT,
-  juggle_ref       TEXT,
-  count            INTEGER NOT NULL DEFAULT 1,
-  first_seen       TEXT    NOT NULL,
-  last_seen        TEXT    NOT NULL,
-  status           TEXT    NOT NULL DEFAULT 'open',
-  action_item_id   INTEGER
-);
-"""
-
-# Self-heal status vocabulary — the single source of truth now that the DB-level
-# CHECK on error_events.status is dropped (selfheal-triage-v2 P1, 2026-06-21).
-# Validation is enforced in app code (set_error_event_status). This is
-# deliberately the LAST status migration ever needed: new statuses no longer
-# require a table rebuild.
-VALID_ERROR_STATUSES: frozenset[str] = frozenset(
-    {"open", "diagnosing", "awaiting_approval", "non_issue_proposed", "non_issue", "resolved"}
+# Self-heal DDL + status vocabulary live in dbops.schema_selfheal (architecture
+# gate). Re-exported so ``from dbops.schema import CREATE_ERROR_EVENTS`` etc. keep
+# working.
+from dbops.schema_selfheal import (  # noqa: E402,F401
+    CREATE_ERROR_EVENTS,
+    CREATE_SELFHEAL_AUDIT,
+    VALID_ERROR_STATUSES,
 )
 
 CREATE_PROJECTS = """

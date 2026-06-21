@@ -94,9 +94,15 @@ def _do_class_b_scan(transcript_path: Path) -> None:
     _attribute_tool_errors(tool_uses, tool_results)
 
 
-def _attribute_tool_errors(tool_uses: list[dict], tool_results: list[dict]) -> None:
-    """N=10 same-turn causal attribution."""
+def _attribute_tool_errors(tool_uses: list[dict], tool_results: list[dict]) -> int:
+    """N=10 same-turn causal attribution.
+
+    Returns the number of EXPECTED orchestrator hook-deny blocks suppressed
+    (Task 7) — kept OBSERVABLE (counted + logged) rather than silently dropped,
+    so the noise class stays measurable.
+    """
     from juggle_selfheal import record_orchestration_error
+    from selfheal_triage import is_expected_hook_block
 
     N = 10
     recent_uses = tool_uses[-N:]
@@ -109,16 +115,25 @@ def _attribute_tool_errors(tool_uses: list[dict], tool_results: list[dict]) -> N
             break
 
     if juggle_ref is None:
-        return
+        return 0
 
     use_by_id = {tc.get("id"): tc for tc in tool_uses}
 
+    suppressed = 0
     for tr in tool_results:
         if tr.get("is_error") is not True:
             continue
         error_text = str(tr.get("content", ""))
+        # Expected PreToolUse deny-blocks are policy, not Juggle bugs — skip them
+        # at the capture boundary (Task 7), but count for observability.
+        if is_expected_hook_block(error_text):
+            suppressed += 1
+            continue
         use_id = tr.get("tool_use_id")
         tc = use_by_id.get(use_id, {})
         tool_name = tc.get("name", "unknown")
         tool_input = tc.get("input") or {}
         record_orchestration_error(tool_name, tool_input, error_text, juggle_ref)
+    if suppressed:
+        logging.info("selfheal.hookblock suppressed %d expected deny-block(s)", suppressed)
+    return suppressed

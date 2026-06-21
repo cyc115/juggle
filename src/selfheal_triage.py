@@ -71,6 +71,30 @@ def classify_allowlist(exc_type: str | None, entrypoint: str | None, text: str) 
     return None
 
 
+# Robust, Juggle-OWNED anchors for the orchestrator deny-hook (juggle_hooks_tooluse):
+# (1) the systemMessage phrase, and (2) the structured permissionDecision=deny
+# marker. Either suffices — anchoring on the protocol field, not brittle prose, so
+# a wording change in the message can't silently re-admit the noise class.
+_HOOK_BLOCK_PHRASE = "blocked in juggle orchestrator session"
+
+
+def is_expected_hook_block(error_text: str) -> bool:
+    """True if error_text is an EXPECTED PreToolUse orchestrator deny-block.
+
+    These are policy decisions (orchestrator may not edit files directly), not
+    Juggle malfunctions — capturing them only inflates the B-class queue with rows
+    that get allowlist-swept. Filtered at the capture boundary (Task 7).
+    """
+    if not error_text:
+        return False
+    t = error_text.lower()
+    if _HOOK_BLOCK_PHRASE in t:
+        return True
+    # Structured marker: {"permissionDecision": "deny"} (whitespace-insensitive).
+    compact = "".join(t.split())
+    return '"permissiondecision":"deny"' in compact
+
+
 def signal_strength(row: dict) -> int:
     """Real-bug signal score for diagnoser ordering. Higher = investigate sooner."""
     text = (row.get("traceback") or "") + " " + (row.get("command_args") or "")
@@ -99,20 +123,31 @@ def should_resurface(row: dict, now: datetime, *, surge_count: int,
                      absolute_count: int, lease_days: int) -> str | None:
     """Return the re-surface trip reason for a non_issue row, or None (spec §4.4).
 
-    P1 derives signals from existing columns (no new schema):
+    Signals:
     - absolute: live count >= absolute_count (slow-burn, no spike needed).
     - surge:    count >= surge_count AND last_seen within the last day (recent burst).
-    - lease:    classification (proxied by last_seen) older than lease_days.
+    - lease:    benign classification has expired.
     Order: absolute > surge > lease (most-decisive first).
+
+    P2 (2026-06-21): the lease is now a SET-ONCE ``benign_until`` anchor stamped
+    at hide-time, NOT a last_seen proxy. When ``benign_until`` is present it is
+    PRIMARY and OVERRIDES the legacy last_seen-age proxy — so a RECURRING benign
+    error (whose last_seen keeps refreshing) finally leases out instead of
+    sticking forever. The last_seen-age branch survives only as the fallback for
+    legacy rows hidden before this migration (null ``benign_until``).
     """
     count = row.get("count") or 0
     seen = _parse_seen(row.get("last_seen"))
     if count >= absolute_count:
         return "absolute"
-    if seen is not None:
-        age_days = (now - seen).total_seconds() / 86400.0
-        if count >= surge_count and age_days <= 1.0:
-            return "surge"
-        if age_days >= lease_days:
-            return "lease"
+    if seen is not None and count >= surge_count \
+            and (now - seen).total_seconds() / 86400.0 <= 1.0:
+        return "surge"
+    benign_until = _parse_seen(row.get("benign_until"))
+    if benign_until is not None:
+        # Set-once lease is authoritative; it overrides the last_seen proxy.
+        return "lease" if now >= benign_until else None
+    # Fallback for legacy null-benign_until rows: last_seen-age proxy.
+    if seen is not None and (now - seen).total_seconds() / 86400.0 >= lease_days:
+        return "lease"
     return None

@@ -8,13 +8,22 @@ agent pool, thread operations.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from dbops.schema import VALID_ERROR_STATUSES
 
+_log = logging.getLogger(__name__)
+
 
 class SelfhealMixin:
     """Mixin for self-heal error_events table operations."""
+
+    # Set by dedup_or_insert_error: the most recent fresh signature that joined an
+    # ALREADY-populated group_key (an over-aggregation early-warning). Transient
+    # in-process signal; the DURABLE+visible record is a selfheal_audit row
+    # (action='new_variant'). Reset to None on every dedup_or_insert_error call.
+    _last_new_variant: dict | None = None
 
     def dedup_or_insert_error(
         self,
@@ -29,8 +38,18 @@ class SelfhealMixin:
     ) -> int | None:
         """Insert new error_events row or increment count on duplicate.
 
+        Computes + stores the derived ``group_key`` on INSERT (selfheal v2 P2).
         Returns new row id on INSERT; None on dedup (existing open/in-progress row).
         """
+        from selfheal_grouping import group_key as _gk
+
+        self._last_new_variant = None
+        gk = _gk({
+            "error_class": error_class,
+            "exc_type": exc_type,
+            "entrypoint": entrypoint,
+            "traceback": traceback,
+        })
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             # selfheal-triage-v2 P1 asymmetry (spec §4.1): match any LIVE row
@@ -50,11 +69,19 @@ class SelfhealMixin:
                 )
                 conn.commit()
                 return None
+            # Over-aggregation early-warning (research §5.6): a FRESH signature
+            # joining a group that already holds >=1 distinct signature is a new
+            # variant — surface it durably so a real new bug can't hide inside an
+            # existing group.
+            existing_distinct = conn.execute(
+                "SELECT COUNT(DISTINCT signature_hash) FROM error_events WHERE group_key = ?",
+                (gk,),
+            ).fetchone()[0]
             cur = conn.execute(
                 "INSERT INTO error_events "
                 "(signature_hash, error_class, exc_type, traceback, entrypoint, "
-                "surface, command_args, juggle_ref, first_seen, last_seen) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "surface, command_args, juggle_ref, first_seen, last_seen, group_key) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     signature_hash,
                     error_class,
@@ -66,10 +93,26 @@ class SelfhealMixin:
                     juggle_ref,
                     now,
                     now,
+                    gk,
                 ),
             )
+            new_id = cur.lastrowid
+            if existing_distinct >= 1:
+                self._last_new_variant = {"group_key": gk, "signature_hash": signature_hash}
+                _log.info(
+                    "selfheal.new_variant sig=%s group=%s (group already had %d sig(s))",
+                    (signature_hash or "")[:8], gk, existing_distinct,
+                )
+                # DURABLE + visible (DA fix a): record in the audit log, in the
+                # SAME transaction as the insert. Guarded so capture never breaks
+                # on a pre-migration DB lacking the table.
+                self._audit_insert(
+                    conn, new_id, signature_hash, gk, "new_variant",
+                    reason=f"joined group with {existing_distinct} existing sig(s)",
+                    detail=None, _guard=True,
+                )
             conn.commit()
-            return cur.lastrowid
+            return new_id
 
     def set_error_event_status(
         self,
@@ -168,8 +211,8 @@ class SelfhealMixin:
         swept: list[dict] = []
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, exc_type, entrypoint, traceback, command_args, signature_hash "
-                "FROM error_events WHERE status = 'open'"
+                "SELECT id, exc_type, entrypoint, traceback, command_args, "
+                "signature_hash, group_key FROM error_events WHERE status = 'open'"
             ).fetchall()
             for r in rows:
                 text = (r["traceback"] or "") + " " + (r["command_args"] or "")
@@ -181,7 +224,8 @@ class SelfhealMixin:
                     (now, r["id"]),
                 )
                 swept.append({"id": r["id"], "rule_id": rule_id,
-                              "signature_hash": r["signature_hash"]})
+                              "signature_hash": r["signature_hash"],
+                              "group_key": r["group_key"]})
             conn.commit()
         return swept
 
@@ -196,7 +240,7 @@ class SelfhealMixin:
         out: list[dict] = []
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, count, last_seen, signature_hash "
+                "SELECT id, count, last_seen, signature_hash, group_key, benign_until "
                 "FROM error_events WHERE status='non_issue'"
             ).fetchall()
             for r in rows:
@@ -210,6 +254,7 @@ class SelfhealMixin:
                     (nowstr, r["id"]),
                 )
                 out.append({"id": r["id"], "reason": reason,
-                            "signature_hash": r["signature_hash"]})
+                            "signature_hash": r["signature_hash"],
+                            "group_key": r["group_key"]})
             conn.commit()
         return out

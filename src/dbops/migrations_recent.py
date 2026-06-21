@@ -316,13 +316,13 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
 
     # Migration 45 (selfheal-triage-v2 P1): drop status CHECK on error_events.
     _migrate_45_drop_status_check(conn)
+    # Migrations 47-49 (selfheal-triage-v2 P2): group_key + audit + lease.
+    apply_selfheal_p2_migrations(conn)
 
 
-# Migration 45 lives in its own module (loc_gate budget); re-exported here under
-# the historical name so callers/tests keep importing it from migrations_recent.
-from dbops.migration_selfheal_status_check import (  # noqa: E402
-    migrate_45_drop_status_check as _migrate_45_drop_status_check,
-)
+# Migrations 45 and 47-49 live in their own modules (loc_gate budget).
+from dbops.migration_selfheal_status_check import migrate_45_drop_status_check as _migrate_45_drop_status_check  # noqa: E402,E501
+from dbops.migrations_selfheal_p2 import apply_selfheal_p2_migrations  # noqa: E402
 
 
 def run_migration_slug_wheel(conn: sqlite3.Connection) -> None:

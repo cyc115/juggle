@@ -162,5 +162,6 @@ from juggle_selfheal_diagnosis import (  # noqa: E402,F401
     build_diagnosis_prompt,
     _in_flight_exists,
     maybe_dispatch_selfheal_diagnosis,
+    apply_benign_verdict,
     _real_dispatch,
 )

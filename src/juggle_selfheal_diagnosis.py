@@ -172,21 +172,29 @@ def maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=None) -> bool:
     # The only silent-hide path in P1; every suppression is audit-logged.
     if cfg.get("allowlist_sweep_enabled", True):
         from selfheal_triage import classify_allowlist, ALLOWLIST_VERSION
+        lease_days = int(cfg.get("resurface_lease_days", 30))
         for s in db.sweep_allowlist_to_nonissue(classify_allowlist, ALLOWLIST_VERSION):
             _log.info(
                 "selfheal.allowlist sweep id=%s rule=%s v%s sig=%s",
                 s["id"], s["rule_id"], ALLOWLIST_VERSION, (s["signature_hash"] or "")[:8],
             )
+            # Durable audit (P2 Task 4) + set-once benign lease (P2 Task 6): every
+            # allowlist hide is recorded and time-boxed so it re-confirms.
+            db.record_selfheal_audit(s["id"], s["signature_hash"], s.get("group_key"),
+                                     "allowlist_hide", s["rule_id"], detail=f"v{ALLOWLIST_VERSION}")
+            db.set_benign_lease(s["id"], lease_days)
         # Re-surface valve (spec §4.4): a mis-classified non_issue re-alerts.
         rs = db.resurface_nonissue_rows(
             datetime.now(timezone.utc),
             surge_count=int(cfg.get("resurface_surge_count", 20)),
             absolute_count=int(cfg.get("resurface_absolute_count", 100)),
-            lease_days=int(cfg.get("resurface_lease_days", 30)),
+            lease_days=lease_days,
         )
         for r in rs:
             _log.info("selfheal.resurface id=%s reason=%s sig=%s",
                       r["id"], r["reason"], (r["signature_hash"] or "")[:8])
+            db.record_selfheal_audit(r["id"], r["signature_hash"], r.get("group_key"),
+                                     "resurface", r["reason"])
 
     candidates = get_diagnosis_candidates(db, min_count=min_count)
     in_flight = _in_flight_exists(db)
@@ -224,6 +232,38 @@ def maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=None) -> bool:
         os.environ.pop(_SELFHEAL_ENV, None)
 
     return True
+
+
+def apply_benign_verdict(db, event_id: int, cfg: dict | None = None) -> str:
+    """Turn a diagnoser benign verdict into the right terminal state (P2 Task 5).
+
+    Default (gate ``silent_autohide_enabled`` off): a VISIBLE ``non_issue_proposed``
+    proposal — the LOCKED never-silent-terminal default, unchanged. Returns the
+    resulting status.
+
+    Gate on: an AUDITED + LEASED silent ``non_issue`` — but ONLY behind two hard
+    guards (DA fix 🔴): the durable audit table MUST exist, and the audit row MUST
+    be written (atomically, before the flip) by ``silent_autohide``. A missing
+    audit table OR a failed audit write NEVER yields a silent terminal hide; both
+    fall back to the visible proposal.
+    """
+    cfg = cfg or {}
+    enabled = bool(cfg.get("silent_autohide_enabled", False))
+    lease_days = int(cfg.get("resurface_lease_days", 30))
+    if not enabled:
+        db.set_error_event_status(event_id, "non_issue_proposed")
+        return "non_issue_proposed"
+    if not db.has_selfheal_audit_table():
+        _log.warning("selfheal.silent_autohide refused (audit table absent) → proposal")
+        db.set_error_event_status(event_id, "non_issue_proposed")
+        return "non_issue_proposed"
+    try:
+        db.silent_autohide(event_id, reason="diagnoser_benign", lease_days=lease_days)
+        return "non_issue"
+    except Exception as e:  # audit write failed → must NOT silently hide
+        _log.error("selfheal.silent_autohide audit write failed (%s) → proposal", e)
+        db.set_error_event_status(event_id, "non_issue_proposed")
+        return "non_issue_proposed"
 
 
 def _real_dispatch(db, thread_id: str, prompt: str) -> None:
