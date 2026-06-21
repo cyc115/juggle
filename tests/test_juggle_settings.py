@@ -132,9 +132,13 @@ def test_coder_template_includes_verify_once_quarantine_guidance():
 
     The coder template MUST tell agents to: (1) deselect the quarantined tests
     when self-verifying with the full suite, (2) run the suite ONCE,
-    synchronously (no background-poll, no re-run loop), and (3) end by calling
-    complete-agent/fail-agent. Pinned on the in-repo DEFAULT so the rule ships
-    with the code and cannot be lost to a missing/overriding user config.
+    synchronously (no background-poll, no re-run loop) with a HARD-bounded
+    fix-and-re-run cycle (one fix attempt, then STOP), and (3) end by calling
+    complete-agent/fail-agent. The template must NOT also carry a bare
+    "full test suite"/"full pytest" instruction elsewhere that bypasses the
+    deselect (that contradiction is what re-licensed the loop — DA I1).
+    Pinned on the in-repo DEFAULT so the rule ships with the code and cannot be
+    lost to a missing/overriding user config.
     """
     from juggle_settings import DEFAULTS
 
@@ -163,6 +167,25 @@ def test_coder_template_includes_verify_once_quarantine_guidance():
     # (3) Must terminate via complete-agent / fail-agent.
     assert "complete-agent" in low and "fail-agent" in low, (
         "Verification guidance must require ending on complete-agent/fail-agent"
+    )
+
+    # (I1) No competing instruction may tell the agent to run the WHOLE suite
+    #      without the deselect — that contradiction is what re-licensed the
+    #      loop. Every "full ... suite" / "full pytest" mention must co-occur
+    #      with the deselect/verify routing (we assert the dangerous bare forms
+    #      are simply absent).
+    assert "full pytest" not in low, (
+        "template still tells agents to run `full pytest` without deselect (DA I1)"
+    )
+    assert "run the full test suite" not in low, (
+        "template still says `run the full test suite` without deselect (DA I1)"
+    )
+
+    # (I2) The fix-and-re-run cycle must be HARD-bounded (one attempt, then
+    #      stop) — not an open-ended "re-run once per fix" that loops forever.
+    assert "second" in low and ("partial" in low or "blocker" in low), (
+        "anti-loop guidance must hard-stop after one fix attempt "
+        "(no second fix; bail to PARTIAL/BLOCKER) — DA I2"
     )
 
     # Coder-only: pre-existing-reds verify guidance must NOT leak into the
