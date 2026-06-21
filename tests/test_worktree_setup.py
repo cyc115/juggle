@@ -27,6 +27,35 @@ def git_repo(tmp_path):
 
 # ── _create_worktree ──────────────────────────────────────────────────────────
 
+def test_create_worktree_requires_explicit_worktree_root(git_repo):
+    """2026-06-20 regression: a leaky ``worktree_root='/tmp'`` default let a bare
+    ``_create_worktree(repo, label)`` write checkouts to /private/tmp OUTSIDE
+    pytest's tmp_path — 100+ orphaned dangling worktrees accumulated (pruned
+    manually 2026-06-20). worktree_root is now REQUIRED so a bare call can never
+    silently leak: it must raise TypeError instead of writing to /tmp.
+    """
+    from juggle_cmd_agents import _create_worktree
+
+    with pytest.raises(TypeError):
+        _create_worktree(git_repo, "ZZ")  # type: ignore[call-arg]
+
+
+def test_create_worktree_lands_strictly_under_provided_root(git_repo, tmp_path):
+    """2026-06-20 regression companion: the created worktree path must live
+    strictly under the caller-provided ``worktree_root`` (never /tmp)."""
+    from juggle_cmd_agents import _create_worktree
+    root = tmp_path / "wt-root"
+    root.mkdir()
+    ok, wt_path, _branch, msg = _create_worktree(git_repo, "YY", worktree_root=str(root))
+    assert ok, msg
+    resolved = Path(wt_path).resolve()
+    assert str(resolved).startswith(str(root.resolve())), (
+        f"worktree {resolved} escaped provided root {root.resolve()}"
+    )
+    assert not str(resolved).startswith("/private/tmp"), resolved
+    assert not str(resolved).startswith("/tmp"), resolved
+
+
 def test_create_worktree_creates_linked_worktree(git_repo, tmp_path):
     from juggle_cmd_agents import _create_worktree
     ok, wt_path, branch, msg = _create_worktree(git_repo, "AB", worktree_root=str(tmp_path))

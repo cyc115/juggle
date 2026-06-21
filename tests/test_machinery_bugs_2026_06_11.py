@@ -169,7 +169,9 @@ def test_create_worktree_registers_trust(git_repo, tmp_path, monkeypatch):
     import uuid
     from juggle_cmd_agents_worktree import _create_worktree
     label = "E" + uuid.uuid4().hex[:6].upper()
-    ok, wt_path, branch, msg = _create_worktree(git_repo, label)
+    ok, wt_path, branch, msg = _create_worktree(
+        git_repo, label, worktree_root=str(tmp_path)
+    )
     assert ok, f"_create_worktree failed: {msg}"
 
     data = json.loads(fake_claude_json.read_text())
