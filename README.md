@@ -144,10 +144,20 @@ The cockpit shows an aggregate project row with per-node glyphs sourced from nod
 | `/juggle:delegate` | Wizard: pick role, write prompt, dispatch agent |
 | `/juggle:resume-topic <id>` | Switch to a topic, restoring full context |
 | `/juggle:remember <text>` | Explicitly save something to Hindsight memory |
-| `/juggle:toggle-autopilot [project]` | Autonomous mode; with a project arg, executes its task graph end-to-end |
+| `/juggle:toggle-autopilot [project]` | Autonomous mode; with a project arg, decomposes it into a task graph the watchdog runs end-to-end |
 | `/juggle:toggle-talkback` | Toggle TTS voice notifications (macOS) |
 
 Full catalog: [`commands/`](commands/)
+
+### CLI
+
+A few capabilities are CLI verbs rather than slash commands:
+
+```bash
+juggle verify              # run the full test suite once (extra args pass through to pytest)
+juggle autopilot status    # global autopilot flag + per-project task-graph progress
+juggle cockpit             # open the live dashboard (see below)
+```
 
 ## Cockpit
 
