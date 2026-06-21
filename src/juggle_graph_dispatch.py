@@ -1,18 +1,18 @@
 """juggle_graph_dispatch — watchdog-owned graph dispatcher (autopilot Phase 2).
 
-Owns: the per-tick claim→hydrate→dispatch loop for the armed project
-(``graph_tick``), the atomic ready→dispatching claim (the one sanctioned
-``graph_tasks.state`` writer besides ``dbops.db_graph.task_transition`` —
-a compare-and-swap cannot go through read-then-write), the stale-claim
-sweep.
+Owns: the per-tick claim→hydrate→dispatch loop for ALL projects (``graph_tick``),
+the atomic ready→dispatching claim (the one sanctioned ``graph_tasks.state``
+writer besides ``dbops.db_graph.task_transition`` — a compare-and-swap cannot
+go through read-then-write), the stale-claim sweep.
 Must not own: hydration (juggle_graph_hydration — re-exported here for
 callers), task state semantics (dbops.db_graph), completion marking
 (juggle_cmd_agents_graph), or the watchdog poll loop (which only calls
 ``graph_tick`` and must never crash because of it).
 
 The watchdog tick is the SOLE dispatcher (DA B4/M1): complete-agent only
-marks; arming is the ``autopilot_armed_project`` settings key (authority:
-settings table, DA M6 — the toggle command itself lands in Phase 4).
+marks. Per-project arming is REMOVED (P7): the tick processes ready task/
+research nodes across ALL projects. Conversation and legacy plain threads are
+never auto-dispatched.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 
 from dbops import db_graph, db_topics
 from dbops.schema import _now
-from juggle_autopilot_state import (  # noqa: F401 — re-exported, existing importers
+from juggle_autopilot_state import (  # noqa: F401 — re-exported for compat
     ARMED_PROJECT_KEY,
     get_armed_project,
     get_armed_projects,
@@ -129,28 +129,60 @@ def _give_up_dispatch(db, task_id: str, err: Exception) -> None:
 # ── the tick ───────────────────────────────────────────────────────────────────
 
 
+def _all_project_ids(db) -> list[str]:
+    """All project ids that have graph work (topics or tasks), ordered by
+    last_active DESC (projects table) then alphabetically for unlisted ids."""
+    try:
+        with db._connect() as conn:
+            # Priority-ordered ids from the projects table.
+            proj_rows = conn.execute(
+                "SELECT id FROM projects WHERE status='active' "
+                "ORDER BY last_active DESC, id"
+            ).fetchall()
+            listed = [r[0] if not hasattr(r, "__getitem__") or isinstance(r, tuple) else r[0]
+                      for r in proj_rows]
+            # Also collect project ids only present in graph tables (e.g. test fixtures
+            # that create tasks without inserting a projects row).
+            extra: set[str] = set()
+            for tbl in ("graph_topics", "graph_tasks"):
+                try:
+                    for r in conn.execute(
+                        f"SELECT DISTINCT project_id FROM {tbl} "
+                        f"WHERE project_id IS NOT NULL"
+                    ).fetchall():
+                        pid = r[0]
+                        if pid and pid not in listed:
+                            extra.add(pid)
+                except Exception:
+                    pass
+        return listed + sorted(extra)
+    except Exception:
+        return []
+
+
 def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
-    """One dispatcher tick across ALL armed projects, claiming TOPICS (R9).
+    """One dispatcher tick across ALL projects, claiming TOPICS (R9).
 
     Per project: topic stale-claim sweep + topic-ready recompute (a failure
     skips ONLY that project — R4). Ready topics are ordered fairly
     (juggle_graph_scheduler) then dispatched through the claim → thread →
     hydrate → dispatch body. ONE thread per topic (MAX_THREADS bounds concurrent
     topics; integrate runs once per topic). Never raises.
+    Per-project arming is REMOVED (P7): every project with ready task/research
+    nodes is processed. Conversation nodes and legacy plain threads are never
+    auto-dispatched.
     """
     from juggle_graph_hydration import hydrate_for_topic
     from juggle_graph_scheduler import interleave_ready
     from juggle_graph_status import IN_FLIGHT_STATES
 
     stats: dict = {"dispatched": [], "swept": [], "deferred": [], "errors": []}
-    armed = get_armed_projects(db)
-    if not armed:
-        return stats
+    all_projects = _all_project_ids(db)
     dispatch = dispatch_fn or _dispatch_via_pool
 
     ready_by_project: dict[str, list[dict]] = {}
     in_flight: dict[str, int] = {}
-    for pid in armed:
+    for pid in all_projects:
         try:
             stats["swept"] += sweep_stale_topic_claims(db, pid)
             db_topics.recompute_topic_ready(db, pid)
@@ -163,10 +195,8 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
         ready_by_project[pid] = [t for t in topics if t["state"] == "ready"]
         in_flight[pid] = sum(1 for t in topics if t["state"] in IN_FLIGHT_STATES)
 
-    for pid, topic in interleave_ready(ready_by_project, in_flight, armed):
+    for pid, topic in interleave_ready(ready_by_project, in_flight, all_projects):
         tid = topic["id"]
-        if pid not in get_armed_projects(db):
-            continue  # THIS project disarmed mid-batch — others keep going
         try:
             if not claim_topic(db, tid):
                 continue  # another claimer won (DA B4)
@@ -248,21 +278,19 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     # so the loop skips it entirely and the build stalls.  Detect this case and
     # dispatch ready tasks directly via the existing task claim/hydrate path
     # (2026-06-11 bug J).
-    _dispatch_flat_task_fallback(db, armed, stats, dispatch)
+    _dispatch_flat_task_fallback(db, all_projects, stats, dispatch)
 
     return stats
 
 
 def _dispatch_flat_task_fallback(
-    db, armed: list[str], stats: dict, dispatch
+    db, all_projects: list[str], stats: dict, dispatch
 ) -> None:
     """Dispatch ready graph_tasks for projects that have no graph_topics."""
     from juggle_graph_hydration import hydrate_for_task
     from dbops import db_topics as _dt
 
-    for pid in armed:
-        if pid not in get_armed_projects(db):
-            continue
+    for pid in all_projects:
         try:
             if _dt.list_topics(db, pid):
                 continue  # project has topics — topic path owns dispatch
@@ -275,8 +303,6 @@ def _dispatch_flat_task_fallback(
             )
             continue
         for task in tasks:
-            if pid not in get_armed_projects(db):
-                break
             task_id = task["id"]
             fail_key = (str(db.db_path), task_id)
             try:

@@ -739,13 +739,13 @@ class _ProjectArmModal(ModalScreen):
         self._refresh()
 
     def _refresh(self) -> None:
-        from juggle_autopilot_state import get_armed_projects
         from juggle_cmd_autopilot import AUTOPILOT_FLAG
         from juggle_graph_status import graph_counts
 
         projects = self._db.list_projects()
         counts = {p["id"]: graph_counts(self._db, p["id"]) for p in projects}
-        armed = set(get_armed_projects(self._db))
+        # P7: per-project arming removed — all projects are always active
+        armed = {p["id"] for p in projects}
         self._rows = build_project_arm_rows(projects, armed, counts)
         self._cursor = min(self._cursor, max(0, len(self._rows) - 1))
 
@@ -767,30 +767,17 @@ class _ProjectArmModal(ModalScreen):
         )
 
     def _toggle_current(self) -> None:
-        from juggle_autopilot_state import arm_project, disarm_project
-        from juggle_cmd_autopilot import _flag_set
+        # P7: per-project arming removed — toggle is now the global on/off flag
+        from juggle_cmd_autopilot import AUTOPILOT_FLAG, _flag_set
 
-        if not self._rows:
-            return
-        row = self._rows[self._cursor]
-        if row.armed:
-            remaining = disarm_project(self._db, row.pid)
-            if not remaining:
-                _flag_set(False)
-        else:
-            arm_project(self._db, row.pid)
-            _flag_set(True)
+        _flag_set(not AUTOPILOT_FLAG.exists())
         self._refresh()
 
     def _arm_all(self) -> None:
-        from juggle_autopilot_state import arm_project
+        # P7: per-project arming removed — "arm all" enables the global flag
         from juggle_cmd_autopilot import _flag_set
 
-        to_arm = [r.pid for r in self._rows if r.hint != "(complete)"]
-        for pid in to_arm:
-            arm_project(self._db, pid)
-        if to_arm:
-            _flag_set(True)
+        _flag_set(True)
         self._refresh()
 
     def on_key(self, event: events.Key) -> None:

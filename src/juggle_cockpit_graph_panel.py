@@ -217,10 +217,7 @@ def build_graph_panel(
     title = f"Graph{_badge_segment(unread)}"
 
     if not project_id:
-        body = Text(
-            "no armed graph — arm a project with /juggle:toggle-autopilot",
-            style=Style(dim=True),
-        )
+        body = Text("no project selected", style=Style(dim=True))
         return Panel(body, title=title, border_style="grey50")
 
     if not tasks:
@@ -308,10 +305,7 @@ def build_multi_graph_panel(
     """
     title = f"Graph{_badge_segment(unread)}"
     if not dags:
-        body = Text(
-            "no armed graph — arm a project with /juggle:toggle-autopilot",
-            style=Style(dim=True),
-        )
+        body = Text("no projects with tasks yet", style=Style(dim=True))
         return Panel(body, title=title, border_style="grey50")
     if len(dags) == 1:
         d = dags[0]

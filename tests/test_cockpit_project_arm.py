@@ -101,46 +101,41 @@ def test_build_rows_missing_counts_treated_as_no_graph():
 # Toggle logic
 # ---------------------------------------------------------------------------
 
-def test_arm_project_sets_global_on(tmp_path, monkeypatch):
-    """arm_project followed by _flag_set(True) results in global=ON."""
-    from juggle_db import JuggleDB
-    from juggle_autopilot_state import arm_project, get_armed_projects
-    from juggle_cmd_autopilot import AUTOPILOT_FLAG, _flag_set
-
-    # Redirect flag file to tmp_path so we don't touch ~/.juggle/autopilot
-    fake_flag = tmp_path / "autopilot"
-    monkeypatch.setattr("juggle_cmd_autopilot.AUTOPILOT_FLAG", fake_flag)
-
-    db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
-    db.init_db()
-    arm_project(db, "proj-a")
-    _flag_set(True)
-
-    assert get_armed_projects(db) == ["proj-a"]
-    assert fake_flag.exists()
-
-
-def test_disarm_last_project_sets_global_off(tmp_path, monkeypatch):
-    """Disarming the last project with flag_clear clears the global flag."""
-    from juggle_db import JuggleDB
-    from juggle_autopilot_state import arm_project, disarm_project, get_armed_projects
+def test_global_flag_on_via_autopilot_on(tmp_path, monkeypatch):
+    """REGRESSION PIN (P7): global flag set via _flag_set(True) — arming replaced
+    by global toggle. arm_project is removed so this uses the global mechanism."""
     from juggle_cmd_autopilot import _flag_set
 
     fake_flag = tmp_path / "autopilot"
     monkeypatch.setattr("juggle_cmd_autopilot.AUTOPILOT_FLAG", fake_flag)
 
-    db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
-    db.init_db()
-    arm_project(db, "proj-a")
     _flag_set(True)
     assert fake_flag.exists()
 
-    remaining = disarm_project(db, "proj-a")
-    if not remaining:
-        _flag_set(False)
 
-    assert get_armed_projects(db) == []
+def test_global_flag_off_via_autopilot_off(tmp_path, monkeypatch):
+    """REGRESSION PIN (P7): global flag cleared via _flag_set(False)."""
+    from juggle_cmd_autopilot import _flag_set
+
+    fake_flag = tmp_path / "autopilot"
+    monkeypatch.setattr("juggle_cmd_autopilot.AUTOPILOT_FLAG", fake_flag)
+
+    _flag_set(True)
+    assert fake_flag.exists()
+    _flag_set(False)
     assert not fake_flag.exists()
+
+
+def test_arm_project_raises_p7(tmp_path):
+    """REGRESSION PIN (P7): arm_project must raise RuntimeError — removed."""
+    from juggle_db import JuggleDB
+    from juggle_autopilot_state import arm_project
+    import pytest
+
+    db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
+    db.init_db()
+    with pytest.raises(RuntimeError, match="P7"):
+        arm_project(db, "proj-a")
 
 
 def test_arm_all_arms_non_complete_projects():

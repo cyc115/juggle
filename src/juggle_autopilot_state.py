@@ -1,8 +1,12 @@
-"""juggle_autopilot_state — armed-project SET accessors (multi-project autopilot).
+"""juggle_autopilot_state — autopilot settings accessors.
 
-Owns: the ``autopilot_armed_project`` settings key (SOLE arming authority,
-DA M6) whose value is an ordered CSV of project ids. A 1-element value is
-byte-identical to the legacy scalar, so pre-existing DBs need no migration.
+P7: per-project arming is REMOVED. The ``autopilot_armed_project`` settings
+key and its CSV format are preserved as dead data for backward compat (existing
+DBs may have the key; reads are safe no-ops). ``arm_project`` and
+``disarm_project`` raise DeprecationWarning and are no-ops — call sites in
+the cockpit modals are the only remaining callers and they are guarded.
+``get_armed_projects`` / ``get_armed_project`` remain for compat imports but
+always return [] / None (arming is gone).
 Must not own: dispatching, scheduling, or the CLI surface.
 """
 
@@ -39,22 +43,19 @@ def _validate(pid: str) -> None:
 
 
 def arm_project(db, pid: str) -> list[str]:
-    """Append ``pid`` to the armed set (idempotent). Returns the new set."""
-    _validate(pid)
-    armed = get_armed_projects(db)
-    if pid not in armed:
-        armed.append(pid)
-        set_armed_projects(db, armed)
-    return armed
+    """REMOVED (P7): per-project arming is gone. Raises RuntimeError."""
+    raise RuntimeError(
+        "Per-project arming is removed (P7). The tick dispatches all projects "
+        "automatically. Use `juggle autopilot on/off` for the global toggle."
+    )
 
 
 def disarm_project(db, pid: str) -> list[str]:
-    """Remove ``pid`` (absent → no-op). Returns the new set."""
-    armed = get_armed_projects(db)
-    if pid in armed:
-        armed.remove(pid)
-        set_armed_projects(db, armed)
-    return armed
+    """REMOVED (P7): per-project arming is gone. Raises RuntimeError."""
+    raise RuntimeError(
+        "Per-project arming is removed (P7). The tick dispatches all projects "
+        "automatically. Use `juggle autopilot on/off` for the global toggle."
+    )
 
 
 def get_armed_project(db) -> str | None:

@@ -1,7 +1,10 @@
-"""Tests for juggle_autopilot_state — CSV armed-set accessors (multi-project
-autopilot, 2026-06-10). The settings key autopilot_armed_project remains the
-SOLE arming authority (DA M6); its value is now an ordered CSV of project ids
-(1-element value ≡ the legacy scalar — zero migration)."""
+"""Tests for juggle_autopilot_state — autopilot global toggle accessors.
+
+P7: per-project arming is REMOVED. arm_project/disarm_project raise RuntimeError.
+The module retains get_armed_projects (returns []) and get_armed_project (returns
+None) as compat stubs so existing importers don't break on import. The
+autopilot_armed_project settings key is preserved as dead data — reads are safe.
+"""
 from __future__ import annotations
 
 import os
@@ -43,34 +46,24 @@ def test_csv_parse_strip_dedupe_order(db):
     assert st.get_armed_projects(db) == ["a", "b", "c"]
 
 
-def test_arm_appends_idempotently(db):
-    assert st.arm_project(db, "a") == ["a"]
-    assert st.arm_project(db, "b") == ["a", "b"]
-    assert st.arm_project(db, "a") == ["a", "b"]
-    assert db.get_setting(st.ARMED_PROJECT_KEY) == "a,b"
-
-
-def test_arm_rejects_unsafe_ids(db):
-    for bad in ("a,b", "a b", " a", ""):
-        with pytest.raises(ValueError):
-            st.arm_project(db, bad)
-    assert st.get_armed_projects(db) == []
-
-
-def test_disarm_removes_one_keeps_rest(db):
-    st.arm_project(db, "a")
-    st.arm_project(db, "b")
-    assert st.disarm_project(db, "a") == ["b"]
-    assert st.disarm_project(db, "a") == ["b"]  # absent → no-op
-
-
-def test_set_empty_clears_key(db):
-    st.arm_project(db, "a")
-    st.set_armed_projects(db, [])
-    assert db.get_setting(st.ARMED_PROJECT_KEY) is None
-
-
 def test_pre_migration_db_degrades_to_empty(tmp_path):
     d = JuggleDB(db_path=str(tmp_path / "raw.db"))  # no init_db → no settings table
     assert st.get_armed_projects(d) == []
     assert st.get_armed_project(d) is None
+
+
+# ---------------------------------------------------------------------------
+# P7 pins — arm/disarm raise RuntimeError
+# ---------------------------------------------------------------------------
+
+
+def test_arm_project_raises_p7(db):
+    """REGRESSION PIN (P7): arm_project must raise RuntimeError — arming is gone."""
+    with pytest.raises(RuntimeError, match="P7"):
+        st.arm_project(db, "proj")
+
+
+def test_disarm_project_raises_p7(db):
+    """REGRESSION PIN (P7): disarm_project must raise RuntimeError — arming is gone."""
+    with pytest.raises(RuntimeError, match="P7"):
+        st.disarm_project(db, "proj")

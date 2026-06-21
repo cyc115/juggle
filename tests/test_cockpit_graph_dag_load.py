@@ -1,8 +1,11 @@
 """TDD tests for lazy DAG loading in the cockpit snapshot.
 
-snapshot(db, load_graph_dag=True) loads the armed project's tasks+edges into
+snapshot(db, load_graph_dag=True) loads ALL projects' tasks+edges into
 CockpitState.graph_dag. When load_graph_dag is False (default) NO task/edge
-DAG query runs — zero cost when graph mode is off. No armed project → None.
+DAG query runs — zero cost when graph mode is off.
+
+P7: arming concept removed — load_graph_dags returns DAGs for ALL active
+projects with tasks, regardless of the autopilot_armed_project settings key.
 """
 from __future__ import annotations
 
@@ -47,14 +50,13 @@ def _make_project_graph(db, pid="proj1"):
 def test_dag_not_loaded_when_flag_off(db):
     """Default: graph_dag is None and no DAG query runs."""
     _make_project_graph(db)
-    db.set_setting(ARMED_PROJECT_KEY, "proj1")
     state = snapshot(db)  # load_graph_dag defaults False
     assert getattr(state, "graph_dag", None) is None
 
 
-def test_dag_loaded_for_armed_project_when_flag_on(db):
+def test_dag_loaded_for_project_when_flag_on(db):
+    """P7: load_graph_dag=True loads DAGs for all projects with tasks."""
     _make_project_graph(db)
-    db.set_setting(ARMED_PROJECT_KEY, "proj1")
     state = snapshot(db, load_graph_dag=True)
     dag = state.graph_dag
     assert dag is not None
@@ -63,27 +65,35 @@ def test_dag_loaded_for_armed_project_when_flag_on(db):
     assert ("proj1-b", "proj1-a") in dag.edges
 
 
-def test_dag_none_when_no_armed_project(db):
+def test_dag_loaded_without_armed_project_key(db):
+    """REGRESSION PIN (P7): DAG is loaded even when autopilot_armed_project
+    settings key is absent — arming no longer gates DAG loading."""
     _make_project_graph(db)
-    # no ARMED_PROJECT_KEY set
+    db.set_setting(ARMED_PROJECT_KEY, None)  # explicitly absent
     state = snapshot(db, load_graph_dag=True)
-    assert state.graph_dag is None
+    assert state.graph_dag is not None, (
+        "DAG must load without an armed key (P7 — arming removed)"
+    )
 
 
-def test_dag_only_armed_project_tasks(db):
+def test_dag_loads_all_projects(db):
+    """P7: load_graph_dags returns DAGs for ALL projects with tasks."""
     _make_project_graph(db, "proj1")
     _make_project_graph(db, "proj2")
-    db.set_setting(ARMED_PROJECT_KEY, "proj2")
     state = snapshot(db, load_graph_dag=True)
-    assert state.graph_dag.project_id == "proj2"
-    # both projects use ids a/b — assert it queried proj2 only (2 tasks)
-    assert len(state.graph_dag.tasks) == 2
+    # graph_dag is the first project's DAG (compat shim)
+    # The full list is via load_graph_dags
+    from juggle_cockpit_graph_dag import load_graph_dags
+    with db._connect() as conn:
+        dags = load_graph_dags(conn)
+    dag_pids = {d.project_id for d in dags}
+    assert "proj1" in dag_pids
+    assert "proj2" in dag_pids
 
 
 def test_no_extra_query_when_flag_off(db):
     """Spy: the graph_tasks-by-project DAG query must not fire when flag off."""
     _make_project_graph(db)
-    db.set_setting(ARMED_PROJECT_KEY, "proj1")
 
     import sqlite3
     real_connect = sqlite3.connect
@@ -117,8 +127,10 @@ def test_no_extra_query_when_flag_off(db):
 
 def _seed_two_project_topics(db):
     """P1: topics A (2 tasks, 1 verified) and B with a task edge B→A.
-       P2: topic C with 1 task. Settings key 'P1,P2'."""
+       P2: topic C with 1 task."""
     from dbops import db_graph as g, db_topics as tp
+    import time
+
     for pid in ("P1", "P2"):
         with db._connect() as conn:
             from datetime import datetime, timezone
@@ -144,39 +156,57 @@ def _seed_two_project_topics(db):
         # task edge b1 → a1 → crosses B→A boundary
         conn.execute("INSERT INTO graph_edges(task_id,depends_on_id) VALUES('b1','a1')")
         conn.commit()
-    db.set_setting(ARMED_PROJECT_KEY, "P1,P2")
 
 
 def test_load_graph_dags_topics_are_the_dag_tasks(db):
     """REGRESSION PIN (2026-06-11 R5/R9): the loader rendered TASKS as DAG
     tasks and read the armed key as a scalar. Tasks must be TOPICS with task
-    progress; edges the DERIVED topic deps; one GraphDag per armed project
-    (CSV), arm order."""
+    progress; edges the DERIVED topic deps; one GraphDag per project (P7: all
+    projects, not just armed ones)."""
     from juggle_cockpit_graph_dag import load_graph_dags
 
     _seed_two_project_topics(db)
     dags = load_graph_dags(db._connect())
-    assert [d.project_id for d in dags] == ["P1", "P2"]
-    assert {n.id for n in dags[0].tasks} == {"A", "B"}
-    assert dags[0].edges == [("B", "A")]
-    a_task = next(n for n in dags[0].tasks if n.id == "A")
+    dag_pids = {d.project_id for d in dags}
+    assert "P1" in dag_pids and "P2" in dag_pids
+
+    p1_dag = next(d for d in dags if d.project_id == "P1")
+    assert {n.id for n in p1_dag.tasks} == {"A", "B"}
+    assert p1_dag.edges == [("B", "A")]
+    a_task = next(n for n in p1_dag.tasks if n.id == "A")
     assert a_task.tasks_done == 1 and a_task.tasks_total == 2
-    assert "a1" in dags[0].member_tasks["A"] or any(
-        t["id"] == "a1" for t in dags[0].member_tasks["A"]
+    assert "a1" in p1_dag.member_tasks["A"] or any(
+        t["id"] == "a1" for t in p1_dag.member_tasks["A"]
     )
 
 
 def test_load_graph_dag_shim_returns_first(db):
+    """load_graph_dag (compat shim) returns first project's DAG."""
     from juggle_cockpit_graph_dag import load_graph_dag
 
     _seed_two_project_topics(db)
     dag = load_graph_dag(db._connect())
-    assert dag is not None and dag.project_id == "P1"
+    assert dag is not None
+    assert dag.project_id in ("P1", "P2")
 
 
-def test_load_graph_dags_empty_when_disarmed(db):
+def test_load_graph_dags_empty_when_no_projects(db):
+    """P7 replacement for old 'disarmed' test: no projects → empty DAG list."""
+    from juggle_cockpit_graph_dag import load_graph_dags
+
+    # Fresh DB with no projects → empty list
+    dags = load_graph_dags(db._connect())
+    assert dags == []
+
+
+def test_load_graph_dags_returns_all_despite_armed_key_absent(db):
+    """REGRESSION PIN (P7): load_graph_dags must return DAGs for all projects
+    even when autopilot_armed_project key is NULL — arming is gone."""
     from juggle_cockpit_graph_dag import load_graph_dags
 
     _seed_two_project_topics(db)
-    db.set_setting(ARMED_PROJECT_KEY, None)
-    assert load_graph_dags(db._connect()) == []
+    db.set_setting(ARMED_PROJECT_KEY, None)  # explicitly clear any legacy key
+    dags = load_graph_dags(db._connect())
+    dag_pids = {d.project_id for d in dags}
+    assert "P1" in dag_pids
+    assert "P2" in dag_pids

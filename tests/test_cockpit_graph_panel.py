@@ -105,17 +105,20 @@ def test_no_badge_when_zero_unread():
 
 
 # ---------------------------------------------------------------------------
-# No armed graph
+# No project selected (P7: "no armed graph" replaced by "no project selected")
 # ---------------------------------------------------------------------------
 
 
-def test_no_armed_graph_hint():
+def test_no_project_selected_hint():
+    """REGRESSION PIN (P7): project_id=None shows 'no project selected',
+    NOT the old 'no armed graph' message."""
     panel = build_graph_panel(
         project_id=None, tasks=[], edges=[],
         selection=0, unread=0, width=80, height=20, pan_offset=0,
     )
     out = _text(panel)
-    assert "no armed" in out.lower()
+    assert "armed" not in out.lower(), "P7: 'armed' must not appear in panel"
+    assert "no project" in out.lower() or "selected" in out.lower()
 
 
 def test_armed_but_empty_graph_hint():

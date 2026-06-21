@@ -108,7 +108,6 @@ def send_task_to_agent(
     thread_id: str | None,
     prompt: str,
     *,
-    force_task: bool = True,
     skip_template: bool = False,
     allow_main: bool = False,
     worktree_path_override: str | None = None,
@@ -122,18 +121,12 @@ def send_task_to_agent(
 
     Raises RuntimeError on hard failure. Does NOT release the agent on error —
     caller (dispatch_node) handles cleanup. Never calls sys.exit.
+    The check_task_guard lives at the CLI layer (cmd_send_task); the tick path
+    (dispatch_node) skips it by calling this function directly.
     """
-    from juggle_cmd_agents_graph import check_task_guard
-
     agent = db.get_agent(agent_id)
     if agent is None:
         raise RuntimeError(f"agent {agent_id} not found")
-
-    guard_err = check_task_guard(
-        db, agent.get("assigned_thread"), force=force_task
-    )
-    if guard_err:
-        raise RuntimeError(f"task guard refused: {guard_err}")
 
     mgr = _mgr or _com.JuggleTmuxManager()
     _role = agent.get("role")
@@ -317,7 +310,6 @@ def dispatch_node(
     try:
         send_task_to_agent(
             db, agent["id"], thread_id, prompt,
-            force_task=True,
             db_path=str(db.db_path),
         )
     except BaseException as exc:

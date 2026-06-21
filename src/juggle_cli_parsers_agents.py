@@ -253,17 +253,6 @@ def register(subparsers) -> None:
         default=False,
         help="Bypass worktree guard and allow coder/planner to run in main worktree (logged)",
     )
-    p_send_task.add_argument(
-        # '--force-node' is a DEPRECATED hidden alias of '--force-task', baked
-        # into the autopilot hook + global CLAUDE.md — it MUST keep working.
-        "--force-task",
-        "--force-node",
-        action="store_true",
-        dest="force_task",
-        default=False,
-        help="Bypass the graph-task guard: dispatch to a thread bound to a "
-        "tick-owned graph task (the autopilot tick uses this internally)",
-    )
     p_send_task.set_defaults(func=cmd_send_task)
 
     # send-message

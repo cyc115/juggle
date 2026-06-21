@@ -409,7 +409,7 @@ class TestGuardBypassForMirror:
             conn.execute("UPDATE graph_topics SET state='ready' WHERE id='T-real'")
             conn.commit()
 
-        err = check_task_guard(db, tid, force=False)
+        err = check_task_guard(db, tid)
         assert err is not None, "expected a guard error for a real tick-owned topic"
 
     def test_guard_allows_mirror_topic(self, db):
@@ -432,7 +432,7 @@ class TestGuardBypassForMirror:
             )
             conn.commit()
 
-        err = check_task_guard(db, tid, force=False)
+        err = check_task_guard(db, tid)
         assert err is None, f"expected None for mirror topic, got: {err!r}"
 
     def test_guard_allows_send_to_real_topic_despite_mirror(self, db):
@@ -444,11 +444,9 @@ class TestGuardBypassForMirror:
         """
         from dbops.db_mirror import mirror_upsert_thread
         from dbops.db_topics import create_topic, set_topic_thread
-        from juggle_autopilot_state import set_armed_projects
         from juggle_cmd_agents_graph import check_task_guard
 
         _project(db, "P1")
-        set_armed_projects(db, ["P1"])
 
         # A non-mirror thread with a real pending topic (not tick-owned)
         tid_real = _thread(db, project_id="P1", status="active", topic="real work")
@@ -464,7 +462,7 @@ class TestGuardBypassForMirror:
             mt = _thread(db, project_id="P1", status="active", topic=f"mirror {i}")
             mirror_upsert_thread(db, mt, "P1")
 
-        err = check_task_guard(db, tid_real, force=False)
+        err = check_task_guard(db, tid_real)
         assert err is None, f"expected None for real pending topic, got: {err!r}"
 
 

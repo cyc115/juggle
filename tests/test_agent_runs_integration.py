@@ -116,13 +116,13 @@ def test_dispatch_resolves_graph_node_thread(started_db, tmp_path):
 
     prompt_file = tmp_path / "task.txt"
     prompt_file.write_text("graph task.\n")
-    # Bound graph task is tick-owned; dispatch with --force-task.
+    # Task is in pending state — not tick-owned yet, no guard fires (P7: --force-task removed).
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%4"}):
         r = run_cli(["get-agent", gthread, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
         res = run_cli(
-            ["send-task", "--force-task", agent_id, str(prompt_file)], db_path
+            ["send-task", agent_id, str(prompt_file)], db_path
         )
     assert res.returncode == 0, res.stdout + res.stderr
 

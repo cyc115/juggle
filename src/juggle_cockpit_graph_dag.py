@@ -1,24 +1,26 @@
 """Lazy DAG loader for the cockpit graph panel.
 
-Loads the armed project(s) topic graph from graph_topics / graph_tasks /
+Loads ALL projects' topic graphs from graph_topics / graph_tasks /
 graph_edges — ONLY when graph mode is active (snapshot(load_graph_dag=True)).
 Extracted from juggle_cockpit_model to keep that module under its LOC budget.
-Read-only; degrades to None / [] on pre-migration DBs or when no project is armed.
+Read-only; degrades to None / [] on pre-migration DBs or projects with no tasks.
 
 Topic tier (R5/R9): DAG tasks are TOPICS, edges are derived topic deps, task
 counts per topic are attached as tasks_done/tasks_total on GraphTask. The flat
 task list per topic is stored in GraphDag.member_tasks for the detail modal.
+
+P7: per-project arming is removed — all projects with tasks are shown.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-ARMED_PROJECT_SETTING = "autopilot_armed_project"
+ARMED_PROJECT_SETTING = "autopilot_armed_project"  # kept for compat reads
 
 
 @dataclass(frozen=True)
 class GraphDag:
-    """Lazily-loaded DAG for one armed project (graph mode only). Read-only."""
+    """Lazily-loaded DAG for one project (graph mode only). Read-only."""
 
     project_id: str
     tasks: list  # list[GraphTask] — TOPICS as tasks (DAG vertices)
@@ -27,21 +29,30 @@ class GraphDag:
     project_name: "str | None" = None  # human project name for the panel header
 
 
-def _armed_set(conn) -> list[str]:
-    """CSV parse of the settings value — mirrors juggle_autopilot_state accessor."""
+def _all_project_ids(conn) -> list[str]:
+    """All project ids that have graph work, ordered by last_active DESC then
+    alphabetically. Also picks up project ids only in graph tables (no projects row)."""
     try:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (ARMED_PROJECT_SETTING,)
-        ).fetchone()
+        proj_rows = conn.execute(
+            "SELECT id FROM projects WHERE status='active' "
+            "ORDER BY last_active DESC, id"
+        ).fetchall()
+        listed = [r[0] for r in proj_rows]
+        extra: set[str] = set()
+        for tbl in ("graph_topics", "graph_tasks"):
+            try:
+                for r in conn.execute(
+                    f"SELECT DISTINCT project_id FROM {tbl} "
+                    f"WHERE project_id IS NOT NULL"
+                ).fetchall():
+                    pid = r[0]
+                    if pid and pid not in listed:
+                        extra.add(pid)
+            except Exception:
+                pass
+        return listed + sorted(extra)
     except Exception:
         return []
-    raw = ((row[0] if row else "") or "").strip()
-    out: list[str] = []
-    for part in raw.split(","):
-        pid = part.strip()
-        if pid and pid not in out:
-            out.append(pid)
-    return out
 
 
 def _project_name(conn, pid: str) -> "str | None":
@@ -175,9 +186,9 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
 
 
 def load_graph_dags(conn) -> list["GraphDag"]:
-    """Load topic-tier DAGs for all armed projects (CSV settings key), in order."""
+    """Load topic-tier DAGs for ALL active projects with tasks, in priority order."""
     result = []
-    for pid in _armed_set(conn):
+    for pid in _all_project_ids(conn):
         dag = _load_one(conn, pid)
         if dag is not None:
             result.append(dag)
@@ -185,6 +196,6 @@ def load_graph_dags(conn) -> list["GraphDag"]:
 
 
 def load_graph_dag(conn) -> "GraphDag | None":
-    """COMPAT SHIM: first armed project's DAG, or None (legacy single-armed callers)."""
+    """COMPAT SHIM: first project's DAG, or None (legacy single-project callers)."""
     dags = load_graph_dags(conn)
     return dags[0] if dags else None

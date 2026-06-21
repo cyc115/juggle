@@ -217,13 +217,14 @@ def test_hydration_uses_topic_handoff_not_junk(db):
 # ── graph_tick orchestration ───────────────────────────────────────────────────
 
 
-def test_tick_noop_when_disarmed(db):
-    """(adapted to topics, R9 2026-06-11)"""
-    _mk_topic(db, "a")  # ready topic, but nothing armed
+def test_tick_dispatches_without_arming(db):
+    """REGRESSION PIN (P7): tick dispatches all ready topics without any
+    armed-project setting — per-project arming is removed."""
+    _mk_topic(db, "a")  # ready topic; no armed key needed after P7
     fake = FakeDispatch()
     stats = gd.graph_tick(db, dispatch_fn=fake)
-    assert stats["dispatched"] == [] and fake.calls == []
-    assert tp.get_topic(db, "a")["state"] == "ready"
+    assert stats["dispatched"] == ["a"]
+    assert tp.get_topic(db, "a")["state"] == "running"
 
 
 def test_tick_dispatches_ready_tasks_and_binds_threads(db):
@@ -318,20 +319,20 @@ def test_tick_capacity_error_defers_quietly(db):
     assert db.get_open_action_items() == []  # no spam for capacity defers
 
 
-def test_tick_stops_claiming_when_disarmed_mid_batch(db):
-    """(adapted to topics, R9 2026-06-11)"""
+def test_tick_processes_all_topics_despite_settings_key_change(db):
+    """REGRESSION PIN (P7): clearing ARMED_PROJECT_KEY mid-dispatch must NOT
+    stop the tick — the armed key is dead data after P7. Both topics dispatch."""
     _mk_topic(db, "a")
     _mk_topic(db, "b")
-    _arm(db)
 
-    def disarming_dispatch(db_, thread_id, prompt, topic):
-        db_.set_setting(gd.ARMED_PROJECT_KEY, None)  # disarm during topic 1
+    def key_clearing_dispatch(db_, thread_id, prompt, topic):
+        db_.set_setting(gd.ARMED_PROJECT_KEY, None)  # key change is ignored
 
-    stats = gd.graph_tick(db, dispatch_fn=disarming_dispatch)
+    stats = gd.graph_tick(db, dispatch_fn=key_clearing_dispatch)
 
-    assert len(stats["dispatched"]) == 1  # second topic never claimed
+    assert set(stats["dispatched"]) == {"a", "b"}
     states = {tid_: tp.get_topic(db, tid_)["state"] for tid_ in ("a", "b")}
-    assert sorted(states.values()) == ["ready", "running"]
+    assert all(s == "running" for s in states.values())
 
 
 # ── DA round-2 (2026-06-10): dispatch window, retry cap, error hygiene ─────────
@@ -633,25 +634,23 @@ def test_each_thread_bound_to_its_topics_project(db):
         assert th and db.get_thread(th)["project_id"] == pid
 
 
-def test_disarm_one_mid_batch_other_project_keeps_dispatching(db):
-    """REGRESSION PIN (2026-06-10): old mid-batch guard stopped EVERYTHING on
-    disarm — must skip only the disarmed project's topics."""
+def test_all_projects_dispatched_regardless_of_settings_key(db):
+    """REGRESSION PIN (P7): ARMED_PROJECT_KEY changes mid-batch are ignored —
+    all projects dispatch regardless of what the settings key contains."""
     for t_ in ("A1", "A2"):
         _mk_topic(db, t_, "P1")
     for t_ in ("B1", "B2"):
         _mk_topic(db, t_, "P2")
-    _arm_many(db, "P1", "P2")
 
-    class DisarmingDispatch(FakeDispatch):
+    class SettingsKeyMutator(FakeDispatch):
         def __call__(self, db_, thread_id, prompt, topic):
             super().__call__(db_, thread_id, prompt, topic)
             if topic["id"].startswith("A"):
-                db_.set_setting(gd.ARMED_PROJECT_KEY, "P2")
+                db_.set_setting(gd.ARMED_PROJECT_KEY, "P2")  # ignored by tick
 
-    stats = gd.graph_tick(db, dispatch_fn=DisarmingDispatch())
+    stats = gd.graph_tick(db, dispatch_fn=SettingsKeyMutator())
     dispatched = set(stats["dispatched"])
-    assert {"B1", "B2"} <= dispatched
-    assert len({"A1", "A2"} & dispatched) == 1
+    assert {"A1", "A2", "B1", "B2"} <= dispatched
 
 
 def test_poisoned_project_scan_does_not_block_others(db, monkeypatch):

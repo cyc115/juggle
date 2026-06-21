@@ -131,6 +131,7 @@ def test_complete_unbound_thread_unaffected_by_enforcement(db):
 
 
 def test_check_task_guard_refuses_tick_owned_states(db):
+    """DA B5: guard refuses tick-owned states. P7: no force= param, no R8 check."""
     from juggle_cmd_agents_graph import check_task_guard
 
     g.create_task(db, task_id="n", project_id="INBOX", title="N", prompt="p")
@@ -141,12 +142,12 @@ def test_check_task_guard_refuses_tick_owned_states(db):
         with db._connect() as conn:
             conn.execute("UPDATE graph_tasks SET state=? WHERE id='n'", (state,))
             conn.commit()
-        err = check_task_guard(db, tid, force=False)
-        assert err and "force-task" in err, state
-        assert check_task_guard(db, tid, force=True) is None, state
+        err = check_task_guard(db, tid)
+        assert err and "tick" in err, f"expected refusal for state={state!r}, got: {err!r}"
 
 
 def test_check_task_guard_allows_operator_states_and_unbound(db):
+    """DA B5: operator states and unbound threads are allowed through."""
     from juggle_cmd_agents_graph import check_task_guard
 
     g.create_task(db, task_id="n", project_id="INBOX", title="N", prompt="p")
@@ -157,16 +158,14 @@ def test_check_task_guard_allows_operator_states_and_unbound(db):
         with db._connect() as conn:
             conn.execute("UPDATE graph_tasks SET state=? WHERE id='n'", (state,))
             conn.commit()
-        assert check_task_guard(db, tid, force=False) is None, state
+        assert check_task_guard(db, tid) is None, state
     tid2 = db.create_thread("t2", session_id="s")
-    assert check_task_guard(db, tid2, force=False) is None  # unbound thread
+    assert check_task_guard(db, tid2) is None  # unbound thread
 
 
-def test_send_task_refuses_task_bound_thread_without_force(db, tmp_path, monkeypatch, capsys):
-    """REGRESSION PIN (DA B5, 2026-06-10): the autopilot LLM loop raced the
-    tick by manually dispatching ready/running graph tasks. cmd_send_task must
-    refuse threads bound to tick-owned tasks unless --force-task, BEFORE any
-    tmux side effects."""
+def test_send_task_refuses_task_bound_thread_in_tick_owned_state(db, tmp_path, monkeypatch, capsys):
+    """REGRESSION PIN (DA B5, 2026-06-10 / P7): cmd_send_task refuses threads
+    bound to tick-owned tasks (no --force-task bypass after P7)."""
     import juggle_cmd_agents_common as _com
     from juggle_cmd_agents import cmd_send_task
 
@@ -189,25 +188,24 @@ def test_send_task_refuses_task_bound_thread_without_force(db, tmp_path, monkeyp
     args = argparse.Namespace(
         agent_id=agent_id, prompt_file=str(prompt_file), no_template=True,
         worktree_path=None, worktree_branch=None, main_repo_path=None,
-        allow_main=False, force_task=False,
+        allow_main=False,
     )
     with pytest.raises(SystemExit) as ei:
         cmd_send_task(args)
     assert ei.value.code != 0
-    assert "force-task" in capsys.readouterr().out
 
 
-def test_send_task_force_task_flag_registered():
-    """--force-task must be wired into the send-task parser."""
+def test_send_task_force_task_flag_removed():
+    """REGRESSION PIN (P7): --force-task is removed from the send-task parser.
+    The parser must exit 2 (unknown flag) when --force-task is passed."""
     import juggle_cli_parsers_agents as parsers
 
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command")
     parsers.register(sub)
-    args = parser.parse_args(["send-task", "AGENT", "/tmp/p.md", "--force-task"])
-    assert args.force_task is True
+    # Valid invocation still works.
     args = parser.parse_args(["send-task", "AGENT", "/tmp/p.md"])
-    assert args.force_task is False
+    assert not hasattr(args, "force_task") or args.force_task is None  # not present
 
 
 # ── topic completion gate + marking (R9, 2026-06-11) ──────────────────────────
@@ -337,50 +335,43 @@ def test_topic_with_failed_task_completes_as_failed_verify(db, monkeypatch):
     assert tp.get_topic(db, "B")["state"] == "blocked-failed"
 
 
-# ── armed-project dispatch guard (R8, adapted to topics 2026-06-11) ───────────
+# ── armed-project dispatch guard removed (P7) ─────────────────────────────────
 
 
-def test_guard_refuses_unbound_thread_of_armed_project(db):
-    """REGRESSION PIN (2026-06-10 R8): ad-hoc send-task to an armed project's
-    threads bypassed the graph — new work must route through add-task."""
+def test_guard_does_not_refuse_unbound_thread_of_any_project(db):
+    """REGRESSION PIN (P7): R8 armed-project guard is REMOVED. Ad-hoc send-task
+    to any project's unbound thread is now allowed by check_task_guard."""
     from juggle_cmd_agents_graph import check_task_guard
-    from juggle_autopilot_state import arm_project
 
-    arm_project(db, "INBOX")
     tid = db.create_thread("adhoc", session_id="s")
     db.update_thread(tid, project_id="INBOX")
-    err = check_task_guard(db, tid, force=False)
-    assert err and "add-task" in err and "force-task" in err
-    assert check_task_guard(db, tid, force=True) is None
+    # No armed key set, no project in armed state — guard must be silent.
+    assert check_task_guard(db, tid) is None
 
 
-def test_guard_lifts_on_disarm_and_ignores_unarmed(db):
+def test_guard_ignores_armed_project_key(db):
+    """REGRESSION PIN (P7): writing ARMED_PROJECT_KEY does not trigger the R8 guard.
+    check_task_guard only fires on DA B5 (tick-owned task/topic state)."""
     from juggle_cmd_agents_graph import check_task_guard
-    from juggle_autopilot_state import arm_project, disarm_project
+    from juggle_autopilot_state import ARMED_PROJECT_KEY
 
-    p2 = db.create_project(name="Other", objective="o")
-    arm_project(db, p2)
     tid = db.create_thread("adhoc", session_id="s")
     db.update_thread(tid, project_id="INBOX")
-    assert check_task_guard(db, tid, force=False) is None  # unarmed project
-    arm_project(db, "INBOX")
-    assert check_task_guard(db, tid, force=False) is not None
-    disarm_project(db, "INBOX")
-    assert check_task_guard(db, tid, force=False) is None
+    # Write the key directly (arm_project raises RuntimeError in P7).
+    db.set_setting(ARMED_PROJECT_KEY, "INBOX")
+    assert check_task_guard(db, tid) is None
 
 
 def test_guard_topic_bound_operator_state_allowed(db):
-    """R8 must not tighten DA B5: a TOPIC-bound thread in operator territory
-    (failed-exec) stays manually redispatchable even while armed."""
+    """DA B5: a TOPIC-bound thread in operator territory (failed-exec) stays
+    manually redispatchable — no arming needed after P7."""
     from dbops import db_topics as tp_
     from juggle_cmd_agents_graph import check_task_guard
-    from juggle_autopilot_state import arm_project
 
-    arm_project(db, "INBOX")
     tp_.create_topic(db, topic_id="T1", project_id="INBOX", title="t")
     tid = db.create_thread("t", session_id="s")
     tp_.set_topic_thread(db, "T1", tid)
     with db._connect() as conn:
         conn.execute("UPDATE graph_topics SET state='failed-exec' WHERE id='T1'")
         conn.commit()
-    assert check_task_guard(db, tid, force=False) is None
+    assert check_task_guard(db, tid) is None

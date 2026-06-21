@@ -40,6 +40,13 @@ def cmd_send_task(args):
     _v = getattr(args, "main_repo_path", None)
     cli_main_repo = _v.strip() if isinstance(_v, str) else None
 
+    from juggle_cmd_agents_graph import check_task_guard
+
+    guard_err = check_task_guard(db, thread_uuid)
+    if guard_err:
+        print(f"Error: {guard_err}")
+        sys.exit(1)
+
     import juggle_dispatch_core as _dc
 
     try:
@@ -48,7 +55,6 @@ def cmd_send_task(args):
             args.agent_id,
             thread_uuid,
             prompt,
-            force_task=getattr(args, "force_task", False),
             skip_template=getattr(args, "no_template", False),
             allow_main=getattr(args, "allow_main", False),
             worktree_path_override=cli_wt_path or None,
@@ -63,8 +69,6 @@ def cmd_send_task(args):
                 "Error: Cannot dispatch task without an isolated worktree. "
                 "Worktree auto-create failed. Use --allow-main to override (bypass is logged)."
             )
-        elif "task guard" in err:
-            print(f"Error: {err.replace('task guard refused: ', '')}")
         else:
             print(f"Error: {e}")
         sys.exit(1)

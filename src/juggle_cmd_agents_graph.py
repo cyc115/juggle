@@ -78,17 +78,18 @@ def enforce_handoff_contract(db, thread_uuid, handoff) -> None:
     sys.exit(1)
 
 
-def check_task_guard(db, thread_uuid, *, force: bool) -> str | None:
-    """DA B5 + R8 (3-tier): manual dispatch that fights the tick is refused.
+def check_task_guard(db, thread_uuid) -> str | None:
+    """DA B5 (3-tier): manual CLI dispatch to a tick-protected thread is refused.
 
-    TOPIC-bound thread in a tick-owned state → double-dispatch race (DA B5,
-    lifted task→topic; legacy task bindings still checked). Unbound thread of
-    an ARMED project → new work must enter the graph as a task (R8, spec
-    §2.11). None = dispatch may proceed.
+    TOPIC-bound thread in a protected state (dispatching/running/integrating/
+    verified) → double-dispatch race risk. Returns an error string or None.
+    The R8 armed-project guard is REMOVED (P7 — no per-project arming).
+    This guard lives at the CLI layer only; the tick path (dispatch_node) does
+    NOT go through this check.
     """
     from dbops import db_graph, db_topics
 
-    if force or not thread_uuid:
+    if not thread_uuid:
         return None
     try:
         topic = db_topics.get_topic_by_thread(db, thread_uuid)
@@ -104,19 +105,7 @@ def check_task_guard(db, thread_uuid, *, force: bool) -> str | None:
         return (
             f"thread is bound to graph {kind} {bound['id']} in tick-owned "
             f"state {bound['state']!r} — the autopilot watchdog tick "
-            f"dispatches it. Use --force-task to override."
-        )
-    from juggle_autopilot_state import get_armed_projects
-
-    thread = db.get_thread(thread_uuid) or {}
-    pid = thread.get("project_id")
-    if pid and pid in get_armed_projects(db):
-        return (
-            f"thread belongs to ARMED project {pid} — new work must enter its "
-            f"graph: `juggle graph add-task … --topic <t> --project {pid}` "
-            "(the tick dispatches it). Narrow exceptions (graph-machinery "
-            "fixes; planning whose output IS the tasks): re-run with "
-            "--force-task."
+            f"owns this node."
         )
     return None
 
