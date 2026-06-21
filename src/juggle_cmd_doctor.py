@@ -51,6 +51,62 @@ def _migrate_config(cfg: dict) -> tuple[dict, list[str]]:
     return cfg, changes
 
 
+def _clear_settings_cache() -> None:
+    """Clear the settings cache if get_settings happens to be lru_cached.
+
+    get_settings is currently uncached (re-reads on every call), so this is a
+    best-effort guard — AttributeError just means there is nothing to clear.
+    """
+    try:
+        from juggle_settings import get_settings
+
+        get_settings.cache_clear()  # type: ignore[attr-defined]
+    except AttributeError:
+        pass
+
+
+def _check_stale_config(dry: bool) -> None:
+    """Report stale/inert/unknown config keys; prune inert keys when not dry.
+
+    Reloads the (possibly just-migrated) on-disk config, analyzes it against the
+    live DEFAULTS schema, prints the report on every run, and in non-dry-run
+    backs up + prunes the inert (safe-to-remove) keys. A malformed config is
+    skipped gracefully so doctor never crashes here.
+    """
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return  # unreadable/corrupt — already surfaced earlier; skip gracefully
+    if not isinstance(cfg, dict):
+        return
+
+    import juggle_config_doctor as cdoc
+    from juggle_settings import DEFAULTS
+
+    report = cdoc.analyze_config(cfg, DEFAULTS)
+    for line in cdoc.format_report(report):
+        print(line)
+
+    if not report.prunable_paths:
+        return
+    if dry:
+        print(
+            f"stale config: would prune {len(report.prunable_paths)} "
+            "inert key(s) (dry-run — no write)"
+        )
+        return
+
+    if not BACKUP_PATH.exists():
+        shutil.copy2(CONFIG_PATH, BACKUP_PATH)
+    new_cfg, removed = cdoc.prune_config(cfg, report.prunable_paths)
+    CONFIG_PATH.write_text(json.dumps(new_cfg, indent=2))
+    _clear_settings_cache()
+    print(
+        f"stale config: pruned {len(removed)} inert key(s): "
+        f"{', '.join(removed)} (backup: {BACKUP_PATH})"
+    )
+
+
 def cmd_doctor(args) -> int:
     dry = getattr(args, "dry_run", False)
     print(f"juggle doctor — dry_run={dry}")
@@ -64,15 +120,20 @@ def cmd_doctor(args) -> int:
                 if not BACKUP_PATH.exists():
                     shutil.copy2(CONFIG_PATH, BACKUP_PATH)
                 CONFIG_PATH.write_text(json.dumps(new_cfg, indent=2))
-                from juggle_settings import get_settings
-
-                get_settings.cache_clear()
+                _clear_settings_cache()
             print(f"config: {len(changes)} change(s):")
             for c in changes:
                 print(f"  - {c}")
             print(f"  backup: {BACKUP_PATH}" if not dry else "  (dry-run — no write)")
         else:
             print("config: already on 1.21.0 schema")
+
+        # 1b. Stale-config pass — runs on EVERY invocation (even when the
+        # migration above made no changes). Detects inert keys (code no longer
+        # honors them, e.g. integrate.* since the v1.80.0 full-suite directive)
+        # and unknown keys (typos / removed options). Prunes ONLY inert keys in
+        # non-dry-run; unknown keys are report-only.
+        _check_stale_config(dry)
     else:
         print(f"config: {CONFIG_PATH} does not exist — nothing to migrate")
 
