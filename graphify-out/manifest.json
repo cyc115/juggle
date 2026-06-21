@@ -20,8 +20,8 @@
     "semantic_hash": ""
   },
   "tests/test_juggle_smoke.py": {
-    "mtime": 1782068546.101904,
-    "ast_hash": "984a98152b2fbe683c1eaea91f956466",
+    "mtime": 1782072364.8413458,
+    "ast_hash": "cec0c6023d12feb9bc7d646bad5ab47a",
     "semantic_hash": ""
   },
   "tests/test_auto_archive.py": {
@@ -1855,8 +1855,8 @@
     "semantic_hash": ""
   },
   "tests/conftest.py": {
-    "mtime": 1782069849.3856258,
-    "ast_hash": "b00cfce9d8865bbc8e8dddeeace44f9d",
+    "mtime": 1782072287.877786,
+    "ast_hash": "dd699738985966d7ef4bfb315e51f487",
     "semantic_hash": ""
   },
   "tests/test_agent_runs.py": {
@@ -2260,8 +2260,8 @@
     "semantic_hash": ""
   },
   "tests/test_watchdog_daemon_main_entry.py": {
-    "mtime": 1782068546.109896,
-    "ast_hash": "899b20c1bf9c4ae85f1e37379fcb99a3",
+    "mtime": 1782072299.7000744,
+    "ast_hash": "1cdd30e38ca12f7c97b44f755d244951",
     "semantic_hash": ""
   },
   "tests/test_watchdog_survive.py": {
@@ -2525,8 +2525,8 @@
     "semantic_hash": ""
   },
   "tests/PARALLEL_SAFETY_AUDIT.md": {
-    "mtime": 1782069630.2995677,
-    "ast_hash": "d902d8f791f98cbcde17bddeea447203",
+    "mtime": 1782072413.836034,
+    "ast_hash": "3386de523dfa994f11706a63b10f51b3",
     "semantic_hash": ""
   },
   "src/juggle_integrate_fullsuite.py": {

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,25 @@ _skip_pty = pytest.mark.skipif(not _HAS_PTY or _SMOKE_SKIP, reason=_PTY_REASON)
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
+
+
+def _frame_until_changed(handle, baseline, resend, *, deadline_s=30.0,
+                         settle=1.0, timeout=8.0):
+    """Re-send `resend` and re-capture until the frame differs from `baseline`,
+    or the deadline elapses; returns the latest frame.
+
+    The cockpit is a REAL subprocess. Under a CPU-saturated `-n auto` run it
+    lags behind keystrokes, so a single fixed wait captures the pre-interaction
+    frame and false-fails (incident 2026-06-21: nav/tab flaked ~1/3 of runs).
+    Polling for the change is load-tolerant; the caller still ASSERTS the
+    difference, so a genuine no-change regression fails after the deadline.
+    """
+    frame = baseline
+    deadline = time.monotonic() + deadline_s
+    while frame == baseline and time.monotonic() < deadline:
+        resend()
+        frame = handle.frame(settle=settle, timeout=timeout)
+    return frame
 
 
 def _make_grid(rows: int, cols: int, fill: str = "") -> list[str]:
@@ -307,9 +327,11 @@ def test_nav_j_key_produces_visible_change(tmp_path):
         handle.frame(settle=2.0, timeout=12.0)  # initial render + watchdog dot settles
         handle.send(b"\t")                       # focus Topics (notifications → topics)
         frame_before = handle.frame(settle=1.0, timeout=5.0)
-        for _ in range(10):
-            handle.send(b"j")
-        frame_after = handle.frame(settle=1.0, timeout=5.0)
+        # Poll-until-changed: re-send 10× 'j' and re-capture until the Topics pane
+        # actually scrolls — load-tolerant under -n auto (see _frame_until_changed).
+        frame_after = _frame_until_changed(
+            handle, frame_before, lambda: [handle.send(b"j") for _ in range(10)]
+        )
 
     # Topics is focused, visible, and overflowing → 10× 'j' must scroll it.
     # frame_before is captured AFTER the dot has settled, so the only thing that
@@ -348,14 +370,15 @@ def test_flow_tab_cycles_pane_grid_changes(tmp_path):
 
     with open_cockpit_pty(profile, db_path=db_path) as handle:
         frame0 = handle.frame(settle=2.0, timeout=12.0)
-        handle.send(b"\t")  # Tab → cycle pane
-        frame1 = handle.frame(settle=0.8, timeout=4.0)
-        handle.send(b"\t")  # Tab again
-        frame2 = handle.frame(settle=0.8, timeout=4.0)
+        # Poll-until-changed: Tab cycles the focused pane; re-send until the grid
+        # differs from the initial frame — load-tolerant under -n auto.
+        frame_changed = _frame_until_changed(
+            handle, frame0, lambda: handle.send(b"\t"), settle=0.8, timeout=5.0
+        )
 
-    # At least one Tab must produce a visible change
-    assert frame0 != frame1 or frame1 != frame2, (
-        "No visible change after 2× Tab — pane cycle did not affect the text grid"
+    # Tab must produce a visible change (pane focus cycles the text grid).
+    assert frame0 != frame_changed, (
+        "No visible change after Tab — pane cycle did not affect the text grid"
     )
 
 

@@ -181,6 +181,25 @@ _SLOW_MODULE_SUFFIXES = (
     "watchdog/test_hardening.py",
 )
 
+# Modules that spawn a REAL `uv run` Python subprocess (watchdog daemon / CLI
+# shell-out) with a wall-clock deadline. Under `-n auto`, many such cold-starts
+# at once saturate the cores and the deadlines flake (2026-06-21: a 15s
+# daemon-liveness wait timed out ~1/3 of runs). Route them to one xdist_group so
+# at most one heavy uv-run subprocess test runs at a time — load-flake removed
+# without serializing the whole suite. Honored via `--dist loadgroup`.
+#
+# NOTE: test_juggle_smoke.py is deliberately NOT here. It drives a real cockpit
+# PTY; serial-grouping made it WORSE (it then always ran alongside test_integrate
+# on one worker, at peak load → 3/3 fail). Instead its interactive frame-compare
+# tests poll-until-changed (load-tolerant in-test) and stay distributed.
+_SERIAL_MODULE_SUFFIXES = (
+    "test_graph_dispatch.py",
+    "test_cmd_graph.py",
+    "test_ensure_watchdog_debounce.py",
+    "test_watchdog_daemon_main_entry.py",
+    "test_integrate.py",
+)
+
 
 def pytest_collection_modifyitems(config, items):  # noqa: ARG001
     for item in items:
@@ -190,3 +209,6 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001
             path.endswith(suffix) for suffix in _SLOW_MODULE_SUFFIXES
         ):
             item.add_marker(pytest.mark.slow)
+        if any(path.endswith(suffix) for suffix in _SERIAL_MODULE_SUFFIXES):
+            item.add_marker(pytest.mark.serial)
+            item.add_marker(pytest.mark.xdist_group("serial"))

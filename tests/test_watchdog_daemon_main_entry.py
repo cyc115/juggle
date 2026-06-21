@@ -64,7 +64,10 @@ def test_sanctioned_direct_launch_stays_alive(tmp_path):
         start_new_session=True,
     )
     try:
-        deadline = time.monotonic() + 15.0
+        # 30s (was 15s): `uv run` cold-start + daemon init can lag under a
+        # CPU-saturated `-n auto` run (speedup-tier, 2026-06-21). Still asserts
+        # the daemon becomes alive and holds the lock — just more patient.
+        deadline = time.monotonic() + 30.0
         alive = False
         while time.monotonic() < deadline:
             if wsg.is_watchdog_alive(db_path):
