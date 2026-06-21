@@ -15,6 +15,7 @@
 
 ## Backlog
 
+- [ ] Code-enforce the verify anti-loop backstop (follow-up to v1.79.2 verify-loop fix). Prompt wording now hard-bounds the fix-and-re-run cycle, but per "behavioral rules go in code, not prompts" the real guard should be code: e.g. `juggle verify --max-attempts N` that records attempt count per thread/node and refuses a further run, and/or a watchdog verify-budget that kills an agent exceeding it. Also (DA M1) consider dropping the hand-rolled `--deselect` fallback line in the coder template so agents use ONLY `juggle verify` (the dynamic, drift-proof path) — or tighten the regression pin to assert set-equality between the template literal and integrate.quarantine_tests. Source: code review of cyc verify-loop fix, 2026-06-20.
 - [ ] Juggle worktrees + `depends_on` ordering — extend the TE worktree pattern (`cyc_<label>` branch + `/tmp/juggle-<label>`) to juggle-repo topics, and add a `depends_on` field to `juggle new` so dispatch blocks until dependencies close. Evidence: 2 juggle same-repo concurrent pairs with real file overlap observed in 2 days (UD∩UI on `juggle_cmd_agents.py`; SY∩TB on `.claude-plugin/plugin.json`); 0 actual conflicts but resolved by timing luck. DDL already designed in TF doc. Evidence: [[knowledge/projects/juggle/2026-06-07-topic-dag-evaluation]]. Scope: lighter alternative to full DAG — ~50 LOC + migration 35; skip `_dag_tick` auto-dispatch and auto-decomposer.
 
 ## Done
