@@ -309,6 +309,17 @@ def test_g6_graph_panel_uses_thread_user_label(db):
     t.set_topic_thread(db, "T-x", thread_id)
     for ev in ("deps_ready", "claim", "dispatch"):  # running → renders label
         t.topic_transition(db, "T-x", ev)
+    # P8: _load_one reads from nodes; mirror the create_topic write into nodes
+    # (in production, add_node dual-writes; legacy create_topic does not).
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO nodes "
+            "(id, kind, title, objective, state, project_id, parent_id, "
+            "created_at, updated_at) "
+            "VALUES ('T-x','task','Feature X','','running',?,NULL,datetime('now'),datetime('now'))",
+            (pid,),
+        )
+        conn.commit()
 
     from juggle_cockpit_graph_dag import _load_one
     with db._connect() as conn:

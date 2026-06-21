@@ -31,7 +31,8 @@ class GraphDag:
 
 def _all_project_ids(conn) -> list[str]:
     """All project ids that have graph work, ordered by last_active DESC then
-    alphabetically. Also picks up project ids only in graph tables (no projects row)."""
+    alphabetically. Primary source is nodes (P8); legacy tables kept as fallback
+    for pre-migration DBs with graph_topics/graph_tasks but no nodes rows."""
     try:
         proj_rows = conn.execute(
             "SELECT id FROM projects WHERE status='active' "
@@ -39,6 +40,19 @@ def _all_project_ids(conn) -> list[str]:
         ).fetchall()
         listed = [r[0] for r in proj_rows]
         extra: set[str] = set()
+        # P8 primary: nodes table
+        try:
+            for r in conn.execute(
+                "SELECT DISTINCT project_id FROM nodes "
+                "WHERE kind IN ('task','research') AND parent_id IS NULL "
+                "AND project_id IS NOT NULL"
+            ).fetchall():
+                pid = r[0]
+                if pid and pid not in listed:
+                    extra.add(pid)
+        except Exception:
+            pass
+        # Compat: legacy tables for pre-migration DBs
         for tbl in ("graph_topics", "graph_tasks"):
             try:
                 for r in conn.execute(
@@ -98,17 +112,24 @@ def _load_one_legacy_tasks(conn, pid: str) -> "GraphDag | None":
 
 
 def _load_one(conn, pid: str) -> "GraphDag | None":
-    """Load topic-tier DAG for one armed project; falls back to task-tier."""
+    """Load topic-tier DAG for one project from nodes (P8); falls back to task-tier.
+
+    nodes is the primary source. For display enrichment (user_label, is_mirror)
+    we LEFT JOIN graph_topics + threads — those legacy tables are kept in P8.
+    """
     from juggle_cockpit_graph_layout import GraphTask
 
     try:
-        # G6: join the bound thread's user_label so the panel renders the human
-        # code (e.g. 'XW') instead of falling back to the raw UUID prefix.
+        # P8: read root task nodes; enrich with legacy display data where available.
         topic_rows = conn.execute(
-            "SELECT gt.id, gt.title, gt.state, gt.thread_id, t.user_label, "
+            "SELECT n.id, n.title, n.state, "
+            "gt.thread_id, t.user_label, "
             "COALESCE(gt.is_mirror, 0) AS is_mirror "
-            "FROM graph_topics gt LEFT JOIN threads t ON gt.thread_id = t.id "
-            "WHERE gt.project_id=? ORDER BY gt.created_at, gt.id",
+            "FROM nodes n "
+            "LEFT JOIN graph_topics gt ON gt.id = n.id "
+            "LEFT JOIN threads t ON t.id = gt.thread_id "
+            "WHERE n.kind='task' AND n.parent_id IS NULL AND n.project_id=? "
+            "ORDER BY n.created_at, n.id",
             (pid,),
         ).fetchall()
     except Exception:
@@ -116,53 +137,53 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
     if not topic_rows:
         return _load_one_legacy_tasks(conn, pid)
 
-    # Per-topic task counts.
+    # Per-parent child counts from nodes.
+    topic_ids = tuple(r["id"] for r in topic_rows)
+    ph = ",".join("?" * len(topic_ids))
     try:
         count_rows = conn.execute(
-            "SELECT topic_id, "
+            "SELECT parent_id, "
             "SUM(CASE WHEN state='verified' THEN 1 ELSE 0 END) AS done, "
             "COUNT(*) AS total "
-            "FROM graph_tasks WHERE topic_id IS NOT NULL "
-            "AND project_id=? GROUP BY topic_id",
-            (pid,),
+            f"FROM nodes WHERE parent_id IN ({ph}) GROUP BY parent_id",
+            topic_ids,
         ).fetchall()
     except Exception:
         count_rows = []
     counts: dict[str, tuple[int, int]] = {
-        r["topic_id"]: (r["done"], r["total"]) for r in count_rows
+        r["parent_id"]: (r["done"], r["total"]) for r in count_rows
     }
 
-    # Derived topic edges: task edges that cross topic boundaries.
-    topic_ids = tuple(r["id"] for r in topic_rows)
-    ph = ",".join("?" * len(topic_ids))
+    # Derived edges: node_edges that cross parent boundaries.
     try:
         edge_rows = conn.execute(
-            "SELECT DISTINCT n.topic_id AS src, d.topic_id AS dst "
-            "FROM graph_edges e "
-            "JOIN graph_tasks n ON n.id = e.task_id "
-            "JOIN graph_tasks d ON d.id = e.depends_on_id "
-            f"WHERE n.topic_id IN ({ph}) AND d.topic_id IN ({ph}) "
-            "AND n.topic_id != d.topic_id "
-            "ORDER BY n.topic_id, d.topic_id",
+            "SELECT DISTINCT np.id AS src, dp.id AS dst "
+            "FROM node_edges e "
+            "JOIN nodes nc ON nc.id = e.node_id "
+            "JOIN nodes np ON np.id = nc.parent_id "
+            "JOIN nodes dc ON dc.id = e.depends_on_id "
+            "JOIN nodes dp ON dp.id = dc.parent_id "
+            f"WHERE np.id IN ({ph}) AND dp.id IN ({ph}) AND np.id != dp.id "
+            "ORDER BY np.id, dp.id",
             (*topic_ids, *topic_ids),
         ).fetchall()
     except Exception:
         edge_rows = []
     edges = [(r["src"], r["dst"]) for r in edge_rows]
 
-    # Task lists per topic (for the detail modal).
+    # Children per parent (member_tasks for the detail modal).
     try:
-        task_rows = conn.execute(
-            "SELECT id, title, state, topic_id FROM graph_tasks "
-            f"WHERE topic_id IN ({ph}) ORDER BY created_at, id",
+        child_rows = conn.execute(
+            "SELECT id, title, state, parent_id "
+            f"FROM nodes WHERE parent_id IN ({ph}) ORDER BY created_at, id",
             topic_ids,
         ).fetchall()
     except Exception:
-        task_rows = []
+        child_rows = []
     member_tasks: dict[str, list] = {tid: [] for tid in topic_ids}
-    for r in task_rows:
-        if r["topic_id"] in member_tasks:
-            member_tasks[r["topic_id"]].append(
+    for r in child_rows:
+        if r["parent_id"] in member_tasks:
+            member_tasks[r["parent_id"]].append(
                 {"id": r["id"], "title": r["title"], "state": r["state"]}
             )
 

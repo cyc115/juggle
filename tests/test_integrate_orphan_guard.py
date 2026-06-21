@@ -55,6 +55,16 @@ def _bind_thread(db, *, repo, branch):
     return tid
 
 
+def _bind_node_branch(db, node_id, *, repo, branch):
+    """Set nodes.worktree_branch + main_repo_path so orphan_guard can find the repo."""
+    with db._connect() as c:
+        c.execute(
+            "UPDATE nodes SET worktree_branch=?, main_repo_path=? WHERE id=?",
+            (branch, str(repo), node_id),
+        )
+        c.commit()
+
+
 def _make_db(tmp_path):
     from juggle_db import JuggleDB
 
@@ -66,6 +76,9 @@ def _make_db(tmp_path):
 def _seed_topic(db, topic_id, task_states, *, state="integrating",
                 thread_id=None, merged_sha=None):
     from dbops import db_topics, db_graph
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
 
     db_topics.create_topic(db, topic_id=topic_id, project_id="INBOX",
                            title=f"Topic {topic_id}")
@@ -75,12 +88,34 @@ def _seed_topic(db, topic_id, task_states, *, state="integrating",
             (state, thread_id, merged_sha, topic_id),
         )
         c.commit()
+
+    # P8: also write the parent node so orphan_guard (which reads nodes) can find it.
+    with db._connect() as c:
+        c.execute(
+            "INSERT OR IGNORE INTO nodes "
+            "(id, kind, title, objective, state, project_id, parent_id, "
+            "merged_sha, created_at, updated_at) "
+            "VALUES (?, 'task', ?, '', ?, 'INBOX', NULL, ?, ?, ?)",
+            (topic_id, f"Topic {topic_id}", state, merged_sha, now, now),
+        )
+        c.commit()
+
     for i, st in enumerate(task_states):
         tid = f"{topic_id}-t{i}"
         db_graph.create_task(db, task_id=tid, project_id="INBOX", title=tid, prompt="x")
         with db._connect() as c:
             c.execute("UPDATE graph_tasks SET topic_id=?, state=? WHERE id=?",
                       (topic_id, st, tid))
+            c.commit()
+        # P8: child nodes
+        with db._connect() as c:
+            c.execute(
+                "INSERT OR IGNORE INTO nodes "
+                "(id, kind, title, objective, state, project_id, parent_id, "
+                "created_at, updated_at) "
+                "VALUES (?, 'task', ?, '', ?, 'INBOX', ?, ?, ?)",
+                (tid, tid, st, topic_id, now, now),
+            )
             c.commit()
 
 
@@ -103,7 +138,8 @@ def test_detector_skips_merged_topic(tmp_path):
 
     db = _make_db(tmp_path)
     _seed_topic(db, "T1", ["verified"], merged_sha="deadbeef")
-    with patch("dbops.orphan_guard.topic_is_merged", return_value=True):
+    # P8: patch the nodes-based merged check (_node_is_merged)
+    with patch("dbops.orphan_guard._node_is_merged", return_value=True):
         orphans = orphan_guard.find_unmerged_completed_topics(db)
     assert orphans == []
 

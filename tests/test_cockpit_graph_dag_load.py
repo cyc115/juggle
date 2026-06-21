@@ -127,14 +127,17 @@ def test_no_extra_query_when_flag_off(db):
 
 def _seed_two_project_topics(db):
     """P1: topics A (2 tasks, 1 verified) and B with a task edge B→A.
-       P2: topic C with 1 task."""
-    from dbops import db_graph as g, db_topics as tp
-    import time
+       P2: topic C with 1 task.
 
+    P8: also writes nodes (parent nodes for topics, child nodes for tasks)
+    and node_edges so _load_one reads from the unified nodes table.
+    """
+    from dbops import db_graph as g, db_topics as tp
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
     for pid in ("P1", "P2"):
         with db._connect() as conn:
-            from datetime import datetime, timezone
-            now = datetime.now(timezone.utc).isoformat()
             conn.execute(
                 "INSERT INTO projects(id,name,status,created_at,last_active) "
                 "VALUES(?,?,?,?,?)",
@@ -155,6 +158,28 @@ def _seed_two_project_topics(db):
         conn.execute("UPDATE graph_tasks SET state='verified' WHERE id='a1'")
         # task edge b1 → a1 → crosses B→A boundary
         conn.execute("INSERT INTO graph_edges(task_id,depends_on_id) VALUES('b1','a1')")
+
+        # P8: mirror into nodes so _load_one reads from unified nodes table.
+        # Parent nodes = topics; child nodes = member tasks.
+        for (nid, pid, title) in [("A","P1","auth"), ("B","P1","build"), ("C","P2","ci")]:
+            conn.execute(
+                "INSERT OR IGNORE INTO nodes (id,kind,title,objective,state,project_id,"
+                "parent_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (nid, "task", title, "", "running", pid, None, now, now),
+            )
+        for (nid, pid, state, parent) in [
+            ("a1","P1","verified","A"), ("a2","P1","pending","A"),
+            ("b1","P1","pending","B"), ("c1","P2","pending","C"),
+        ]:
+            conn.execute(
+                "INSERT OR IGNORE INTO nodes (id,kind,title,objective,state,project_id,"
+                "parent_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (nid, "task", nid, "", state, pid, parent, now, now),
+            )
+        # node_edges: b1 depends on a1 (crosses B→A parent boundary)
+        conn.execute(
+            "INSERT OR IGNORE INTO node_edges(node_id,depends_on_id) VALUES('b1','a1')"
+        )
         conn.commit()
 
 

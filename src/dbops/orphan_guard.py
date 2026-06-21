@@ -1,5 +1,10 @@
 """dbops.orphan_guard — detect & surface completed-but-unmerged topics (G5).
 
+P8: readers migrated to the unified nodes table. graph_topics/graph_tasks are
+kept (dual-write still active) but orphan detection now uses nodes as primary
+source. reconcile_out_of_band_merges stamps both nodes.merged_sha AND
+(compat) graph_topics.merged_sha.
+
 Incident (2026-06-17): a false-negative in ``JuggleTmuxManager.send_task`` made
 the watchdog treat a successful dispatch as failed, so the topic was never
 tracked for integrate. When the coder's ``complete-agent`` closed the topic, its
@@ -18,10 +23,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from dbops.graph_guards import (
-    _resolve_topic_repo,
     branch_merged_to_main,
     resolve_branch_sha,
-    topic_is_merged,
+    sha_is_ancestor,
 )
 
 # watchdog_events.event_type used to dedup repeated flags for the same topic.
@@ -31,73 +35,124 @@ _ORPHAN_EVENT = "topic_unmerged_orphan"
 _GUARD_AGENT_ID = "orphan-guard"
 
 
-def find_unmerged_completed_topics(db) -> list[dict]:
-    """Return non-mirror, non-verified topics whose member tasks are ALL verified
-    but whose work is NOT merged to main (``topic_is_merged`` is False).
+def _node_repo(db, node: dict) -> str:
+    """Resolve main-repo path for a nodes row (P8).
 
-    These are the completed-but-unmerged orphans the close-before-integrate path
-    strands. A topic with zero tasks, any unfinished task, or proven-merged work
-    is excluded.
+    Primary: node.main_repo_path (written by integrate/dispatch).
+    Compat: graph_topics.thread_id → threads.main_repo_path (legacy bind).
+    Fallback: juggle's own repo (self-repo topics).
+    """
+    repo = (node.get("main_repo_path") or "").strip()
+    if repo:
+        return repo
+    # Compat: look up thread binding via graph_topics (dual-write still active)
+    try:
+        with db._connect() as conn:
+            row = conn.execute(
+                "SELECT thread_id FROM graph_topics WHERE id=?", (node["id"],)
+            ).fetchone()
+        if row and row[0]:
+            thread = db.get_thread(row[0]) or {}
+            repo = (thread.get("main_repo_path") or "").strip()
+            if repo:
+                return repo
+    except Exception:
+        pass
+    try:
+        from pathlib import Path
+        from juggle_cli_common import SRC_DIR
+        return str(Path(SRC_DIR).parent.resolve())
+    except Exception:
+        return ""
+
+
+def _node_is_merged(db, node: dict) -> bool:
+    """G1 gate over a nodes row: merged iff merged_sha is set and on main."""
+    sha = (node.get("merged_sha") or "").strip()
+    if not sha:
+        return False
+    repo = _node_repo(db, node)
+    if not repo:
+        return False
+    return sha_is_ancestor(repo, sha)
+
+
+def find_unmerged_completed_topics(db) -> list[dict]:
+    """Return non-mirror root task nodes whose children are ALL verified but whose
+    work is NOT merged to main.
+
+    P8: reads from nodes WHERE kind='task' AND parent_id IS NULL.
+    A node with zero children, any unfinished child, or proven-merged work is excluded.
     """
     with db._connect() as conn:
-        topic_rows = conn.execute(
-            "SELECT * FROM graph_topics "
-            "WHERE COALESCE(is_mirror, 0) = 0 AND state != 'verified'"
+        parent_rows = conn.execute(
+            "SELECT * FROM nodes "
+            "WHERE kind='task' AND parent_id IS NULL"
         ).fetchall()
-        topics = [dict(r) for r in topic_rows]
+        parents = [dict(r) for r in parent_rows]
 
     orphans: list[dict] = []
-    for topic in topics:
+    for node in parents:
+        # Skip nodes already stamped as verified
+        if node.get("state") == "verified":
+            continue
         with db._connect() as conn:
-            task_states = [
+            child_states = [
                 r[0]
                 for r in conn.execute(
-                    "SELECT state FROM graph_tasks WHERE topic_id=?", (topic["id"],)
+                    "SELECT state FROM nodes WHERE parent_id=?", (node["id"],)
                 ).fetchall()
             ]
-        if not task_states:
+        if not child_states:
             continue
-        if not all(s == "verified" for s in task_states):
+        if not all(s == "verified" for s in child_states):
             continue
-        if topic_is_merged(db, topic["id"]):
+        if _node_is_merged(db, node):
             continue
-        orphans.append(topic)
+        orphans.append(node)
     return orphans
 
 
-def _topic_branch(db, topic: dict) -> str:
-    """The agent branch bound to this topic (its thread's worktree_branch), or
-    '' if none is recorded."""
-    thread_id = topic.get("thread_id")
-    if not thread_id:
-        return ""
+def _topic_branch(db, node: dict) -> str:
+    """The agent branch bound to this node (nodes.worktree_branch), or '' if none."""
+    branch = (node.get("worktree_branch") or "").strip()
+    if branch:
+        return branch
+    # Compat fallback: check the bound thread (graph_topics.thread_id → threads)
     try:
-        thread = db.get_thread(thread_id) or {}
+        with db._connect() as conn:
+            row = conn.execute(
+                "SELECT thread_id FROM graph_topics WHERE id=?", (node["id"],)
+            ).fetchone()
+        if row and row[0]:
+            thread = db.get_thread(row[0]) or {}
+            return (thread.get("worktree_branch") or "").strip()
     except Exception:
-        thread = {}
-    return (thread.get("worktree_branch") or "").strip()
+        pass
+    return ""
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
     """Stamp ``merged_sha`` for completed topics whose work is already on main.
 
-    The orphan detector keys off a NULL ``merged_sha``. When a topic's work was
-    merged OUTSIDE ``juggle integrate`` (a manual / out-of-band merge), the work
-    IS reachable from main but ``merged_sha`` was never stamped — so the orphan
-    guard false-positives and re-files a HIGH alert every watchdog tick
-    (observed for the 2026-06-17 recovery topics).
+    P8: reads nodes as primary source; stamps nodes.merged_sha AND (compat)
+    graph_topics.merged_sha. Calls db_topics.reconcile_topic_state for compat
+    state update on graph_topics.
 
-    For each such topic whose bound branch is an ancestor of ``main``, record the
-    branch HEAD as ``merged_sha`` and reconcile the topic (→ ``verified`` via the
-    G1 gate). Genuinely-unmerged topics (branch ahead of main, or branch ref
-    gone) are left untouched for the alerting path. Returns reconciled topic ids.
+    G1-pure verification: only advances topics whose branch IS an ancestor of
+    main — genuinely-unmerged topics (branch ahead of main, or branch ref gone)
+    are left untouched. Returns reconciled node ids.
     """
     from dbops import db_topics
 
     reconciled: list[str] = []
-    for topic in find_unmerged_completed_topics(db):
-        repo = _resolve_topic_repo(db, topic)
-        branch = _topic_branch(db, topic)
+    for node in find_unmerged_completed_topics(db):
+        repo = _node_repo(db, node)
+        branch = _topic_branch(db, node)
         if not repo or not branch:
             continue
         if not branch_merged_to_main(repo, branch, main=main):
@@ -105,14 +160,28 @@ def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
         sha = resolve_branch_sha(repo, branch)
         if not sha:
             continue
+        now = _now()
         with db._connect() as conn:
+            # P8 primary: stamp nodes
             conn.execute(
-                "UPDATE graph_topics SET merged_sha=? WHERE id=?",
-                (sha, topic["id"]),
+                "UPDATE nodes SET merged_sha=?, state='verified', updated_at=? WHERE id=?",
+                (sha, now, node["id"]),
             )
+            # Compat: keep graph_topics in sync (dual-write still active in P8)
+            try:
+                conn.execute(
+                    "UPDATE graph_topics SET merged_sha=? WHERE id=?",
+                    (sha, node["id"]),
+                )
+            except Exception:
+                pass
             conn.commit()
-        db_topics.reconcile_topic_state(db, topic["id"])
-        reconciled.append(topic["id"])
+        # Compat: reconcile graph_topics.state via legacy path
+        try:
+            db_topics.reconcile_topic_state(db, node["id"])
+        except Exception:
+            pass
+        reconciled.append(node["id"])
     return reconciled
 
 
@@ -131,27 +200,38 @@ def flag_unmerged_completed_topics(db, *, dedup_window_hours: float = 24.0) -> l
     cutoff = (now - timedelta(hours=dedup_window_hours)).isoformat()
 
     flagged: list[str] = []
-    for topic in orphans:
-        topic_id = topic["id"]
+    for node in orphans:
+        node_id = node["id"]
         with db._connect() as conn:
             recent = conn.execute(
                 "SELECT id FROM watchdog_events "
                 "WHERE thread_id=? AND event_type=? AND created_at > ?",
-                (topic_id, _ORPHAN_EVENT, cutoff),
+                (node_id, _ORPHAN_EVENT, cutoff),
             ).fetchone()
         if recent:
             continue
-        label = topic.get("title") or topic_id
+        label = node.get("title") or node_id
+        # thread_id for action item: check graph_topics compat binding
+        thread_id = None
+        try:
+            with db._connect() as conn:
+                row = conn.execute(
+                    "SELECT thread_id FROM graph_topics WHERE id=?", (node_id,)
+                ).fetchone()
+            if row:
+                thread_id = row[0]
+        except Exception:
+            pass
         db.add_action_item(
-            thread_id=topic.get("thread_id"),
+            thread_id=thread_id,
             message=(
-                f"⚠️ topic {label} [{topic_id}] completed but UNMERGED "
+                f"⚠️ topic {label} [{node_id}] completed but UNMERGED "
                 f"(all tasks verified, no merged_sha) — run `juggle integrate "
-                f"{topic_id}` or recover its worktree. Never close-without-merge."
+                f"{node_id}` or recover its worktree. Never close-without-merge."
             ),
             type_="manual_step",
             priority="high",
         )
-        db.add_watchdog_event(_GUARD_AGENT_ID, topic_id, _ORPHAN_EVENT)
-        flagged.append(topic_id)
+        db.add_watchdog_event(_GUARD_AGENT_ID, node_id, _ORPHAN_EVENT)
+        flagged.append(node_id)
     return flagged

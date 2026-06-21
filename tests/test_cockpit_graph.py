@@ -55,10 +55,19 @@ def _topic(label="T", status="running", task_state=None, project_id="INBOX"):
 
 
 def test_snapshot_exposes_graph_by_project(db):
+    # P8: snapshot reads graph_by_project from nodes; seed both nodes and
+    # legacy graph_tasks (dual-write kept in P8).
     g.create_task(db, task_id="a", project_id="INBOX", title="A", prompt="p")
     g.create_task(db, task_id="b", project_id="INBOX", title="B", prompt="p")
     with db._connect() as conn:
         conn.execute("UPDATE graph_tasks SET state='verified' WHERE id='a'")
+        # Also write to nodes (P8 primary read source)
+        conn.execute(
+            "INSERT OR IGNORE INTO nodes (id,kind,title,objective,state,project_id,"
+            "parent_id,created_at,updated_at) VALUES "
+            "('a','task','A','','verified','INBOX',NULL,datetime('now'),datetime('now')),"
+            "('b','task','B','','pending','INBOX',NULL,datetime('now'),datetime('now'))"
+        )
         conn.commit()
     state = snapshot(db)
     assert state.graph_by_project is not None
@@ -71,9 +80,13 @@ def test_snapshot_graph_none_when_no_tasks(db):
     assert state.graph_by_project is None
 
 
-def test_snapshot_topic_task_state_from_graph_tasks(db):
-    """2026-06-10 DA m2 pin: a task-bound thread's cockpit glyph state comes
-    from graph_tasks.state, not from the thread's own status."""
+def test_snapshot_topic_task_state_none_always(db):
+    """P8 pin: task_state is always None — the graph_tasks.thread_id join was
+    removed in P8 (nodes has no thread_id column; task_state_by_thread deleted).
+
+    2026-06-20 behavior change from DA m2 (2026-06-10): task_state no longer
+    shows a glyph in the thread panel; topics render via thread status only.
+    """
     tid = db.create_thread("[a] task thread", session_id="s")
     g.create_task(db, task_id="a", project_id="INBOX", title="A", prompt="p")
     with db._connect() as conn:
@@ -83,8 +96,8 @@ def test_snapshot_topic_task_state_from_graph_tasks(db):
         conn.commit()
     state = snapshot(db)
     topic = next(t for t in state.topics if t.id == tid)
-    assert topic.status != "verified"  # thread status vocabulary is unchanged
-    assert topic.task_state == "verified"
+    assert topic.status != "verified"  # thread status unchanged
+    assert topic.task_state is None  # P8: no longer read from graph_tasks.thread_id
 
 
 def test_snapshot_topic_task_state_none_for_unbound(db):

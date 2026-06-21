@@ -207,22 +207,21 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
     except Exception:
         projects_by_id = {}
 
-    # Graph-task visibility (autopilot, DA m2): aggregate counts per project +
-    # task state per bound thread — sourced from graph_tasks.state, never from
-    # thread status/TTL. Pre-migration DBs degrade gracefully.
+    # Graph-task visibility: aggregate counts per project sourced from the unified
+    # nodes table (P8). kind IN ('task','research') with no parent (root nodes).
+    # Pre-migration DBs degrade gracefully.
     graph_by_project: dict | None = None
-    task_state_by_thread: dict[str, str] = {}
     try:
         from juggle_graph_status import counts_from_states
 
-        g_rows = conn.execute(
-            "SELECT project_id, state, thread_id FROM graph_tasks"
+        n_rows = conn.execute(
+            "SELECT project_id, state FROM nodes "
+            "WHERE kind IN ('task','research') AND parent_id IS NULL"
         ).fetchall()
         states_by_proj: dict[str, list[str]] = {}
-        for r in g_rows:
-            states_by_proj.setdefault(r["project_id"], []).append(r["state"])
-            if r["thread_id"]:
-                task_state_by_thread[r["thread_id"]] = r["state"]
+        for r in n_rows:
+            pid = r["project_id"] or "INBOX"
+            states_by_proj.setdefault(pid, []).append(r["state"])
         if states_by_proj:
             graph_by_project = {
                 pid: counts_from_states(states)
@@ -257,7 +256,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
             title=title,
             project_id=pid,
             project_name=pname,
-            task_state=task_state_by_thread.get(tid),
+            task_state=None,
         )
 
     # 1. Active
