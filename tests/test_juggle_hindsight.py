@@ -136,16 +136,32 @@ def test_retain_with_bad_auth(mock_server):
     c.retain("content")
 
 
-def test_recall_timeout():
-    """Recall against unreachable host should timeout and return empty."""
-    c = HindsightClient(
-        api_url="http://192.0.2.1:9999",  # non-routable
-        api_key="juggle",
-        bank="juggle",
-        timeout=1,
-    )
-    result = c.recall("test")
-    assert result == ""
+def test_recall_timeout(monkeypatch):
+    """Recall against an unreachable host returns empty — fault injected, no real wait.
+
+    speedup-tier (2026-06-21): was a 1s real urlopen timeout to 192.0.2.1; now we
+    inject urllib URLError so the SAME failure-handling path runs deterministically.
+    M2 (anti-tautology): also assert the timeout= kwarg is actually forwarded to
+    urlopen, so a regression that drops the timeout plumbing stays pinned.
+    """
+    import urllib.error
+    import urllib.request
+
+    captured = {}
+
+    def _boom(req, timeout=None, **kw):
+        captured["timeout"] = timeout
+        raise urllib.error.URLError("injected: unreachable")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    # Neutralize the auto-restart retry so the test stays hermetic and fast.
+    monkeypatch.setattr(HindsightClient, "_restart_service", lambda self: None)
+
+    c = HindsightClient(api_url="http://192.0.2.1:9999", api_key="juggle",
+                        bank="juggle", timeout=1)
+    assert c.recall("test") == ""
+    assert "timeout" in captured  # urlopen was actually reached
+    assert captured["timeout"] == 1  # timeout forwarded (not dropped)
 
 
 class TestConfigFromFile:

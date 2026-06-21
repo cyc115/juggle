@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "tests/test_juggle_hindsight.py": {
-    "mtime": 1782068546.1011462,
-    "ast_hash": "6d861feba2c834d1c2faf347ecef8a55",
+    "mtime": 1782069257.0588925,
+    "ast_hash": "335cd9c3d9de96eef5c2a6e8888ef414",
     "semantic_hash": ""
   },
   "tests/test_juggle_agent_settings.py": {
@@ -1545,8 +1545,8 @@
     "semantic_hash": ""
   },
   "tests/test_integrate_verify.py": {
-    "mtime": 1782068546.1004214,
-    "ast_hash": "18d0c254006114e8e9dde57f08482e67",
+    "mtime": 1782069279.137571,
+    "ast_hash": "79812b8a1e5cb3ac4fbd91bd58819b21",
     "semantic_hash": ""
   },
   "src/dbops/db_graph_marking.py": {

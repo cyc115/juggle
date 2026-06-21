@@ -5,7 +5,6 @@ plus pre-merge diffstat capture for dependent hydration (DA M4 deferred item).
 import shlex
 import subprocess
 import sys
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -80,14 +79,29 @@ def test_run_verify_cmd_flake_passes_on_retry(tmp_path):
     assert ok
 
 
-def test_run_verify_cmd_times_out(tmp_path):
-    from juggle_integrate_verify import run_verify_cmd
-    cmd = f"{PY} -c \"import time; time.sleep(30)\""
-    t0 = time.monotonic()
-    ok, detail = run_verify_cmd(cmd, str(tmp_path), timeout_secs=1)
+def test_run_verify_cmd_times_out(tmp_path, monkeypatch):
+    """run_verify_cmd reports a timeout (both attempts) — fault injected, no real wait.
+
+    speedup-tier (2026-06-21): was a real sleep(30) killed at 1s (~2s elapsed via 2
+    attempts); now we inject TimeoutExpired so the SAME branch runs in ~0s. M2: also
+    assert the retry count (VERIFY_RETRIES + 1 attempts) and that the timeout= kwarg
+    is forwarded to subprocess.run — strictly more coverage, no real wait.
+    """
+    import juggle_integrate_verify as iv
+
+    calls = {"n": 0, "timeout": "<unset>"}
+
+    def _timeout(*a, **k):
+        calls["n"] += 1
+        calls["timeout"] = k.get("timeout")
+        raise subprocess.TimeoutExpired(cmd=(a[0] if a else "x"), timeout=k.get("timeout", 1))
+
+    monkeypatch.setattr(iv.subprocess, "run", _timeout)
+    ok, detail = iv.run_verify_cmd("true", str(tmp_path), timeout_secs=1)
     assert not ok
     assert "timed out" in detail
-    assert time.monotonic() - t0 < 10  # 2 attempts x 1s, not 30s
+    assert calls["n"] == iv.VERIFY_RETRIES + 1  # one retry → exactly 2 attempts
+    assert calls["timeout"] == 1  # timeout forwarded to subprocess.run (not dropped)
 
 
 def test_run_verify_cmd_never_uses_a_shell(tmp_path):
