@@ -177,6 +177,16 @@ def maybe_dispatch_selfheal_diagnosis(db, dispatch_fn=None) -> bool:
                 "selfheal.allowlist sweep id=%s rule=%s v%s sig=%s",
                 s["id"], s["rule_id"], ALLOWLIST_VERSION, (s["signature_hash"] or "")[:8],
             )
+        # Re-surface valve (spec §4.4): a mis-classified non_issue re-alerts.
+        rs = db.resurface_nonissue_rows(
+            datetime.now(timezone.utc),
+            surge_count=int(cfg.get("resurface_surge_count", 20)),
+            absolute_count=int(cfg.get("resurface_absolute_count", 100)),
+            lease_days=int(cfg.get("resurface_lease_days", 30)),
+        )
+        for r in rs:
+            _log.info("selfheal.resurface id=%s reason=%s sig=%s",
+                      r["id"], r["reason"], (r["signature_hash"] or "")[:8])
 
     candidates = get_diagnosis_candidates(db, min_count=min_count)
     in_flight = _in_flight_exists(db)

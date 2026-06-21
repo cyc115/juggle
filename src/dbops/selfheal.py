@@ -172,3 +172,32 @@ class SelfhealMixin:
                               "signature_hash": r["signature_hash"]})
             conn.commit()
         return swept
+
+    def resurface_nonissue_rows(self, now, *, surge_count, absolute_count,
+                                lease_days) -> list[dict]:
+        """Flip qualifying non_issue rows back to 'open' (re-surface valve, spec §4.4).
+
+        Returns [{id, reason, signature_hash}] for the caller to audit-log.
+        """
+        from selfheal_triage import should_resurface
+        nowstr = now.strftime("%Y-%m-%d %H:%M")
+        out: list[dict] = []
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, count, last_seen, signature_hash "
+                "FROM error_events WHERE status='non_issue'"
+            ).fetchall()
+            for r in rows:
+                reason = should_resurface(
+                    dict(r), now, surge_count=surge_count,
+                    absolute_count=absolute_count, lease_days=lease_days)
+                if reason is None:
+                    continue
+                conn.execute(
+                    "UPDATE error_events SET status='open', last_seen=? WHERE id=?",
+                    (nowstr, r["id"]),
+                )
+                out.append({"id": r["id"], "reason": reason,
+                            "signature_hash": r["signature_hash"]})
+            conn.commit()
+        return out

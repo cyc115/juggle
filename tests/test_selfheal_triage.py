@@ -67,3 +67,45 @@ def test_strong_signal_beats_high_count_noise():
     ordered = order_candidates([noise, real])
     assert ordered[0]["id"] == 2  # strong signal first despite count 4 vs 900
     assert signal_strength(real) > signal_strength(noise)
+
+
+# ---------------------------------------------------------------------------
+# Task 8 — re-surface valve (surge + absolute + lease)
+# ---------------------------------------------------------------------------
+_NOW = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
+
+
+def test_resurface_trips_on_absolute_without_spike():
+    """selfheal-v2 P1 (2026-06-21): slow-burn crosses absolute ceiling with no velocity spike."""
+    from selfheal_triage import should_resurface
+    row = {"count": 150, "last_seen": "2026-01-01 00:00"}  # old, never spiked
+    assert should_resurface(row, _NOW, surge_count=20, absolute_count=100, lease_days=30) == "absolute"
+
+
+def test_resurface_trips_on_lease_expiry():
+    """selfheal-v2 P1 (2026-06-21): a still-benign group past its lease re-confirms."""
+    from selfheal_triage import should_resurface
+    row = {"count": 2, "last_seen": "2026-01-01 00:00"}  # >30d old, low count
+    assert should_resurface(row, _NOW, surge_count=20, absolute_count=100, lease_days=30) == "lease"
+
+
+def test_resurface_none_when_fresh_and_quiet():
+    """selfheal-v2 P1 (2026-06-21): a recent low-count non_issue stays hidden."""
+    from selfheal_triage import should_resurface
+    row = {"count": 3, "last_seen": "2026-06-21 11:00"}
+    assert should_resurface(row, _NOW, surge_count=20, absolute_count=100, lease_days=30) is None
+
+
+def test_resurface_sweep_flips_slow_burn_to_open(tmp_path):
+    """selfheal-v2 P1 (2026-06-21): a non_issue past the absolute ceiling returns to open."""
+    db = JuggleDB(str(tmp_path / "t.db"))
+    db.init_db()
+    rid = db.dedup_or_insert_error("s", "B", None, "tb", "ep", "{}")
+    db.set_error_event_status(rid, "non_issue")
+    with db._connect() as conn:
+        conn.execute("UPDATE error_events SET count=150 WHERE id=?", (rid,))
+        conn.commit()
+    out = db.resurface_nonissue_rows(_NOW, surge_count=20, absolute_count=100, lease_days=30)
+    assert out and out[0]["reason"] == "absolute"
+    with db._connect() as conn:
+        assert conn.execute("SELECT status FROM error_events WHERE id=?", (rid,)).fetchone()[0] == "open"

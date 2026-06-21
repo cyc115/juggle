@@ -84,3 +84,35 @@ def signal_strength(row: dict) -> int:
 def order_candidates(rows: list[dict]) -> list[dict]:
     """Stable order by (signal_strength DESC, count DESC) — anti-starvation (spec §4.3)."""
     return sorted(rows, key=lambda r: (signal_strength(r), r.get("count") or 0), reverse=True)
+
+
+def _parse_seen(last_seen: str | None) -> datetime | None:
+    if not last_seen:
+        return None
+    try:
+        return datetime.strptime(last_seen, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def should_resurface(row: dict, now: datetime, *, surge_count: int,
+                     absolute_count: int, lease_days: int) -> str | None:
+    """Return the re-surface trip reason for a non_issue row, or None (spec §4.4).
+
+    P1 derives signals from existing columns (no new schema):
+    - absolute: live count >= absolute_count (slow-burn, no spike needed).
+    - surge:    count >= surge_count AND last_seen within the last day (recent burst).
+    - lease:    classification (proxied by last_seen) older than lease_days.
+    Order: absolute > surge > lease (most-decisive first).
+    """
+    count = row.get("count") or 0
+    seen = _parse_seen(row.get("last_seen"))
+    if count >= absolute_count:
+        return "absolute"
+    if seen is not None:
+        age_days = (now - seen).total_seconds() / 86400.0
+        if count >= surge_count and age_days <= 1.0:
+            return "surge"
+        if age_days >= lease_days:
+            return "lease"
+    return None
