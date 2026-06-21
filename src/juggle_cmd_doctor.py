@@ -2,13 +2,34 @@
 
 import copy
 import json
+import os
 import shutil
 import sqlite3
 from pathlib import Path
 
 
-CONFIG_PATH = Path.home() / ".juggle" / "config.json"
-BACKUP_PATH = Path.home() / ".juggle" / "config.json.bak-pre-1.21"
+# Home-default config/backup locations. These double as the module-level
+# CONFIG_PATH/BACKUP_PATH seam that existing tests monkeypatch (doc.CONFIG_PATH).
+_HOME_CONFIG_DEFAULT = Path.home() / ".juggle" / "config.json"
+_HOME_BACKUP_DEFAULT = Path.home() / ".juggle" / "config.json.bak-pre-1.21"
+
+# Initialized to the home default so tests that DON'T patch these still observe
+# the home path, which cmd_doctor reads as "no test override" (-> use the
+# _JUGGLE_CONFIG_PATH-aware resolver). A test that patches CONFIG_PATH to a tmp
+# file makes it differ from the default, which is detected as an override.
+CONFIG_PATH = _HOME_CONFIG_DEFAULT
+BACKUP_PATH = _HOME_BACKUP_DEFAULT
+
+
+def _resolve_config_path() -> Path:
+    """Resolve the effective config path the SAME way juggle_settings does.
+
+    Parity with juggle_settings.get_settings(): honor _JUGGLE_CONFIG_PATH so
+    doctor inspects/prunes the file the runtime actually loads. Without this, a
+    deployment whose config comes from _JUGGLE_CONFIG_PATH would have doctor
+    silently mutate the home config instead (Codex review, 2026-06-20).
+    """
+    return Path(os.environ.get("_JUGGLE_CONFIG_PATH", str(_HOME_CONFIG_DEFAULT)))
 
 
 def _migrate_config(cfg: dict) -> tuple[dict, list[str]]:
@@ -65,16 +86,19 @@ def _clear_settings_cache() -> None:
         pass
 
 
-def _check_stale_config(dry: bool) -> None:
+def _check_stale_config(dry: bool, cfg_path: Path, backup_path: Path) -> None:
     """Report stale/inert/unknown config keys; prune inert keys when not dry.
 
-    Reloads the (possibly just-migrated) on-disk config, analyzes it against the
-    live DEFAULTS schema, prints the report on every run, and in non-dry-run
-    backs up + prunes the inert (safe-to-remove) keys. A malformed config is
-    skipped gracefully so doctor never crashes here.
+    Operates on the EFFECTIVE config/backup paths resolved by cmd_doctor (which
+    honor _JUGGLE_CONFIG_PATH), passed in explicitly rather than read from module
+    globals — so the prune targets the file the runtime actually loads and the
+    backup lands next to it. Reloads the (possibly just-migrated) on-disk config,
+    analyzes it against the live DEFAULTS schema, prints the report on every run,
+    and in non-dry-run backs up + prunes the inert (safe-to-remove) keys. A
+    malformed config is skipped gracefully so doctor never crashes here.
     """
     try:
-        cfg = json.loads(CONFIG_PATH.read_text())
+        cfg = json.loads(cfg_path.read_text())
     except (OSError, json.JSONDecodeError):
         return  # unreadable/corrupt — already surfaced earlier; skip gracefully
     if not isinstance(cfg, dict):
@@ -96,14 +120,14 @@ def _check_stale_config(dry: bool) -> None:
         )
         return
 
-    if not BACKUP_PATH.exists():
-        shutil.copy2(CONFIG_PATH, BACKUP_PATH)
+    if not backup_path.exists():
+        shutil.copy2(cfg_path, backup_path)
     new_cfg, removed = cdoc.prune_config(cfg, report.prunable_paths)
-    CONFIG_PATH.write_text(json.dumps(new_cfg, indent=2))
+    cfg_path.write_text(json.dumps(new_cfg, indent=2))
     _clear_settings_cache()
     print(
         f"stale config: pruned {len(removed)} inert key(s): "
-        f"{', '.join(removed)} (backup: {BACKUP_PATH})"
+        f"{', '.join(removed)} (backup: {backup_path})"
     )
 
 
@@ -111,20 +135,37 @@ def cmd_doctor(args) -> int:
     dry = getattr(args, "dry_run", False)
     print(f"juggle doctor — dry_run={dry}")
 
+    # Resolve the EFFECTIVE config/backup paths once. Parity with
+    # juggle_settings.get_settings(): honor _JUGGLE_CONFIG_PATH so doctor
+    # inspects/prunes the file the runtime loads (Codex review, 2026-06-20).
+    #
+    # Test-seam override detection: existing tests monkeypatch doc.CONFIG_PATH /
+    # doc.BACKUP_PATH to a tmp file. If the module value still equals the home
+    # default, no test patched it -> use the _JUGGLE_CONFIG_PATH-aware resolver.
+    # If it differs, a test overrode it -> honor the patched value verbatim. The
+    # backup is derived from the EFFECTIVE config path so it lands next to the
+    # file being pruned, not in $HOME.
+    cfg_path = CONFIG_PATH if CONFIG_PATH != _HOME_CONFIG_DEFAULT else _resolve_config_path()
+    backup_path = (
+        BACKUP_PATH
+        if BACKUP_PATH != _HOME_BACKUP_DEFAULT
+        else cfg_path.with_name(cfg_path.name + ".bak-pre-1.21")
+    )
+
     # 1. Config
-    if CONFIG_PATH.exists():
-        original = json.loads(CONFIG_PATH.read_text())
+    if cfg_path.exists():
+        original = json.loads(cfg_path.read_text())
         new_cfg, changes = _migrate_config(dict(original))
         if changes:
             if not dry:
-                if not BACKUP_PATH.exists():
-                    shutil.copy2(CONFIG_PATH, BACKUP_PATH)
-                CONFIG_PATH.write_text(json.dumps(new_cfg, indent=2))
+                if not backup_path.exists():
+                    shutil.copy2(cfg_path, backup_path)
+                cfg_path.write_text(json.dumps(new_cfg, indent=2))
                 _clear_settings_cache()
             print(f"config: {len(changes)} change(s):")
             for c in changes:
                 print(f"  - {c}")
-            print(f"  backup: {BACKUP_PATH}" if not dry else "  (dry-run — no write)")
+            print(f"  backup: {backup_path}" if not dry else "  (dry-run — no write)")
         else:
             print("config: already on 1.21.0 schema")
 
@@ -133,9 +174,9 @@ def cmd_doctor(args) -> int:
         # honors them, e.g. integrate.* since the v1.80.0 full-suite directive)
         # and unknown keys (typos / removed options). Prunes ONLY inert keys in
         # non-dry-run; unknown keys are report-only.
-        _check_stale_config(dry)
+        _check_stale_config(dry, cfg_path, backup_path)
     else:
-        print(f"config: {CONFIG_PATH} does not exist — nothing to migrate")
+        print(f"config: {cfg_path} does not exist — nothing to migrate")
 
     # 2. DB (presence-based; juggle has no schema_version table)
     from juggle_db import JuggleDB, DB_PATH  # noqa: PLC0415 — call-time so tests can patch juggle_db.DB_PATH

@@ -316,3 +316,75 @@ def test_doctor_unknown_key_reported_not_pruned(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "bogus_top" in out
     assert "UNKNOWN" in out
+
+
+# ── _JUGGLE_CONFIG_PATH parity (Codex review, 2026-06-20) ──────────────────────
+
+
+def test_doctor_honors_juggle_config_path_override(tmp_path, monkeypatch, capsys):
+    """REGRESSION PIN (2026-06-20, Codex review): doctor read/backed-up/pruned the
+    hardcoded module-level CONFIG_PATH (~/.juggle/config.json) and ignored the
+    _JUGGLE_CONFIG_PATH override that juggle_settings.get_settings() honors. In a
+    deployment whose runtime config comes from _JUGGLE_CONFIG_PATH, doctor would
+    prune the WRONG file and could mutate the home config. Doctor must resolve the
+    SAME effective path as the loader.
+
+    This test does NOT monkeypatch doc.CONFIG_PATH — it sets _JUGGLE_CONFIG_PATH to
+    a tmp config and asserts (a) the tmp file's inert key was pruned, (b) the backup
+    landed NEXT TO that tmp file (not in $HOME), and (c) the real home backup was not
+    newly created (proving the home config was never touched).
+
+    Pre-fix this FAILS: doctor operates on ~/.juggle/config.json, so the tmp file is
+    never pruned (no .bak created next to it) and the assertions below trip.
+    """
+    # Tmp config carrying an inert key (integrate.quarantine_tests is inert since
+    # the v1.80.0 full-suite directive) plus a valid key that must survive.
+    env_cfg = tmp_path / "isolated_config.json"
+    env_cfg.write_text(
+        json.dumps(
+            {
+                "max_threads": 14,
+                "integrate": {"quarantine_tests": ["tests/test_loc_gate.py"]},
+            },
+            indent=2,
+        )
+    )
+    env_backup = env_cfg.with_name(env_cfg.name + ".bak-pre-1.21")
+
+    # Point the loader (and now doctor) at the tmp config via the env override.
+    monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(env_cfg))
+    # Do NOT patch doc.CONFIG_PATH/BACKUP_PATH: leaving them at the home default is
+    # exactly how cmd_doctor detects "no test override" and falls through to the
+    # _JUGGLE_CONFIG_PATH-aware resolver. Assert that precondition explicitly.
+    assert doc.CONFIG_PATH == doc._HOME_CONFIG_DEFAULT
+    assert doc.BACKUP_PATH == doc._HOME_BACKUP_DEFAULT
+
+    # Safety net: the real home backup must not exist before the run (and we assert
+    # below that doctor did not create it). Guard so this test never writes to $HOME.
+    home_backup = doc._HOME_BACKUP_DEFAULT
+    home_backup_existed = home_backup.exists()
+
+    # DB section: point at a nonexistent path so cmd_doctor returns right after the
+    # config section (it prints "will be created" and returns 0 before any DB work).
+    monkeypatch.setattr(juggle_db, "DB_PATH", str(tmp_path / "no_such.db"))
+
+    assert doc.cmd_doctor(_Args(dry_run=False)) == 0
+
+    # (a) the _JUGGLE_CONFIG_PATH file had its inert key pruned, valid key intact.
+    after = json.loads(env_cfg.read_text())
+    assert "quarantine_tests" not in after["integrate"], (
+        "inert key in the _JUGGLE_CONFIG_PATH file must be pruned"
+    )
+    assert after["max_threads"] == 14, "valid key must survive"
+
+    # (b) the backup landed NEXT TO the tmp config (not in $HOME).
+    assert env_backup.exists(), "backup must be written next to the overridden config"
+
+    # (c) isolation: the real home backup was NOT newly created by this run.
+    assert home_backup.exists() == home_backup_existed, (
+        "doctor must not create a backup in $HOME when _JUGGLE_CONFIG_PATH is set"
+    )
+    assert env_backup.parent == tmp_path, "backup must live under tmp_path, never $HOME"
+
+    out = capsys.readouterr().out
+    assert "pruned" in out.lower()
