@@ -7,7 +7,7 @@
 
 **Parallel conversation threads for Claude Code.**
 
-[![Version](https://img.shields.io/badge/version-1.58.1-2563eb.svg)](.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.80.0-2563eb.svg)](.claude-plugin/plugin.json)
 [![Python](https://img.shields.io/badge/python-3.12+-f59e0b.svg)](https://www.python.org/)
 [![tmux](https://img.shields.io/badge/tmux-3.0+-22c55e.svg)](https://github.com/tmux/tmux)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-94a3b8.svg)](#prerequisites)
