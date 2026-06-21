@@ -154,6 +154,54 @@ def _guard_no_prod_artifacts_active(_guard_no_prod_artifacts):  # noqa: ARG001
     return True
 
 
+# ── Watchdog real-daemon spawn neutralizer + survivor guard (2026-06-21 leak) ──
+# The always-full-suite (v1.80) surfaced a real-daemon leak: CockpitApp.on_mount
+# self-heals a detached watchdog via ensure_watchdog → a REAL
+# `uv run python src/juggle_watchdog_daemon.py` against the test's tmp DB, so
+# every cockpit test that drives the real app (run_test) launched a background
+# daemon; if teardown reaped only the `uv run` parent the detached python child
+# orphaned and kept ticking, contaminating the rest of the suite (8 full-suite
+# ERRORS; observed live 2026-06-20 — TODO "Full-suite daemon teardown"). Two
+# layers, both autoused:
+#   1. Neutralize the spawn at its single source — patch
+#      `juggle_watchdog_singleton.start_watchdog_detached` to a no-op so NO ensure
+#      path (cockpit, cmd_start) launches a real daemon subprocess. Tests that
+#      assert the real launch command bind start_watchdog_detached directly (a
+#      module-local import) or patch subprocess.Popen, so they are unaffected.
+#   2. Backstop survivor guard — after each test, fail loud (and SIGKILL) on any
+#      daemon that survived holding a singleton lock under this test's own
+#      tmp_path. Scoped to tmp_path so a concurrent xdist worker's daemon / the
+#      live PROD watchdog is never mis-attributed (mirrors the per-seam,
+#      hermetic design of the guards above).
+
+
+@pytest.fixture(autouse=True)
+def _no_real_watchdog_daemon_spawn(monkeypatch):
+    import juggle_watchdog_singleton as _wd
+
+    def _no_spawn(db_path, *, repo_path=None):  # noqa: ARG001
+        return -1  # sentinel pid; ensure_watchdog ignores the spawn return value
+
+    monkeypatch.setattr(_wd, "start_watchdog_detached", _no_spawn)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _guard_no_leaked_watchdog_daemons(tmp_path):
+    yield
+    from _daemon_guard import reap_survivors, scoped_daemon_survivors
+
+    survivors = scoped_daemon_survivors(tmp_path)
+    if survivors:
+        reap_survivors(survivors)  # never let a leak contaminate the rest of the suite
+        raise AssertionError(
+            f"watchdog daemon survivor(s) {survivors} held a singleton lock under "
+            f"{tmp_path} after the test (2026-06-21 daemon-teardown leak). A test "
+            "that spawns a real daemon MUST reap it — kill the process GROUP "
+            "(start_new_session ⇒ the daemon child is detached), SIGKILL escalation."
+        )
+
+
 # ── Slow-tier marking (speedup-tier B2, 2026-06-21) ───────────────────────────
 # Heavy modules (cockpit/Textual render, watchdog real-daemon/gap, `uv run`
 # shell-outs) are marked `slow` so the OPT-IN inner loop

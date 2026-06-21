@@ -10,6 +10,7 @@ exited 0 instantly without ever ticking or acquiring the singleton lock.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -86,12 +87,29 @@ def test_sanctioned_direct_launch_stays_alive(tmp_path):
             + (log_path.read_text() if log_path.exists() else "<no log>")
         )
     finally:
+        # Reap the whole process GROUP, not just the `uv run` parent: the daemon
+        # is spawned with start_new_session=True, so `uv run` leads its own
+        # session/process-group and the real python daemon CHILD is detached.
+        # Terminating only `proc` would orphan that child, which keeps holding
+        # the singleton lock and ticking (2026-06-21 daemon-teardown leak; the
+        # autouse survivor guard now fails any test that leaks one). killpg
+        # SIGTERM→SIGKILL reaps parent + child together.
         try:
-            proc.terminate()
             try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
+                pgid = os.getpgid(proc.pid)
+            except ProcessLookupError:
+                pgid = None
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                if pgid is None:
+                    break
+                try:
+                    os.killpg(pgid, sig)
+                except ProcessLookupError:
+                    break
+                try:
+                    proc.wait(timeout=5)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
         finally:
             log_fd.close()

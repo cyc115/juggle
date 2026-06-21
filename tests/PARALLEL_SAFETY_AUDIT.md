@@ -29,6 +29,7 @@ state races). Two mitigations, both applied:
 | `test_juggle_smoke.py`, `test_graph_dispatch.py`, `test_cmd_graph.py`, `test_ensure_watchdog_debounce.py`, `test_watchdog_daemon_main_entry.py`, `test_integrate.py` (`uv run` shell-outs) | child-process DB | (1) safe | Child inherits the per-test `JUGGLE_DB_PATH` from env (monkeypatch.setenv propagates to subprocess). |
 | `tests/schedule/*` dry-run samples | fixed `/tmp/schedule-*-sample-*.md` | (1) safe (hardened M1) | Was a fixed `/tmp` path (no active race — distinct filenames, one writer each — but guard-blind + stale-file false-green risk). Now routed through `common.dry_run_sample_path()` (env `JUGGLE_SCHEDULE_SAMPLE_DIR`); the three dry-run tests point it at a fresh `tmp_path/samples`. |
 | `watchdog_proc`-marked | host canonical watchdog | n/a | DESELECTED by default `addopts` (`-m 'not watchdog_proc'`) — never runs in the suite (2026-06-16 incident). |
+| Real-daemon spawn (cockpit on_mount, `cmd_start`) | `uv run …daemon.py` child | (1) safe (hardened 2026-06-21) | Autouse `_no_real_watchdog_daemon_spawn` patches `start_watchdog_detached` → no test launches a real daemon. Autouse `_guard_no_leaked_watchdog_daemons` fails+SIGKILLs any survivor holding a lock under the test's own `tmp_path` (scoped — never blames a foreign worker / prod). See below. |
 
 ## Serial group (load-flake mitigation, applied in tests/conftest.py)
 
@@ -51,6 +52,42 @@ Its two interactive frame-compare tests instead **poll-until-changed**
 `--dist loadgroup` is REQUIRED for the serial grouping to work (it routes a group
 to one worker); dropping it scatters the group and the load-flake can return —
 see Rollback below.
+
+## Daemon-survivor guard + spawn neutralizer (2026-06-21 daemon-teardown leak)
+
+The always-full-suite (v1.80) surfaced a real-daemon leak the `watchdog_active`
+teardown hardening (v1.77) never covered: `CockpitApp.on_mount` self-heals a
+detached watchdog via `ensure_watchdog` → a REAL
+`uv run python src/juggle_watchdog_daemon.py` against the test's tmp DB. So every
+cockpit test that drives the real app (`run_test`) launched a background daemon;
+when teardown reaped only the `uv run` parent the detached python CHILD orphaned
+and kept ticking (8 full-suite ERRORS; observed live 2026-06-20 on a doctor
+agent's full-suite run). Two autouse layers in `tests/conftest.py` (detection in
+`tests/_daemon_guard.py`, pinned in `tests/test_daemon_survivor_guard.py`):
+
+1. **Spawn neutralizer** (`_no_real_watchdog_daemon_spawn`) — patches
+   `juggle_watchdog_singleton.start_watchdog_detached` to a no-op so NO ensure
+   path (cockpit, `cmd_start`) launches a real daemon subprocess. Tests that
+   assert the real launch command bind `start_watchdog_detached` via a
+   module-local import or patch `subprocess.Popen`, so they are unaffected; the
+   `watchdog_proc` real-daemon canaries use their own spawn marker, not this
+   seam, so they are unaffected too.
+2. **Survivor guard** (`_guard_no_leaked_watchdog_daemons`) — after each test,
+   reads the per-DB singleton-lock sidecars `.<db>.watchdog.lock` directly under
+   the test's `tmp_path`, and fails (after SIGKILL-reaping) on any recorded PID
+   that is still alive AND a `juggle_watchdog_daemon.py` process. Scoping by the
+   `tmp_path` lock files means a concurrent xdist worker's daemon or the live
+   PROD watchdog is never mis-attributed — the same per-seam, hermetic design as
+   the prod-DB / prod-artifact / worktree guards. The one intentional real-daemon
+   spawner (`test_watchdog_daemon_main_entry.py`) now reaps the whole process
+   GROUP (`killpg`, SIGTERM→SIGKILL) so the detached child is reaped, not just
+   the `uv run` parent.
+
+Note on the `slow` tier: the de-clock of the `watchdog/` gap tests
+(`test_watchdog_active.py` — poll-until-marker + DB-backdated stall, no
+wall-clock) landed earlier; it removed the FLAKINESS but the modules stay
+real-tmux (not CPU-fast), so they REMAIN in `_SLOW_MODULE_SUFFIXES` (the
+opt-in fast loop still skips them). They run in the default/integrate FULL suite.
 
 ## Rollback (M4) — if CI flakes under parallelism
 
