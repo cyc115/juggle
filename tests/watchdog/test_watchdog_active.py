@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import time
 import datetime
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -27,21 +28,23 @@ _watchdog = pytest.importorskip(
 inspect_agent = _watchdog.inspect_agent
 
 
-def _scoped_leaks(before_pids, after_pids, own_db_path, db_path_reader) -> set[int]:
+def _scoped_leaks(before_pids: set[int], after_pids: set[int], own_db_path: str, db_path_reader: Callable[[int], str | None]) -> set[int]:
     """Return NEW pids (after - before) whose db path resolves to OUR own tmp DB.
 
-    `own_db_path` is ALREADY resolved by the caller. For each new pid we read its
+    `own_db_path` is resolved defensively here (idempotent), so callers may pass a
+    resolved or unresolved path. For each new pid we read its
     JUGGLE_DB_PATH via `db_path_reader(pid)`; None (env unreadable) or a path that
     resolves to anything else (prod, a foreign tmp DB) is EXCLUDED. Only positive
     matches to our own path are flagged — conservative, so foreign/cockpit daemons
     never count as this test's leak (the 2026-06-20 false-positive fix).
     """
+    own = str(Path(own_db_path).resolve())
     leaked: set[int] = set()
     for pid in after_pids - before_pids:
         raw = db_path_reader(pid)
         if raw is None:
             continue
-        if str(Path(raw).resolve()) == own_db_path:
+        if str(Path(raw).resolve()) == own:
             leaked.add(pid)
     return leaked
 
