@@ -270,3 +270,10 @@ def run_migrations(conn: sqlite3.Connection) -> None:
             _log.warning("Migration 19 skipped: %s", e)
 
     apply_recent_migrations(conn)
+
+    # Migration 46 (cockpit summary-cache): additive topic_summary_cache table.
+    # Wired here (not in apply_recent_migrations) — migrations_recent.py is at its
+    # LOC-gate budget; run_migrations is the sole runner so every path still gets it.
+    from dbops.migration_topic_summary_cache import migrate_46_topic_summary_cache
+
+    migrate_46_topic_summary_cache(conn)

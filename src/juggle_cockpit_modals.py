@@ -496,6 +496,7 @@ class _TopicDetailModal(ModalScreen):
         super().__init__()
         self._topic = topic
         self._extra = extra or {}
+        self._cursor = 0  # MAX(messages.id) cursor; resolved in on_mount
 
     def _header_lines(self) -> list[str]:
         t = self._topic
@@ -572,12 +573,19 @@ class _TopicDetailModal(ModalScreen):
             yield Static("", id="topic-body", markup=False)
 
     def on_mount(self) -> None:
+        from juggle_topic_summary_cache import load_cached_sections
+
         thread_id = self._extra.get("thread_id", "")
         message_count = self._extra.get("message_count", 0)
-        cache_key = (thread_id, message_count)
+        db = getattr(self.app, "_db", None)
 
-        if cache_key in _topic_summary_cache:
-            sections = _topic_summary_cache[cache_key]
+        # L1 (in-memory) → L2 (DB) lookup, keyed by the MAX(messages.id) cursor.
+        # An EXACT hit (cursor unchanged) renders instantly and survives a cockpit
+        # restart; a miss / advanced cursor falls through to a full regeneration.
+        sections, self._cursor = load_cached_sections(
+            db, thread_id, message_count, _topic_summary_cache
+        )
+        if sections is not None:
             self._apply_summary(sections)
             return
 
@@ -585,8 +593,9 @@ class _TopicDetailModal(ModalScreen):
         self.run_worker(self._fetch_summary, thread=True)
 
     def _fetch_summary(self) -> None:
-        """Blocking worker: call LLM, update body via call_from_thread."""
+        """Blocking worker: call LLM, persist a usable summary, update body."""
         from juggle_topic_summary import summarize_topic
+        from juggle_topic_summary_cache import store_summary
 
         task_input = (self._extra.get("task_input") or "").strip()
         result_output = (self._extra.get("result_output") or "").strip()
@@ -599,11 +608,13 @@ class _TopicDetailModal(ModalScreen):
 
         sections = summarize_topic(task_input, result_output, messages_all, meta)
 
-        # Cache if we have a thread_id
+        # R7: persist ONLY a displayable summary (any_content gate) to L1+L2; an
+        # empty / LLM-failed one is never cached, so the next view re-derives
+        # instead of serving a broken summary forever.
         thread_id = self._extra.get("thread_id", "")
-        message_count = self._extra.get("message_count", 0)
-        if thread_id:
-            _topic_summary_cache[(thread_id, message_count)] = sections
+        cursor = getattr(self, "_cursor", self._extra.get("message_count", 0))
+        db = getattr(self.app, "_db", None)
+        store_summary(db, thread_id, cursor, sections, _topic_summary_cache)
 
         self.app.call_from_thread(self._apply_summary, sections)
 
