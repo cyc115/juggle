@@ -343,6 +343,23 @@ class JuggleTmuxManager:
         # process so an empty/dead pane is not mistaken for a successful submit.
         return _pane_has_juggle_agent_env(pane_id)
 
+    def _paste_buffer(self, pane_id: str, src_path: str, buf_name: str | None = None) -> None:
+        """Paste a temp file into a pane via a tmux buffer (shared by send_task /
+        send_message).
+
+        Uses ``paste-buffer -p -r`` (fix for 2026-06-21 send-task
+        paste-without-submit): ``-p`` emits bracketed-paste markers so the
+        receiving TUI treats the whole payload as ONE atomic paste — embedded
+        newlines are paste text, never premature submits — and ``-r`` preserves
+        LF (tmux otherwise translates LF->CR, and a bare CR is a submit). The
+        caller's subsequent ``send-keys C-m`` then lands OUTSIDE the closing
+        ESC[201~ bracket as the single, unambiguous submit.
+        """
+        buf_name = buf_name or f"juggle_{uuid.uuid4().hex[:8]}"
+        self._run_tmux("load-buffer", "-b", buf_name, src_path)
+        self._run_tmux("paste-buffer", "-p", "-r", "-b", buf_name, "-t", pane_id)
+        self._run_tmux("delete-buffer", "-b", buf_name)
+
     def send_task(self, pane_id: str, prompt: str, is_new: bool = False) -> str:
         """Send a task prompt to an agent pane via tmux load-buffer + paste-buffer.
 
@@ -379,12 +396,9 @@ class JuggleTmuxManager:
 
         tmp = f"/tmp/juggle_task_{uuid.uuid4().hex[:8]}.txt"
         Path(tmp).write_text(prompt)
-        buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
         pane_hash = "0000000000000000"
         try:
-            self._run_tmux("load-buffer", "-b", buf_name, tmp)
-            self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
-            self._run_tmux("delete-buffer", "-b", buf_name)
+            self._paste_buffer(pane_id, tmp)
             # Capture pane tail BEFORE sending Enter for stuck-at-prompt detection
             # 0.4s gives the TUI time to render the collapsed-paste placeholder
             # before we take the snapshot and send the first C-m.
@@ -429,12 +443,9 @@ class JuggleTmuxManager:
             )
 
         tmp = f"/tmp/juggle_msg_{uuid.uuid4().hex[:8]}.txt"
-        buf_name = f"juggle_{uuid.uuid4().hex[:8]}"
         Path(tmp).write_text(text)
         try:
-            self._run_tmux("load-buffer", "-b", buf_name, tmp)
-            self._run_tmux("paste-buffer", "-b", buf_name, "-t", pane_id)
-            self._run_tmux("delete-buffer", "-b", buf_name)
+            self._paste_buffer(pane_id, tmp)
             _time.sleep(0.4)
             self._run_tmux("send-keys", "-t", pane_id, "C-m")
             if not self.wait_for_submission(pane_id, text, timeout=15):
