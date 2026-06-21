@@ -256,7 +256,9 @@ def test_cmd_start_stores_orchestrator_session_id(tmp_path, monkeypatch):
     monkeypatch.setattr(juggle_cmd_threads, "get_db", lambda: db)
 
     # Prevent side effects from watchdog/talkback
-    monkeypatch.setattr(juggle_cmd_threads, "_start_watchdog", lambda: None)
+    monkeypatch.setattr(
+        juggle_cmd_threads, "_start_watchdog_for_cmd_start", lambda db: None
+    )
     monkeypatch.setattr(juggle_cmd_threads, "_maybe_start_talkback", lambda: None)
 
     juggle_cmd_threads.cmd_start(None)

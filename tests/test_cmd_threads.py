@@ -30,7 +30,7 @@ def test_cmd_start_creates_db_and_watchdog(mock_get_db, tmp_path):
     from juggle_cmd_threads import cmd_start
 
     with patch("juggle_cmd_threads._DATA_DIR", tmp_path):
-        with patch("juggle_cmd_threads._start_watchdog"):
+        with patch("juggle_cmd_threads._start_watchdog_for_cmd_start"):
             with patch("juggle_cmd_threads._maybe_start_talkback"):
                 with patch("juggle_cmd_threads._get_version", return_value="1.0"):
                     with patch("builtins.print") as mock_print:
@@ -54,7 +54,7 @@ def test_cmd_start_uses_existing_thread(mock_get_db):
     mock_get_db.get_thread.return_value = existing_thread
 
     with patch("juggle_cmd_threads._DATA_DIR"):
-        with patch("juggle_cmd_threads._start_watchdog"):
+        with patch("juggle_cmd_threads._start_watchdog_for_cmd_start"):
             with patch("juggle_cmd_threads._maybe_start_talkback"):
                 with patch("juggle_cmd_threads._get_version", return_value="1.0"):
                     with patch(

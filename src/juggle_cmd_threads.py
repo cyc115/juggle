@@ -194,6 +194,28 @@ def _maybe_start_talkback() -> None:
     )
 
 
+def _start_watchdog_for_cmd_start(db) -> None:
+    """`juggle start` is the CLI start/unfreeze path for the watchdog.
+
+    Clears any freeze sentinel set by ``stop-watchdog --freeze`` (otherwise a CLI
+    user who froze is stranded — only the cockpit W/R hotkeys cleared it) and
+    ensures the singleton watchdog is up. Reuses the flock-based singleton
+    primitives (the cockpit's ensure path); ``force=True`` because an explicit
+    start must bypass the respawn debounce. Fail-silent: a watchdog hiccup must
+    never block session activation.
+    """
+    try:
+        import juggle_watchdog_singleton as ws
+
+        db_path = str(db.db_path)
+        ws.unfreeze_watchdog(db_path)
+        ws.ensure_watchdog(
+            db_path, repo_path=ws.canonical_repo_path(), force=True
+        )
+    except Exception:
+        _log.warning("cmd_start: watchdog start/unfreeze failed", exc_info=True)
+
+
 def cmd_start(_):
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -207,7 +229,10 @@ def cmd_start(_):
 
     # Auto-start talkback if enabled in config
     _maybe_start_talkback()
-    # Watchdog is now owned/supervised by the cockpit (started on cockpit mount).
+    # `juggle start` is the CLI start/unfreeze path: clear any freeze sentinel and
+    # ensure the singleton watchdog is alive (the cockpit also self-heals it on an
+    # interval, but a headless CLI user needs this to escape a freeze).
+    _start_watchdog_for_cmd_start(db)
 
     ver = _get_version()
     threads = db.get_all_threads()

@@ -283,6 +283,7 @@ def register(subparsers) -> None:
     )
     p_stop_watchdog.add_argument(
         "--freeze", action="store_true",
-        help="Also set the freeze sentinel (no respawn until an explicit start).",
+        help="Also set the freeze sentinel (no respawn until `juggle start`, "
+             "which clears the freeze and restarts the watchdog).",
     )
     p_stop_watchdog.set_defaults(func=cmd_stop_watchdog)
