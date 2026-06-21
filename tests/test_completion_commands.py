@@ -95,6 +95,27 @@ def test_cmd_complete_agent_preserves_feature_topic_with_user_messages(db):
     assert db.get_thread(tid)["status"] != "closed"
 
 
+def test_cmd_complete_agent_does_not_reopen_closed_feature_topic(db):
+    """Idempotency (2026-06-21 Codex review): complete-agent on an ALREADY
+    closed user-message thread must NOT resurrect it to 'active'. The preserve
+    guard only un-hijacks an in-flight bind (background/running); a terminal
+    status is left untouched so a duplicate/retry completion is a no-op.
+    """
+    from juggle_cmd_agents import cmd_complete_agent
+
+    tid = db.create_thread("feature topic", session_id="sessA")
+    db.add_message(tid, "user", "build the feature")
+    db.set_thread_status(tid, "closed")  # already terminal
+    db._set_session_key_external("session_id", "sessA")
+    args = argparse.Namespace(
+        thread_id=tid, result_summary="dup completion", retain_text=None,
+        open_questions=None,
+    )
+    cmd_complete_agent(args)
+    # Must stay closed — not reopened.
+    assert db.get_thread(tid)["status"] == "closed"
+
+
 def test_cmd_complete_agent_converts_open_questions_to_action_items(db):
     import json
     from juggle_cmd_agents import cmd_complete_agent

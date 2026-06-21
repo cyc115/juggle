@@ -109,10 +109,15 @@ def cmd_complete_agent(args):
     #    receives its prompt via send-task, not as a stored 'user' message. Code
     #    over prompts: don't rely on the orchestrator create-thread'ing first.
     preserve_feature_topic = db.get_message_count(thread_uuid) > 0
-    if preserve_feature_topic:
-        db.set_thread_status(thread_uuid, "active")
-    else:
+    if not preserve_feature_topic:
         db.set_thread_status(thread_uuid, "closed")
+    elif (thread.get("status") or "") in ("background", "running"):
+        # Un-hijack an in-flight wrongful bind. Gate on the in-flight status so a
+        # duplicate/retry completion never RESURRECTS an already-terminal
+        # (closed/archived/failed) feature topic to 'active' — idempotency
+        # (Codex review, 2026-06-21).
+        db.set_thread_status(thread_uuid, "active")
+    # else: preserved feature topic already terminal → leave status untouched.
 
     # Resolve agent before step 5 (needed for role check below)
     agent = db.get_agent_by_thread(thread_uuid)
