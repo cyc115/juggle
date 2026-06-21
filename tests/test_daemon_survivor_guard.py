@@ -142,6 +142,37 @@ async def test_cockpit_run_does_not_launch_real_watchdog_daemon(tmp_path, monkey
 # ---------------------------------------------------------------------------
 
 
+def test_ensure_watchdog_skips_real_spawn_when_disabled(tmp_path, monkeypatch):
+    """JUGGLE_WATCHDOG_DISABLE_SPAWN=1 makes ensure_watchdog a no-op on the REAL
+    path (spawn is None) so no test/CI subprocess (`juggle start`, cockpit
+    on_mount) launches a detached daemon — but an injected spawn (unit tests) is
+    still honored. RED before the env guard in ensure_watchdog; green after."""
+    import juggle_watchdog_singleton as ws
+
+    db = tmp_path / "x.db"
+    db.write_text("")
+    monkeypatch.setattr(ws, "is_watchdog_alive", lambda p: False)
+    monkeypatch.setenv("JUGGLE_WATCHDOG_DISABLE_SPAWN", "1")
+
+    # Real path (spawn is None) is suppressed — start_watchdog_detached untouched.
+    real_called = []
+    monkeypatch.setattr(
+        ws, "start_watchdog_detached", lambda *a, **k: real_called.append(1)
+    )
+    assert ws.ensure_watchdog(
+        str(db), survive_timeout=0.0, min_respawn_interval=0.0
+    ) is False
+    assert real_called == [], "disabled real spawn must never launch a daemon"
+
+    # An injected spawn is still honored even when disabled (unit-test path).
+    spawns = []
+    ws.ensure_watchdog(
+        str(db), spawn=lambda *a, **k: spawns.append(1),
+        survive_timeout=0.0, min_respawn_interval=0.0,
+    )
+    assert spawns == [1]
+
+
 def test_conftest_wires_daemon_guard_and_spawn_neutralizer():
     """The global conftest must keep BOTH autouse fixtures — the survivor guard
     (fail loud if a daemon leaks) and the spawn-neutralizer (no test launches a
@@ -149,4 +180,4 @@ def test_conftest_wires_daemon_guard_and_spawn_neutralizer():
     src = (Path(__file__).parent / "conftest.py").read_text()
     assert "def _guard_no_leaked_watchdog_daemons" in src, "survivor-guard fixture missing"
     assert "def _no_real_watchdog_daemon_spawn" in src, "spawn-neutralizer fixture missing"
-    assert "start_watchdog_detached" in src, "neutralizer must patch start_watchdog_detached"
+    assert "JUGGLE_WATCHDOG_DISABLE_SPAWN" in src, "neutralizer must set the disable-spawn env"

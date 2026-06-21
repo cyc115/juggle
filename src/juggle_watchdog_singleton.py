@@ -23,6 +23,13 @@ from pathlib import Path
 # launched, so a prod-targeted daemon aborts immediately.
 SANCTION_ENV = "JUGGLE_WATCHDOG_SANCTIONED"
 
+# When "1", ``ensure_watchdog`` never launches a REAL detached daemon (the
+# ``spawn is None`` path). The test harness sets it so cockpit on_mount /
+# ``juggle start`` — including in a `uv run` subprocess child, which inherits the
+# env — cannot leak a background daemon onto a pytest tmp DB (2026-06-21
+# daemon-teardown leak). An injected ``spawn=`` (unit tests) is always honored.
+DISABLE_SPAWN_ENV = "JUGGLE_WATCHDOG_DISABLE_SPAWN"
+
 # The one production DB that must never be touched by a worktree/test daemon.
 PROD_DB_PATH = (Path.home() / ".claude" / "juggle" / "juggle.db").resolve()
 
@@ -246,6 +253,12 @@ def ensure_watchdog(
     if should_suppress_spawn(
         db_path, now=now, min_respawn_interval=min_respawn_interval, force=force
     ):
+        return False
+    # Test/CI backstop: never launch a REAL detached daemon when disabled. Only
+    # the real-spawn path (spawn is None) is gated — an injected ``spawn`` (unit
+    # tests) is always honored. Propagates to `uv run` subprocess children, so a
+    # cockpit/CLI launched by a test cannot leak a daemon onto a tmp DB.
+    if spawn is None and os.environ.get(DISABLE_SPAWN_ENV) == "1":
         return False
 
     record_spawn(db_path, now)

@@ -163,11 +163,14 @@ def _guard_no_prod_artifacts_active(_guard_no_prod_artifacts):  # noqa: ARG001
 # orphaned and kept ticking, contaminating the rest of the suite (8 full-suite
 # ERRORS; observed live 2026-06-20 — TODO "Full-suite daemon teardown"). Two
 # layers, both autoused:
-#   1. Neutralize the spawn at its single source — patch
-#      `juggle_watchdog_singleton.start_watchdog_detached` to a no-op so NO ensure
-#      path (cockpit, cmd_start) launches a real daemon subprocess. Tests that
-#      assert the real launch command bind start_watchdog_detached directly (a
-#      module-local import) or patch subprocess.Popen, so they are unaffected.
+#   1. Neutralize the spawn at its single source — set
+#      `JUGGLE_WATCHDOG_DISABLE_SPAWN=1` so `ensure_watchdog` never launches a
+#      real detached daemon on its real path (spawn is None). Set via setenv so
+#      it ALSO propagates to `uv run` cockpit/CLI subprocess children (which
+#      inherit os.environ) — the smoke / cli-memory tests run a real
+#      `juggle start` / cockpit subprocess that would otherwise leak a daemon.
+#      Unit tests that inject a fake `spawn=` are unaffected (only spawn-None is
+#      gated).
 #   2. Backstop survivor guard — after each test, fail loud (and SIGKILL) on any
 #      daemon that survived holding a singleton lock under this test's own
 #      tmp_path. Scoped to tmp_path so a concurrent xdist worker's daemon / the
@@ -177,12 +180,7 @@ def _guard_no_prod_artifacts_active(_guard_no_prod_artifacts):  # noqa: ARG001
 
 @pytest.fixture(autouse=True)
 def _no_real_watchdog_daemon_spawn(monkeypatch):
-    import juggle_watchdog_singleton as _wd
-
-    def _no_spawn(db_path, *, repo_path=None):  # noqa: ARG001
-        return -1  # sentinel pid; ensure_watchdog ignores the spawn return value
-
-    monkeypatch.setattr(_wd, "start_watchdog_detached", _no_spawn)
+    monkeypatch.setenv("JUGGLE_WATCHDOG_DISABLE_SPAWN", "1")
     yield
 
 

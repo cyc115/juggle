@@ -29,7 +29,7 @@ state races). Two mitigations, both applied:
 | `test_juggle_smoke.py`, `test_graph_dispatch.py`, `test_cmd_graph.py`, `test_ensure_watchdog_debounce.py`, `test_watchdog_daemon_main_entry.py`, `test_integrate.py` (`uv run` shell-outs) | child-process DB | (1) safe | Child inherits the per-test `JUGGLE_DB_PATH` from env (monkeypatch.setenv propagates to subprocess). |
 | `tests/schedule/*` dry-run samples | fixed `/tmp/schedule-*-sample-*.md` | (1) safe (hardened M1) | Was a fixed `/tmp` path (no active race — distinct filenames, one writer each — but guard-blind + stale-file false-green risk). Now routed through `common.dry_run_sample_path()` (env `JUGGLE_SCHEDULE_SAMPLE_DIR`); the three dry-run tests point it at a fresh `tmp_path/samples`. |
 | `watchdog_proc`-marked | host canonical watchdog | n/a | DESELECTED by default `addopts` (`-m 'not watchdog_proc'`) — never runs in the suite (2026-06-16 incident). |
-| Real-daemon spawn (cockpit on_mount, `cmd_start`) | `uv run …daemon.py` child | (1) safe (hardened 2026-06-21) | Autouse `_no_real_watchdog_daemon_spawn` patches `start_watchdog_detached` → no test launches a real daemon. Autouse `_guard_no_leaked_watchdog_daemons` fails+SIGKILLs any survivor holding a lock under the test's own `tmp_path` (scoped — never blames a foreign worker / prod). See below. |
+| Real-daemon spawn (cockpit on_mount, `cmd_start`) | `uv run …daemon.py` child | (1) safe (hardened 2026-06-21) | Autouse `_no_real_watchdog_daemon_spawn` sets `JUGGLE_WATCHDOG_DISABLE_SPAWN=1` (inherited by `uv run` subprocess cockpit/CLI children) → `ensure_watchdog` never launches a real daemon. Autouse `_guard_no_leaked_watchdog_daemons` fails+SIGKILLs any survivor holding a lock under the test's own `tmp_path` (scoped — never blames a foreign worker / prod). See below. |
 
 ## Serial group (load-flake mitigation, applied in tests/conftest.py)
 
@@ -65,13 +65,16 @@ and kept ticking (8 full-suite ERRORS; observed live 2026-06-20 on a doctor
 agent's full-suite run). Two autouse layers in `tests/conftest.py` (detection in
 `tests/_daemon_guard.py`, pinned in `tests/test_daemon_survivor_guard.py`):
 
-1. **Spawn neutralizer** (`_no_real_watchdog_daemon_spawn`) — patches
-   `juggle_watchdog_singleton.start_watchdog_detached` to a no-op so NO ensure
-   path (cockpit, `cmd_start`) launches a real daemon subprocess. Tests that
-   assert the real launch command bind `start_watchdog_detached` via a
-   module-local import or patch `subprocess.Popen`, so they are unaffected; the
-   `watchdog_proc` real-daemon canaries use their own spawn marker, not this
-   seam, so they are unaffected too.
+1. **Spawn neutralizer** (`_no_real_watchdog_daemon_spawn`) — sets
+   `JUGGLE_WATCHDOG_DISABLE_SPAWN=1`, which `ensure_watchdog` honors on its real
+   path (`spawn is None`) so NO ensure path (cockpit on_mount, `cmd_start`)
+   launches a real daemon. Set via `setenv` so it ALSO propagates to `uv run`
+   subprocess children (the smoke / cli-memory tests run a real `juggle start` /
+   cockpit subprocess that inherits `os.environ` — an in-process monkeypatch
+   could not reach them). Unit tests that inject a fake `spawn=` are unaffected
+   (only the real spawn-None path is gated); the `watchdog_proc` real-daemon
+   canaries use their own spawn marker, not this seam, so they too are
+   unaffected.
 2. **Survivor guard** (`_guard_no_leaked_watchdog_daemons`) — after each test,
    reads the per-DB singleton-lock sidecars `.<db>.watchdog.lock` directly under
    the test's `tmp_path`, and fails (after SIGKILL-reaping) on any recorded PID
