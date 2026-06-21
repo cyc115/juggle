@@ -85,3 +85,33 @@ def test_verify_exit_code_propagates_failure():
                     from juggle_cli import main
                     main()
     assert exc.value.code == 1
+
+
+def test_verify_passthrough_arg_with_spaces_not_resplit():
+    """An arg containing spaces (e.g. -k "a or b") must reach pytest as a single
+    token, not be re-split. Guards the cmd_verify arg-handling against a lossy
+    string round-trip through apply_quarantine."""
+    mock_run, _ = _run_verify(["-k", "a or b"])
+    cmd = mock_run.call_args.args[0]
+    assert isinstance(cmd, list), "verify must exec a token list, not a shell string"
+    assert "a or b" in cmd, f"-k expression was re-split: {cmd}"
+
+
+def test_verify_leading_flag_passthrough():
+    """`juggle verify -k foo` (flag first, no preceding path) must reach pytest —
+    guards against the argparse.REMAINDER leading-flag bug that the
+    parse_known_args routing replaced."""
+    mock_run, _ = _run_verify(["-k", "foo"])
+    cmd = mock_run.call_args.args[0]
+    assert "-k" in cmd and "foo" in cmd, f"leading-flag passthrough lost: {cmd}"
+
+
+def test_unknown_flag_on_other_command_still_errors():
+    """The parse_known_args leniency is scoped to `verify` ONLY — every other
+    command must still hard-reject an unknown flag (typo protection)."""
+    with patch("sys.argv", ["juggle_cli.py", "vault-path", "--nonsense-typo"]):
+        with patch.dict(os.environ, {"_JUGGLE_TEST_DB": "1"}):
+            with pytest.raises(SystemExit) as exc:
+                from juggle_cli import main
+                main()
+    assert exc.value.code == 2, "unknown flag on a non-verify command must exit 2"

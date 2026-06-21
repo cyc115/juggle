@@ -87,8 +87,10 @@ def cmd_verify(args):
     from juggle_integrate_testscope import apply_quarantine
 
     quarantine = get_settings()["integrate"].get("quarantine_tests", [])
-    base = "uv run pytest -q" + (" " + " ".join(args.pytest_args) if args.pytest_args else "")
-    cmd = apply_quarantine(base, quarantine).split()
+    # Build the deselect-bearing base, then append passthrough args as-is so an
+    # arg containing spaces (e.g. -k "a or b") is never re-split into tokens.
+    cmd = apply_quarantine("uv run pytest -q", quarantine).split()
+    cmd += list(args.pytest_args or [])
     result = subprocess.run(cmd)
     sys.exit(result.returncode)
 
@@ -185,19 +187,27 @@ def main():
     p_vault_name = subparsers.add_parser("vault-name", help="Print vault name (for obsidian:// URIs)")
     p_vault_name.set_defaults(func=cmd_vault_name)
 
-    # verify — run the suite ONCE with quarantined reds deselected (agent helper)
+    # verify — run the suite ONCE with quarantined reds deselected (agent helper).
+    # Extra args (incl. leading-flag forms like `-k foo`) flow through via
+    # parse_known_args below, so no REMAINDER positional (which mishandles a
+    # leading flag) is declared here.
     p_verify = subparsers.add_parser(
         "verify",
-        help="Run the test suite once with quarantined reds deselected",
+        help="Run the test suite once with quarantined reds deselected "
+        "(extra args pass through to pytest)",
     )
-    p_verify.add_argument(
-        "pytest_args",
-        nargs=argparse.REMAINDER,
-        help="Extra args passed through to pytest (e.g. -k foo, a test path)",
-    )
-    p_verify.set_defaults(func=cmd_verify)
+    p_verify.set_defaults(func=cmd_verify, pytest_args=[])
 
-    args = parser.parse_args()
+    # parse_known_args so `juggle verify` can pass arbitrary trailing args
+    # (incl. leading-flag forms) through to pytest. For every OTHER command,
+    # unknown args are still a hard error (strict re-parse preserves typo
+    # rejection) — the leniency is scoped to verify only.
+    args, _extras = parser.parse_known_args()
+    if _extras:
+        if getattr(args, "command", None) == "verify":
+            args.pytest_args = list(_extras)
+        else:
+            parser.parse_args()  # re-raise SystemExit(2) with the usage message
 
     # Warn when watchdog is not running — it owns periodic reaping
     if "_JUGGLE_TEST_DB" not in os.environ:
