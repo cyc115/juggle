@@ -590,8 +590,8 @@
     "semantic_hash": ""
   },
   "TODO.md": {
-    "mtime": 1782065661.7583227,
-    "ast_hash": "b0ff91f25f18a4feeeb5d27ffe4ed5dc",
+    "mtime": 1782066951.6737652,
+    "ast_hash": "fe72b83e366c3ac372200a845afa7267",
     "semantic_hash": ""
   },
   "README.md": {
@@ -1010,8 +1010,8 @@
     "semantic_hash": ""
   },
   ".claude-plugin/plugin.json": {
-    "mtime": 1782065661.7553732,
-    "ast_hash": "e722639b28064233b1e1636645e328b4",
+    "mtime": 1782066943.942012,
+    "ast_hash": "d43152d2bb6acfe1db87ec3fe01a8e9d",
     "semantic_hash": ""
   },
   ".claude/settings.json": {
@@ -1100,8 +1100,8 @@
     "semantic_hash": ""
   },
   "scripts/loc_gate.py": {
-    "mtime": 1782065967.0779285,
-    "ast_hash": "f082167a5da57f18e8911f7c8409c75c",
+    "mtime": 1782066907.4684715,
+    "ast_hash": "d07548e3c23f07408c4ebdce28cf41e3",
     "semantic_hash": ""
   },
   "tests/test_loc_gate.py": {
@@ -1470,8 +1470,8 @@
     "semantic_hash": ""
   },
   "src/dbops/migrations_recent.py": {
-    "mtime": 1782066127.414488,
-    "ast_hash": "0aad3d1ad59d8a84aff0679f2fcd8276",
+    "mtime": 1782066824.4143076,
+    "ast_hash": "0fac5c04a206db6c215be759863f3ffa",
     "semantic_hash": ""
   },
   "src/juggle_context_startup.py": {
@@ -2497,6 +2497,11 @@
   "tests/test_selfheal_triage.py": {
     "mtime": 1782066606.3012507,
     "ast_hash": "c58b424a82ccdc82f30bb3e1c4e64821",
+    "semantic_hash": ""
+  },
+  "src/dbops/migration_selfheal_status_check.py": {
+    "mtime": 1782066810.6499386,
+    "ast_hash": "bea1fd83168582411bf39e22ad8b7b1b",
     "semantic_hash": ""
   }
 }

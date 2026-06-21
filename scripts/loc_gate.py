@@ -42,11 +42,16 @@ GRANDFATHERED: dict[str, int] = {
     "src/schedules/reflect.py": 582,
     "src/dbops/threads.py": 560,
     "src/juggle_scheduler.py": 494,
-    "src/juggle_settings.py": 446,
+    # selfheal-triage-v2 P1 (2026-06-21) re-baseline: irreducible plan-mandated
+    # growth — a config key in DEFAULTS, a status constant the tests import from
+    # schema, a Migration-45 call in apply_recent_migrations, and argparse wiring
+    # cannot be extracted out of their owning modules. Migration 45's body WAS
+    # extracted to dbops/migration_selfheal_status_check.py (491->443 here).
+    "src/juggle_settings.py": 451,
     "src/juggle_cmd_integrate.py": 450,
     "src/juggle_cockpit_view.py": 461,
     "src/juggle_cockpit_model.py": 439,
-    "src/dbops/migrations_recent.py": 433,
+    "src/dbops/migrations_recent.py": 443,
     "scripts/talkback": 415,
     "src/schedules/dogfood.py": 406,
     "src/juggle_cmd_research.py": 398,
@@ -56,12 +61,12 @@ GRANDFATHERED: dict[str, int] = {
     "src/dbops/db_topics.py": 365,
     "src/juggle_context.py": 345,
     "src/juggle_watchdog_singleton.py": 367,
-    "src/dbops/schema.py": 334,
+    "src/dbops/schema.py": 342,  # selfheal-v2 P1: VALID_ERROR_STATUSES constant
     "src/juggle_cockpit_graph_panel.py": 334,
     "src/juggle_hooks_tooluse.py": 334,
     "src/juggle_dispatch_core.py": 321,
     "src/juggle_add_node.py": 318,
-    "src/juggle_cli_parsers_misc.py": 316,
+    "src/juggle_cli_parsers_misc.py": 328,  # selfheal-v2 P1: list flags + propose-nonissue parser
     "src/dbops/agents.py": 320,
 }
 
