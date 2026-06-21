@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-06-21 (v1.82.0)
+- **feat: codify reproduce→spec→DA→plan workflow in coder dispatch prompt**: the "### Coder Agent Prompt" template in `commands/start.md` now mandates that a coder dispatched WITHOUT a plan file front-loads reproduce → spec → devil's-advocate → plan (each posted via `juggle notify`) before TDD-implementing; WITH a plan file, implement directly.
+
 ## 2026-06-06 (v1.47.1)
 - **Fix: send_task false-negative on fast agents**: `wait_for_submission` now passes if (a) submission markers present, (b) input box clear + `⏺` activity marker (agent consumed prompt before verification snapshot), or (c) `Press up to edit queued messages` indicator. Only raises when prompt text is still in the input box after retries. Fixes the v1.47.0 false-negative where `send_task` to panes %763/%811 raised "submission not verified" even though both tasks were processed correctly.
 

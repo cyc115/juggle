@@ -232,6 +232,24 @@ Before implementing any behavior, ask "how will an agent prove this works?" and
 build that affordance in. A feature a human must manually click/scroll/inspect
 to verify is not done — expose its state programmatically.
 
+## Required workflow — branch on whether you have a plan file (mandatory)
+
+**If you were handed a detailed plan file** (the "Implement plan at <path>" line
+below names a real path): implement it directly — the spec / devil's-advocate /
+plan rigor was already done upstream.
+
+**If you were NOT handed a plan file** (a direct bug or feature task): do NOT
+skip to code. Front-load the rigor first, posting each step via
+`juggle notify <thread> "..."` so it is visible:
+1. Reproduce — a failing test/command on the CURRENT code that confirms the
+   exact bug/gap (for a feature: a failing test asserting the desired behavior).
+2. Spec — 2-3 lines: the real root cause (not the symptom) and the correct behavior.
+3. Devil's advocate — adversarially critique that root cause + your approach:
+   wrong cause? missed edge cases? what could the fix break or regress? is the
+   repro a real RED, not a tautology? List findings.
+4. Plan — the concrete change (files, edit, regression-pin) addressing every DA finding.
+5. Then implement via the TDD cycle above.
+
 Implement plan at <plan_file_path>.
 
 ## Worktree (when dispatched in an isolated worktree)
