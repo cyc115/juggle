@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from juggle_watchdog_singleton import find_watchdog_pids
+from juggle_reaper import read_proc_db_path
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 TEST_SESSION = "juggle-watchdog-test"
@@ -26,19 +27,43 @@ _watchdog = pytest.importorskip(
 inspect_agent = _watchdog.inspect_agent
 
 
-@pytest.fixture(autouse=True)
-def assert_no_leaked_daemons():
-    """REGRESSION PIN (#4713): every test in this module must leave zero new
-    daemon processes behind. Module-level autouse means it only covers
-    test_watchdog_active.py — not other watchdog tests that spawn intentionally.
+def _scoped_leaks(before_pids, after_pids, own_db_path, db_path_reader) -> set[int]:
+    """Return NEW pids (after - before) whose db path resolves to OUR own tmp DB.
+
+    `own_db_path` is ALREADY resolved by the caller. For each new pid we read its
+    JUGGLE_DB_PATH via `db_path_reader(pid)`; None (env unreadable) or a path that
+    resolves to anything else (prod, a foreign tmp DB) is EXCLUDED. Only positive
+    matches to our own path are flagged — conservative, so foreign/cockpit daemons
+    never count as this test's leak (the 2026-06-20 false-positive fix).
     """
+    leaked: set[int] = set()
+    for pid in after_pids - before_pids:
+        raw = db_path_reader(pid)
+        if raw is None:
+            continue
+        if str(Path(raw).resolve()) == own_db_path:
+            leaked.add(pid)
+    return leaked
+
+
+@pytest.fixture(autouse=True)
+def assert_no_leaked_daemons(test_db):
+    """REGRESSION PIN (#4713, scoped 2026-06-20): every test in this module must
+    leave zero new daemon processes behind THAT TARGET ITS OWN tmp DB. A global
+    PID diff falsely blamed the live cockpit's prod daemons and concurrent
+    tmp-DB daemons on the test (2026-06-20 CP integrate false-positive); the
+    guard is now SCOPED to daemons whose JUGGLE_DB_PATH resolves to this test's
+    own tmp DB. Module-level autouse means it only covers test_watchdog_active.py.
+    """
+    own = str(Path(test_db.db_path).resolve())
     before = set(find_watchdog_pids())
     yield
     after = set(find_watchdog_pids())
-    new_leaks = after - before
-    assert not new_leaks, (
-        f"Watchdog daemon(s) leaked after test: PIDs {sorted(new_leaks)}. "
-        "Every test that can spawn a daemon MUST kill it in teardown."
+    leaks = _scoped_leaks(before, after, own, read_proc_db_path)
+    assert not leaks, (
+        f"Watchdog daemon(s) leaked after test (scoped to this test's own tmp "
+        f"DB {own}): PIDs {sorted(leaks)}. Every test that can spawn a daemon "
+        "for its own DB MUST kill it in teardown (#4713 lineage)."
     )
 
 
