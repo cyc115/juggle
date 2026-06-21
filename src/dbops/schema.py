@@ -205,11 +205,19 @@ CREATE TABLE IF NOT EXISTS error_events (
   count            INTEGER NOT NULL DEFAULT 1,
   first_seen       TEXT    NOT NULL,
   last_seen        TEXT    NOT NULL,
-  status           TEXT    NOT NULL DEFAULT 'open'
-                           CHECK(status IN ('open','diagnosing','awaiting_approval','resolved')),
+  status           TEXT    NOT NULL DEFAULT 'open',
   action_item_id   INTEGER
 );
 """
+
+# Self-heal status vocabulary — the single source of truth now that the DB-level
+# CHECK on error_events.status is dropped (selfheal-triage-v2 P1, 2026-06-21).
+# Validation is enforced in app code (set_error_event_status). This is
+# deliberately the LAST status migration ever needed: new statuses no longer
+# require a table rebuild.
+VALID_ERROR_STATUSES: frozenset[str] = frozenset(
+    {"open", "diagnosing", "awaiting_approval", "non_issue_proposed", "non_issue", "resolved"}
+)
 
 CREATE_PROJECTS = """
 CREATE TABLE IF NOT EXISTS projects (

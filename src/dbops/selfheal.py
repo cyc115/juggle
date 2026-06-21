@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from dbops.schema import VALID_ERROR_STATUSES
+
 
 class SelfhealMixin:
     """Mixin for self-heal error_events table operations."""
@@ -74,6 +76,11 @@ class SelfhealMixin:
 
         Returns True if a row was updated.
         """
+        if status not in VALID_ERROR_STATUSES:
+            raise ValueError(
+                f"invalid error_event status {status!r}; "
+                f"valid: {sorted(VALID_ERROR_STATUSES)}"
+            )
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             if action_item_id is not None:
