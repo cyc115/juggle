@@ -182,7 +182,7 @@ Defaults in `src/juggle_settings.py`. Override in `~/.juggle/config.json` (deep-
 | `hindsight.enabled` | `false` | Long-term memory across sessions |
 | `talkback.enabled` | `false` | TTS completion notifications (macOS) |
 
-Data and logs live at `$CLAUDE_PLUGIN_DATA/juggle.db` and `juggle.log`, preserved across plugin upgrades. `juggle integrate` always runs the full test suite before merging (the older `test_scope` / `quarantine_tests` keys are inert).
+Data and logs live at `$CLAUDE_PLUGIN_DATA/juggle.db` and `juggle.log`, preserved across plugin upgrades. When a repo's `test_cmd` is configured, `juggle integrate` runs the full suite before merging and can no longer be narrowed to a subset (the older `test_scope` / `quarantine_tests` keys are inert).
 
 ## Docs
 
