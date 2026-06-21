@@ -6,11 +6,13 @@
 
 
 
+
 <!-- Session 2026-06-20 — incident recovery (watchdog/pane leaks) + CB project. Check off as completed. -->
-- [ ] **CB P8 — legacy-table DROP (BLOCKED: large + irreversible)** — read-collapse merged (42ef016), but ~10 modules + dual-write STILL reference threads/graph_topics/graph_tasks; dropping now crashes them. Remaining work BEFORE the irreversible drop: (1) migrate ALL legacy-table reads/writes → nodes (~10 modules), (2) build `--pre-p8-check` (assert zero refs), (3) backup prod DB, (4) drop migration (tested on tmp). Irreversible — needs explicit go-ahead for the multi-step effort. User pre-approved 'do last + backup'; surfacing that it's a project, not a quick step.
 - [ ] #need-clarification **Test-suite runtime / simplify** — underspecified: is the deliverable (a) just MEASURE current full-suite runtime, (b) SPEED IT UP (parallelize/split), or (c) SIMPLIFY structure (merge/prune suites)? "Simplify" has no concrete target. Need the intended outcome. Original: How long does it take for all test suites to run? Can I simplify 
 
 ## Backlog
+
+- [ ] **[DEFERRED PROJECT] CB P8 — legacy-table DROP** — user-deferred 2026-06-20: read-collapse merged (42ef016) + dual-write keeps the system fully functional, so no urgency. A dedicated session should: migrate ~29 files / 121 refs off threads/graph_topics/graph_tasks → nodes, build `--pre-p8-check` (zero-ref gate), back up prod DB, then the irreversible drop migration. Not a loop item.
 
 - [ ] Code-enforce the verify anti-loop backstop (follow-up to v1.79.2 verify-loop fix). Prompt wording now hard-bounds the fix-and-re-run cycle, but per "behavioral rules go in code, not prompts" the real guard should be code: e.g. `juggle verify --max-attempts N` that records attempt count per thread/node and refuses a further run, and/or a watchdog verify-budget that kills an agent exceeding it. Also (DA M1) consider dropping the hand-rolled `--deselect` fallback line in the coder template so agents use ONLY `juggle verify` (the dynamic, drift-proof path) — or tighten the regression pin to assert set-equality between the template literal and integrate.quarantine_tests. Source: code review of cyc verify-loop fix, 2026-06-20.
 - [ ] Juggle worktrees + `depends_on` ordering — extend the TE worktree pattern (`cyc_<label>` branch + `/tmp/juggle-<label>`) to juggle-repo topics, and add a `depends_on` field to `juggle new` so dispatch blocks until dependencies close. Evidence: 2 juggle same-repo concurrent pairs with real file overlap observed in 2 days (UD∩UI on `juggle_cmd_agents.py`; SY∩TB on `.claude-plugin/plugin.json`); 0 actual conflicts but resolved by timing luck. DDL already designed in TF doc. Evidence: [[knowledge/projects/juggle/2026-06-07-topic-dag-evaluation]]. Scope: lighter alternative to full DAG — ~50 LOC + migration 35; skip `_dag_tick` auto-dispatch and auto-decomposer.
