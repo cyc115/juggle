@@ -14,15 +14,15 @@
 
 </div>
 
-![Juggle Cockpit — live orchestration dashboard](docs/images/juggle-in-action.png)
+![Juggle Cockpit: live orchestration dashboard](docs/images/juggle-in-action.png)
 
-> **What you're seeing:** orchestrator (top-left) dispatching parallel coders by writing task files, nvim (top-right) holding open context, and the **Cockpit v2** (full-width bottom) tracking Topics, Action Items, and live Agents. Threads `[LJ]` and `[LK]` here are critiquing the same TF provider examples in parallel — one via Claude (juggle), one via Codex.
+> **What you're seeing:** orchestrator (top-left) dispatching parallel coders by writing task files, nvim (top-right) holding open context, and the **Cockpit v2** (full-width bottom) tracking Topics, Action Items, and live Agents. Threads `[LJ]` and `[LK]` here are critiquing the same TF provider examples in parallel, one via Claude (juggle), one via Codex.
 
 ---
 
-Claude Code runs one conversation at a time. A research detour, a parallel build, an unrelated question — each one competes for the same context window, and switching means losing your place.
+Claude Code runs one conversation at a time. A research detour, a parallel build, an unrelated question: each one competes for the same context window, and switching means losing your place.
 
-Juggle turns a single Claude Code session into a multi-track workspace. Each topic lives in its own persistent thread (SQLite-backed, survives restarts and compactions), background agents do the heavy lifting in tmux panes while you stay focused, and the Cockpit dashboard shows every topic, action item, and live agent at a glance. When an agent finishes, a notification surfaces at the next natural pause — your main thread was never interrupted.
+Juggle turns a single Claude Code session into a multi-track workspace. Each topic lives in its own persistent thread (SQLite-backed, survives restarts and compactions), background agents do the heavy lifting in tmux panes while you stay focused, and the Cockpit dashboard shows every topic, action item, and live agent at a glance. When an agent finishes, a notification surfaces at the next natural pause, and your main thread was never interrupted.
 
 ## Prerequisites
 
@@ -55,12 +55,12 @@ After `/juggle:start`, talk normally. Juggle detects topic shifts and opens new 
 
 ## How it works
 
-- **Topics** — each line of work gets a label (`A`–`ZZ`), its own SQLite-backed message history, and an independent context window. Switch anytime with `/juggle:resume-topic`.
-- **Agents** — background workers (researcher / planner / coder) run in tmux panes, up to 20 concurrent. An auto-approver handles permission prompts so agents don't stall while you're focused elsewhere.
-- **Cockpit** — a live dashboard (Topics | Action Items | Agents) updated every second. Textual-based with mouse drag-to-resize between panels (tmux mouse mode required).
-- **Action Items** — persistent follow-ups created by agents or manually. Survive sessions until dismissed from the cockpit.
-- **Hindsight memory** — opt-in long-term memory across sessions. Enable via `hindsight.enabled` in `~/.juggle/config.json`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- **Self-healing watchdog** — a background daemon keeps agents and the cockpit alive. It reaps orphaned daemons under a global cap, debounces respawns, and verifies each agent actually started before use (a fresh worktree's trust prompt can't leak an idle agent). `juggle stop-watchdog --freeze` holds it down; `juggle start` clears the freeze and brings it back up.
+- **Topics**: each line of work gets a label (`A`–`ZZ`), its own SQLite-backed message history, and an independent context window. Switch anytime with `/juggle:resume-topic`.
+- **Agents**: background workers (researcher / planner / coder) run in tmux panes, up to 20 concurrent. An auto-approver handles permission prompts so agents don't stall while you're focused elsewhere.
+- **Cockpit**: a live dashboard (Topics | Action Items | Agents) updated every second. Textual-based with mouse drag-to-resize between panels (tmux mouse mode required).
+- **Action Items**: persistent follow-ups created by agents or manually. Survive sessions until dismissed from the cockpit.
+- **Hindsight memory**: opt-in long-term memory across sessions. Enable via `hindsight.enabled` in `~/.juggle/config.json`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Self-healing watchdog**: a background daemon keeps agents and the cockpit alive. It reaps orphaned daemons under a global cap, debounces respawns, and verifies each agent actually started before use (a fresh worktree's trust prompt can't leak an idle agent). `juggle stop-watchdog --freeze` holds it down; `juggle start` clears the freeze and brings it back up.
 
 ## Project Autopilot
 
@@ -74,10 +74,10 @@ juggle autopilot status              # global flag + per-project graph progress 
 
 **The flow** for a project:
 
-1. **Decompose** — the orchestrator breaks the objective into a task-graph spec written to `<data_dir>/graphs/<project>-graph.md`. One `## <node-id>: <Title>` section per node, with optional `deps:` and `verify_cmd:` lines and the dispatch prompt as the body.
-2. **One approval gate** — the spec (nodes, deps, verify_cmds) is surfaced in chat; you reply to approve before anything runs.
-3. **Load** — `juggle project-graph load <file> --project <id>` validates the graph (cycle check, unknown/duplicate node ids, empty prompts, verify_cmd lint).
-4. **Tick-driven execution** — the watchdog is the sole dispatcher. Each tick it atomically claims every `ready` node (deps all verified), lazily creates a thread, dispatches a coder agent with a prompt hydrated from upstream nodes' structured handoffs plus integrated diffstat, then on completion runs the node's `verify_cmd` **inside the worktree, pre-merge**, so nothing merges to main unverified. Verified nodes unblock their dependents; a failed node blocks its transitive dependents and files a HIGH action item.
+1. **Decompose**: the orchestrator breaks the objective into a task-graph spec written to `<data_dir>/graphs/<project>-graph.md`. One `## <node-id>: <Title>` section per node, with optional `deps:` and `verify_cmd:` lines and the dispatch prompt as the body.
+2. **One approval gate**: the spec (nodes, deps, verify_cmds) is surfaced in chat; you reply to approve before anything runs.
+3. **Load**: `juggle project-graph load <file> --project <id>` validates the graph (cycle check, unknown/duplicate node ids, empty prompts, verify_cmd lint).
+4. **Tick-driven execution**: the watchdog is the sole dispatcher. Each tick it atomically claims every `ready` node (deps all verified), lazily creates a thread, dispatches a coder agent with a prompt hydrated from upstream nodes' structured handoffs plus integrated diffstat, then on completion runs the node's `verify_cmd` **inside the worktree, pre-merge**, so nothing merges to main unverified. Verified nodes unblock their dependents; a failed node blocks its transitive dependents and files a HIGH action item.
 
 Nodes are **tick-owned**: the orchestrator never dispatches them by hand, it only monitors and reports. Node states, transitions, and failure channels are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -168,7 +168,7 @@ uv run ~/.claude/plugins/juggle/src/juggle_cockpit.py
 uv run ~/.claude/plugins/juggle/src/juggle_cli.py cockpit
 ```
 
-Three columns: **Topics** (status + label + title), **Action Items** (persistent follow-ups), **Agents** (role, model, assigned thread, idle age). Refreshes every second. Read-only — never writes to the DB.
+Three columns: **Topics** (status + label + title), **Action Items** (persistent follow-ups), **Agents** (role, model, assigned thread, idle age). Refreshes every second. Read-only, never writes to the DB.
 
 ## Configuration
 
@@ -186,8 +186,8 @@ Data and logs live at `$CLAUDE_PLUGIN_DATA/juggle.db` and `juggle.log`, preserve
 
 ## Docs
 
-- [Architecture](docs/ARCHITECTURE.md) — data flow, SQLite schema, hook lifecycle
-- [Topic lifecycle](docs/topic-lifecycle.md) — states, transitions, auto-archive rules
-- [Agent context injection](docs/agent-context-injection.md) — how context reaches dispatched agents
-- [Commands](commands/) — full slash command catalog
+- [Architecture](docs/ARCHITECTURE.md): data flow, SQLite schema, hook lifecycle
+- [Topic lifecycle](docs/topic-lifecycle.md): states, transitions, auto-archive rules
+- [Agent context injection](docs/agent-context-injection.md): how context reaches dispatched agents
+- [Commands](commands/): full slash command catalog
 - [Changelog](CHANGELOG.md)
