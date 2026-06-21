@@ -55,44 +55,51 @@ def _isolate_db_from_prod(tmp_path, monkeypatch):
     yield
 
 
-# Dirs where a leaked worktree would land outside pytest's managed tmp_path.
-# /tmp is a symlink to /private/tmp on macOS; check both spellings since
-# Path.glob does not resolve symlinks.
-_LEAK_DIRS = (Path("/tmp"), Path("/private/tmp"))
-
-
-def _juggle_worktree_snapshot() -> set[str]:
-    """Resolved paths of every ``juggle-*`` entry under the leak-prone tmp dirs."""
-    seen: set[str] = set()
-    for base in _LEAK_DIRS:
-        try:
-            for p in base.glob("juggle-*"):
-                try:
-                    seen.add(str(p.resolve()))
-                except OSError:
-                    seen.add(str(p))
-        except OSError:
-            continue
-    return seen
+# ── Worktree-leak guard (2026-06-20 incident) ─────────────────────────────────
+# A test that called ``_create_worktree`` WITHOUT pointing ``worktree_root`` at
+# its own ``tmp_path`` wrote the checkout to /private/tmp/juggle-* — outside
+# pytest's managed temp dir — so it was never cleaned up. 100+ orphaned dangling
+# worktrees accumulated (pruned manually 2026-06-20).
+#
+# This guard is HERMETIC: it wraps ``_create_worktree`` at its definition module
+# and asserts, per call, that the requested ``worktree_root`` resolves under the
+# test's ``tmp_path``. It only inspects calls the test under test actually makes,
+# so it is immune to concurrent juggle processes (watchdog, other agents) that
+# also touch the shared /tmp — a global-filesystem snapshot guard misattributes
+# those to innocent tests and flakes. Tests that monkeypatch _create_worktree
+# (to mock it) transparently override the wrapper for that symbol — they create
+# no real worktree, so they are unaffected.
 
 
 @pytest.fixture(autouse=True)
-def _fail_on_leaked_worktree():
-    """Fail-closed guard against the 2026-06-20 worktree-leak incident.
+def _guard_worktree_under_tmp(tmp_path, monkeypatch):
+    import juggle_cmd_agents_worktree as _wt
 
-    A test that calls ``_create_worktree`` (or otherwise runs ``git worktree
-    add``) WITHOUT pointing the root at its ``tmp_path`` writes a checkout to
-    /private/tmp/juggle-* — outside pytest's managed temp dir — so it is never
-    cleaned up. 100+ orphaned dangling worktrees accumulated before this guard.
-    Snapshot the leak-prone dirs before the test and FAIL if a new ``juggle-*``
-    entry appears after it, so this class of leak can never silently return.
-    """
-    before = _juggle_worktree_snapshot()
+    _orig_create = _wt._create_worktree
+    _tmp_resolved = tmp_path.resolve()
+
+    def _guarded_create(repo_path, thread_label, worktree_root):
+        try:
+            root_resolved = Path(worktree_root).resolve()
+        except OSError:
+            root_resolved = Path(worktree_root)
+        # The worktree root must live under THIS test's tmp_path. A bare /tmp
+        # (or any path outside tmp_path) is the leak this guard exists to stop.
+        if _tmp_resolved not in (root_resolved, *root_resolved.parents):
+            raise AssertionError(
+                "TEST HYGIENE VIOLATION (2026-06-20 worktree-leak incident): "
+                f"_create_worktree called with worktree_root={worktree_root!r} "
+                f"which is NOT under this test's tmp_path ({tmp_path}). Pass "
+                "worktree_root=str(tmp_path) so the checkout cannot leak into /tmp."
+            )
+        return _orig_create(repo_path, thread_label, worktree_root)
+
+    # Patch the definition module and every module that re-exports the symbol,
+    # so both ``from juggle_cmd_agents_worktree import _create_worktree`` and the
+    # ``juggle_cmd_agents_common._create_worktree`` production seam are guarded.
+    monkeypatch.setattr(_wt, "_create_worktree", _guarded_create)
+    for _modname in ("juggle_cmd_agents_common", "juggle_cmd_agents"):
+        _mod = sys.modules.get(_modname)
+        if _mod is not None and hasattr(_mod, "_create_worktree"):
+            monkeypatch.setattr(_mod, "_create_worktree", _guarded_create)
     yield
-    leaked = _juggle_worktree_snapshot() - before
-    if leaked:
-        raise AssertionError(
-            "TEST HYGIENE VIOLATION: test leaked git worktree(s) outside "
-            f"tmp_path into /tmp: {sorted(leaked)}. Pass worktree_root="
-            "str(tmp_path) to _create_worktree (2026-06-20 leak incident)."
-        )
