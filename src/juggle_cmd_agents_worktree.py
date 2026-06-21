@@ -98,13 +98,19 @@ def _main_worktree_root(repo_path: str) -> str:
 
 
 def _create_worktree(
-    repo_path: str, thread_label: str, worktree_root: str = "/tmp"
+    repo_path: str, thread_label: str, worktree_root: str
 ) -> tuple[bool, str, str, str]:
     """Create an isolated git worktree for a thread.
 
     Returns (success, worktree_path, branch, message).
     worktree_path and branch are empty strings on failure.
     Idempotent: if worktree_path already exists, returns (True, path, branch, "already exists").
+
+    ``worktree_root`` is REQUIRED (no default). A leaky ``= "/tmp"`` default
+    once let a bare call write checkouts to /private/tmp outside pytest's
+    tmp_path, accumulating 100+ orphaned dangling worktrees (2026-06-20). The
+    production default now lives at the call site (``DEFAULT_WORKTREE_ROOT`` in
+    juggle_dispatch_core), never here, so a parameter-less call fails loudly.
     """
     repo_path = _main_worktree_root(repo_path)
     basename = Path(repo_path).name

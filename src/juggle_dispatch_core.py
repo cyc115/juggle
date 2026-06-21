@@ -17,6 +17,13 @@ from juggle_graph_dispatch import TASK_ROLE, CapacityError
 
 _log = logging.getLogger("juggle-dispatch-core")
 
+# Production root for auto-created agent worktrees. This is the ONE place the
+# default lives — ``_create_worktree`` itself takes ``worktree_root`` as a
+# required arg (no leaky in-function default) so a bare call can never silently
+# write a checkout to /tmp and orphan it (2026-06-20 incident). Overridable via
+# JUGGLE_WORKTREE_ROOT for operators who want worktrees elsewhere.
+DEFAULT_WORKTREE_ROOT = os.environ.get("JUGGLE_WORKTREE_ROOT", "/tmp")
+
 
 def acquire_agent(
     db,
@@ -174,7 +181,7 @@ def send_task_to_agent(
 
         if not existing_wt and repo_path_wt and not allow_main:
             ok_wt, wt_path_new, branch_new, msg_wt = _com._create_worktree(
-                repo_path_wt, thread_label_wt
+                repo_path_wt, thread_label_wt, DEFAULT_WORKTREE_ROOT
             )
             if ok_wt:
                 db.update_thread(
