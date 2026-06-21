@@ -282,7 +282,7 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
 
         # ── 5. Run the FULL test suite (only when test_cmd set AND push != none) ─
         # Directive (2026-06-20): integrate ALWAYS runs the FULL suite verbatim —
-        # never a subset. No branch-change scoping, no --deselect quarantine; the
+        # never a subset. No branch-change scoping and no quarantine exclusion; the
         # configured test_cmd runs exactly as written. (Removed: test_scope /
         # quarantine_tests branches + juggle_integrate_testscope import.)
         if test_cmd and push_mode != "none":
