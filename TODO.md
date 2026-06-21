@@ -5,8 +5,8 @@
 
 
 
+
 <!-- Session 2026-06-20 — incident recovery (watchdog/pane leaks) + CB project. Check off as completed. -->
-- [ ] **LOC-budget trim (v1.77.0 follow-up)** — `juggle_watchdog_daemon.py` (427/422, reaper wiring) still exceeds its grandfathered budget; trim/extract back under (architecture gate). (`juggle_settings.py` resolved in v1.80.0: task_templates extracted to `juggle_task_templates.py`, now 451 lines.)
 - [ ] **CB P8 — read-collapse + legacy-table DROP (DO LAST + BACKUP)** — user-approved 2026-06-20: run ONLY after all other actionable items land; back up the prod DB (`~/.claude/juggle/juggle.db`) before the destructive drop; CP/cyc_CP holds until then (watchdog frozen to stop auto-integrate). Irreversible — verify `--pre-p8-check` zero-references first.
 - [ ] #need-clarification **Test-suite runtime / simplify** — underspecified: is the deliverable (a) just MEASURE current full-suite runtime, (b) SPEED IT UP (parallelize/split), or (c) SIMPLIFY structure (merge/prune suites)? "Simplify" has no concrete target. Need the intended outcome. Original: How long does it take for all test suites to run? Can I simplify 
 
@@ -16,6 +16,8 @@
 - [ ] Juggle worktrees + `depends_on` ordering — extend the TE worktree pattern (`cyc_<label>` branch + `/tmp/juggle-<label>`) to juggle-repo topics, and add a `depends_on` field to `juggle new` so dispatch blocks until dependencies close. Evidence: 2 juggle same-repo concurrent pairs with real file overlap observed in 2 days (UD∩UI on `juggle_cmd_agents.py`; SY∩TB on `.claude-plugin/plugin.json`); 0 actual conflicts but resolved by timing luck. DDL already designed in TF doc. Evidence: [[knowledge/projects/juggle/2026-06-07-topic-dag-evaluation]]. Scope: lighter alternative to full DAG — ~50 LOC + migration 35; skip `_dag_tick` auto-dispatch and auto-decomposer.
 
 ## Done
+
+- [x] **LOC-budget trim** — settings.py back under budget via task_templates extraction (522→446); loc_gate budgets ratcheted down. Folded into the full-suite directive (b320ecd). ✅ 2026-06-20
 
 - [x] **"Always full suite" directive** — flipped integrate to full-suite-only: `integrate.test_scope` -> `"full"`, `quarantine_tests` -> `[]`; removed scope/quarantine branches from `juggle_cmd_integrate.py` + deleted dead `juggle_integrate_testscope.py`; `juggle verify` now runs the bare full suite; coder template mandates FULL-suite-ONCE. Unblocked by extracting `task_templates` out of `juggle_settings.py` (last loc_gate violation). Full `pytest -q` (no quarantine deselect) green: 2480 passed. (v1.80.0). ✅ 2026-06-20
 
