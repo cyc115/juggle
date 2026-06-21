@@ -1280,8 +1280,8 @@
     "semantic_hash": ""
   },
   "src/dbops/selfheal.py": {
-    "mtime": 1782066066.391357,
-    "ast_hash": "6addf8863aa66a9844baa0bc0e65bca0",
+    "mtime": 1782066205.9007795,
+    "ast_hash": "3b8ebef7c3c381c5874396e3cc216db4",
     "semantic_hash": ""
   },
   "src/dbops/session.py": {
@@ -2480,8 +2480,8 @@
     "semantic_hash": ""
   },
   "tests/test_selfheal_asymmetry.py": {
-    "mtime": 1782066043.45133,
-    "ast_hash": "f330900a25b5cdf4d0503d030808a250",
+    "mtime": 1782066194.9224596,
+    "ast_hash": "2c0adb7b8f5af0ced5bd1035ff93cca4",
     "semantic_hash": ""
   },
   "tests/test_selfheal_migration_p1.py": {

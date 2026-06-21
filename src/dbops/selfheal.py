@@ -33,6 +33,11 @@ class SelfhealMixin:
         """
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
+            # selfheal-triage-v2 P1 asymmetry (spec §4.1): match any LIVE row
+            # (status != 'resolved') so a non_issue recurrence DEDUPS (sticky:
+            # bump count, stay hidden) while a resolved recurrence MISSES and
+            # inserts a fresh 'open' row (non-sticky: regression re-alert). The
+            # partial unique index idx_error_events_sig mirrors this predicate.
             existing = conn.execute(
                 "SELECT id FROM error_events "
                 "WHERE signature_hash = ? AND status != 'resolved'",
