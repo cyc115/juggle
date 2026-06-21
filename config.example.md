@@ -160,9 +160,9 @@ Per-branch integration settings. `repos` maps absolute repo paths to integration
 
 | Key | Type | Default | Allowed | Description |
 |---|---|---|---|---|
-| `integrate.test_scope` | string | `"changed"` | `"changed"`, `"full"` | `changed` = run tests for branch-changed files only; `full` = always run full suite |
-| `integrate.core_tests` | list[string] | `[]` | fnmatch globs | Test globs always added to scoped runs |
-| `integrate.quarantine_tests` | list[string] | `[]` | fnmatch globs | Pre-existing RED tests excluded via `--deselect` |
+| `integrate.test_scope` | string | `"full"` | `"full"` | INERT (2026-06-20 directive: integrate ALWAYS runs the full suite, never a subset). Retained only so old config.json files don't crash; not read by the code. |
+| `integrate.core_tests` | list[string] | `[]` | — | INERT (test scoping removed; not read). |
+| `integrate.quarantine_tests` | list[string] | `[]` | — | INERT (no more `--deselect` quarantine; the full suite always runs). Not read. |
 | `repos.<path>.push_mode` | string | `"none"` | `"direct"`, `"pr"`, `"none"` | `direct` = ff-merge+push main; `pr` = push branch only; `none` = local merge only |
 | `repos.<path>.test_cmd` | string | `""` | any shell cmd | Test command for this repo (e.g. `"uv run pytest -q"`) |
 
