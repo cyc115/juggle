@@ -482,6 +482,9 @@ def test_complete_agent_routes_through_run_integrate(git_repo, tmp_path):
     db.add_action_item = Mock()
     db.get_last_exchange.return_value = {"last_user": "", "last_assistant": ""}
     db.insert_agent_completion = Mock()
+    # Agent-owned ephemeral coder thread → no user messages → closes (not a
+    # user-facing feature topic). See preserve-feature-topic guard (2026-06-21).
+    db.get_message_count.return_value = 0
     _cm = Mock()
     _cm.__enter__ = Mock(return_value=Mock(
         execute=Mock(return_value=Mock(fetchone=Mock(return_value=None)))

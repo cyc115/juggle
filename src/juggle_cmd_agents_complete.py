@@ -101,8 +101,18 @@ def cmd_complete_agent(args):
         db.add_message(thread_uuid, role="assistant", content=args.result_summary)
     close_adhoc_run(db, thread_uuid, args.result_summary)  # ledger (ad-hoc; graph→topic)
 
-    # 3. Transition thread to closed
-    db.set_thread_status(thread_uuid, "closed")
+    # 3. Transition thread: close agent-owned ephemeral threads, but PRESERVE a
+    #    user-facing feature topic an agent was wrongly bound to (2026-06-21:
+    #    transient researcher 6238df03 closed feature Topic CQ on complete, had
+    #    to unarchive). A thread carrying real (non-junk) user messages is a
+    #    feature topic — never an agent-owned ephemeral dispatch thread, which
+    #    receives its prompt via send-task, not as a stored 'user' message. Code
+    #    over prompts: don't rely on the orchestrator create-thread'ing first.
+    preserve_feature_topic = db.get_message_count(thread_uuid) > 0
+    if preserve_feature_topic:
+        db.set_thread_status(thread_uuid, "active")
+    else:
+        db.set_thread_status(thread_uuid, "closed")
 
     # Resolve agent before step 5 (needed for role check below)
     agent = db.get_agent_by_thread(thread_uuid)
@@ -176,7 +186,13 @@ def cmd_complete_agent(args):
         db.dismiss_action_item(item_id)
 
     label = thread.get("user_label") or thread.get("label") or args.thread_id
-    print(f"Agent complete for Topic {label} → closed. Notification logged.")
+    if preserve_feature_topic:
+        print(
+            f"Agent complete for Topic {label} → feature topic preserved "
+            f"(has user messages; not closed). Notification logged."
+        )
+    else:
+        print(f"Agent complete for Topic {label} → closed. Notification logged.")
 
 
 def cmd_fail_agent(args):

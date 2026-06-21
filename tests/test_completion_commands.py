@@ -68,6 +68,33 @@ def test_cmd_complete_agent_creates_notification_and_closes_thread(db, capsys):
     assert any("merged PR #412" in n["message"] for n in notifs)
 
 
+def test_cmd_complete_agent_preserves_feature_topic_with_user_messages(db):
+    """Regression (2026-06-21): a transient/research agent bound to an active
+    feature topic must NOT close that topic on complete-agent. Symptom:
+    researcher 6238df03 closed Topic CQ on finish (had to unarchive).
+
+    A thread with real user-authored messages is a user-facing feature topic,
+    NOT an agent-owned ephemeral dispatch thread — complete-agent only
+    auto-closes the latter.
+    """
+    from juggle_cmd_agents import cmd_complete_agent
+
+    tid = db.create_thread("feature topic", session_id="sessA")
+    # A real feature topic carries a user-authored message (added by the prompt
+    # hook); ephemeral autopilot/delegate dispatch threads never do.
+    db.add_message(tid, "user", "Please build the dashboard feature")
+    # Agent dispatch set it to 'background' while wrongly bound to this topic.
+    db.update_thread(tid, status="background")
+    db._set_session_key_external("session_id", "sessA")
+    args = argparse.Namespace(
+        thread_id=tid, result_summary="research done", retain_text=None,
+        open_questions=None,
+    )
+    cmd_complete_agent(args)
+    # Feature topic must survive — not closed.
+    assert db.get_thread(tid)["status"] != "closed"
+
+
 def test_cmd_complete_agent_converts_open_questions_to_action_items(db):
     import json
     from juggle_cmd_agents import cmd_complete_agent
