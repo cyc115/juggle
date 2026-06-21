@@ -465,8 +465,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cmd_doctor.py": {
-    "mtime": 1782065661.8487122,
-    "ast_hash": "5731c29d55d9d3a3e678e0bac50e5493",
+    "mtime": 1782066161.5269837,
+    "ast_hash": "131a57edf05cbacff13a6c97575fbc94",
     "semantic_hash": ""
   },
   "src/juggle_cmd_research.py": {
@@ -1470,8 +1470,8 @@
     "semantic_hash": ""
   },
   "src/dbops/migrations_recent.py": {
-    "mtime": 1782065661.8415751,
-    "ast_hash": "cc25ced93e6f477bb064d21a48639586",
+    "mtime": 1782066127.414488,
+    "ast_hash": "0aad3d1ad59d8a84aff0679f2fcd8276",
     "semantic_hash": ""
   },
   "src/juggle_context_startup.py": {
@@ -2482,6 +2482,11 @@
   "tests/test_selfheal_asymmetry.py": {
     "mtime": 1782066043.45133,
     "ast_hash": "f330900a25b5cdf4d0503d030808a250",
+    "semantic_hash": ""
+  },
+  "tests/test_selfheal_migration_p1.py": {
+    "mtime": 1782066109.841902,
+    "ast_hash": "05eba19bc5f8f596bed3dc29b146a729",
     "semantic_hash": ""
   }
 }

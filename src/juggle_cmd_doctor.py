@@ -210,6 +210,16 @@ def cmd_doctor(args) -> int:
         # schema already looks current. Each migration self-guards against
         # duplicate-column errors.
         if not dry:
+            # selfheal-v2 P1 (spec §6): quiesce the watchdog before any rebuild so
+            # no writer races the error_events table swap (Migration 45).
+            # stop_watchdog is a no-op if none is running; the 30s backstop
+            # relaunches it after migration.
+            try:
+                from juggle_watchdog_singleton import stop_watchdog
+                if stop_watchdog(DB_PATH):
+                    print("db: quiesced watchdog for safe migration")
+            except Exception as e:  # never let quiesce failure mask the migration
+                print(f"db: watchdog quiesce skipped ({e})")
             JuggleDB(DB_PATH).init_db()
             if legacy_notes:
                 print(f"db: ran {'; '.join(legacy_notes)}")
