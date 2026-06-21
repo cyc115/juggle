@@ -63,26 +63,26 @@ After `/juggle:start`, talk normally. Juggle detects topic shifts and opens new 
 
 ## Project Autopilot
 
-Arm a project and Juggle delivers it end-to-end. The objective is decomposed into a **task graph** persisted in the DB — `graph_nodes` (the plan store) and `graph_edges` (dependencies between nodes) — and the watchdog tick drives every node to a verified state without you dispatching anything by hand.
+Hand Juggle a project objective and it delivers the whole thing end-to-end. The objective is decomposed into a **task graph** persisted in the DB (one node per unit of work, edges for dependencies), and the watchdog tick drives every node to a verified state without you dispatching anything by hand. There is no separate "arm" step: once autopilot is on, the tick auto-dispatches the ready nodes of every active project.
 
 ```bash
-/juggle:toggle-autopilot <project> [--auto-approve]   # arm a project for task-graph autopilot
-/juggle:toggle-autopilot off                          # disarm
-/juggle:toggle-autopilot                              # no arg → toggle global autonomous mode
+/juggle:toggle-autopilot <project>   # decompose a project into a task graph, then let the tick run it
+/juggle:toggle-autopilot             # no arg → toggle global autonomous mode on/off
+juggle autopilot status              # global flag + per-project graph progress (--json for machine-readable)
 ```
 
-**The flow** when you arm a project:
+**The flow** for a project:
 
 1. **Decompose** — the orchestrator breaks the objective into a task-graph spec written to `<data_dir>/graphs/<project>-graph.md`. One `## <node-id>: <Title>` section per node, with optional `deps:` and `verify_cmd:` lines and the dispatch prompt as the body.
-2. **One approval gate** — the spec (nodes, deps, verify_cmds) is surfaced in chat; you reply to approve. `--auto-approve` skips this gate.
+2. **One approval gate** — the spec (nodes, deps, verify_cmds) is surfaced in chat; you reply to approve before anything runs.
 3. **Load** — `juggle project-graph load <file> --project <id>` validates the graph (cycle check, unknown/duplicate node ids, empty prompts, verify_cmd lint).
-4. **Tick-driven execution** — the watchdog is the sole dispatcher. Each ~30s tick it atomically claims every `ready` node (deps all verified), lazily creates a thread, dispatches a coder agent with a prompt hydrated from upstream nodes' structured handoffs + integrated diffstat, then on completion runs the node's `verify_cmd` **inside the worktree, pre-merge** — nothing merges to main unverified. Verified nodes unblock dependents; a failed node blocks its transitive dependents (`blocked-failed`) and files a HIGH action item.
+4. **Tick-driven execution** — the watchdog is the sole dispatcher. Each tick it atomically claims every `ready` node (deps all verified), lazily creates a thread, dispatches a coder agent with a prompt hydrated from upstream nodes' structured handoffs plus integrated diffstat, then on completion runs the node's `verify_cmd` **inside the worktree, pre-merge**, so nothing merges to main unverified. Verified nodes unblock their dependents; a failed node blocks its transitive dependents and files a HIGH action item.
 
-Node state machine: `pending → ready → dispatching → running → integrating → verified`, with failure exits `failed-exec | failed-integration | failed-verify`, plus `blocked-failed` for downstream nodes. Nodes are **tick-owned** — the orchestrator never dispatches them manually, it only monitors and reports.
+Nodes are **tick-owned**: the orchestrator never dispatches them by hand, it only monitors and reports. Node states, transitions, and failure channels are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### Example: "Add OAuth login to a web app"
 
-Decomposes into four nodes with a diamond shape — a schema migration fans out to the backend route and the frontend button, which join at an end-to-end test:
+Decomposes into four nodes with a diamond shape: a schema migration fans out to the backend route and the frontend button, which join at an end-to-end test.
 
 ```
         migrate
@@ -92,7 +92,7 @@ Decomposes into four nodes with a diamond shape — a schema migration fans out 
          e2e
 ```
 
-Arm it:
+Start it:
 
 ```bash
 /juggle:toggle-autopilot oauth-login
@@ -134,7 +134,7 @@ project oauth-login   2/4 done · 1 running · 1 ready
 
 The cockpit shows an aggregate project row with per-node glyphs sourced from node state, e.g. `oauth-login  2/4 done, 0 failed, 1 ready`.
 
-**Failure & resume:** a `failed-verify` node blocks its dependents; fix that node's section in the spec and re-load — `project-graph load` is a guarded upsert that refuses to touch nodes already dispatching/running/integrating/verified and only updates pending/ready/failed nodes. Blocked nodes resume automatically once their failed ancestor reloads.
+**Failure & resume:** a node that fails verification blocks its dependents; fix that node's section in the spec and re-load. `project-graph load` is a guarded upsert that refuses to touch nodes already dispatching/running/integrating/verified and only updates pending/ready/failed nodes. Blocked nodes resume automatically once their failed ancestor reloads.
 
 ## Slash commands
 
