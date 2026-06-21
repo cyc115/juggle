@@ -42,6 +42,45 @@ def assert_no_leaked_daemons():
     )
 
 
+def test_scoped_leaks_only_flags_own_db():
+    """REGRESSION PIN: 2026-06-20 CP integrate false-positive — global PID diff
+    blamed cockpit/concurrent daemons on the test. Carries forward the #4713
+    leak-guard lineage: the guard must flag ONLY a daemon whose JUGGLE_DB_PATH
+    resolves to THIS test's own tmp DB, never prod or a foreign tmp DB.
+
+    Pure unit test with a fake db_path_reader (dict-backed) — no real `ps`, so
+    it is host-independent and unaffected by live cockpit/concurrent daemons.
+    """
+    own = str(Path("/tmp/own-abc/juggle.db").resolve())
+    prod_like = str((Path.home() / ".claude" / "juggle" / "juggle.db").resolve())
+    reader = {
+        10: "/tmp/own-abc/juggle.db",   # resolves equal to own -> OUR leak (counts)
+        11: prod_like,                  # prod daemon -> NOT ours (excluded)
+        12: "/tmp/other-xyz/juggle.db",  # different tmp DB -> NOT ours (excluded)
+        13: None,                       # env unreadable -> excluded (conservative)
+        9: "/tmp/own-abc/juggle.db",    # pre-existing (in before) -> never flagged
+    }.get
+
+    before = {9}
+    after = {9, 10, 11, 12, 13}
+
+    leaks = _scoped_leaks(before, after, own, lambda pid: reader(pid))
+
+    # Assertion A (the 2026-06-20 incident): a NEW pid on an UNRELATED db —
+    # both a prod-like path AND a different tmp path — does NOT count.
+    assert 11 not in leaks  # prod daemon is not this test's leak
+    assert 12 not in leaks  # foreign tmp-DB daemon is not this test's leak
+    # Assertion B (intent preserved): a NEW pid on our OWN db DOES count.
+    # pid 10's reader value is NON-resolved; it must be resolved before compare.
+    assert leaks == {10}
+    # Assertion C: a NEW pid whose db path is None is EXCLUDED — only flag
+    # positive matches to our own path (conservative; mirrors prod default-None).
+    assert 13 not in leaks
+    # A pid present in BOTH before and after (pre-existing) is NEVER flagged
+    # even though its db path == own.
+    assert 9 not in leaks
+
+
 def _wait_pane(pane_id: str, marker: str, timeout: float = 5.0, interval: float = 0.05) -> str:
     """Poll tmux pane until marker appears or timeout; returns final content."""
     deadline = time.monotonic() + timeout
