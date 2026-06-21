@@ -8,10 +8,8 @@ import os
 import re
 import sysconfig
 import traceback as _tb
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-
-from juggle_settings import get_settings  # noqa: E402 — after stdlib imports
 
 _log = logging.getLogger(__name__)
 _SELFHEAL_ENV = "JUGGLE_SELFHEAL_OP"
