@@ -74,6 +74,25 @@ def cmd_vault_name(args):
     print(_get_vault_name())
 
 
+def cmd_verify(args):
+    """Run the test suite ONCE, synchronously, with the quarantined reds deselected.
+
+    Agent-facing helper (2026-06-20): coder agents zombie-looped re-running the
+    FULL suite on pre-existing quarantined tests. `juggle verify` is the single
+    deterministic command they call instead of hand-rolling pytest — it reads
+    integrate.quarantine_tests and prepends the --deselect flags, then execs
+    pytest in the foreground exactly once. Extra args after `verify` pass through
+    to pytest. Exit code is pytest's, so `juggle verify && ...` fails loudly.
+    """
+    from juggle_integrate_testscope import apply_quarantine
+
+    quarantine = get_settings()["integrate"].get("quarantine_tests", [])
+    base = "uv run pytest -q" + (" " + " ".join(args.pytest_args) if args.pytest_args else "")
+    cmd = apply_quarantine(base, quarantine).split()
+    result = subprocess.run(cmd)
+    sys.exit(result.returncode)
+
+
 VAULT_ROOT = _get_vault_root()
 
 # Re-export commonly used symbols for backward compatibility with tests
@@ -165,6 +184,18 @@ def main():
     p_vault_path.set_defaults(func=cmd_vault_path)
     p_vault_name = subparsers.add_parser("vault-name", help="Print vault name (for obsidian:// URIs)")
     p_vault_name.set_defaults(func=cmd_vault_name)
+
+    # verify — run the suite ONCE with quarantined reds deselected (agent helper)
+    p_verify = subparsers.add_parser(
+        "verify",
+        help="Run the test suite once with quarantined reds deselected",
+    )
+    p_verify.add_argument(
+        "pytest_args",
+        nargs=argparse.REMAINDER,
+        help="Extra args passed through to pytest (e.g. -k foo, a test path)",
+    )
+    p_verify.set_defaults(func=cmd_verify)
 
     args = parser.parse_args()
 
