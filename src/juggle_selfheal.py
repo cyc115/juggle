@@ -37,8 +37,15 @@ def _now() -> str:
 
 
 def _get_db():
-    from juggle_db import JuggleDB, DB_PATH
-    db = JuggleDB(str(DB_PATH))
+    # Resolve the DB at CALL time (JuggleDB(None) -> _resolve_db_path()) so the
+    # recorder honors JUGGLE_DB_PATH the same way every other DB open does. The
+    # old `JuggleDB(str(DB_PATH))` froze the prod path at import, so under a
+    # worktree/agent context record_error opened the shared prod DB and bounced
+    # off SharedDBMigrationRefused (test-simulated ELOOP errors then leaked into
+    # ~/.claude/juggle/juggle.db). See tests/test_selfheal_db_isolation.py
+    # (2026-06-21 OSError-in-UserPromptSubmit-from-worktree incident).
+    from juggle_db import JuggleDB
+    db = JuggleDB()
     db.init_db()
     return db
 
