@@ -26,6 +26,7 @@ from schedules.common import (  # noqa: E402
     claude_p,
     days_ago_iso,
     db_query,
+    dry_run_sample_path,
     get_db,
     has_busy_agents,
     gh_create_issue,
@@ -762,7 +763,8 @@ def run(dry_run: bool = False) -> int:
     pr_body = _build_pr_description(today, pr_sections, issues_filed_urls, drift_text, dogfood_snippet)
 
     if dry_run:
-        out = Path("/tmp/schedule-autofix-sample-PR.md")
+        out = dry_run_sample_path("schedule-autofix-sample-PR.md")
+        out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(f"# {pr_title}\n\n{pr_body}")
         print(f"DRY RUN: PR description written to {out}")
         print(f"DRY RUN: cost estimate ${cost_tracker.total:.4f}")

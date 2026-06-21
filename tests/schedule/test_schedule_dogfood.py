@@ -30,10 +30,14 @@ def test_prior_dogfood_thread_blocks_run(tmp_path):
 # Dry run produces /tmp artifact
 # ---------------------------------------------------------------------------
 
-def test_dry_run_writes_report(tmp_path):
+def test_dry_run_writes_report(tmp_path, monkeypatch):
     mock_db = MagicMock()
     mock_db.add_action_item = MagicMock()
 
+    # M1 (2026-06-21): isolate the dry-run sample to a fresh tmp dir (no stale
+    # /tmp false-green).
+    sample_dir = tmp_path / "samples"
+    monkeypatch.setenv("JUGGLE_SCHEDULE_SAMPLE_DIR", str(sample_dir))
     with patch.object(dogfood, "get_db", return_value=mock_db), \
          patch.object(dogfood, "db_query", return_value=[]), \
          patch.object(dogfood, "_check_prior_dogfood_thread", return_value=None), \
@@ -45,7 +49,7 @@ def test_dry_run_writes_report(tmp_path):
         result = dogfood.run(dry_run=True)
 
     assert result == 0
-    report = Path("/tmp/schedule-dogfood-sample-report.md")
+    report = sample_dir / "schedule-dogfood-sample-report.md"
     assert report.exists()
     content = report.read_text()
     assert "DRY RUN" in content or "Juggle Self-Analysis" in content

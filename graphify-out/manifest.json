@@ -325,13 +325,13 @@
     "semantic_hash": ""
   },
   "tests/schedule/test_schedule_reflect.py": {
-    "mtime": 1782068546.086948,
-    "ast_hash": "f071313247affdd18ed6f3ec10bd137e",
+    "mtime": 1782069500.5800862,
+    "ast_hash": "5a5b06d584ad599d1cab179581a7e7ae",
     "semantic_hash": ""
   },
   "tests/schedule/test_schedule_autofix.py": {
-    "mtime": 1782068546.0865295,
-    "ast_hash": "226c32b74491cd370db4f0738c442aa4",
+    "mtime": 1782069480.7584357,
+    "ast_hash": "daafe73b27dfecdd36ac8f07569124e2",
     "semantic_hash": ""
   },
   "tests/schedule/test_schedule_common.py": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "tests/schedule/test_schedule_dogfood.py": {
-    "mtime": 1782068546.086815,
-    "ast_hash": "5acca3f73dce32feaa291e7e277b3a81",
+    "mtime": 1782069516.5335886,
+    "ast_hash": "ea65d444baa2150bc508cfd6a42906a1",
     "semantic_hash": ""
   },
   "tests/auto-generated/2026-05-19-gaps.py": {
@@ -1225,23 +1225,23 @@
     "semantic_hash": ""
   },
   "src/schedules/autofix.py": {
-    "mtime": 1782068546.0848374,
-    "ast_hash": "71a67f25e99e2821f3849608f922cfbb",
+    "mtime": 1782069569.18704,
+    "ast_hash": "57825caf603676a3468063c05994ad67",
     "semantic_hash": ""
   },
   "src/schedules/common.py": {
-    "mtime": 1782068546.085016,
-    "ast_hash": "5a2acc87cad2f5332c0cd310e7b0810d",
+    "mtime": 1782069548.2087164,
+    "ast_hash": "0fbe75f342f5872ba398b8feabf23300",
     "semantic_hash": ""
   },
   "src/schedules/dogfood.py": {
-    "mtime": 1782068546.0851946,
-    "ast_hash": "2f37717066b13612ea09af7c24b69e41",
+    "mtime": 1782069596.4788656,
+    "ast_hash": "d3fd46b7c744a4e3689bb0ed92f5f0b1",
     "semantic_hash": ""
   },
   "src/schedules/reflect.py": {
-    "mtime": 1782068546.0853214,
-    "ast_hash": "b5de324841b8a6b6c08e6a51449b847e",
+    "mtime": 1782069582.3179965,
+    "ast_hash": "736a5dbeb16726e2d8ebfda24d1ef81e",
     "semantic_hash": ""
   },
   "src/dbops/__init__.py": {
@@ -2522,6 +2522,11 @@
   "docs/plans/2026-06-21-ideabook-redesign.md": {
     "mtime": 1782068548.5242615,
     "ast_hash": "097b14801ce87c1b77e32dd51d509fbf",
+    "semantic_hash": ""
+  },
+  "tests/PARALLEL_SAFETY_AUDIT.md": {
+    "mtime": 1782069630.2995677,
+    "ast_hash": "d902d8f791f98cbcde17bddeea447203",
     "semantic_hash": ""
   }
 }

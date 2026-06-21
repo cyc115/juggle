@@ -27,6 +27,7 @@ from schedules.common import (  # noqa: E402
     REPORTS_DIR,
     days_ago_iso,
     db_query,
+    dry_run_sample_path,
     get_db,
     git_commit,
     git_push,
@@ -357,7 +358,7 @@ def run(dry_run: bool = False) -> int:
     report_content = _build_report(since_date, agent_output, cost_tracker.total)
 
     out_path = REPORTS_DIR / f"dogfood-{today}.md"
-    tmp_path = Path("/tmp/schedule-dogfood-sample-report.md") if dry_run else None
+    tmp_path = dry_run_sample_path("schedule-dogfood-sample-report.md") if dry_run else None
     write_report(out_path, report_content, dry_run=dry_run, tmp_override=tmp_path)
 
     if dry_run:
@@ -384,7 +385,7 @@ def run(dry_run: bool = False) -> int:
 def _write_and_commit(today: str, since_date: str, agent_output: str, cost_total: float, dry_run: bool) -> None:
     report_content = _build_report(since_date, agent_output, cost_total)
     out_path = REPORTS_DIR / f"dogfood-{today}.md"
-    tmp_path = Path("/tmp/schedule-dogfood-sample-report.md") if dry_run else None
+    tmp_path = dry_run_sample_path("schedule-dogfood-sample-report.md") if dry_run else None
     write_report(out_path, report_content, dry_run=dry_run, tmp_override=tmp_path)
     if not dry_run:
         git_commit(
