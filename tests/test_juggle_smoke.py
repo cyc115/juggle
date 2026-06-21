@@ -584,8 +584,6 @@ def test_cockpit_pty_no_orphan_after_close(tmp_path):
       (b) proc.kill() killed only the `uv` wrapper, orphaning the real cockpit.
     Fix: spawn in own session (start_new_session=True), quit via ctrl+c, on
     timeout kill the whole process group via os.killpg."""
-    import signal
-
     from juggle_smoke_pty import open_cockpit_pty
 
     export_db = str(tmp_path / "smoke.db")
