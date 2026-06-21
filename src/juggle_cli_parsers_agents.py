@@ -293,9 +293,7 @@ def register(subparsers) -> None:
         "stop-watchdog", help="Send SIGTERM to the watchdog daemon"
     )
     p_stop_watchdog.add_argument(
-        "--freeze",
-        action="store_true",
-        help="Also set the freeze sentinel so the cockpit cannot respawn the "
-        "daemon (held until an explicit start/unfreeze). Defeats the 15s respawn.",
+        "--freeze", action="store_true",
+        help="Also set the freeze sentinel (no respawn until an explicit start).",
     )
     p_stop_watchdog.set_defaults(func=cmd_stop_watchdog)

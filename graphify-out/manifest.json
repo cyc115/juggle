@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "src/juggle_settings.py": {
-    "mtime": 1782000491.4261658,
-    "ast_hash": "458b4a59cf9347a0f64d3bec76fe2adf",
+    "mtime": 1782000659.3727896,
+    "ast_hash": "fd5adfcf508c07b4ddff2cc5a8aedc3a",
     "semantic_hash": ""
   },
   "src/juggle_cockpit_widgets.py": {
@@ -1200,8 +1200,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cli_parsers_agents.py": {
-    "mtime": 1782000491.724308,
-    "ast_hash": "587083dcddc51336a32b52a2f879d1e0",
+    "mtime": 1782000659.372388,
+    "ast_hash": "24e12fc38870466433fd63c11cae2641",
     "semantic_hash": ""
   },
   "src/juggle_cli_parsers_misc.py": {
@@ -1300,8 +1300,8 @@
     "semantic_hash": ""
   },
   "src/juggle_watchdog_daemon.py": {
-    "mtime": 1782000491.7256749,
-    "ast_hash": "ce07e1948bd5f321132472286071499d",
+    "mtime": 1782000659.3730955,
+    "ast_hash": "43ee3bb111fe77d69e1e8ed6014f9ecc",
     "semantic_hash": ""
   },
   "tests/watchdog/test_actionable_items.py": {
