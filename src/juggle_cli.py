@@ -105,6 +105,7 @@ from juggle_cmd_misc import (  # noqa: F401 — re-export (handlers moved 2026-0
     _cmd_list_selfheal,
     _cmd_selfheal_reset_diagnosing,
     _cmd_selfheal_set_status,
+    _cmd_show_selfheal,
     _deny_matches,
     cmd_agent_tools,
     cmd_cockpit,

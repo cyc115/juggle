@@ -129,6 +129,18 @@ class SelfhealMixin:
                 ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_error_event(self, event_id: int) -> dict | None:
+        """Return one error_events row as a dict, or None if the id is unknown.
+
+        Single-entry triage detail complement to get_open_error_events (which
+        only returns summary rows for the list view).
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM error_events WHERE id = ?", (event_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
     def get_pending_selfheal_count(self) -> int:
         """Count actionable (non-resolved, non-non_issue) error_events rows.
 

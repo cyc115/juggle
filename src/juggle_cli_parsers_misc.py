@@ -20,6 +20,7 @@ from juggle_cmd_misc import (
     _cmd_selfheal_propose_nonissue,
     _cmd_selfheal_reset_diagnosing,
     _cmd_selfheal_set_status,
+    _cmd_show_selfheal,
     cmd_agent_tools,
     cmd_cockpit,
 )
@@ -73,6 +74,14 @@ def register(subparsers, *, vault_path_default: str) -> None:
     p_list_selfheal.add_argument("--status", default=None,
                                  help="Filter to exactly one status (e.g. non_issue)")
     p_list_selfheal.set_defaults(func=_cmd_list_selfheal)
+
+    p_show_selfheal = subparsers.add_parser(
+        "show-selfheal",
+        help="Show one error_event's full detail (command_args + traceback + status + counts)")
+    p_show_selfheal.add_argument("id", type=int, help="error_events.id")
+    p_show_selfheal.add_argument("--json", action="store_true", default=False,
+                                 help="Output the full row as a JSON object")
+    p_show_selfheal.set_defaults(func=_cmd_show_selfheal)
 
     p_sh_set = subparsers.add_parser("selfheal-set-status", help="Update error_event status")
     p_sh_set.add_argument("id", type=int, help="error_events.id")

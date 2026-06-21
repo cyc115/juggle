@@ -219,3 +219,33 @@ def _cmd_selfheal_reset_diagnosing(args):
         sys.exit(1)
     db.set_error_event_status(args.id, "open")
     print(f"reset error_event {args.id} diagnosing→open")
+
+
+def _cmd_show_selfheal(args):
+    """Print one error_event's full triage detail (command_args + traceback +
+    status + counts). Single-entry complement to list-selfheal."""
+    import json as _json
+    db = get_db(getattr(args, "db_path", None), init=True)
+    row = db.get_error_event(args.id)
+    if row is None:
+        print(f"error: error_event {args.id} not found")
+        sys.exit(1)
+    if getattr(args, "json", False):
+        print(_json.dumps(row, default=str))
+        return
+    sig = row["signature_hash"] or ""
+    print(f"error_event {row['id']}  [class {row['error_class']}]  status={row['status']}")
+    print(f"  signature : {sig}")
+    print(f"  exc_type  : {row['exc_type'] or '-'}")
+    print(f"  entrypoint: {row['entrypoint'] or '-'}")
+    print(f"  surface   : {row['surface'] or '-'}")
+    print(f"  juggle_ref: {row['juggle_ref'] or '-'}")
+    print(f"  count     : {row['count']}")
+    print(f"  first_seen: {row['first_seen']}")
+    print(f"  last_seen : {row['last_seen']}")
+    print(f"  action_item_id: {row['action_item_id'] if row['action_item_id'] is not None else '-'}")
+    print(f"  command_args:\n    {row['command_args'] or '-'}")
+    print("  traceback:")
+    tb = row["traceback"] or "-"
+    for line in tb.splitlines() or [tb]:
+        print(f"    {line}")

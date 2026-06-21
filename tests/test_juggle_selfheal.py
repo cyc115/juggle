@@ -281,6 +281,107 @@ def test_selfheal_reset_diagnosing(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------------------
+# show-selfheal <id>: single-entry triage detail (command_args + traceback +
+# status + counts). Complements list-selfheal which only prints summary lines.
+# ---------------------------------------------------------------------------
+
+def test_get_error_event_returns_full_row(tmp_path):
+    """get_error_event(id) returns the full row dict; None for a missing id."""
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(str(tmp_path / "juggle.db"))
+    db.init_db()
+    row_id = db.dedup_or_insert_error(
+        "sig-detail", "A", "RuntimeError", "Traceback... boom",
+        "send_task", "['cockpit', '--out']",
+    )
+
+    row = db.get_error_event(row_id)
+    assert row is not None
+    assert row["id"] == row_id
+    assert row["exc_type"] == "RuntimeError"
+    assert row["traceback"] == "Traceback... boom"
+    assert row["command_args"] == "['cockpit', '--out']"
+    assert row["status"] == "open"
+    assert row["count"] == 1
+
+    assert db.get_error_event(999999) is None
+
+
+def test_show_selfheal_human_prints_full_detail(tmp_path, capsys):
+    """show-selfheal <id> prints command_args, traceback, status, and counts."""
+    from juggle_db import JuggleDB
+    from juggle_cli import _cmd_show_selfheal
+
+    db = JuggleDB(str(tmp_path / "juggle.db"))
+    db.init_db()
+    row_id = db.dedup_or_insert_error(
+        "20f69693aabbccdd", "A", "RuntimeError",
+        "RuntimeError: send_task: submission not verified for pane after retries",
+        "send_task", "['send-task', 'pane-7']",
+    )
+
+    class FakeArgs:
+        db_path = str(tmp_path / "juggle.db")
+        id = row_id
+        json = False
+
+    _cmd_show_selfheal(FakeArgs())
+    out = capsys.readouterr().out
+    assert str(row_id) in out
+    assert "RuntimeError" in out
+    assert "submission not verified" in out          # traceback
+    assert "['send-task', 'pane-7']" in out          # command_args
+    assert "open" in out                             # status
+    assert "count" in out.lower()                    # counts
+
+
+def test_show_selfheal_json_emits_full_row(tmp_path, capsys):
+    """show-selfheal --id <id> --json emits the full row as a JSON object."""
+    from juggle_db import JuggleDB
+    from juggle_cli import _cmd_show_selfheal
+
+    db = JuggleDB(str(tmp_path / "juggle.db"))
+    db.init_db()
+    row_id = db.dedup_or_insert_error(
+        "sig-json", "B", None, "Tool err detail", "Monitor", "['x']",
+        juggle_ref="commands/start.md",
+    )
+
+    class FakeArgs:
+        db_path = str(tmp_path / "juggle.db")
+        id = row_id
+        json = True
+
+    _cmd_show_selfheal(FakeArgs())
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["id"] == row_id
+    assert payload["error_class"] == "B"
+    assert payload["traceback"] == "Tool err detail"
+    assert payload["command_args"] == "['x']"
+
+
+def test_show_selfheal_missing_id_exits_nonzero(tmp_path, capsys):
+    """show-selfheal on an unknown id prints an error and exits non-zero."""
+    from juggle_db import JuggleDB
+    from juggle_cli import _cmd_show_selfheal
+
+    db = JuggleDB(str(tmp_path / "juggle.db"))
+    db.init_db()
+
+    class FakeArgs:
+        db_path = str(tmp_path / "juggle.db")
+        id = 424242
+        json = False
+
+    with pytest.raises(SystemExit):
+        _cmd_show_selfheal(FakeArgs())
+    out = capsys.readouterr().out
+    assert "not found" in out
+
+
+# ---------------------------------------------------------------------------
 # Task 4: juggle_selfheal core — signature, allowlist, record_error
 # ---------------------------------------------------------------------------
 
