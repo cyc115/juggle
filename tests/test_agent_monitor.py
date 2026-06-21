@@ -183,3 +183,105 @@ def test_kill_existing_monitor_handles_missing_pidfile(tmp_path):
 
     # Should not raise
     mod._kill_existing_monitor_from_pidfile(pidfile)
+
+
+# ---------------------------------------------------------------------------
+# Graceful-shutdown + cursor-durability pins
+# Incident 2026-06-21: monitor SIGTERM leaves stale pidfile / risks dropped
+# completion (atexit does not run on SIGTERM; in-memory cursor reset to MAX(id)
+# on every restart skipped completions that arrived while the daemon was down).
+# ---------------------------------------------------------------------------
+
+
+import subprocess  # noqa: E402
+import time  # noqa: E402
+
+
+def test_sigterm_leaves_no_stale_pidfile(tmp_path):
+    """2026-06-21: a SIGTERM to the running monitor must remove its own pidfile.
+
+    Pre-fix the daemon cleaned up only via atexit, which does NOT run on
+    SIGTERM (exit 143) — leaving a stale pidfile behind.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    pidfile = home / ".juggle" / "monitor.pid"
+
+    repo = Path(__file__).parent.parent
+    boot = (
+        "import sys; sys.path.insert(0, 'src'); "
+        "from juggle_monitor_daemon import main; main()"
+    )
+    env = {**os.environ, "HOME": str(home)}
+    proc = subprocess.Popen(
+        [sys.executable, "-c", boot], env=env, cwd=str(repo),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        for _ in range(50):
+            if pidfile.exists():
+                break
+            time.sleep(0.1)
+        assert pidfile.exists(), "daemon never wrote its pidfile"
+
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=10)
+
+        assert proc.returncode == 0, f"SIGTERM should exit cleanly, got {proc.returncode}"
+        assert not pidfile.exists(), "stale pidfile remained after SIGTERM"
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+def test_cursor_baseline_skips_history_on_first_run(db, tmp_path):
+    """First run (no cursor file) baselines at MAX(id) so history is not replayed."""
+    mod = _load_monitor()
+    cursor = tmp_path / "monitor.cursor"
+
+    tid = db.create_thread("old", session_id="s")
+    db.update_thread(tid, title="old", status="closed")
+    nid = db.add_notification_v2(tid, "old: done", "s")
+
+    start = mod._load_cursor(cursor, Path(db.db_path))
+    assert start == nid, "first run must baseline at MAX(id), not replay history"
+    assert cursor.exists(), "baseline cursor must be persisted"
+
+
+def test_cursor_reemits_unconsumed_completion_across_restart(db, tmp_path):
+    """2026-06-21: a completion present at SIGTERM time is re-emitted (not
+    dropped, not duplicated) after a restart from the persisted cursor."""
+    import sqlite3 as _sql
+
+    mod = _load_monitor()
+    cursor = tmp_path / "monitor.cursor"
+    dbpath = Path(db.db_path)
+
+    # Daemon started before any completion -> baseline cursor 0 (empty db).
+    assert mod._load_cursor(cursor, dbpath) == 0
+
+    # A completion arrives.
+    tid = db.create_thread("task", session_id="s")
+    db.update_thread(tid, title="task", status="closed")
+    db.add_notification_v2(tid, "task: done", "s")
+
+    def _poll():
+        with db._connect() as conn:
+            conn.row_factory = _sql.Row
+            return mod._poll_once(conn, mod._load_cursor(cursor, dbpath))
+
+    # Tick emits the line, but SIGTERM hits before the cursor is saved.
+    lines, _ = _poll()
+    assert len(lines) == 1
+
+    # Restart: cursor never advanced -> completion is re-emitted (NOT dropped).
+    lines2, new_id2 = _poll()
+    assert len(lines2) == 1, "unconsumed completion must survive a restart"
+
+    # Now durably deliver: save the cursor.
+    mod._save_cursor(cursor, new_id2)
+
+    # Restart again: cursor persisted -> NOT duplicated.
+    lines3, _ = _poll()
+    assert lines3 == [], "delivered completion must not be re-fired after restart"

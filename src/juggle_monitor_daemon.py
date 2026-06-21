@@ -9,7 +9,9 @@ in the watchdog modules. Entry point: ``main()``, invoked by the thin
 """
 
 import atexit
+import signal
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
@@ -17,6 +19,7 @@ import daemon_pidfile
 from juggle_settings import get_settings
 
 SINGLETON_PID_FILE = Path.home() / ".juggle" / "monitor.pid"
+CURSOR_FILE = Path.home() / ".juggle" / "monitor.cursor"
 
 
 def _db_path() -> Path:
@@ -96,25 +99,76 @@ def _init_cursor(db_path: Path) -> int:
         return 0
 
 
+def _save_cursor(cursor_path: Path, last_id: int) -> None:
+    """Atomically persist the last delivered notification id (write tmp + rename)."""
+    try:
+        cursor_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cursor_path.with_suffix(".cursor.tmp")
+        tmp.write_text(str(last_id))
+        tmp.replace(cursor_path)
+    except OSError:
+        pass  # best-effort durability — a missed save just re-emits next restart
+
+
+def _load_cursor(cursor_path: Path, db_path: Path) -> int:
+    """Resume from the persisted cursor; on first run baseline at MAX(id).
+
+    A persisted cursor survives a SIGTERM->relaunch boundary so the daemon
+    re-emits exactly the unconsumed completions instead of skipping ahead to
+    the current MAX(id) (which would drop completions seen while it was down).
+    On the very first run (no cursor file) we baseline at MAX(id) so old
+    history is not replayed, and persist that baseline.
+    """
+    try:
+        return int(cursor_path.read_text().strip())
+    except (ValueError, OSError):
+        baseline = _init_cursor(db_path)
+        _save_cursor(cursor_path, baseline)
+        return baseline
+
+
+def _handle_term(signum, frame) -> None:
+    """Clean, idempotent shutdown for SIGTERM/SIGINT.
+
+    atexit does NOT run on SIGTERM (Python terminates immediately, exit 143),
+    so the harness's expected kill-and-relaunch lifecycle would otherwise leave
+    a stale pidfile. Flush stdout, remove our pidfile (only if it still records
+    our PID), then exit cleanly so atexit also runs as belt-and-suspenders.
+    """
+    try:
+        sys.stdout.flush()
+    except (OSError, ValueError):
+        pass
+    _cleanup_singleton_pid()
+    sys.exit(0)
+
+
 def main() -> None:
     _kill_existing_monitor_from_pidfile(SINGLETON_PID_FILE)
     _write_singleton_pid()
     atexit.register(_cleanup_singleton_pid)
+    signal.signal(signal.SIGTERM, _handle_term)
+    signal.signal(signal.SIGINT, _handle_term)
 
     db_path = _db_path()
-    last_seen_id = _init_cursor(db_path)
+    last_seen_id = _load_cursor(CURSOR_FILE, db_path)
     emitted: set[str] = set()  # deduplicate by thread_id
 
     while True:
         try:
             from juggle_db_connect import open_connection
             conn = open_connection(db_path)
-            results, last_seen_id = _poll_once(conn, last_seen_id)
+            results, new_last_seen_id = _poll_once(conn, last_seen_id)
             conn.close()
             for thread_id, line in results:
                 if thread_id not in emitted:
                     emitted.add(thread_id)
                     print(line, flush=True)
+            # Advance + persist the cursor ONLY after the lines are flushed, so a
+            # SIGTERM->relaunch re-emits unconsumed completions rather than losing them.
+            if new_last_seen_id != last_seen_id:
+                last_seen_id = new_last_seen_id
+                _save_cursor(CURSOR_FILE, last_seen_id)
         except sqlite3.OperationalError:
             pass  # DB locked — retry next tick
 
