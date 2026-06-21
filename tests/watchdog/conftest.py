@@ -8,11 +8,26 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+# tests/ on sys.path (added when the top-level tests/conftest.py is imported) so
+# the worker-scoped session helper is importable from here too.
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from juggle_db import JuggleDB
 from juggle_watchdog_singleton import PROD_DB_PATH, find_watchdog_pids
 
+from _xdist_isolation import watchdog_session_name
+
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
-TEST_SESSION = "juggle-watchdog-test"
+
+
+def test_session_name() -> str:
+    """Per-xdist-worker tmux session so parallel workers never collide
+    (speedup-tier, 2026-06-21). Resolved at fixture-setup time so a worker that
+    imports this module before PYTEST_XDIST_WORKER is set still gets the right
+    name."""
+    return watchdog_session_name()
+
+
+TEST_SESSION = test_session_name()  # module-load default; fixtures call the fn
 
 
 def _wait_pane(pane_id: str, marker: str, timeout: float = 5.0, interval: float = 0.05) -> str:
@@ -33,22 +48,24 @@ def _wait_pane(pane_id: str, marker: str, timeout: float = 5.0, interval: float 
 
 @pytest.fixture(scope="session", autouse=True)
 def ensure_tmux_session():
-    r = subprocess.run(["tmux", "has-session", "-t", TEST_SESSION], capture_output=True)
+    session = test_session_name()
+    r = subprocess.run(["tmux", "has-session", "-t", session], capture_output=True)
     session_existed = r.returncode == 0
     if not session_existed:
-        subprocess.run(["tmux", "new-session", "-d", "-s", TEST_SESSION], check=True)
+        subprocess.run(["tmux", "new-session", "-d", "-s", session], check=True)
     yield
     # Only destroy the session if we created it — don't kill pre-existing sessions.
     if not session_existed:
         subprocess.run(
-            ["tmux", "kill-session", "-t", TEST_SESSION], capture_output=True
+            ["tmux", "kill-session", "-t", session], capture_output=True
         )
 
 
 @pytest.fixture
 def tmux_pane(ensure_tmux_session):  # noqa: ARG001 — fixture dep, not used in body
+    session = test_session_name()
     r = subprocess.run(
-        ["tmux", "new-window", "-t", TEST_SESSION, "-P", "-F", "#{pane_id}"],
+        ["tmux", "new-window", "-t", session, "-P", "-F", "#{pane_id}"],
         capture_output=True,
         text=True,
         check=True,

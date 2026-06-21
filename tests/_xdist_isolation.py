@@ -21,6 +21,17 @@ def worker_id() -> str:
     return os.environ.get("PYTEST_XDIST_WORKER", "main")
 
 
+def watchdog_session_name() -> str:
+    """Per-xdist-worker real-tmux session name for the watchdog suite.
+
+    The watchdog conftest's session was a FIXED 'juggle-watchdog-test', so two
+    xdist workers created/killed the same session and stole each other's panes.
+    Keying it to the worker id lets the watchdog suite run PARALLEL. 'main'
+    suffix when single-process (speedup-tier, 2026-06-21).
+    """
+    return f"juggle-watchdog-test-{worker_id()}"
+
+
 def prod_artifact_paths() -> list[Path]:
     """Shared prod filesystem artifacts a test must NEVER create/modify.
 

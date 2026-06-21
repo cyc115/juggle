@@ -350,8 +350,8 @@
     "semantic_hash": ""
   },
   "tests/watchdog/conftest.py": {
-    "mtime": 1782068546.1112401,
-    "ast_hash": "b7e47d5e8e8e272a73761578af9b8729",
+    "mtime": 1782069135.468488,
+    "ast_hash": "04b727d1943170f6fca6a3effaeb3c95",
     "semantic_hash": ""
   },
   "tests/watchdog/__init__.py": {
@@ -2505,8 +2505,8 @@
     "semantic_hash": ""
   },
   "tests/_xdist_isolation.py": {
-    "mtime": 1782069023.0422654,
-    "ast_hash": "cb1bf69d8fa90204330d682646b794f8",
+    "mtime": 1782069117.7825093,
+    "ast_hash": "8949bce27d91933951a3c38696abf3f4",
     "semantic_hash": ""
   },
   "tests/test_cli_input_robustness.py": {
@@ -2515,8 +2515,8 @@
     "semantic_hash": ""
   },
   "tests/test_xdist_parallel_safety.py": {
-    "mtime": 1782068998.715361,
-    "ast_hash": "f0ad6f882d9472473e8d483e2174f1e9",
+    "mtime": 1782069107.0807612,
+    "ast_hash": "3d934c3503b159b4131f91ca8ee694e3",
     "semantic_hash": ""
   },
   "docs/plans/2026-06-21-ideabook-redesign.md": {

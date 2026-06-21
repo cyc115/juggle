@@ -79,3 +79,34 @@ def test_autouse_guard_blocks_prod_pidfile_write():
     prod_pidfile = Path.home() / ".juggle" / "watchdog.pid"
     with pytest.raises(AssertionError, match="prod"):
         dp.write_singleton_pid(prod_pidfile)
+
+
+def test_watchdog_session_name_is_worker_scoped(monkeypatch):
+    """speedup-tier (2026-06-21): two xdist workers must NOT share one real tmux
+    session — the session name is keyed to PYTEST_XDIST_WORKER so parallel
+    workers never steal each other's panes."""
+    from _xdist_isolation import watchdog_session_name
+
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw3")
+    name = watchdog_session_name()
+    assert name == "juggle-watchdog-test-gw3"
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw7")
+    assert watchdog_session_name() == "juggle-watchdog-test-gw7"
+    assert watchdog_session_name() != name  # different worker -> different session
+
+
+def test_watchdog_conftest_uses_worker_scoped_session():
+    """speedup-tier (2026-06-21): the watchdog conftest sources its session name
+    from the worker-scoped helper (not the old fixed 'juggle-watchdog-test')."""
+    import importlib.util
+
+    here = Path(__file__).parent
+    spec = importlib.util.spec_from_file_location(
+        "_wd_conftest_probe", here / "watchdog" / "conftest.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    from _xdist_isolation import watchdog_session_name
+
+    assert mod.test_session_name() == watchdog_session_name()
+    assert mod.test_session_name().startswith("juggle-watchdog-test-")
