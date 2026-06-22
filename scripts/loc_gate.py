@@ -66,7 +66,6 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_watchdog_singleton.py": 367,
     "src/dbops/schema.py": 342,  # selfheal-v2 P1: VALID_ERROR_STATUSES constant
     "src/juggle_cockpit_graph_panel.py": 334,
-    "src/juggle_hooks_tooluse.py": 334,
     "src/juggle_dispatch_core.py": 321,
     "src/juggle_add_node.py": 318,
     "src/juggle_cli_parsers_misc.py": 328,  # selfheal-v2 P1: list flags + propose-nonissue parser

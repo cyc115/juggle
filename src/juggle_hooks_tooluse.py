@@ -14,6 +14,8 @@ import sys
 
 import juggle_hooks_config as _cfg
 from juggle_db import JuggleDB
+from juggle_hooks_askuser import clear_askuser_decision, record_askuser_decision
+from juggle_verify_cap import enforce_verify_spawn_cap
 
 # Use _cfg.<name>() everywhere — do NOT bind these as local names, so that
 # tests can monkeypatch juggle_hooks_config.<name> and have the patches take
@@ -135,6 +137,7 @@ def handle_pre_tool_use(data: dict) -> None:
     """Hard-block Edit/Write/NotebookEdit/Bash-writes in the orchestrator main thread."""
     if os.environ.get("JUGGLE_IS_AGENT"):
         _log_agent_tool_use(data)
+        enforce_verify_spawn_cap(data, _cfg.DB_PATH)  # may DENY + sys.exit(2)
         sys.exit(0)
 
     if not is_active():
@@ -189,38 +192,7 @@ def handle_pre_tool_use(data: dict) -> None:
                 sys.exit(2)
         # Track pending AskUserQuestion decisions
         if tool_name == "AskUserQuestion":
-            try:
-                db = get_db()
-                thread_id = db.get_current_thread()
-                if thread_id:
-                    tool_use_id = data.get("tool_use_id", "")
-                    questions = data.get("tool_input", {}).get("questions", [])
-
-                    thread = db.get_thread(thread_id)
-                    current = thread.get("open_questions") or []
-                    if isinstance(current, str):
-                        current = json.loads(current)
-
-                    for i, q in enumerate(questions):
-                        current.append(
-                            {
-                                "id": f"{tool_use_id}:{i}",
-                                "text": q.get("question", ""),
-                                "source": "askuser",
-                            }
-                        )
-
-                    db.update_thread(thread_id, open_questions=current)
-
-                    question_text = " / ".join(q.get("question", "") for q in questions)
-                    db.add_action_item(
-                        thread_id=thread_id,
-                        message=f"[tuid:{tool_use_id}] Decision needed: {question_text}",
-                        type_="decision",
-                        priority="normal",
-                    )
-            except Exception as exc:
-                logging.warning("AskUserQuestion PreToolUse handler error: %s", exc)
+            record_askuser_decision(get_db(), data)
 
     except Exception as exc:
         _record_error_safe(exc, "juggle_hooks.PreToolUse")
@@ -258,32 +230,7 @@ def handle_post_tool_use(data: dict) -> None:
 
         # Clear pending decisions after AskUserQuestion completes
         if tool_name == "AskUserQuestion":
-            try:
-                db = get_db()
-                thread_id = db.get_current_thread()
-                if thread_id:
-                    tool_use_id = data.get("tool_use_id", "")
-
-                    thread = db.get_thread(thread_id)
-                    open_questions = thread.get("open_questions") or []
-                    if isinstance(open_questions, str):
-                        open_questions = json.loads(open_questions)
-
-                    open_questions = [
-                        q
-                        for q in open_questions
-                        if not q.get("id", "").startswith(tool_use_id)
-                    ]
-
-                    db.update_thread(thread_id, open_questions=open_questions)
-
-                    prefix = f"[tuid:{tool_use_id}]"
-                    open_items = db.get_open_action_items()
-                    for item in open_items:
-                        if item.get("message", "").startswith(prefix):
-                            db.dismiss_action_item(item["id"])
-            except Exception as exc:
-                logging.warning("AskUserQuestion PostToolUse handler error: %s", exc)
+            clear_askuser_decision(get_db(), data)
             sys.exit(0)
 
         if tool_name != "Agent":
