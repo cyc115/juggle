@@ -54,7 +54,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cmd_integrate.py": 450,
     "src/juggle_cockpit_view.py": 461,
     "src/juggle_cockpit_model.py": 439,
-    "src/dbops/migrations_recent.py": 442,
+    "src/dbops/migrations_recent.py": 392,  # run_migration_41 extracted to migration_41_threads.py (2026-06-22, P8 Migration 50 headroom)
     "scripts/talkback": 415,
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
