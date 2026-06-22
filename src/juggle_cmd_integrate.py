@@ -256,6 +256,19 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
                 f"Commit your work, or call complete-agent with ⚠️ PARTIAL/BLOCKER."
             )
 
+        # ── 3b. Ensure graphify-out can never block the rebase/merge ──────────
+        # Every coder branch regenerates graphify-out/ (the ~3580-line graph.json
+        # + manifest), so two branches conflict unmergeably on it (2026-06-21
+        # concurrent-integrate pileup, root cause 2). `.gitattributes` routes
+        # graphify-out/** to `merge=ours`, but that driver is LOCAL git config —
+        # set it idempotently here so the integrate flow is self-sufficient even
+        # in a repo/worktree where install-graphify-hooks.sh never ran. The
+        # `true` driver keeps the in-progress side (graphify regenerates anyway).
+        subprocess.run(
+            ["git", "-C", main_repo_path, "config", "merge.ours.driver", "true"],
+            capture_output=True, text=True,
+        )
+
         # ── 4. Rebase ─────────────────────────────────────────────────────────
         result = subprocess.run(
             ["git", "-C", worktree_path, "rebase", rebase_onto],
@@ -356,6 +369,40 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             )
             subprocess.run(
                 ["git", "-C", main_repo_path, "clean", "-fd", "--", "graphify-out/"],
+                capture_output=True, text=True,
+            )
+
+        # ── 6b. Sync local main to the rebase base BEFORE the ff-merge ────────
+        # The branch was rebased onto `rebase_onto`, but LOCAL main can have
+        # drifted from it — a concurrent integrate advanced/pushed main, or an
+        # un-pushed/aborted commit left main diverged — so `merge --ff-only
+        # <branch>` aborts "Not possible to fast-forward" (2026-06-21
+        # concurrent-integrate pileup, root cause 1). Make local main EXACTLY the
+        # rebase base so the rebased branch always fast-forwards. A plain
+        # `merge --ff-only <base>` is insufficient: a local main that is AHEAD of
+        # the base (an un-pushed/aborted commit) reports "already up to date" yet
+        # still diverges from the branch — so hard-reset to the base. Guard:
+        # never discard uncommitted tracked work (fail loud / forward-only FF).
+        tracked_dirty = subprocess.run(
+            ["git", "-C", main_repo_path, "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        if tracked_dirty:
+            # Can't safely hard-reset. A forward-only FF handles the common
+            # "behind" race without touching uncommitted files; fail loud if the
+            # local main has actually diverged from the base.
+            sync = subprocess.run(
+                ["git", "-C", main_repo_path, "merge", "--ff-only", rebase_onto],
+                capture_output=True, text=True,
+            )
+            if sync.returncode != 0:
+                return _fail(
+                    f"local main diverged from {rebase_onto} with uncommitted tracked "
+                    f"changes in {main_repo_path}; resolve manually then re-run integrate."
+                )
+        else:
+            subprocess.run(
+                ["git", "-C", main_repo_path, "reset", "--hard", rebase_onto],
                 capture_output=True, text=True,
             )
 

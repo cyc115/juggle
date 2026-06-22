@@ -748,3 +748,89 @@ def test_integrate_runs_full_suite_no_deselect_no_scoping_pin(git_repo, tmp_path
     assert run_cmd == base_cmd, (
         f"integrate scoped/altered the test command (must run it verbatim): {run_cmd!r}"
     )
+
+
+# ── 2026-06-21 concurrent-integrate pileup hardening (TODO L16) ───────────────
+
+def test_integrate_ff_merge_succeeds_when_local_main_diverged_pin(git_repo_with_remote, tmp_path):
+    """Regression pin (2026-06-21 concurrent-integrate pileup, root cause 1):
+    integrate rebases the branch onto origin/main but FF-merges into LOCAL main.
+    A concurrent integrate can leave local main stale/diverged from origin, so
+    `git merge --ff-only <branch>` aborts 'Not possible to fast-forward'. Fix:
+    sync local main to the rebase base before the FF. RED before the fix."""
+    from juggle_cmd_integrate import _run_integrate
+
+    local, remote = git_repo_with_remote
+    wt = _make_worktree(local, str(tmp_path), "FF")
+    _add_commit(wt, "feat.py", "y = 2\n", "feat: add feature")
+
+    # Diverge LOCAL main from origin/main with an un-pushed local commit — what a
+    # concurrent integrate (or an aborted push) leaves behind. origin/main (the
+    # rebase base) stays at init, so the rebased branch and local main diverge.
+    _add_commit(local, "diverge.py", "z = 9\n", "diverge: local-only main commit")
+
+    thread = {"id": "t-ff", "worktree_path": wt,
+              "worktree_branch": "cyc_FF", "main_repo_path": local}
+    db = _make_db()
+
+    with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "none", "test_cmd": ""}):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok, msg = _run_integrate(thread, db)
+
+    assert ok, f"integrate must FF-merge after syncing local main to the rebase base: {msg}"
+    # The branch commit landed on local main; the divergent local-only commit was
+    # discarded by the sync (local main now tracks the rebase base + branch).
+    assert (Path(local) / "feat.py").exists()
+
+
+def test_integrate_two_branches_modifying_graphify_out_no_conflict_pin(git_repo, tmp_path):
+    """Regression pin (2026-06-21 concurrent-integrate pileup, root cause 2):
+    two branches each regenerate graphify-out/ → the second's rebase onto a main
+    that already has the first's graphify-out changes would conflict on the
+    ~3580-line graph.json. Policy (b): `.gitattributes graphify-out/** merge=ours`
+    + the `merge.ours.driver` config (integrate sets it idempotently) auto-resolve
+    it so integrate never blocks. RED before integrate configures the driver."""
+    from juggle_cmd_integrate import _run_integrate
+
+    # .gitattributes (merge=ours for graphify-out) + a tracked graph.json on main,
+    # committed BEFORE branches diverge so both inherit the attribute.
+    Path(git_repo, ".gitattributes").write_text("graphify-out/** merge=ours\n")
+    gdir = Path(git_repo, "graphify-out")
+    gdir.mkdir()
+    (gdir / "graph.json").write_text('{"nodes": 0}\n')
+    subprocess.run(["git", "-C", git_repo, "add", ".gitattributes", "graphify-out/"],
+                   check=True, capture_output=True)
+    subprocess.run(["git", "-C", git_repo, "commit", "-m", "chore: track gitattributes + graph"],
+                   check=True, capture_output=True)
+
+    # Two worktrees, both off the same base, each rewrites graphify-out/graph.json.
+    wt1 = _make_worktree(git_repo, str(tmp_path), "G1")
+    (Path(wt1) / "graphify-out" / "graph.json").write_text('{"nodes": 111}\n')
+    _add_commit(wt1, "real1.py", "a = 1\n", "feat: change 1")
+    subprocess.run(["git", "-C", wt1, "add", "graphify-out/"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", wt1, "commit", "--amend", "--no-edit"], check=True, capture_output=True)
+
+    wt2 = _make_worktree(git_repo, str(tmp_path), "G2")
+    (Path(wt2) / "graphify-out" / "graph.json").write_text('{"nodes": 222}\n')
+    _add_commit(wt2, "real2.py", "b = 2\n", "feat: change 2")
+    subprocess.run(["git", "-C", wt2, "add", "graphify-out/"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", wt2, "commit", "--amend", "--no-edit"], check=True, capture_output=True)
+
+    db = _make_db()
+    cfg = {"push_mode": "none", "test_cmd": ""}
+    with patch("juggle_cmd_integrate.get_repo_config", return_value=cfg):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok1, msg1 = _run_integrate(
+                    {"id": "t-g1", "worktree_path": wt1, "worktree_branch": "cyc_G1",
+                     "main_repo_path": git_repo}, db)
+                # Second branch's rebase replays its graph.json over G1's — the
+                # graphify-out conflict must be auto-resolved, not abort integrate.
+                ok2, msg2 = _run_integrate(
+                    {"id": "t-g2", "worktree_path": wt2, "worktree_branch": "cyc_G2",
+                     "main_repo_path": git_repo}, db)
+
+    assert ok1, f"first integrate failed: {msg1}"
+    assert ok2, f"graphify-out rebase conflict blocked the second integrate: {msg2}"
+    assert (Path(git_repo) / "real2.py").exists()
