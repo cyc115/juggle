@@ -19,6 +19,22 @@ def _get_version() -> str:
         return "?"
 
 
+def _drift_banner(boot: str, current: str) -> str | None:
+    """Return a restart-to-load banner when the on-disk version has moved past
+    the version captured at cockpit boot; None when they match.
+
+    ``boot``    — version read from plugin.json at cockpit launch (the running code).
+    ``current`` — version re-read from plugin.json on a refresh tick (on disk).
+
+    Returns None when the versions match OR either is unknown ("?") so a failed
+    read never raises a false "restart" banner. Incident 2026-06-21: a stale
+    cockpit ran ~4.5h against newer code and MASKED a fix until manual restart.
+    """
+    if not boot or not current or "?" in (boot, current) or boot == current:
+        return None
+    return f"Cockpit running v{boot} (v{current} available) — restart to load"
+
+
 def _cockpit_subtitle(version: str, width: int | None = None) -> str:
     """Build the Header sub_title with the version appended.
 

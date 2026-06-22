@@ -57,7 +57,7 @@ from juggle_cockpit_modals import (
 )
 from juggle_cockpit_widgets import HSplitter, Splitter
 from juggle_cockpit_graph_mode import GraphModeMixin
-from juggle_cockpit_title import _cockpit_subtitle, _get_version
+from juggle_cockpit_title import _cockpit_subtitle, _drift_banner, _get_version
 from juggle_watchdog_singleton import (
     canonical_repo_path,
     ensure_watchdog,
@@ -143,6 +143,14 @@ class CockpitApp(GraphModeMixin, App):
     Screen {
         layers: base overlay;
     }
+    #version-banner {
+        height: auto;
+        width: 100%;
+        background: $warning;
+        color: $text;
+        text-align: center;
+        text-style: bold;
+    }
     #layout {
         layout: horizontal;
         height: 1fr;
@@ -196,6 +204,10 @@ class CockpitApp(GraphModeMixin, App):
     def __init__(self, db_path: str | None = None) -> None:
         super().__init__()
         self._db = _make_cockpit_db(db_path)
+        # Version captured at launch — the code this cockpit is actually running.
+        # Compared on each refresh tick against on-disk plugin.json to surface a
+        # restart-to-load banner when they drift (TODO L15, incident 2026-06-21).
+        self._boot_version: str = _get_version()
         self._offsets: dict[str, int] = {p: 0 for p in _SCROLL_PANES}
         self._active_pane: str = "notifications"
         self._last_bp: str = "wide"  # tracks previous breakpoint for resize transitions
@@ -251,6 +263,9 @@ class CockpitApp(GraphModeMixin, App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
+        # Persistent, non-modal version-drift banner. Empty (0-height via auto)
+        # until the on-disk version moves past the boot version; see _refresh.
+        yield Static("", id="version-banner")
         with Horizontal(id="layout"):
             yield Static("", id="topics")
             yield Splitter(
@@ -373,6 +388,16 @@ class CockpitApp(GraphModeMixin, App):
         except Exception:
             pass
 
+    def _update_version_banner(self) -> None:
+        """Surface a restart-to-load banner when the on-disk plugin version has
+        moved past the version captured at boot. Non-modal and persistent; the
+        cockpit never auto-restarts — it only surfaces the drift (TODO L15)."""
+        try:
+            banner = _drift_banner(self._boot_version, _get_version())
+            self.query_one("#version-banner", Static).update(banner or "")
+        except Exception:
+            pass
+
     def _check_tmux_mouse(self) -> None:
         """Warn if running inside tmux with mouse mode disabled."""
         if not sys.stdin.isatty():
@@ -392,6 +417,10 @@ class CockpitApp(GraphModeMixin, App):
             pass  # not in tmux, or tmux not available
 
     def _refresh(self) -> None:
+        # Cheap re-read of on-disk version on the existing refresh interval (no
+        # new daemon); guarded independently so a snapshot error can't mask drift.
+        self._update_version_banner()
+
         from juggle_cockpit_model import snapshot as _snapshot
         from juggle_cockpit_view import (
             pick_breakpoint,
