@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cockpit.py": {
-    "mtime": 1782090503.5561986,
-    "ast_hash": "e0ea3dd7b6262036a2d229368a9d702d",
+    "mtime": 1782090777.3597085,
+    "ast_hash": "990322d19c03773514d2266920083f95",
     "semantic_hash": ""
   },
   "src/juggle_watchdog.py": {
@@ -2672,6 +2672,11 @@
   "src/juggle_integrate_mergedsha.py": {
     "mtime": 1782089597.9302258,
     "ast_hash": "758124cbcbe2a8135f8fe54c6b17757e",
+    "semantic_hash": ""
+  },
+  "src/juggle_cockpit_css.py": {
+    "mtime": 1782090766.7827003,
+    "ast_hash": "d01b7b062f5d1b2ea1243a3acd5a350a",
     "semantic_hash": ""
   }
 }
