@@ -55,6 +55,34 @@ def test_migration_50_idempotent(tmp_path):
     db.init_db()  # second pass — additive ALTER must not crash
 
 
+def test_backfill_survives_recycled_slug(tmp_path):
+    """Regression (2026-06-22): Migration 50 backfill crashed with
+    'UNIQUE constraint failed: nodes.user_label' on any DB where the slug wheel
+    recycled a user_label across a LIVE + an ARCHIVED conversation node (legacy
+    idx_threads_live_label is live-scoped, so live+archived dup slugs are valid
+    and BOTH threads mirror to conversation nodes via Migration 44). The parity
+    index must be live-scoped too (state IN ('open','running')) — matching the
+    legacy index — so the backfill does not abort the whole `juggle doctor` pass."""
+    db = _fresh(tmp_path)
+    from dbops.migration_nodes_parity import backfill_nodes_parity
+    with db._connect() as conn:
+        # archived thread keeps slug 'foo'; the wheel recycled 'foo' to a new live thread
+        conn.execute("INSERT INTO threads (id,session_id,topic,status,user_label,created_at,last_active) "
+                     "VALUES ('arch','','x','archived','foo','c','la')")
+        conn.execute("INSERT INTO threads (id,session_id,topic,status,user_label,created_at,last_active) "
+                     "VALUES ('live','','x','active','foo','c','la')")
+        # Migration 44 mirrors ALL threads to conversation nodes (no state filter)
+        conn.execute("INSERT INTO nodes (id,kind,title,state,created_at,updated_at) "
+                     "VALUES ('arch','conversation','x','archived','c','la')")
+        conn.execute("INSERT INTO nodes (id,kind,title,state,created_at,updated_at) "
+                     "VALUES ('live','conversation','x','open','c','la')")
+        conn.commit()
+        backfill_nodes_parity(conn)   # must NOT raise IntegrityError
+        # the live node carries the slug; the archived one is outside the live index
+        live = conn.execute("SELECT user_label FROM nodes WHERE id='live'").fetchone()[0]
+    assert live == "foo"
+
+
 def test_backfill_populates_parity(tmp_path):
     db = _fresh(tmp_path)
     from dbops.migration_nodes_parity import backfill_nodes_parity

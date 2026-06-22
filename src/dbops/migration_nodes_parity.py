@@ -22,11 +22,18 @@ def migrate_50_nodes_parity(conn: sqlite3.Connection) -> None:
         for name, ddl in _ADDS:
             if name not in cols:
                 conn.execute(ddl)
-        # kind-scoped partial unique index: only live CONVERSATION nodes share the
-        # slug wheel (nodes unions kinds, so an unscoped unique index is wrong).
+        # Partial unique index scoped to LIVE conversation nodes only — mirrors the
+        # legacy idx_threads_live_label (live states active/running/background ->
+        # node states 'open'/'running'). Kind-scoped because nodes unions kinds; and
+        # state-scoped because the slug wheel recycles a freed user_label to a new
+        # live thread while archived threads keep it as a historical handle, so a
+        # live + archived conversation node can legitimately share a slug (both
+        # mirrored by Migration 44). An unscoped index would crash backfill on any
+        # such prod DB (2026-06-22 recycled-slug IntegrityError).
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_nodes_user_label "
-            "ON nodes(user_label) WHERE kind='conversation' AND user_label IS NOT NULL")
+            "ON nodes(user_label) WHERE kind='conversation' AND user_label IS NOT NULL "
+            "AND state IN ('open', 'running')")
         conn.commit()
         _log.info("Migration 50: nodes parity columns + slug index ensured")
     except sqlite3.OperationalError as e:   # fail-soft (additive convention)
