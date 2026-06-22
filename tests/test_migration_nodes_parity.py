@@ -6,7 +6,9 @@ from juggle_db import JuggleDB
 
 
 def _fresh(tmp_path):
-    db = JuggleDB(db_path=str(tmp_path / "j.db")); db.init_db(); return db
+    db = JuggleDB(db_path=str(tmp_path / "j.db"))
+    db.init_db()
+    return db
 
 
 def test_parity_columns_present(tmp_path):
@@ -29,10 +31,12 @@ def test_user_label_unique_per_conversation(tmp_path):
     db = _fresh(tmp_path)
     with db._connect() as conn:
         conn.execute("INSERT INTO nodes (id,kind,title,state,user_label,created_at,updated_at) "
-                     "VALUES ('a','conversation','t','open','foo','x','x')"); conn.commit()
+                     "VALUES ('a','conversation','t','open','foo','x','x')")
+        conn.commit()
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("INSERT INTO nodes (id,kind,title,state,user_label,created_at,updated_at) "
-                         "VALUES ('b','conversation','t','open','foo','x','x')"); conn.commit()
+                         "VALUES ('b','conversation','t','open','foo','x','x')")
+            conn.commit()
 
 
 def test_user_label_not_unique_across_kinds(tmp_path):
