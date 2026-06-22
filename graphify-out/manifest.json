@@ -1075,8 +1075,8 @@
     "semantic_hash": ""
   },
   "src/juggle_cmd_integrate.py": {
-    "mtime": 1782086856.4225042,
-    "ast_hash": "1c3238f408b9385d99729b45d58f1c22",
+    "mtime": 1782087278.1329105,
+    "ast_hash": "e80fa70112eefb0d3665c6b116dbe322",
     "semantic_hash": ""
   },
   "tests/test_integrate.py": {
@@ -2667,6 +2667,11 @@
   "tests/test_selfheal_p2_migration_wiring.py": {
     "mtime": 1782086171.5310686,
     "ast_hash": "89fcdc0168b4cd7bafe98481d04e66af",
+    "semantic_hash": ""
+  },
+  "src/juggle_integrate_mergedsha.py": {
+    "mtime": 1782087262.2151458,
+    "ast_hash": "758124cbcbe2a8135f8fe54c6b17757e",
     "semantic_hash": ""
   }
 }
