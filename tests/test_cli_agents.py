@@ -295,7 +295,7 @@ def test_send_task_appends_release_and_sends(started_db, tmp_path):
     )
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        result = run_cli(["send-task", agent_id, str(prompt_file)], db_path)
+        result = run_cli(["send-task", "--allow-main", agent_id, str(prompt_file)], db_path)
     assert result.returncode == 0
     assert "sent" in result.stdout.lower()
 
@@ -322,7 +322,7 @@ def test_send_task_prepends_universal_preamble(started_db, tmp_path):
     prompt_file.write_text("Do the thing.\n")
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        result = run_cli(["send-task", agent_id, str(prompt_file)], db_path)
+        result = run_cli(["send-task", "--allow-main", agent_id, str(prompt_file)], db_path)
     assert result.returncode == 0
 
     sys.path.insert(0, SRC_DIR)
@@ -421,7 +421,7 @@ def test_send_task_coder_template_includes_harness_gate(started_db, tmp_path):
     prompt_file.write_text("Do the thing.\n")
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        run_cli(["send-task", agent_id, str(prompt_file)], db_path)
+        run_cli(["send-task", "--allow-main", agent_id, str(prompt_file)], db_path)
 
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
@@ -440,7 +440,7 @@ def test_send_task_no_template_bypasses_harness_gate(started_db, tmp_path):
     prompt_file.write_text("Do the thing.\n")
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        run_cli(["send-task", "--no-template", agent_id, str(prompt_file)], db_path)
+        run_cli(["send-task", "--no-template", "--allow-main", agent_id, str(prompt_file)], db_path)
 
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB

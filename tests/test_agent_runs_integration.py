@@ -71,7 +71,7 @@ def test_dispatch_creates_run_inbox_thread(started_db, tmp_path):
     prompt_file = tmp_path / "task.txt"
     prompt_file.write_text("Do the thing.\n")
 
-    agent_id, res = _dispatch(db_path, thread_id, prompt_file)
+    agent_id, res = _dispatch(db_path, thread_id, prompt_file, allow_main=True)
     assert res.returncode == 0
 
     from juggle_db import JuggleDB
@@ -122,7 +122,7 @@ def test_dispatch_resolves_graph_node_thread(started_db, tmp_path):
     agent_id = r.stdout.strip().split()[0]
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
         res = run_cli(
-            ["send-task", agent_id, str(prompt_file)], db_path
+            ["send-task", "--allow-main", agent_id, str(prompt_file)], db_path
         )
     assert res.returncode == 0, res.stdout + res.stderr
 
