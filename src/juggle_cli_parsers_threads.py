@@ -22,6 +22,21 @@ from juggle_cmd_threads import (
 )
 
 
+def _doctor_dispatch(a):
+    """Run doctor and PROPAGATE its return code as the process exit code.
+
+    The top-level CLI dispatch discards ``func``'s return value, so a bare
+    ``cmd_doctor`` -> 1 would still exit 0. ``--pre-p8-check`` MUST exit nonzero
+    until both gates clear (its return is the agent-verifiable readiness signal),
+    so forward the code here via ``sys.exit``. The normal doctor path returns 0
+    -> ``sys.exit(0)`` (unchanged observable behavior). ``cmd_doctor`` itself is
+    unchanged, so direct callers/tests still observe the int return.
+    """
+    import sys
+
+    sys.exit(__import__("juggle_cmd_doctor").cmd_doctor(a) or 0)
+
+
 def register(subparsers) -> None:
     """Register thread/session subcommands on the given subparsers object."""
     # start
@@ -45,7 +60,16 @@ def register(subparsers) -> None:
     p_doctor.add_argument(
         "--dry-run", action="store_true", help="Print actions; write nothing"
     )
-    p_doctor.set_defaults(func=lambda a: __import__("juggle_cmd_doctor").cmd_doctor(a))
+    p_doctor.add_argument(
+        "--pre-p8-check", action="store_true", dest="pre_p8_check",
+        help="Report remaining legacy-table refs (static) + nodes mirror readiness "
+             "(runtime); exit nonzero until both clear",
+    )
+    p_doctor.add_argument(
+        "--json", action="store_true", dest="json_out",
+        help="Emit --pre-p8-check result as JSON",
+    )
+    p_doctor.set_defaults(func=_doctor_dispatch)
 
     # switch-thread
     p_switch = subparsers.add_parser("switch-thread", help="Switch to a topic thread")

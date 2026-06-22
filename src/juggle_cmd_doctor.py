@@ -133,6 +133,11 @@ def _check_stale_config(dry: bool, cfg_path: Path, backup_path: Path) -> None:
 
 def cmd_doctor(args) -> int:
     dry = getattr(args, "dry_run", False)
+    # Gate A+B readiness report (P8 legacy-table drop prep). Read-only; runs in
+    # BOTH dry & non-dry. Extracted to keep this module under the LOC gate.
+    if getattr(args, "pre_p8_check", False):
+        from juggle_cmd_doctor_p8 import run_pre_p8_check
+        return run_pre_p8_check(getattr(args, "json_out", False))
     print(f"juggle doctor — dry_run={dry}")
 
     # Resolve the EFFECTIVE config/backup paths once. Parity with
