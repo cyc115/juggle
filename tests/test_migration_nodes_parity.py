@@ -83,6 +83,63 @@ def test_backfill_survives_recycled_slug(tmp_path):
     assert live == "foo"
 
 
+def test_dispatch_thread_id_column_present(tmp_path):
+    """Pin (2026-06-23, Q2): nodes needs dispatch_thread_id to replace graph_*.thread_id in
+    the P8 graph-cluster collapse — there was no nodes column for the task->agent-thread link."""
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(nodes)")}
+    assert "dispatch_thread_id" in cols
+
+
+def test_backfill_dispatch_thread_id_from_graph_tasks(tmp_path):
+    """Pin (2026-06-23, Q2): backfill copies graph_tasks.thread_id -> nodes.dispatch_thread_id."""
+    db = _fresh(tmp_path)
+    from dbops.migration_nodes_parity import backfill_graph_parity
+    with db._connect() as conn:
+        conn.execute("INSERT INTO graph_tasks (id,project_id,title,prompt,state,thread_id,created_at,updated_at) "
+                     "VALUES ('task1','p','t','pr','running','conv-9','c','u')")
+        conn.execute("INSERT INTO nodes (id,kind,title,state,parent_id,created_at,updated_at) "
+                     "VALUES ('task1','task','t','running','topic1','c','u')")
+        conn.commit()
+        backfill_graph_parity(conn)
+        got = conn.execute("SELECT dispatch_thread_id FROM nodes WHERE id='task1'").fetchone()[0]
+    assert got == "conv-9"
+
+
+def test_backfill_dispatch_thread_id_from_graph_topics(tmp_path):
+    """Pin (2026-06-23, Q2): backfill copies real graph_topics.thread_id -> nodes.dispatch_thread_id."""
+    db = _fresh(tmp_path)
+    from dbops.migration_nodes_parity import backfill_graph_parity
+    with db._connect() as conn:
+        conn.execute("INSERT INTO graph_topics (id,project_id,title,state,thread_id,is_mirror,created_at,updated_at) "
+                     "VALUES ('top1','p','t','ready','conv-7',0,'c','u')")
+        conn.execute("INSERT INTO nodes (id,kind,title,state,parent_id,created_at,updated_at) "
+                     "VALUES ('top1','task','t','ready',NULL,'c','u')")
+        conn.commit()
+        backfill_graph_parity(conn)
+        got = conn.execute("SELECT dispatch_thread_id FROM nodes WHERE id='top1'").fetchone()[0]
+    assert got == "conv-7"
+
+
+def test_backfill_corrects_pending_state(tmp_path):
+    """Pin (2026-06-23, Q3): Migration 44 mapped task pending->open; backfill must restore
+    'pending' on kind='task' nodes whose legacy row was pending, so db_graph's state machine
+    (which queries state='pending') still sees them after the collapse."""
+    db = _fresh(tmp_path)
+    from dbops.migration_nodes_parity import backfill_graph_parity
+    with db._connect() as conn:
+        conn.execute("INSERT INTO graph_tasks (id,project_id,title,prompt,state,created_at,updated_at) "
+                     "VALUES ('tp','p','t','pr','pending','c','u')")
+        # Migration 44 stored this pending task as 'open'
+        conn.execute("INSERT INTO nodes (id,kind,title,state,parent_id,created_at,updated_at) "
+                     "VALUES ('tp','task','t','open','topicX','c','u')")
+        conn.commit()
+        backfill_graph_parity(conn)
+        got = conn.execute("SELECT state FROM nodes WHERE id='tp'").fetchone()[0]
+    assert got == "pending"
+
+
 def test_backfill_populates_parity(tmp_path):
     db = _fresh(tmp_path)
     from dbops.migration_nodes_parity import backfill_nodes_parity

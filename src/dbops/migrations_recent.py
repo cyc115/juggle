@@ -325,7 +325,7 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     # P8 read-collapse; also fixes the Migration-44 last_active backfill-staleness.
     from dbops.migration_nodes_parity import migrate_50_nodes_parity, backfill_nodes_parity
     migrate_50_nodes_parity(conn)
-    backfill_nodes_parity(conn)
+    backfill_nodes_parity(conn)  # also runs backfill_graph_parity (P8 Q2/Q3)
 
 
 # Migrations 41, 45 and 47-49 live in their own modules (loc_gate budget).

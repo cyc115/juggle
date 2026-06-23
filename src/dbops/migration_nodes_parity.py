@@ -13,6 +13,8 @@ _ADDS = [
     ("user_label", "ALTER TABLE nodes ADD COLUMN user_label TEXT"),
     ("assigned_by", "ALTER TABLE nodes ADD COLUMN assigned_by TEXT NOT NULL DEFAULT 'auto'"),
     ("last_active_at", "ALTER TABLE nodes ADD COLUMN last_active_at TEXT"),
+    # P8 Q2: the task->agent-thread link (graph_*.thread_id) has no other nodes home.
+    ("dispatch_thread_id", "ALTER TABLE nodes ADD COLUMN dispatch_thread_id TEXT"),
 ]
 
 
@@ -44,6 +46,7 @@ def backfill_nodes_parity(conn: sqlite3.Connection) -> None:
     """Copy parity columns from threads into the id-matched conversation nodes.
     Idempotent: re-running is a no-op on already-synced rows. Fixes Migration-44
     staleness (it read threads.last_active, not last_active_at)."""
+    backfill_graph_parity(conn)             # P8 Q2/Q3 — always runs (graph-table gated)
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if "threads" not in tables or "nodes" not in tables:
         return
@@ -64,3 +67,53 @@ def backfill_nodes_parity(conn: sqlite3.Connection) -> None:
         _log.info("Migration 50 backfill: nodes parity columns populated from threads")
     except sqlite3.OperationalError as e:
         _log.warning("Migration 50 backfill skipped: %s", e)
+
+
+def backfill_graph_parity(conn: sqlite3.Connection) -> None:
+    """P8 Q2/Q3 graph-tier backfill (id-anchored, idempotent):
+
+      * dispatch_thread_id ← graph_tasks.thread_id (task-tier nodes) and the real
+        graph_topics.thread_id (is_mirror=0, topic-tier nodes). Replaces the
+        graph_*.thread_id link that has no other nodes home.
+      * state 'open' → 'pending' on kind='task' nodes whose legacy row was
+        'pending' (Migration 44 mapped task pending→open; db_graph queries
+        state='pending', so the mirrored rows were invisible to the ready set).
+
+    Runs only while the legacy graph tables are still present (pre-drop).
+    """
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "nodes" not in tables:
+        return
+    if "dispatch_thread_id" not in {r[1] for r in conn.execute("PRAGMA table_info(nodes)")}:
+        return
+    try:
+        if "graph_tasks" in tables:
+            conn.execute("""
+                UPDATE nodes SET dispatch_thread_id =
+                  (SELECT g.thread_id FROM graph_tasks g WHERE g.id=nodes.id)
+                WHERE kind='task' AND parent_id IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM graph_tasks g WHERE g.id=nodes.id AND g.thread_id IS NOT NULL)
+            """)
+            conn.execute("""
+                UPDATE nodes SET state='pending'
+                WHERE kind='task' AND state='open'
+                  AND EXISTS (SELECT 1 FROM graph_tasks g WHERE g.id=nodes.id AND g.state='pending')
+            """)
+        if "graph_topics" in tables:
+            conn.execute("""
+                UPDATE nodes SET dispatch_thread_id =
+                  (SELECT g.thread_id FROM graph_topics g WHERE g.id=nodes.id AND COALESCE(g.is_mirror,0)=0)
+                WHERE kind='task' AND parent_id IS NULL
+                  AND EXISTS (SELECT 1 FROM graph_topics g
+                              WHERE g.id=nodes.id AND COALESCE(g.is_mirror,0)=0 AND g.thread_id IS NOT NULL)
+            """)
+            conn.execute("""
+                UPDATE nodes SET state='pending'
+                WHERE kind='task' AND parent_id IS NULL AND state='open'
+                  AND EXISTS (SELECT 1 FROM graph_topics g
+                              WHERE g.id=nodes.id AND COALESCE(g.is_mirror,0)=0 AND g.state='pending')
+            """)
+        conn.commit()
+        _log.info("Migration 50 graph backfill: dispatch_thread_id + pending-state corrected")
+    except sqlite3.OperationalError as e:
+        _log.warning("Migration 50 graph backfill skipped: %s", e)
