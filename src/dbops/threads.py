@@ -7,7 +7,6 @@ Must not own: message content, project assignment, agent pool, notifications.
 
 from __future__ import annotations
 
-import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -19,6 +18,7 @@ from dbops.schema import (
     _is_junk_message,
     _thread_age_seconds,
 )
+from dbops.conv_node_mirror import mirror_conv_insert, mirror_conv_update
 from dbops.slug_alloc import LIVE_SLUG_STATES, next_wheel_slug
 
 # Read MAX_THREADS via module reference so tests can patch dbops.threads.MAX_THREADS
@@ -29,130 +29,19 @@ MAX_THREADS = _schema.MAX_THREADS
 # backstop; the write lock itself prevents duplicate-slug races).
 _ALLOC_ATTEMPTS = 5
 
-# ---------------------------------------------------------------------------
-# Lexical thread-dedup guard (v1 — deterministic, NO LLM)
-#
-# A new thread whose title is a strong lexical match of an OPEN same-project
-# thread is a semantic duplicate; create_thread reuses the existing thread
-# instead of spawning a twin. This single chokepoint covers both origins of
-# thread creation: manual `create-thread` and the graph-tick dispatch path.
-#
-# _title_similarity is kept PURE and isolated so a future semantic/embedding
-# scorer can replace it without touching the call sites.
-# ---------------------------------------------------------------------------
-
-# Reuse threshold on the 0..1 similarity score. >= this is a duplicate.
-# 2/3 is the backtest sweet-spot (~84% precision). Several key pairs score
-# exactly 2/3, so the threshold must be <= 2/3 (not the truncated 0.667).
-THREAD_DEDUP_THRESHOLD = 2 / 3
-
-# Statuses considered OPEN (live work). Closed/archived threads are historical
-# and are NEVER reuse targets.
-# Open/live thread states — the SINGLE source of truth lives in dbops.slug_alloc
-# (must match the partial unique index idx_threads_live_label).
-_OPEN_THREAD_STATES = LIVE_SLUG_STATES
-
-# Leading "[T-<id>] " graph-topic prefix stamped onto dispatch-thread titles.
-_TOPIC_PREFIX_RE = re.compile(r"^\s*\[t-[^\]]+\]\s*", re.IGNORECASE)
-
-# Action verbs and phase labels that describe HOW work is done, not WHAT it is.
-# Dropping them lets spec↔impl titles match on shared content words.
-_DEDUP_ACTION_VERBS = frozenset({
-    "implement", "fix", "add", "spec", "build", "update", "rebind", "make",
-    "create", "remove", "improve", "refactor", "untruncate", "wire", "enable",
-    "support", "handle", "setup", "set", "configure", "integrate", "migrate",
-    "tweak", "change", "new", "topic", "design", "impl", "finish", "verify",
-    "investigate", "debug", "audit", "review", "clean", "cleanup", "extract",
-    "split", "move", "replace", "automate", "tighten", "bump",
-    # Extended (sensible additions):
-    "implementation", "research", "prefix",
-})
-
-# Function words and structural filler that carry no topical signal.
-_DEDUP_STOPWORDS = frozenset({
-    "the", "a", "an", "to", "for", "of", "in", "on", "and", "or", "with",
-    "mode", "modal", "via", "is", "into", "from", "be", "our", "my", "its",
-    "plan", "doc", "docs",
-    # Structural result-type nouns (describe the artefact kind, not the topic):
-    "modules",
-})
-
-# Trailing sequence markers: trailing integer, phase/part/vN/sN/iteration N,
-# or ordinal words used as series suffix. Titles differing ONLY by these are
-# distinct iterations and must never be merged.
-_SEQ_MARKER_RE = re.compile(
-    r"(?:"
-    r"\s+(?:phase|part|iteration|step|version)\s*\d+"  # "phase 2", "step 3"
-    r"|\s+v\d+"                                         # "v2", "v10"
-    r"|\s+s\d+"                                         # "s1", "s3"
-    r"|\s+\d+"                                          # bare trailing integer
-    r"|\s+(?:shakeout|two|three|four|five|six|seven|eight|nine|ten)"
-    r")$",
-    re.IGNORECASE,
+# Lexical thread-title dedup scorer lives in dbops.thread_dedup (extracted for the
+# loc-gate budget). Re-exported here so existing importers (juggle_cli_common,
+# tests) keep `from dbops.threads import _title_similarity, THREAD_DEDUP_THRESHOLD`.
+from dbops.thread_dedup import (  # noqa: E402,F401
+    THREAD_DEDUP_THRESHOLD,
+    _normalize_title_tokens,
+    _title_similarity,
 )
 
-
-def _normalize_title_str(title: str) -> str:
-    """Return a normalized bare string for sequence-marker comparison."""
-    s = (title or "").lower()
-    s = _TOPIC_PREFIX_RE.sub("", s)
-    s = re.sub(r"[-_/]", " ", s)
-    s = re.sub(r"[^a-z0-9 ]+", " ", s)
-    return s.strip()
-
-
-def _strip_sequence_marker(s: str) -> tuple[str, str]:
-    """Strip trailing sequence marker. Returns (base, marker_or_empty)."""
-    m = _SEQ_MARKER_RE.search(s)
-    if m:
-        return s[: m.start()].rstrip(), m.group(0).strip().lower()
-    return s, ""
-
-
-def _normalize_title_tokens(title: str) -> set[str]:
-    """Tokenize to significant content words: drop verbs, stopwords, len-1 tokens."""
-    s = _normalize_title_str(title)
-    drop = _DEDUP_ACTION_VERBS | _DEDUP_STOPWORDS
-    return {tok for tok in s.split() if len(tok) > 1 and tok not in drop}
-
-
-def _title_similarity(a: str, b: str) -> float:
-    """Token-set Jaccard similarity with numbered-series guard.
-
-    Normalise → drop action verbs, stopwords, and single-char tokens →
-    Jaccard = |A∩B|/|A∪B|.
-
-    Numbered-series guard: if both titles are identical once a trailing
-    sequence marker (integer, phase N, sN, vN, …) is stripped AND the
-    markers differ, they are distinct iterations → score 0 (never merge).
-    """
-    na = _normalize_title_str(a)
-    nb = _normalize_title_str(b)
-
-    # Numbered-series guard — check before tokenisation
-    a_base, a_marker = _strip_sequence_marker(na)
-    b_base, b_marker = _strip_sequence_marker(nb)
-    if a_base == b_base and a_base and a_marker != b_marker:
-        return 0.0
-
-    ta = _normalize_title_tokens(a)
-    tb = _normalize_title_tokens(b)
-    if not ta or not tb:
-        return 0.0
-    inter = len(ta & tb)
-    if inter == 0:
-        return 0.0
-
-    # Subset bonus: when one token set is entirely contained in the other
-    # AND the smaller set has >= 2 tokens, score 1.0.  This catches the
-    # terse-label ↔ long-dispatch-title pattern ("slug wheel" ↔ full
-    # dispatch title) without the single-token false-merges ("AWS" ↔
-    # "LifeOS AWS cost reduction") that plagued the old containment scorer.
-    min_size = min(len(ta), len(tb))
-    if inter == min_size >= 2:
-        return 1.0
-
-    return inter / len(ta | tb)  # Jaccard
+# Statuses considered OPEN (live work). Closed/archived threads are historical
+# and are NEVER reuse targets. The SINGLE source of truth lives in
+# dbops.slug_alloc (must match the partial unique index idx_threads_live_label).
+_OPEN_THREAD_STATES = LIVE_SLUG_STATES
 
 
 # Terminal thread statuses whose graph mirror must be pruned on transition.
@@ -277,6 +166,11 @@ class ThreadsMixin:
                         """,
                         (new_id, user_label, session_id, topic, now_iso, now_iso, now_min),
                     )
+                    # P8 dual-write: the conversation is a first-class node too.
+                    mirror_conv_insert(
+                        conn, new_id, topic=topic, session_id=session_id,
+                        user_label=user_label, now=now_min,
+                    )
                     conn.execute("COMMIT")
                     return new_id
                 except sqlite3.IntegrityError as exc:
@@ -376,6 +270,8 @@ class ThreadsMixin:
                 f"UPDATE threads SET {set_clause} WHERE id = ?",
                 values,
             )
+            # P8 dual-write: mirror the same column edits onto the conversation node.
+            mirror_conv_update(conn, thread_id, **kwargs)
             conn.commit()
         # A status edit that takes the thread terminal must prune its mirror too.
         if kwargs.get("status") in _TERMINAL_THREAD_STATUSES:
@@ -405,6 +301,7 @@ class ThreadsMixin:
                 "UPDATE threads SET status = ?, last_active_at = ? WHERE id = ?",
                 (status, now, thread_id),
             )
+            mirror_conv_update(conn, thread_id, status=status, last_active_at=now)
             conn.commit()
         if status in _TERMINAL_THREAD_STATUSES:
             self._prune_thread_mirror(thread_id)
@@ -416,6 +313,7 @@ class ThreadsMixin:
                 "UPDATE threads SET last_active_at = ? WHERE id = ?",
                 (now, thread_id),
             )
+            mirror_conv_update(conn, thread_id, last_active_at=now)
             conn.commit()
 
     def get_threads_by_status(self, status: str) -> list[dict]:
@@ -442,6 +340,9 @@ class ThreadsMixin:
                 "UPDATE threads SET status = 'archived', "
                 "show_in_list = 0, last_active_at = ? WHERE id = ?",
                 (now, thread_id),
+            )
+            mirror_conv_update(
+                conn, thread_id, status="archived", show_in_list=0, last_active_at=now
             )
             conn.commit()
         self._prune_thread_mirror(thread_id)
@@ -476,6 +377,10 @@ class ThreadsMixin:
                 "UPDATE threads SET status = 'active', show_in_list = 1, "
                 "user_label = ?, last_active_at = ? WHERE id = ?",
                 (new_label, now, thread_id),
+            )
+            mirror_conv_update(
+                conn, thread_id, status="active", show_in_list=1,
+                user_label=new_label, last_active_at=now,
             )
             conn.commit()
         return new_label

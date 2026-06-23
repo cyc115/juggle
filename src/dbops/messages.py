@@ -7,6 +7,7 @@ Must not own: thread status, notifications, agent pool.
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 
 from dbops.schema import _get_settings, _is_junk_message, is_auto_topic_eligible
@@ -67,6 +68,14 @@ class MessagesMixin:
                 "UPDATE threads SET last_active = ? WHERE id = ?",
                 (now, thread_id),
             )
+            # P8 dual-write: keep the conversation node's last_active_at fresh.
+            try:
+                conn.execute(
+                    "UPDATE nodes SET last_active_at = ? WHERE id = ? AND kind='conversation'",
+                    (now, thread_id),
+                )
+            except sqlite3.OperationalError:
+                pass  # nodes table absent (pre-Migration-44)
             conn.commit()
 
     def get_message_count(self, thread_id: str, exclude_junk: bool = True) -> int:
