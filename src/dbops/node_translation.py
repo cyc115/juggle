@@ -32,10 +32,14 @@ def status_for_state(state: str) -> str:
 # threads.status vocab so the ~107 consumers that read row['status'] / compare to
 # 'active'/'closed'/'archived' keep working untouched after the read-collapse.
 # `topic`/`last_active` are pure renames; only `status` needs the value reverse-map.
-STATE_AS_STATUS_SQL = (
-    "CASE state WHEN 'open' THEN 'active' WHEN 'done' THEN 'closed' "
-    "ELSE state END AS status"
-)
+# GENERATED from STATE_TO_STATUS (H1) so the dict and the SQL can never diverge —
+# editing the dict is the SOLE place the value map is defined.
+def _build_state_as_status_sql() -> str:
+    whens = " ".join(f"WHEN '{s}' THEN '{st}'" for s, st in STATE_TO_STATUS.items())
+    return f"CASE state {whens} ELSE state END AS status"
+
+
+STATE_AS_STATUS_SQL = _build_state_as_status_sql()
 # Full conversation alias-shim suffix for `SELECT *, <shim>` reads.
 CONV_ALIAS_SHIM = f"{STATE_AS_STATUS_SQL}, title AS topic, last_active_at AS last_active"
 

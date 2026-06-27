@@ -54,6 +54,23 @@ def test_status_for_state_reverse_bijection():
     assert status_for_state("failed-exec") == "failed-exec"
 
 
+def test_state_as_status_sql_matches_dict():
+    """2026-06-27 P8 H1: the SQL CASE must be GENERATED from STATE_TO_STATUS so the
+    two encodings can never diverge — every dict entry appears as an explicit WHEN
+    (the old hand-written literal mapped identity values via ELSE, so editing the
+    dict silently broke the SQL) AND the SQL evaluates to the dict value in sqlite."""
+    import sqlite3
+    from dbops import node_translation as nt
+    conn = sqlite3.connect(":memory:")
+    for state, expected in nt.STATE_TO_STATUS.items():
+        assert f"WHEN '{state}' THEN '{expected}'" in nt.STATE_AS_STATUS_SQL, \
+            f"{state}->{expected} not explicitly encoded in generated SQL"
+        got = conn.execute(
+            f"SELECT {nt.STATE_AS_STATUS_SQL} FROM (SELECT ? AS state)", (state,)
+        ).fetchone()[0]
+        assert got == expected, f"{state}: SQL={got} dict={expected}"
+
+
 def test_state_as_status_sql_round_trips_in_sqlite():
     """The CASE alias-shim must yield the legacy status when applied to a node row."""
     import sqlite3
