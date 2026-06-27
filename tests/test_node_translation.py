@@ -34,6 +34,14 @@ def test_state_for_status_known_values():
     assert state_for_status("failed") == "failed-exec"
 
 
+def test_alias_shim_deleted():
+    """2026-06-27 P8 H2: the speculative conversation alias-shim must not exist —
+    consumers adopt the new column names (state/title/last_active_at); there is no
+    permanent re-aliasing layer."""
+    from dbops import node_translation as nt
+    assert not hasattr(nt, "CONV_ALIAS_SHIM")
+
+
 def test_column_alias_constants():
     from dbops import node_translation as nt
     assert nt.TOPIC_COL == "title"

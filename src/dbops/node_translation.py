@@ -28,10 +28,10 @@ def status_for_state(state: str) -> str:
     return STATE_TO_STATUS.get(state, state)
 
 
-# SQL alias-shim (P8 Q1): reverse-map nodes.state back to the legacy
-# threads.status vocab so the ~107 consumers that read row['status'] / compare to
-# 'active'/'closed'/'archived' keep working untouched after the read-collapse.
-# `topic`/`last_active` are pure renames; only `status` needs the value reverse-map.
+# SQL reverse-map (P8 Q1): re-express nodes.state back to the legacy
+# threads.status vocab for any SELECT that still needs it during the conversation
+# read-collapse. The permanent CONV_ALIAS_SHIM was deleted in Step 3 (H2) —
+# consumers adopt state/title/last_active_at directly; no permanent re-aliasing.
 # GENERATED from STATE_TO_STATUS (H1) so the dict and the SQL can never diverge —
 # editing the dict is the SOLE place the value map is defined.
 def _build_state_as_status_sql() -> str:
@@ -40,8 +40,6 @@ def _build_state_as_status_sql() -> str:
 
 
 STATE_AS_STATUS_SQL = _build_state_as_status_sql()
-# Full conversation alias-shim suffix for `SELECT *, <shim>` reads.
-CONV_ALIAS_SHIM = f"{STATE_AS_STATUS_SQL}, title AS topic, last_active_at AS last_active"
 
 
 # Column-name aliases (legacy -> nodes)
