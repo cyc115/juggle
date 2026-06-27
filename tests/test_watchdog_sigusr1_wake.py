@@ -301,7 +301,7 @@ def test_recompute_topic_ready_pokes_watchdog(tmp_path, monkeypatch):
         )
         conn.execute(
             "INSERT INTO graph_topics (id, project_id, title, state, created_at, updated_at) "
-            "VALUES ('TOP1', 'P', 'Topic 1', 'pending', ?, ?)",
+            "VALUES ('TOP1', 'P', 'Topic 1', 'open', ?, ?)",
             (_now(), _now()),
         )
         conn.commit()

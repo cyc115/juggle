@@ -69,7 +69,7 @@ def _graph_task_tag(db, thread_id: str) -> str:
             return ""
         if task["state"] == "ready":
             return " [ready]"
-        if task["state"] in ("pending", "blocked-failed"):
+        if task["state"] in ("open", "blocked-failed"):
             deps = db_graph.unverified_deps(db, task["id"])
             if deps:
                 return f" [blocked:{','.join(deps)}]"

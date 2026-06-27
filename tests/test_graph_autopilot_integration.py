@@ -143,11 +143,11 @@ def test_diamond_happy_path_full_flow(db):
     # Tick 1: only the root topic is ready → dispatched
     stats = gd.graph_tick(db, dispatch_fn=fake)
     assert stats["dispatched"] == ["A"]
-    assert _states(db) == {"A": "running", "B": "pending", "C": "pending", "D": "pending"}
+    assert _states(db) == {"A": "running", "B": "open", "C": "open", "D": "open"}
 
     # Completing A (with handoff) promotes B and C; complete-agent NEVER dispatches
     _complete_topic(db, "A", handoff="base API: use foo() from base.py")
-    assert _states(db) == {"A": "verified", "B": "ready", "C": "ready", "D": "pending"}
+    assert _states(db) == {"A": "verified", "B": "ready", "C": "ready", "D": "open"}
     assert set(fake.prompts) == {"A"}  # no dispatch outside the tick
 
     # Tick 2: fan-out — B and C dispatched, hydrated from A's TOPIC handoff
@@ -159,7 +159,7 @@ def test_diamond_happy_path_full_flow(db):
 
     # Fan-in: D waits for BOTH
     _complete_topic(db, "B", handoff="left exposes bar()")
-    assert _states(db)["D"] == "pending"
+    assert _states(db)["D"] == "open"
     assert gd.graph_tick(db, dispatch_fn=fake)["dispatched"] == []
     _complete_topic(db, "C", handoff="right exposes baz()")
     assert _states(db)["D"] == "ready"
@@ -250,7 +250,7 @@ def test_add_task_mid_execution_does_not_touch_running_topic(db):
     assert a_after["state"] == "running"
     assert a_after["thread_id"] == a_before["thread_id"]
     # X waits on A (A not verified yet) → pending, NOT dispatched this tick
-    assert _states(db)["X"] == "pending"
+    assert _states(db)["X"] == "open"
     assert "X" not in gd.graph_tick(db, dispatch_fn=fake)["dispatched"]
     assert "X" not in fake.prompts
 

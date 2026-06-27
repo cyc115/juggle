@@ -17,6 +17,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 from dbops.schema import _now
+from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
 
 
 @contextmanager
@@ -33,44 +34,19 @@ def _cx(db, conn=None):
     finally:
         c.close()
 
-# Task state machine (design 2026-06-10 rev 2):
-# pending → ready → dispatching → running → integrating → verified
+# Task state machine (design 2026-06-10 rev 2; vocab unified to 'open' in P8):
+# open → ready → dispatching → running → integrating → verified
 # failure exits: failed-exec | failed-integration | failed-verify
 # dependents of a failed task: blocked-failed (terminal in Phase 1)
+# The (state, event) transition DECISION is delegated to the unified
+# db_node_machine.node_transition (kind='task') — db_graph owns no second table.
 VALID_STATES = frozenset(
     {
-        "pending", "ready", "dispatching", "running", "integrating",
+        "open", "ready", "dispatching", "running", "integrating",
         "verified", "failed-exec", "failed-integration", "failed-verify",
         "blocked-failed",
     }
 )
-
-# (current_state, event) -> next_state. Anything else fails loud.
-_TRANSITIONS: dict[tuple[str, str], str] = {
-    ("pending", "deps_ready"): "ready",
-    ("pending", "dep_fail"): "blocked-failed",
-    ("pending", "reload"): "pending",
-    ("ready", "claim"): "dispatching",
-    ("ready", "dep_fail"): "blocked-failed",
-    ("ready", "reload"): "pending",
-    ("ready", "unready"): "pending",  # add-task --required-by demotes ready task
-    ("dispatching", "dispatch"): "running",
-    ("dispatching", "stale_reset"): "ready",
-    ("running", "integrate_start"): "integrating",
-    ("running", "exec_fail"): "failed-exec",
-    ("integrating", "integrate_ok"): "verified",
-    ("integrating", "integrate_fail"): "failed-integration",
-    ("integrating", "verify_fail"): "failed-verify",
-    # Re-load of an edited spec may resurrect failed tasks (guarded upsert).
-    ("failed-exec", "reload"): "pending",
-    ("failed-integration", "reload"): "pending",
-    ("failed-verify", "reload"): "pending",
-    # DA round-2 BLOCKER-1 (2026-06-10): without this, blocked-failed was a
-    # dead end — the blocked tail could never resume after a spec reload.
-    ("blocked-failed", "reload"): "pending",
-}
-
-_EVENTS = frozenset(ev for (_, ev) in _TRANSITIONS)
 
 # Tasks in these states must not be modified by a re-load (guarded upsert).
 PROTECTED_STATES = frozenset({"dispatching", "running", "integrating", "verified"})
@@ -89,21 +65,24 @@ TICK_OWNED_STATES = frozenset(
 def task_transition(db, task_id: str, event: str, conn=None) -> str:
     """Apply ``event`` to the task's state machine. The ONLY state writer.
 
-    Returns the new state. Raises ValueError (fail loud) on an unknown task,
-    unknown event, or illegal (state, event) pair — state is left untouched.
+    The transition DECISION is delegated to the unified
+    ``db_node_machine.node_transition`` (kind='task') — db_graph owns no second
+    transition table. Returns the new state. Raises ValueError (fail loud) on an
+    unknown task, unknown event, or illegal (state, event) pair — state is left
+    untouched.
     """
-    if event not in _EVENTS:
+    if event not in legal_events("task"):
         raise ValueError(f"graph task event unknown: {event!r}")
     task = get_task(db, task_id, conn=conn)
     if task is None:
         raise ValueError(f"graph task not found: {task_id!r}")
-    key = (task["state"], event)
-    if key not in _TRANSITIONS:
+    try:
+        new_state = node_transition(task["state"], event, "task")
+    except InvalidTransition as e:
         raise ValueError(
             f"illegal graph transition: task {task_id!r} in state "
             f"{task['state']!r} got event {event!r}"
-        )
-    new_state = _TRANSITIONS[key]
+        ) from e
     now = _now()
     sets, params = ["state=?", "updated_at=?"], [new_state, now]
     if new_state == "verified":
@@ -128,12 +107,12 @@ def create_task(
     db, *, task_id: str, project_id: str, title: str, prompt: str, verify_cmd=None,
     conn=None,
 ) -> None:
-    """Insert a new task in state 'pending'. Raises on duplicate id."""
+    """Insert a new task in state 'open'. Raises on duplicate id."""
     now = _now()
     with _cx(db, conn) as c:
         c.execute(
             "INSERT INTO graph_tasks (id, project_id, title, prompt, verify_cmd, "
-            "state, created_at, updated_at) VALUES (?,?,?,?,?, 'pending', ?, ?)",
+            "state, created_at, updated_at) VALUES (?,?,?,?,?, 'open', ?, ?)",
             (task_id, project_id, title, prompt, verify_cmd, now, now),
         )
 
@@ -249,11 +228,11 @@ def unverified_deps(db, task_id: str) -> list[str]:
 
 
 def ready_eligible(db, project_id: str) -> list[str]:
-    """Pending tasks of ``project_id`` whose deps are ALL 'verified'."""
+    """Open tasks of ``project_id`` whose deps are ALL 'verified'."""
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT n.id FROM graph_tasks n WHERE n.project_id=? "
-            "AND n.state='pending' AND NOT EXISTS ("
+            "AND n.state='open' AND NOT EXISTS ("
             "  SELECT 1 FROM graph_edges e JOIN graph_tasks d ON d.id=e.depends_on_id"
             "  WHERE e.task_id=n.id AND d.state != 'verified') "
             "ORDER BY n.created_at, n.id",
@@ -263,7 +242,7 @@ def ready_eligible(db, project_id: str) -> list[str]:
 
 
 def recompute_ready(db, project_id: str) -> list[str]:
-    """Promote every eligible pending task to 'ready'. Returns newly-ready ids.
+    """Promote every eligible 'open' task to 'ready'. Returns newly-ready ids.
 
     The promotion is a CAS (DA round-2 MAJOR-3, 2026-06-10): concurrent
     diamond fan-in completions both saw the join task eligible; the loser's
@@ -276,7 +255,7 @@ def recompute_ready(db, project_id: str) -> list[str]:
         with _cx(db) as conn:
             cur = conn.execute(
                 "UPDATE graph_tasks SET state='ready', updated_at=? "
-                "WHERE id=? AND state='pending'",
+                "WHERE id=? AND state='open'",
                 (_now(), task_id),
             )
         if cur.rowcount == 1:

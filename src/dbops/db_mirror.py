@@ -26,13 +26,13 @@ _TERMINAL_STATUSES = ("archived", "closed")
 # Thread status → mirror topic state (direct SQL write, bypasses state machine).
 _THREAD_TO_STATE: dict[str, str] = {
     "active": "running",
-    "idle": "pending",
+    "idle": "open",
     "done": "verified",
 }
 
 
 def _mirror_state(thread_status: str) -> str:
-    return _THREAD_TO_STATE.get(thread_status or "", "pending")
+    return _THREAD_TO_STATE.get(thread_status or "", "open")
 
 
 def mirror_upsert_thread(db, thread_id: str, project_id: str) -> str:

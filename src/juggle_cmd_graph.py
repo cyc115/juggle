@@ -182,9 +182,8 @@ def _create_node_for_task(
         from juggle_add_node import _create_node_row
         from dbops import db_graph as _dg
         task = _dg.get_task(db, task_id)
-        # Map legacy states to node states: 'pending'→'open', 'ready'→'ready'
-        _STATE_MAP = {"pending": "open", "ready": "ready"}
-        state = _STATE_MAP.get((task or {}).get("state", "pending"), "open")
+        # Vocab is unified (P8 C3): the node state is the graph_tasks state verbatim.
+        state = (task or {}).get("state", "open")
         _create_node_row(
             db, node_id=task_id, kind="task", title=title, objective=prompt,
             state=state, project_id=project_id, verify_cmd=verify_cmd,

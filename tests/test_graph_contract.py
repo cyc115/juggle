@@ -153,7 +153,7 @@ def test_check_task_guard_allows_operator_states_and_unbound(db):
     g.create_task(db, task_id="n", project_id="INBOX", title="N", prompt="p")
     tid = db.create_thread("t", session_id="s")
     g.set_task_thread(db, "n", tid)
-    for state in ("pending", "failed-exec", "failed-integration", "failed-verify",
+    for state in ("open", "failed-exec", "failed-integration", "failed-verify",
                   "blocked-failed"):
         with db._connect() as conn:
             conn.execute("UPDATE graph_tasks SET state=? WHERE id='n'", (state,))
@@ -286,7 +286,7 @@ def test_complete_agent_refuses_while_tasks_unmarked(db, capsys, monkeypatch):
 
     assert ei.value.code != 0
     assert tp.get_topic(db, "A")["state"] == "running"  # NOT advanced past running
-    assert g.get_task(db, "a2")["state"] == "pending"
+    assert g.get_task(db, "a2")["state"] == "open"
     assert calls == [], "integrate must NOT run when the gate refuses"
 
 

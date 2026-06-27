@@ -47,8 +47,8 @@ def reconcile_topic_state(db, topic_id: str) -> str:
 
     Priority: all verified AND (merged OR orphaned-integrating) → 'verified'
     (else 'integrating', G1/G5); any failed → 'failed-verify'; any active
-    (running/dispatching/integrating) → 'running'; else leave pending/ready
-    unchanged (or reset a phantom non-terminal to 'pending'). Never demotes a
+    (running/dispatching/integrating) → 'running'; else leave open/ready
+    unchanged (or reset a phantom non-terminal to 'open'). Never demotes a
     'running' topic with a live bound agent (G4a). Never writes a mirror topic
     (reflection-only). Idempotent; safe on terminal topics.
     """
@@ -96,17 +96,17 @@ def reconcile_topic_state(db, topic_id: str) -> str:
         target = "failed-verify"
     elif any(s in _ACTIVE_TASK_STATES for s in task_states):
         target = "running"
-    elif topic["state"] in ("pending", "ready"):
+    elif topic["state"] in ("open", "ready"):
         return topic["state"]
     else:
-        target = "pending"
+        target = "open"
 
     # G4a: never demote a 'running' topic that still has a live, healthy bound
     # agent (reconcile must not orphan a working agent). If the derived target
     # is weaker than 'running', keep 'running' until the agent is gone.
     if (
         topic["state"] == "running"
-        and target in ("pending", "ready")
+        and target in ("open", "ready")
         and _has_live_bound_agent(db, topic)
     ):
         return "running"

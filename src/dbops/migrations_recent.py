@@ -326,12 +326,8 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     from dbops.migration_nodes_parity import migrate_50_nodes_parity, backfill_nodes_parity
     migrate_50_nodes_parity(conn)
     backfill_nodes_parity(conn)  # also runs backfill_graph_parity (P8 Q2/Q3)
-
-    # Migration 51 (P8 C3 + R2-4): unify the task-entry vocab to 'open'. FAIL-LOUD
-    # (BEGIN IMMEDIATE) — the same-release engine rename hard-depends on every
-    # 'pending' task/topic row being rewritten to 'open' before it queries them.
-    from dbops.migration_51_state_vocab import migrate_51_state_vocab
-    migrate_51_state_vocab(conn)   # P8 C3: pending->open (runs before vocab-renamed engine)
+    from dbops.migration_51_state_vocab import migrate_51_state_vocab  # P8 C3+R2-4
+    migrate_51_state_vocab(conn)  # unify task vocab pending->open (FAIL-LOUD, before renamed engine)
 
 
 # Migrations 41, 45 and 47-49 live in their own modules (loc_gate budget).

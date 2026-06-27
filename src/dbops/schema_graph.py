@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS graph_tasks (
   title       TEXT NOT NULL,
   prompt      TEXT NOT NULL,
   verify_cmd  TEXT,
-  state       TEXT NOT NULL DEFAULT 'pending',
+  state       TEXT NOT NULL DEFAULT 'open',
   thread_id   TEXT,
   handoff     TEXT,
   diffstat    TEXT,
@@ -33,14 +33,14 @@ CREATE TABLE IF NOT EXISTS graph_edges (
 
 # 3-tier hierarchy (R9, 2026-06-11): a Topic owns a task-DAG; ONE thread/agent/
 # worktree per topic; integrate runs once per topic. Topics reuse the task
-# state machine (dbops.db_topics imports db_graph._TRANSITIONS).
+# state machine (dbops.db_topics delegates to db_node_machine.node_transition).
 CREATE_GRAPH_TOPICS = """
 CREATE TABLE IF NOT EXISTS graph_topics (
   id          TEXT PRIMARY KEY,
   project_id  TEXT NOT NULL REFERENCES projects(id),
   title       TEXT NOT NULL,
   objective   TEXT NOT NULL DEFAULT '',
-  state       TEXT NOT NULL DEFAULT 'pending',
+  state       TEXT NOT NULL DEFAULT 'open',
   thread_id   TEXT,
   handoff     TEXT,
   diffstat    TEXT,

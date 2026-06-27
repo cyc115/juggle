@@ -3,7 +3,7 @@
 Turns (tasks, edges) into a left-to-right layered DAG:
   - rank assignment via longest dependency depth (longest-path layering),
   - ordered cells per rank,
-  - narrow-width collapse (focus+context: fold verified / far-pending ranks,
+  - narrow-width collapse (focus+context: fold verified / far-open ranks,
     keep ready/running/failed expanded),
   - horizontal pan windowing with a minimap descriptor.
 
@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 # States that must stay visible (the operator's focus) when narrow.
 _ACTIVE_PREFIXES = ("ready", "running", "dispatching", "integrating", "failed", "blocked")
 # States safe to fold to a count under width pressure (context only).
-_FOLDABLE = ("verified", "pending")
+_FOLDABLE = ("verified", "open")
 
 
 @dataclass(frozen=True)
@@ -118,7 +118,7 @@ def _fold(rank: Rank) -> Rank:
 
 
 def collapse_ranks(ranks: list[Rank], max_visible_ranks: int) -> list[Rank]:
-    """Fold foldable (verified/pending) ranks to counts until total <= budget.
+    """Fold foldable (verified/open) ranks to counts until total <= budget.
 
     Active ranks (ready/running/failed) are never folded — focus+context. If
     folding every foldable rank still exceeds the budget, the foldable ranks are

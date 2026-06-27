@@ -1,8 +1,9 @@
-"""dbops.db_node_machine — unified kind-gated state machine for nodes (P2).
+"""dbops.db_node_machine — unified kind-gated state machine for nodes (P2/P8).
 
-Pure functions only — no DB reads or writes. The DB-backed transition wrapper
-lives in db_nodes.py (P3+). Existing db_graph._TRANSITIONS is left untouched
-so db_topics/db_graph callers are unaffected.
+Pure functions only — no DB reads or writes. This is the SOLE transition-decision
+engine: the DB wrappers ``db_graph.task_transition`` and
+``db_topics.topic_transition`` delegate their (state, event) decision here
+(kind='task'); they own no second transition table.
 """
 from __future__ import annotations
 
@@ -12,9 +13,8 @@ class InvalidTransition(ValueError):
 
 
 # ── Unified transition table ────────────────────────────────────────────────────
-# Keys use the new node state names. 'open' replaces 'pending'; both state sets
-# coexist in the DB until P8 cleanup (old tables keep 'pending'; nodes table
-# uses 'open').
+# Keys use the unified node state names. 'open' is the single task-entry state
+# (the legacy entry value was retired in P8 — Migration 51 rewrites it on upgrade).
 
 _NODE_TRANSITIONS: dict[tuple[str, str], str] = {
     # open — entry state
@@ -103,6 +103,18 @@ def node_transition(state: str, event: str, kind: str) -> str:
             f"(state={state!r})"
         )
     return _NODE_TRANSITIONS[key]
+
+
+def legal_events(kind: str) -> frozenset[str]:
+    """Events legal for a node kind (raises InvalidTransition on unknown kind).
+
+    The legacy DB wrappers (db_graph/db_topics) reuse this to fail loud on an
+    unknown event BEFORE looking up the (state, event) transition.
+    """
+    legal = _KIND_LEGAL.get(kind)
+    if legal is None:
+        raise InvalidTransition(f"unknown node kind: {kind!r}")
+    return legal
 
 
 # ── threads.status → node.state mapping ────────────────────────────────────────

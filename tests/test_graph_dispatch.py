@@ -245,12 +245,12 @@ def test_tick_dispatches_ready_tasks_and_binds_threads(db):
         thread = db.get_thread(topic["thread_id"])
         assert thread is not None
         assert thread["project_id"] == "INBOX"
-    assert tp.get_topic(db, "c")["state"] == "pending"  # dep not verified
+    assert tp.get_topic(db, "c")["state"] == "open"  # dep not verified
 
 
 def test_tick_self_heals_missed_ready_promotion(db):
     """A completion that crashes between marking 'verified' and topic-ready
-    recompute would strand eligible dependents in 'pending' forever — the tick
+    recompute would strand eligible dependents in 'open' forever — the tick
     promotes them itself (idempotent recompute_topic_ready) before scanning the
     ready set. (adapted to topics, R9 2026-06-11)"""
     _mk_topic(db, "a")
@@ -259,7 +259,7 @@ def test_tick_self_heals_missed_ready_promotion(db):
     _bind_merged_topic(db, "a")  # G1: merged → may verify
     for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
         tp.topic_transition(db, "a", ev)  # verified, but NO recompute ran
-    assert tp.get_topic(db, "b")["state"] == "pending"
+    assert tp.get_topic(db, "b")["state"] == "open"
     _arm(db)
 
     fake = FakeDispatch()

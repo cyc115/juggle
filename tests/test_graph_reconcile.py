@@ -66,9 +66,9 @@ def _mk_project(db, pid="P1"):
     return pid
 
 
-def _mk_topic(db, topic_id, project_id, state="pending"):
+def _mk_topic(db, topic_id, project_id, state="open"):
     t.create_topic(db, topic_id=topic_id, project_id=project_id, title=topic_id)
-    if state != "pending":
+    if state != "open":
         with db._connect() as conn:
             conn.execute(
                 "UPDATE graph_topics SET state=? WHERE id=?", (state, topic_id)
@@ -76,7 +76,7 @@ def _mk_topic(db, topic_id, project_id, state="pending"):
             conn.commit()
 
 
-def _mk_task(db, task_id, project_id, topic_id, state="pending"):
+def _mk_task(db, task_id, project_id, topic_id, state="open"):
     g.create_task(db, task_id=task_id, project_id=project_id, title=task_id,
                   prompt=f"do {task_id}")
     with db._connect() as conn:
@@ -84,7 +84,7 @@ def _mk_task(db, task_id, project_id, topic_id, state="pending"):
             "UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic_id, task_id)
         )
         conn.commit()
-    if state != "pending":
+    if state != "open":
         # Walk the task to the desired state via mark_completion
         if state == "verified":
             g.mark_completion(db, task_id, integrate_ok=True, verify_ok=True)
@@ -107,7 +107,7 @@ def _mk_task(db, task_id, project_id, topic_id, state="pending"):
 def test_reconcile_sets_topic_verified_when_all_tasks_verified(db, tmp_path):
     """All member tasks verified AND work merged → topic becomes verified."""
     pid = _mk_project(db)
-    _mk_topic(db, "T1", pid, state="pending")
+    _mk_topic(db, "T1", pid, state="open")
     _mk_task(db, "n1", pid, "T1", state="verified")
     _mk_task(db, "n2", pid, "T1", state="verified")
     _bind_merged(db, "T1", tmp_path)
@@ -172,7 +172,7 @@ def test_reconcile_holds_at_integrating_when_unmerged(db):
 def test_reconcile_failed_member_sets_topic_failed_verify(db):
     """Any member task in a failed state → topic becomes failed-verify."""
     pid = _mk_project(db)
-    _mk_topic(db, "T1", pid, state="pending")
+    _mk_topic(db, "T1", pid, state="open")
     _mk_task(db, "n1", pid, "T1", state="verified")
     _mk_task(db, "n2", pid, "T1", state="failed-verify")
 
@@ -185,7 +185,7 @@ def test_reconcile_failed_member_sets_topic_failed_verify(db):
 def test_reconcile_running_member_sets_topic_running(db):
     """Any member task running/dispatching/integrating → topic becomes running."""
     pid = _mk_project(db)
-    _mk_topic(db, "T1", pid, state="pending")
+    _mk_topic(db, "T1", pid, state="open")
     _mk_task(db, "n1", pid, "T1", state="verified")
     _mk_task(db, "n2", pid, "T1", state="running")
 
@@ -206,7 +206,7 @@ def test_mark_task_last_task_flips_topic_verified(db, tmp_path):
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="running")
     _mk_task(db, "n1", pid, "T1", state="verified")
-    _mk_task(db, "n2", pid, "T1", state="pending")  # last unverified
+    _mk_task(db, "n2", pid, "T1", state="open")  # last unverified
     _bind_merged(db, "T1", tmp_path)
 
     args = SimpleNamespace(
@@ -232,8 +232,8 @@ def test_graph_reconcile_cli_corrects_drifted_topic(db, capsys, tmp_path):
     _mk_topic(db, "T1", pid, state="running")  # phantom running
     _mk_task(db, "n1", pid, "T1", state="verified")
     _bind_merged(db, "T1", tmp_path)
-    _mk_topic(db, "T2", pid, state="pending")
-    _mk_task(db, "n2", pid, "T2", state="pending")
+    _mk_topic(db, "T2", pid, state="open")
+    _mk_task(db, "n2", pid, "T2", state="open")
 
     args = SimpleNamespace(project=pid, json_out=False, db_path=str(db.db_path))
     cg.cmd_graph_reconcile(args)
@@ -243,7 +243,7 @@ def test_graph_reconcile_cli_corrects_drifted_topic(db, capsys, tmp_path):
     assert "running" in out
     assert "verified" in out
     assert t.get_topic(db, "T1")["state"] == "verified"
-    assert t.get_topic(db, "T2")["state"] == "pending"  # unchanged
+    assert t.get_topic(db, "T2")["state"] == "open"  # unchanged
 
 
 def test_graph_reconcile_cli_json_output(db, capsys, tmp_path):
@@ -362,7 +362,7 @@ def test_list_topics_excludes_conversational_mirror(db):
     from dbops.db_mirror import mirror_upsert_thread
 
     pid = _mk_project(db)
-    _mk_topic(db, "T1", pid, state="pending")  # a real graph topic
+    _mk_topic(db, "T1", pid, state="open")  # a real graph topic
     chat = db.create_thread(topic="improve dispatch", session_id="sessC")
     db.update_thread(chat, project_id=pid)
     mirror_id = mirror_upsert_thread(db, chat, pid)  # ~<uuid> phantom

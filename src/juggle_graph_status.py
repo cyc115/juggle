@@ -27,7 +27,7 @@ def counts_from_states(states: list[str]) -> dict:
         "blocked": sum(1 for s in states if s == "blocked-failed"),
         "ready": sum(1 for s in states if s == "ready"),
         "running": sum(1 for s in states if s in IN_FLIGHT_STATES),
-        "pending": sum(1 for s in states if s == "pending"),
+        "open": sum(1 for s in states if s == "open"),
     }
 
 

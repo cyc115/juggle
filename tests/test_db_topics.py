@@ -64,7 +64,7 @@ def _bind_merged(db, topic_id, tmp_path):
 
 def test_topic_uses_task_state_machine(db):
     _topic(db, "ta")
-    assert t.get_topic(db, "ta")["state"] == "pending"
+    assert t.get_topic(db, "ta")["state"] == "open"
     assert t.topic_transition(db, "ta", "deps_ready") == "ready"
     assert t.topic_transition(db, "ta", "claim") == "dispatching"
     with pytest.raises(ValueError):
@@ -87,7 +87,7 @@ def test_topic_ready_requires_dep_topics_verified(db, tmp_path):
     _task(db, "b1", "B")
     _task(db, "a1", "A", deps=("b1",))
     assert t.recompute_topic_ready(db, "INBOX") == ["B"]  # A blocked on B
-    assert t.get_topic(db, "A")["state"] == "pending"
+    assert t.get_topic(db, "A")["state"] == "open"
     _bind_merged(db, "B", tmp_path)  # G1: B's work merged → can verify
     for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
         t.topic_transition(db, "B", ev)
@@ -117,4 +117,4 @@ def test_mark_topic_completion_maps_outcomes(db, tmp_path):
 def test_topic_counts_shape(db):
     _topic(db, "A"); _topic(db, "B")
     c = t.topic_counts(db, "INBOX")
-    assert c["total"] == 2 and c["pending"] == 2
+    assert c["total"] == 2 and c["open"] == 2

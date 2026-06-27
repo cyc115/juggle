@@ -112,7 +112,7 @@ def test_complete_agent_unbound_thread_untouched_by_graph(db):
     db._set_session_key_external("session_id", "sessA")
     _complete(tid)  # no task bound to this thread — must not raise
     assert g.get_task(db, "a")["state"] == "ready"
-    assert g.get_task(db, "b")["state"] == "pending"
+    assert g.get_task(db, "b")["state"] == "open"
 
 
 def test_complete_agent_twice_on_terminal_task_does_not_crash(db, capsys):

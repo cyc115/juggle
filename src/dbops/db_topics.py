@@ -1,7 +1,7 @@
 """dbops.db_topics — graph_topics store (3-tier autopilot, R9 2026-06-11).
 
-Owns: topic CRUD, topic state transitions (REUSES db_graph's _TRANSITIONS —
-one state machine, two tables, no second invention), DERIVED topic-level deps
+Owns: topic CRUD, topic state transitions (DELEGATES the decision to the unified
+db_node_machine.node_transition — one state machine, no second invention), DERIVED topic-level deps
 (task edges crossing topic boundaries), the topic ready-set (CAS promote), and
 topic completion marking.
 Must not own: task semantics (dbops.db_graph), dispatching
@@ -12,7 +12,8 @@ besides topic_transition), CLI parsing.
 from __future__ import annotations
 
 from dbops.schema import _now
-from dbops.db_graph import _EVENTS, _TRANSITIONS, _cx
+from dbops.db_graph import _cx
+from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
 
 
 class UnmergedVerifyRefused(ValueError):
@@ -31,19 +32,19 @@ def _verified_allowed(db, topic_id: str) -> bool:
 
 
 def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
-    """Apply ``event`` to the topic. Same machine as tasks. Fail-loud."""
-    if event not in _EVENTS:
+    """Apply ``event`` via the unified machine (node_transition, kind='task'). Fail-loud."""
+    if event not in legal_events("task"):
         raise ValueError(f"graph topic event unknown: {event!r}")
     topic = get_topic(db, topic_id, conn=conn)
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
-    key = (topic["state"], event)
-    if key not in _TRANSITIONS:
+    try:
+        new_state = node_transition(topic["state"], event, "task")
+    except InvalidTransition as e:
         raise ValueError(
             f"illegal graph transition: topic {topic_id!r} in state "
             f"{topic['state']!r} got event {event!r}"
-        )
-    new_state = _TRANSITIONS[key]
+        ) from e
     if topic.get("is_mirror"):
         raise ValueError(
             f"mirror topic {topic_id!r} cannot be execution-transitioned "
@@ -74,7 +75,7 @@ def create_topic(db, *, topic_id, project_id, title, objective="", conn=None) ->
     with _cx(db, conn) as c:
         c.execute(
             "INSERT INTO graph_topics (id, project_id, title, objective, state, "
-            "created_at, updated_at) VALUES (?,?,?,?, 'pending', ?, ?)",
+            "created_at, updated_at) VALUES (?,?,?,?, 'open', ?, ?)",
             (topic_id, project_id, title, objective, now, now),
         )
 
@@ -194,7 +195,7 @@ def derived_topic_deps(db, topic_id) -> list[str]:
     return [r[0] for r in rows]
 
 
-_DISPATCHABLE_TASK_STATES = ("pending", "ready")
+_DISPATCHABLE_TASK_STATES = ("open", "ready")
 
 
 def topic_ready_eligible(db, project_id) -> list[str]:
@@ -211,7 +212,7 @@ def topic_ready_eligible(db, project_id) -> list[str]:
         rows = conn.execute(
             "SELECT t.id FROM graph_topics t WHERE t.project_id=? "
             "AND COALESCE(t.is_mirror, 0) = 0 "
-            "AND t.state='pending' AND NOT EXISTS ("
+            "AND t.state='open' AND NOT EXISTS ("
             "  SELECT 1 FROM graph_edges e"
             "  JOIN graph_tasks n ON n.id = e.task_id"
             "  JOIN graph_tasks d ON d.id = e.depends_on_id"
@@ -228,14 +229,14 @@ def topic_ready_eligible(db, project_id) -> list[str]:
 
 
 def recompute_topic_ready(db, project_id) -> list[str]:
-    """CAS-promote eligible pending topics to 'ready' (same race discipline as
+    """CAS-promote eligible 'open' topics to 'ready' (same race discipline as
     db_graph.recompute_ready — a lost race is a silent no-op)."""
     newly = []
     for tid in topic_ready_eligible(db, project_id):
         with _cx(db) as conn:
             cur = conn.execute(
                 "UPDATE graph_topics SET state='ready', updated_at=? "
-                "WHERE id=? AND state='pending' AND COALESCE(is_mirror,0)=0",
+                "WHERE id=? AND state='open' AND COALESCE(is_mirror,0)=0",
                 (_now(), tid),
             )
         if cur.rowcount == 1:
@@ -250,7 +251,7 @@ def recompute_topic_ready(db, project_id) -> list[str]:
 
 
 _ADVANCE_TO_INTEGRATING = {
-    "pending": ("deps_ready", "claim", "dispatch", "integrate_start"),
+    "open": ("deps_ready", "claim", "dispatch", "integrate_start"),
     "ready": ("claim", "dispatch", "integrate_start"),
     "dispatching": ("dispatch", "integrate_start"),
     "running": ("integrate_start",),
@@ -294,7 +295,7 @@ def mark_topic_exec_failed(db, topic_id) -> str:
     topic = get_topic(db, topic_id)
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
-    walk = {"pending": ("deps_ready", "claim", "dispatch"),
+    walk = {"open": ("deps_ready", "claim", "dispatch"),
             "ready": ("claim", "dispatch"),
             "dispatching": ("dispatch",),
             "running": ()}
@@ -326,7 +327,7 @@ def propagate_topic_failure(db, topic_id) -> list[str]:
         for r in rows:
             dep_tid = r[0]
             t_ = get_topic(db, dep_tid)
-            if t_ and t_["state"] in ("pending", "ready"):
+            if t_ and t_["state"] in ("open", "ready"):
                 topic_transition(db, dep_tid, "dep_fail")
                 blocked.append(dep_tid)
                 frontier.append(dep_tid)

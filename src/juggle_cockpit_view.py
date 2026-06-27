@@ -78,7 +78,7 @@ SCHED_STATUS_GLYPHS: dict[str, str] = {
 # — never from thread status/TTL, so done/failed tasks stay legible even after
 # their threads close or archive.
 TASK_STATE_GLYPHS: dict[str, str] = {
-    "pending": "⬡",
+    "open": "⬡",
     "ready": "◇",
     "dispatching": "◌",
     "running": "🏃",

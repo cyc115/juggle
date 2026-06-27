@@ -45,7 +45,7 @@ def _states(db):
 
 def _fail_task(db, nid, terminal_event):
     """Walk a task legally to its failed-* state without propagation."""
-    walk = {"pending": ["deps_ready"], "ready": []}[g.get_task(db, nid)["state"]]
+    walk = {"open": ["deps_ready"], "ready": []}[g.get_task(db, nid)["state"]]
     for ev in walk + ["claim", "dispatch"]:
         g.task_transition(db, nid, ev)
     if terminal_event == "exec_fail":
@@ -59,7 +59,7 @@ def _fail_task(db, nid, terminal_event):
 
 def test_propagate_failure_blocks_transitive_dependents_pin(db):
     """Regression pin (2026-06-10): through Phase 2, dependents of a failed
-    task were left silently 'pending' forever — the graph stalled with no
+    task were left silently 'open' forever — the graph stalled with no
     blocked marker. propagate_failure must walk ALL transitive dependents
     (c AND d, not just direct c) to 'blocked-failed', leaving the sibling
     branch (s) untouched."""
@@ -73,7 +73,7 @@ def test_propagate_failure_blocks_transitive_dependents_pin(db):
     assert states["b"] == "failed-exec"
     assert states["c"] == "blocked-failed"
     assert states["d"] == "blocked-failed"
-    assert states["s"] == "pending", "sibling branch must be unaffected"
+    assert states["s"] == "open", "sibling branch must be unaffected"
 
 
 def test_propagate_failure_idempotent_and_diamond_safe(db):
@@ -96,7 +96,7 @@ def test_propagate_failure_idempotent_and_diamond_safe(db):
 
 def test_propagate_failure_blocks_ready_dependents_too(db):
     """A dependent already promoted to 'ready' (e.g. via a racing recompute)
-    is blocked as well, not just 'pending' ones."""
+    is blocked as well, not just 'open' ones."""
     g.create_task(db, task_id="p", project_id="INBOX", title="P", prompt="p")
     g.create_task(db, task_id="q", project_id="INBOX", title="Q", prompt="q")
     g.replace_edges(db, "q", ["p"])
@@ -136,7 +136,7 @@ def test_failed_integration_completion_blocks_dependents_pin(db):
     assert states["b"] == "failed-integration"
     assert states["c"] == "blocked-failed"
     assert states["d"] == "blocked-failed"
-    assert states["s"] == "pending"
+    assert states["s"] == "open"
     items = db.get_open_action_items()
     assert any("blocked" in i["message"].lower() and "c" in i["message"]
                and "d" in i["message"] and i["priority"] == "high"

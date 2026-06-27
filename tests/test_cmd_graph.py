@@ -163,7 +163,7 @@ def test_load_creates_tasks_edges_and_ready_set(db, tmp_path, capsys):
     tasks = {n["id"]: n for n in g.list_tasks(db, "INBOX")}
     assert set(tasks) == {"schema", "api", "ui", "e2e"}
     assert tasks["schema"]["state"] == "ready"  # root promoted on load
-    assert tasks["api"]["state"] == "pending"
+    assert tasks["api"]["state"] == "open"
     assert sorted(g.get_deps(db, "e2e")) == ["api", "ui"]
     out = capsys.readouterr().out
     assert "4" in out and "ready" in out
@@ -261,7 +261,7 @@ def test_reload_resumes_blocked_tail_end_to_end(db, tmp_path):
     assert api["prompt"] == "Implement the API v2."
     assert api["state"] == "ready"  # failed → reload → pending → ready
     # the blocked tail resumed: no remaining dep is failed-*/blocked-failed
-    assert e2e["state"] == "pending"
+    assert e2e["state"] == "open"
     assert e2e["prompt"] == "Wire it together v2."
 
     # diamond completes
@@ -296,7 +296,7 @@ def test_reload_keeps_tail_blocked_while_any_dep_still_failed(db, tmp_path):
     fix_both = fix_api.replace("Implement the UI.", "UI v2.")
     cg.cmd_project_graph_load(_args(tmp_path, db, spec=fix_both))
     assert g.get_task(db, "ui")["state"] == "ready"
-    assert g.get_task(db, "e2e")["state"] == "pending"
+    assert g.get_task(db, "e2e")["state"] == "open"
 
 
 def test_load_upserts_are_atomic_all_or_nothing(db, tmp_path, monkeypatch):

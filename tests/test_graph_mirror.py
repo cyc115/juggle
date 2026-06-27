@@ -95,7 +95,7 @@ class TestMigration42:
             # Insert directly bypassing ORM to simulate pre-migration row
             conn.execute(
                 "INSERT INTO graph_topics(id,project_id,title,objective,state,created_at,updated_at) "
-                "VALUES('T-old','P1','Old','','pending',?,?)",
+                "VALUES('T-old','P1','Old','','open',?,?)",
                 (_now(), _now()),
             )
             conn.commit()
@@ -157,7 +157,7 @@ class TestMirrorUpsert:
         assert row["state"] == "running"
 
     def test_idle_thread_maps_to_pending(self, db):
-        """Thread status 'idle' → mirror topic state 'pending'."""
+        """Thread status 'idle' → mirror topic state 'open'."""
         from dbops.db_mirror import mirror_upsert_thread
 
         _project(db)
@@ -166,7 +166,7 @@ class TestMirrorUpsert:
 
         with db._connect() as conn:
             row = conn.execute("SELECT state FROM graph_topics WHERE id=?", (mirror_id,)).fetchone()
-        assert row["state"] == "pending"
+        assert row["state"] == "open"
 
     def test_done_thread_maps_to_verified(self, db):
         """Thread status 'done' → mirror topic state 'verified'."""
@@ -346,7 +346,7 @@ class TestReadyEligibleExcludesMirror:
         mirror_id = f"~{tid}"
         with db._connect() as conn:
             conn.execute(
-                "UPDATE graph_topics SET state='pending' WHERE id=? AND is_mirror=1",
+                "UPDATE graph_topics SET state='open' WHERE id=? AND is_mirror=1",
                 (mirror_id,)
             )
             conn.commit()
@@ -454,7 +454,7 @@ class TestGuardBypassForMirror:
         set_topic_thread(db, "T-real", tid_real)
         # Leave in pending — operator territory (not tick-owned), so guard returns None
         with db._connect() as conn:
-            conn.execute("UPDATE graph_topics SET state='pending' WHERE id='T-real'")
+            conn.execute("UPDATE graph_topics SET state='open' WHERE id='T-real'")
             conn.commit()
 
         # Some mirror topics for other threads in the same project
@@ -511,7 +511,7 @@ class TestCockpitProgressCount:
 # ---------------------------------------------------------------------------
 
 def _mirror_pending_with_task(db, project_id="P1"):
-    """Create an is_mirror=1 topic in 'pending' state with one dispatchable task.
+    """Create an is_mirror=1 topic in 'open' state with one dispatchable task.
 
     This simulates a mirror that WOULD be eligible for promotion if not for the
     is_mirror flag — used to prove the SQL-level guards reject it independently.
@@ -522,10 +522,10 @@ def _mirror_pending_with_task(db, project_id="P1"):
     tid = _thread(db, project_id=project_id, status="idle")  # idle → pending mirror
     mirror_id = mirror_upsert_thread(db, tid, project_id)
 
-    # Force mirror to 'pending' (idle maps to pending already, but be explicit)
+    # Force mirror to 'open' (idle maps to pending already, but be explicit)
     with db._connect() as conn:
         conn.execute(
-            "UPDATE graph_topics SET state='pending' WHERE id=? AND is_mirror=1",
+            "UPDATE graph_topics SET state='open' WHERE id=? AND is_mirror=1",
             (mirror_id,)
         )
         conn.commit()
@@ -576,12 +576,12 @@ class TestMirrorClaimGuard:
             row = conn.execute(
                 "SELECT state FROM graph_topics WHERE id=?", (mirror_id,)
             ).fetchone()
-        assert row["state"] == "pending", "mirror must remain 'pending'"
+        assert row["state"] == "open", "mirror must remain 'open'"
 
     def test_recompute_topic_ready_promotes_real_not_mirror(self, db):
         """recompute_topic_ready promotes real pending topics but NOT mirror topics.
 
-        2026-06-15 regression pin: mirror topics must stay 'pending' regardless of
+        2026-06-15 regression pin: mirror topics must stay 'open' regardless of
         the eligibility filter's is_mirror guard.
         """
         from dbops.db_topics import create_topic, recompute_topic_ready
@@ -607,7 +607,7 @@ class TestMirrorClaimGuard:
             mirror_row = conn.execute(
                 "SELECT state FROM graph_topics WHERE id=?", (mirror_id,)
             ).fetchone()
-        assert mirror_row["state"] == "pending", "mirror state must remain 'pending'"
+        assert mirror_row["state"] == "open", "mirror state must remain 'open'"
 
     def test_claim_topic_refuses_mirror(self, db):
         """claim_topic returns False (rowcount 0) for a mirror topic.
@@ -654,7 +654,7 @@ class TestMirrorClaimGuard:
             row = conn.execute(
                 "SELECT state FROM graph_topics WHERE id=?", (mirror_id,)
             ).fetchone()
-        assert row["state"] == "pending", "mirror state must not change via topic_transition"
+        assert row["state"] == "open", "mirror state must not change via topic_transition"
 
     def test_mirror_reflection_writes_still_work(self, db):
         """mirror_upsert_thread can still update a mirror node's state (reflection).
@@ -670,7 +670,7 @@ class TestMirrorClaimGuard:
 
         with db._connect() as conn:
             row = conn.execute("SELECT state FROM graph_topics WHERE id=?", (mirror_id,)).fetchone()
-        assert row["state"] == "pending"
+        assert row["state"] == "open"
 
         # Thread goes active → mirror should reflect 'running'
         db.update_thread(tid, status="active")

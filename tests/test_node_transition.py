@@ -177,25 +177,15 @@ def test_thread_status_unknown_raises():
         thread_status_to_node_state("bogus_status")
 
 
-# ── back-compat: existing _TRANSITIONS still intact ────────────────────────────
+# ── single-engine invariant (P8 C1): db_graph owns no second transition table ──
 
-def test_existing_transitions_still_work():
-    """Existing db_graph._TRANSITIONS unchanged — import and spot-check."""
-    from dbops.db_graph import _TRANSITIONS as OLD
-
-    assert OLD[("pending", "deps_ready")] == "ready"
-    assert OLD[("ready", "claim")] == "dispatching"
-    assert OLD[("running", "integrate_start")] == "integrating"
-    assert OLD[("integrating", "integrate_ok")] == "verified"
-
-
-def test_existing_topic_transition_unchanged():
-    """topic_transition still works via db_graph imports (no regression)."""
-    from dbops.db_graph import _TRANSITIONS
-
-    # Sample a few topic transitions that go through the same machine
-    assert _TRANSITIONS[("dispatching", "dispatch")] == "running"
-    assert _TRANSITIONS[("failed-exec", "reload")] == "pending"
+def test_db_graph_has_no_local_transition_table():
+    """2026-06-27 P8 C1: the duplicate db_graph._TRANSITIONS/_EVENTS tables are
+    DELETED — db_graph.task_transition delegates its decision to node_transition.
+    Every transition these once pinned is covered by test_task_legal_transitions."""
+    import dbops.db_graph as g
+    assert not hasattr(g, "_TRANSITIONS"), "duplicate transition table must be deleted"
+    assert not hasattr(g, "_EVENTS"), "duplicate event set must be deleted"
 
 
 # ── _NODE_TRANSITIONS completeness check ───────────────────────────────────────

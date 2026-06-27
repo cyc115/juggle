@@ -63,7 +63,7 @@ def test_add_task_inserts_into_live_graph(db):
     assert g.get_task(db, "x") is not None
     assert g.get_deps(db, "x") == ["a"]
     # a is ready (pending root promoted), not verified → x pending
-    assert res["state"] == "pending"
+    assert res["state"] == "open"
 
 
 def test_add_task_no_deps_is_ready_immediately(db):
@@ -97,7 +97,7 @@ def test_deps_on_running_task_keeps_new_task_pending(db):
         deps=["a"], required_by=[], verify_cmd=None,
     )
     assert g.get_task(db, "a")["state"] == "running"
-    assert res["state"] == "pending"
+    assert res["state"] == "open"
 
 
 # ── validation rejections (nothing written) ────────────────────────────────────
@@ -173,20 +173,20 @@ def test_required_by_pending_task_accepted_and_demotes(db):
     is accepted; d gains a dep on the new unfinished task. d was pending and
     stays pending (the new task is not verified)."""
     _diamond(db)
-    assert g.get_task(db, "d")["state"] == "pending"
+    assert g.get_task(db, "d")["state"] == "open"
     res = up.add_task(
         db, "INBOX", task_id="x", title="X", prompt="do x",
         deps=[], required_by=["d"], verify_cmd=None,
     )
     assert "x" in g.get_deps(db, "d")
-    assert g.get_task(db, "d")["state"] == "pending"
+    assert g.get_task(db, "d")["state"] == "open"
     # x has no deps → ready immediately
     assert res["state"] == "ready"
 
 
 def test_required_by_ready_task_is_demoted_to_pending(db):
     """GUARD PIN: a --required-by target that was 'ready' must be demoted to
-    'pending' once it gains an unverified dep (the new task). Use the readiness
+    'open' once it gains an unverified dep (the new task). Use the readiness
     recompute seam — task_transition stays the sole state writer."""
     g.create_task(db, task_id="root", project_id="INBOX", title="R", prompt="r")
     g.recompute_ready(db, "INBOX")
@@ -195,8 +195,8 @@ def test_required_by_ready_task_is_demoted_to_pending(db):
         db, "INBOX", task_id="pre", title="Pre", prompt="run before root",
         deps=[], required_by=["root"], verify_cmd=None,
     )
-    assert g.get_task(db, "root")["state"] == "pending"  # demoted
-    assert {"id": "root", "from": "ready", "to": "pending"} in res["downstream_changed"]
+    assert g.get_task(db, "root")["state"] == "open"  # demoted
+    assert {"id": "root", "from": "ready", "to": "open"} in res["downstream_changed"]
 
 
 def test_re_add_protected_id_refused(db):
@@ -254,7 +254,7 @@ def test_required_by_demotion_is_atomic_with_edge_write(db, monkeypatch):
     # edge write + demotion already committed before the post-commit recompute
     assert g.get_task(db, "pre") is not None
     assert "pre" in g.get_deps(db, "root")
-    assert g.get_task(db, "root")["state"] == "pending"  # NOT stale-ready
+    assert g.get_task(db, "root")["state"] == "open"  # NOT stale-ready
 
 
 # ── CLI handler ────────────────────────────────────────────────────────────────
@@ -271,12 +271,12 @@ def _args(db, **kw):
 
 
 def test_cli_add_task_success(db, capsys):
-    # P6: no --topic → routes through add_node (state vocab is "open", not "pending")
+    # P6: no --topic → routes through add_node (state vocab is "open", not "open")
     _diamond(db)
     cg.cmd_graph_add_task(_args(db, deps="a"))
     assert g.get_task(db, "x") is not None
     out = capsys.readouterr().out
-    assert "x" in out and ("open" in out or "pending" in out)
+    assert "x" in out and ("open" in out or "open" in out)
 
 
 def test_cli_add_task_reads_prompt_from_stdin(db, monkeypatch):

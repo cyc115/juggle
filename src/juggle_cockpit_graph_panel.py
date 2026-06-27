@@ -34,7 +34,7 @@ _STATE_COLORS: dict[str, str] = {
     "running": "yellow",
     "dispatching": "yellow",
     "integrating": "yellow",
-    "pending": "grey50",
+    "open": "grey50",
     "failed-exec": "red",
     "failed-integration": "red",
     "failed-verify": "red",
@@ -109,7 +109,7 @@ def _cell_text(
         id_seg = f"[{task.user_label or task.thread_id[:4]}] "
     else:
         id_seg = ""
-    if task.state == "pending" and dep_num is not None:
+    if task.state == "open" and dep_num is not None:
         suffix = f" ⊣{dep_num}"          # waiting on task #dep_num
     elif task.state == "ready":
         suffix = " ▸"                     # next up

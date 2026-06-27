@@ -25,7 +25,7 @@ from juggle_graph_upsert import find_cycle, lint_verify_cmd
 # refused; --deps targets (pure upstream) may be in ANY state.
 MUTABLE_STATES = frozenset(
     {
-        "pending",
+        "open",
         "ready",
         "failed-exec",
         "failed-integration",
@@ -91,7 +91,7 @@ def validate_add_task(
             raise AddTaskError(
                 f"refusing to add a dependency to {rb!r}: it is "
                 f"{live[rb]['state']!r} (protected) — required-by targets must be "
-                f"pending/ready/failed-*/blocked-failed"
+                f"open/ready/failed-*/blocked-failed"
             )
 
     # Re-adding an existing id: allowed only if that task is mutable.
@@ -136,7 +136,7 @@ def add_task(
     Validates first (validate_add_task — raises AddTaskError on any problem,
     nothing written). Then, in a single transaction: (G5) auto-create the owning
     topic when ``auto_create_topic`` and it doesn't yet exist, upsert the task as
-    'pending' (re-add resets a mutable existing task via reload), assign its
+    'open' (re-add resets a mutable existing task via reload), assign its
     ``topic_id`` FK, set its --deps edges, and add a depends_on edge from each
     --required-by target to the new task. Creating the topic + task + FK in the
     SAME transaction closes the empty-topic TOCTOU window (2026-06-13 incident
@@ -173,12 +173,12 @@ def add_task(
                     conn=conn,
                 )
         if task_id in live:
-            # Re-add of a mutable existing task: reset content + state to pending.
+            # Re-add of a mutable existing task: reset content + state to open.
             db_graph.update_task_content(
                 db, task_id, title=title, prompt=prompt, verify_cmd=verify_cmd,
                 conn=conn,
             )
-            if live[task_id]["state"] != "pending":
+            if live[task_id]["state"] != "open":
                 db_graph.task_transition(db, task_id, "reload", conn=conn)
         else:
             db_graph.create_task(
@@ -194,7 +194,7 @@ def add_task(
 
         # Downstream inserts: each --required-by target gains a dep on task_id.
         # A target that was 'ready' now has an unverified dep → demote it to
-        # 'pending' in the SAME transaction (sole writer, 'unready' event).
+        # 'open' in the SAME transaction (sole writer, 'unready' event).
         for rb in required_by:
             new_deps = sorted(set(db_graph.get_deps(db, rb)) | {task_id})
             db_graph.replace_edges(db, rb, new_deps, conn=conn)
@@ -220,6 +220,6 @@ def add_task(
     ]
     return {
         "task_id": task_id,
-        "state": after.get(task_id, "pending"),
+        "state": after.get(task_id, "open"),
         "downstream_changed": downstream_changed,
     }

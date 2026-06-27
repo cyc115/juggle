@@ -18,7 +18,7 @@ import sys
 # mark_completion's legal walk); terminal/blocked tasks skip enforcement —
 # a double-completion stays the Phase 1 warn+no-op, never a refusal.
 _ENFORCEABLE_STATES = frozenset(
-    {"pending", "ready", "dispatching", "running", "integrating"}
+    {"open", "ready", "dispatching", "running", "integrating"}
 )
 
 

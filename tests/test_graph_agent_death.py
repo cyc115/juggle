@@ -91,7 +91,7 @@ def test_fail_agent_transient_leaves_task_running(db):
     tid = _bind_running_thread(db, "a")
     _fail(tid, failure_type="transient")
     assert g.get_task(db, "a")["state"] == "running"
-    assert g.get_task(db, "b")["state"] == "pending"
+    assert g.get_task(db, "b")["state"] == "open"
 
 
 def test_fail_agent_recovery_dispatched_leaves_task_running(db):
@@ -100,7 +100,7 @@ def test_fail_agent_recovery_dispatched_leaves_task_running(db):
     tid = _bind_running_thread(db, "a")
     _fail(tid, recovery_dispatched=True)
     assert g.get_task(db, "a")["state"] == "running"
-    assert g.get_task(db, "b")["state"] == "pending"
+    assert g.get_task(db, "b")["state"] == "open"
 
 
 def test_fail_agent_unbound_thread_untouched(db):
@@ -193,7 +193,7 @@ def test_fail_agent_topic_thread_fails_topic_and_preserves_task_states(db):
     assert tp.get_topic(db, "B")["state"] == "blocked-failed"
     # per-task states untouched — resume story (DA A9)
     assert g.get_task(db, "a1")["state"] == "verified"
-    assert g.get_task(db, "a2")["state"] == "pending"
+    assert g.get_task(db, "a2")["state"] == "open"
     items = db.get_open_action_items()
     assert any("failed-exec" in i["message"] and i["priority"] == "high"
                for i in items if "Topic" in i["message"])

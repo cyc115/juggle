@@ -14,7 +14,7 @@ IDS = ["task1", "schema-migration-37", "topic-store", "spec-format-topics",
 
 
 def _graph():
-    states = ["running"] + ["pending"] * 9
+    states = ["running"] + ["open"] * 9
     tasks = [
         GraphTask(id=i, title=i, state=s,
                   thread_id=("w" if s == "running" else None),

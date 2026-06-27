@@ -54,14 +54,14 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cmd_integrate.py": 450,
     "src/juggle_cockpit_view.py": 461,
     "src/juggle_cockpit_model.py": 439,
-    "src/dbops/migrations_recent.py": 392,  # run_migration_41 extracted to migration_41_threads.py (2026-06-22, P8 Migration 50 headroom)
+    "src/dbops/migrations_recent.py": 394,  # +2 P8 Migration 51 wiring (import+call) — irreducible plan-mandated growth, cannot extract a migration call out of apply_recent_migrations (2026-06-27)
     "scripts/talkback": 415,
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
     "src/juggle_graph_dispatch.py": 397,
     "src/juggle_watchdog_daemon.py": 427,
     "src/juggle_cmd_graph.py": 340,
-    "src/dbops/db_topics.py": 365,
+    "src/dbops/db_topics.py": 366,  # +1 P8 engine delegation: irreducible db_node_machine import (topic_transition delegates the decision) (2026-06-27)
     "src/juggle_context.py": 345,
     "src/juggle_watchdog_singleton.py": 367,
     "src/dbops/schema.py": 342,  # selfheal-v2 P1: VALID_ERROR_STATUSES constant

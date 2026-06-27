@@ -85,7 +85,7 @@ def test_create_and_get_task(db):
     assert task["title"] == "Task One"
     assert task["prompt"] == "build it"
     assert task["verify_cmd"] == "pytest -q"
-    assert task["state"] == "pending"
+    assert task["state"] == "open"
     assert task["thread_id"] is None
     assert task["verified_at"] is None
 
@@ -124,7 +124,7 @@ def test_set_thread_and_handoff_do_not_touch_state(db):
     task = g.get_task(db, "n1")
     assert task["thread_id"] == "thread-uuid"
     assert task["handoff"] == '{"files": ["x.py"]}'
-    assert task["state"] == "pending"
+    assert task["state"] == "open"
 
 
 def test_get_task_by_thread(db):
@@ -173,8 +173,9 @@ def test_full_legal_happy_path(db):
         (["deps_ready"], "dep_fail", "blocked-failed"),
         # DA round-2 BLOCKER-1 (2026-06-10): blocked-failed had NO outgoing
         # transition — reload of a fixed spec left the blocked tail dead forever.
-        (["dep_fail"], "reload", "pending"),
-        (["deps_ready", "dep_fail"], "reload", "pending"),
+        # P8 C3: 'reload' resurrects to the unified entry state 'open'.
+        (["dep_fail"], "reload", "open"),
+        (["deps_ready", "dep_fail"], "reload", "open"),
     ],
 )
 def test_legal_failure_and_reset_transitions(db, path, event, expected):
@@ -229,7 +230,7 @@ def test_recompute_ready_promotes_root_tasks(db):
     newly = g.recompute_ready(db, "INBOX")
     assert newly == ["a"]
     assert g.get_task(db, "a")["state"] == "ready"
-    assert g.get_task(db, "b")["state"] == "pending"
+    assert g.get_task(db, "b")["state"] == "open"
 
 
 def test_recompute_ready_requires_all_deps_verified(db):
@@ -241,7 +242,7 @@ def test_recompute_ready_requires_all_deps_verified(db):
     for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
         g.task_transition(db, "a", ev)
     assert g.recompute_ready(db, "INBOX") == []
-    assert g.get_task(db, "c")["state"] == "pending"
+    assert g.get_task(db, "c")["state"] == "open"
     # verify b → c becomes ready
     for ev in ("claim", "dispatch", "integrate_start", "integrate_ok"):
         g.task_transition(db, "b", ev)
@@ -320,7 +321,7 @@ def test_reload_clears_stale_thread_binding(db):
     for ev in ("claim", "dispatch", "exec_fail"):
         g.task_transition(db, "n1", ev)
     g.set_task_thread(db, "n1", "dead-thread-uuid")
-    assert g.task_transition(db, "n1", "reload") == "pending"
+    assert g.task_transition(db, "n1", "reload") == "open"
     assert g.get_task(db, "n1")["thread_id"] is None
 
 

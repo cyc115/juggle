@@ -213,11 +213,11 @@ def _add_task_node(
             (node_id, title, objective, project_id, parent_id, verify_cmd, now, now),
         )
 
-        # Dual-write: graph_tasks (state='pending' to match legacy convention)
+        # Dual-write: graph_tasks (unified entry state 'open')
         conn.execute(
             """INSERT INTO graph_tasks
                (id, project_id, title, prompt, verify_cmd, state, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, 'open', ?, ?)""",
             (node_id, project_id or "INBOX", title, objective, verify_cmd, now, now),
         )
 
@@ -263,7 +263,7 @@ def _add_task_node(
     db_graph.recompute_ready(db, effective_project)
 
     task = db_graph.get_task(db, node_id)
-    graph_state = task["state"] if task else "pending"
+    graph_state = task["state"] if task else "open"
 
     if graph_state == "ready":
         # Promote the nodes row

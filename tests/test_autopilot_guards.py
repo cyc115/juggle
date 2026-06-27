@@ -227,7 +227,7 @@ def test_g4a_reconcile_keeps_running_with_live_agent(db, monkeypatch):
     t.set_topic_thread(db, "T-run", thread_id)
     for ev in ("deps_ready", "claim", "dispatch"):  # → running
         t.topic_transition(db, "T-run", ev)
-    # A pending member task would otherwise derive target 'pending' (demote).
+    # A pending member task would otherwise derive target 'open' (demote).
     g.create_task(db, task_id="n1", project_id=pid, title="x", prompt="x")
     with db._connect() as conn:
         conn.execute("UPDATE graph_tasks SET topic_id='T-run' WHERE id='n1'")
@@ -250,7 +250,7 @@ def test_g4a_reconcile_demotes_when_no_agent(db, monkeypatch):
         conn.execute("UPDATE graph_tasks SET topic_id='T-run' WHERE id='n1'")
         conn.commit()
     monkeypatch.setattr(db, "get_agent_by_thread", lambda tid: None)
-    assert t.reconcile_topic_state(db, "T-run") == "pending"
+    assert t.reconcile_topic_state(db, "T-run") == "open"
 
 
 # ---------------------------------------------------------------------------

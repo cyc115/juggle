@@ -16,7 +16,7 @@ import seam.
 from __future__ import annotations
 
 _ADVANCE_TO_INTEGRATING = {
-    "pending": ("deps_ready", "claim", "dispatch", "integrate_start"),
+    "open": ("deps_ready", "claim", "dispatch", "integrate_start"),
     "ready": ("claim", "dispatch", "integrate_start"),
     "dispatching": ("dispatch", "integrate_start"),
     "running": ("integrate_start",),
@@ -58,7 +58,7 @@ def mark_completion(
 
 
 _ADVANCE_TO_RUNNING = {
-    "pending": ("deps_ready", "claim", "dispatch"),
+    "open": ("deps_ready", "claim", "dispatch"),
     "ready": ("claim", "dispatch"),
     "dispatching": ("dispatch",),
     "running": (),
@@ -101,10 +101,10 @@ def recompute_blocked(db, project_id: str) -> tuple[list[str], list[str]]:
     failed task but its blocked-failed dependents stayed dead forever (no
     transition out of blocked-failed). Invariant restored here: a task is
     blocked-failed IFF some direct dep is failed-*/blocked-failed. Fixpoint:
-      * blocked-failed task with NO blocking dep  → 'reload'   → pending
-      * pending task WITH a blocking dep          → 'dep_fail' → blocked-failed
+      * blocked-failed task with NO blocking dep  → 'reload'   → open
+      * open task WITH a blocking dep             → 'dep_fail' → blocked-failed
         (covers a blocked task whose content was edited: the load loop reloads
-        it to pending while one of its deps is still failed)
+        it to open while one of its deps is still failed)
     The graph is a DAG and failed-* roots are fixed during the loop, so the
     fixpoint is unique and the loop terminates. Returns (unblocked, reblocked).
     """
@@ -116,7 +116,7 @@ def recompute_blocked(db, project_id: str) -> tuple[list[str], list[str]]:
     while changed:
         changed = False
         for task in list_tasks(db, project_id):
-            if task["state"] not in ("blocked-failed", "pending"):
+            if task["state"] not in ("blocked-failed", "open"):
                 continue
             deps = [get_task(db, d) for d in get_deps(db, task["id"])]
             blocking = any(d and d["state"] in _BLOCKING_STATES for d in deps)
@@ -124,7 +124,7 @@ def recompute_blocked(db, project_id: str) -> tuple[list[str], list[str]]:
                 task_transition(db, task["id"], "reload")
                 unblocked.append(task["id"])
                 changed = True
-            elif task["state"] == "pending" and blocking:
+            elif task["state"] == "open" and blocking:
                 task_transition(db, task["id"], "dep_fail")
                 reblocked.append(task["id"])
                 changed = True
@@ -136,8 +136,8 @@ def propagate_failure(db, task_id: str) -> list[str]:
 
     Design rev 2 / Phase 3 (2026-06-10): a task in failed-exec |
     failed-integration | failed-verify must not leave its downstream silently
-    'pending' forever. BFS over the dependents closure; every task still in
-    'pending' or 'ready' transitions via 'dep_fail' → 'blocked-failed'
+    'open' forever. BFS over the dependents closure; every task still in
+    'open' or 'ready' transitions via 'dep_fail' → 'blocked-failed'
     (through the sole state writer). Idempotent: already-blocked/terminal
     dependents are skipped, so diamond shapes block each task exactly once
     and re-propagation returns []. Siblings (non-dependents) are untouched.
@@ -153,7 +153,7 @@ def propagate_failure(db, task_id: str) -> list[str]:
                 continue
             seen.add(dep_id)
             task = get_task(db, dep_id)
-            if task and task["state"] in ("pending", "ready"):
+            if task and task["state"] in ("open", "ready"):
                 task_transition(db, dep_id, "dep_fail")
                 blocked.append(dep_id)
             queue.append(dep_id)

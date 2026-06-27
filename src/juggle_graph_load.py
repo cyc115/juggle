@@ -142,7 +142,7 @@ def cmd_project_graph_load(args):
                     (task_topic[n["id"]], n["id"]),
                 )
                 db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
-                if prev["state"] != "pending":
+                if prev["state"] != "open":
                     db_graph.task_transition(db, n["id"], "reload", conn=conn)
                 updated += 1
         conn.commit()

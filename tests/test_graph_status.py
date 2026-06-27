@@ -27,7 +27,7 @@ def db(tmp_path: Path) -> JuggleDB:
     return d
 
 
-def _mk(db, task_id, state="pending", title=None, thread_id=None):
+def _mk(db, task_id, state="open", title=None, thread_id=None):
     g.create_task(
         db,
         task_id=task_id,
@@ -35,7 +35,7 @@ def _mk(db, task_id, state="pending", title=None, thread_id=None):
         title=title or f"Task {task_id}",
         prompt=f"do {task_id}",
     )
-    if state != "pending":
+    if state != "open":
         with db._connect() as conn:  # test seam: force a display state directly
             conn.execute(
                 "UPDATE graph_tasks SET state=?, thread_id=? WHERE id=?",
@@ -50,7 +50,7 @@ def _mk(db, task_id, state="pending", title=None, thread_id=None):
 def test_counts_from_states_aggregates():
     c = gs.counts_from_states(
         ["verified"] * 3
-        + ["pending"] * 8
+        + ["open"] * 8
         + ["failed-verify"]
         + ["ready", "ready"]
         + ["running"]
@@ -60,7 +60,7 @@ def test_counts_from_states_aggregates():
     assert c["failed"] == 1
     assert c["ready"] == 2
     assert c["running"] == 1
-    assert c["pending"] == 8
+    assert c["open"] == 8
 
 
 def test_counts_running_includes_dispatching_and_integrating():
@@ -96,13 +96,13 @@ def test_graph_counts_reads_db(db):
 
 def test_format_progress_spec_example():
     c = gs.counts_from_states(
-        ["verified"] * 3 + ["pending"] * 8 + ["failed-exec"] + ["ready"] * 2
+        ["verified"] * 3 + ["open"] * 8 + ["failed-exec"] + ["ready"] * 2
     )
     assert gs.format_progress(c) == "3/14 done, 1 failed, 2 ready"
 
 
 def test_format_progress_omits_zero_segments():
-    c = gs.counts_from_states(["verified", "pending"])
+    c = gs.counts_from_states(["verified", "open"])
     assert gs.format_progress(c) == "1/2 done"
 
 
