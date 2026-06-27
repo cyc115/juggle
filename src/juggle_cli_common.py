@@ -86,8 +86,11 @@ def _resolve_thread(db, thread_id_input: str) -> str:
     # Hex prefix (6+ chars, all hex digits)
     if all(c in "0123456789abcdef-" for c in s.lower()) and len(s) >= 6:
         with db._connect() as conn:
+            # P8 read-collapse: id-prefix resolves from the conversation node
+            # (id-only, status-agnostic; dual-write keeps node ids in lock-step).
             rows = conn.execute(
-                "SELECT id FROM threads WHERE id LIKE ?", (s.lower() + "%",)
+                "SELECT id FROM nodes WHERE id LIKE ? AND kind='conversation'",
+                (s.lower() + "%",),
             ).fetchall()
         if len(rows) == 1:
             return rows[0]["id"]

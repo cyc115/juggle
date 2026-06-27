@@ -811,7 +811,7 @@ def _handle_cost_cap(exc, pr_sections, branch, today, _all_sections, issues_file
 
 def _find_or_create_schedule_thread(db):
     try:
-        rows = db_query(db, "SELECT id FROM threads ORDER BY created_at DESC LIMIT 1")
+        rows = db_query(db, "SELECT id FROM nodes WHERE kind='conversation' ORDER BY created_at DESC LIMIT 1")
         return rows[0]["id"] if rows else None
     except Exception:
         return None
