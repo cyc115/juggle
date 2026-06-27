@@ -8,15 +8,18 @@
 
 **Tech Stack:** Python 3, SQLite (presence-based idempotent guarded migrations, no version ledger), pytest (`-n auto`), `juggle doctor --pre-p8-check --json` as the agent-verifiable gate.
 
+> **Revision 2 (2026-06-27) — addresses Plan-DA round 2 (R2-1..R2-6, `specs/reviews/2026-06-27-p8-spec-da.md`).** Changes from v1: (R2-1, CRITICAL) `background` is now a **first-class node state** with a **bijective** `status↔state` map — the v1 plan treated the lossy `background→running` collapse as a mechanical value-rename, which breaks the watchdog reaper and the two distinct cockpit panels; the conversation cluster now includes `watchdog`/`dispatch_core`/`cmd_context`/`context_startup`. (R2-2) Engine-delegation Tasks 1.3+1.4 are now ONE atomic commit (dangling `_TRANSITIONS`/`_EVENTS`/`_cx` import fixed in-commit). (R2-3) Step 4 gains an explicit pre-flip backup + reverse-backfill rollback. (R2-4) Migration 51 is fail-LOUD. (R2-5) Task 4.2's `db_mirror` caller list now includes `threads.py` + `cmd_threads.py`. (R2-6, accepted) M44/M51 double-migration noted.
+
 ## Global Constraints
 
 - **Full suite green at EVERY commit.** `make test` (== `uv run pytest -q`, `-n auto`) must pass before each commit. The `slow` marker tiers ONLY `make test-fast`; bare `pytest` and integrate run the FULL suite. A subsetting `test_cmd` is rejected fail-loud.
 - **Env vars (read at import, no defaults):** `CLAUDE_PLUGIN_DATA="$HOME/.claude/juggle"`, `JUGGLE_MAX_BACKGROUND_AGENTS=5`, `JUGGLE_MAX_THREADS=10`. Export before running tests.
-- **Migrations:** presence-based idempotent guarded functions (`PRAGMA table_info` / `sqlite_master` checks), no `schema_version` table. Additive/value migrations follow the fail-SOFT convention (`try/except sqlite3.OperationalError → _log.warning`). Destructive table-rebuild/drop migrations follow the fail-LOUD `BEGIN IMMEDIATE` convention (Migration 45, `migration_selfheal_status_check.py:35-69`). Highest existing migration = **50**; the next free number is **51**.
+- **Migrations:** presence-based idempotent guarded functions (`PRAGMA table_info` / `sqlite_master` checks), no `schema_version` table. Additive/value migrations follow the fail-SOFT convention (`try/except sqlite3.OperationalError → _log.warning`). Destructive table-rebuild/drop migrations follow the fail-LOUD `BEGIN IMMEDIATE` convention (Migration 45, `migration_selfheal_status_check.py:35-69`). Highest existing migration = **50**; the next free number is **51**. **Exception (R2-4):** a value migration that a *same-release behavior change* hard-depends on — e.g. Migration 51 (`pending→open`), which the renamed engine requires before it can read/transition any task row — is CORRECTNESS-CRITICAL and MUST follow the fail-LOUD `BEGIN IMMEDIATE` convention, NOT fail-soft. A swallowed skip would silently strand rows the new code can neither see nor transition (tasks stall with no error).
 - **Migration entrypoint:** all migrations auto-run via `JuggleDB.init_db()` → `run_migrations(conn)` (`dbops/migrations.py:22`), called by `doctor` in the orchestrator (non-agent) context behind `assert_migration_allowed` (G2). Never add an agent-reachable drop path.
 - **LOC / architecture gate:** target ≤300 lines/module. When a touched file has outgrown its purpose, EXTRACT first (separate refactor commit, tests green) THEN edit. Pure-mechanical refactor commits are separate from behavior commits.
 - **Regression-pin gate:** every bug/regression fix adds a pinned test that (a) fails RED on pre-fix code, (b) names the incident (date + symptom) in its docstring, (c) lives in the standard suite. Pins may not be deleted/weakened without explicit user approval.
 - **Vocabulary (baked decision):** ONE task-entry state = `'open'`. `'pending'` is deleted everywhere. ONE transition function = `db_node_machine.node_transition`. NO permanent alias-shim — consumers adopt `state`/`title`/`last_active_at` directly.
+- **`background` is a first-class node state (R2-1, baked decision):** the `status↔state` value map is BIJECTIVE over the live vocab — `active↔open`, `background↔background`, `running↔running`, `closed↔done`, `archived↔archived`. `background` is NOT collapsed into `running` (the collapse is lossy and breaks the watchdog reaper at `watchdog.py:875` plus the two adjacent cockpit panels 2a Running / 2b Background). `db_node_machine` gains `('background', …)` transitions so the single machine accepts the state without raising. Separating focus (foreground/background) from lifecycle into its own dimension is a FUTURE refinement, explicitly OUT of P8 scope.
 - **Cockpit changes:** after any cockpit layout/read change, run `uv run src/juggle_cli.py cockpit --smoke --all-viewports` and paste the summary as evidence.
 
 ---
@@ -31,6 +34,7 @@
 | Q4 | Delete dead `juggle_migrate_lifecycle.py` in the terminal-drop task. | DA L1 |
 | Engine | ONE engine: `db_graph.task_transition` / `db_topics.topic_transition` delegate to `db_node_machine.node_transition`; `nodes` is authoritative; `add_node` computes readiness via the unified machine. | DA C1 |
 | Table | Keep ONE wide `nodes` table (do NOT split per-kind); ADD `CHECK` constraints / a guard to enforce the kind discriminator. | DA M2 |
+| BG | `background` stays a FIRST-CLASS node state — **bijective** map (`active↔open, background↔background, running↔running, closed↔done, archived↔archived`); `db_node_machine` gains `('background', …)` transitions; conversation background-ness is READ from `nodes.state='background'`, NOT derived from the agent binding (deriving is the FUTURE focus/lifecycle split, out of P8 scope). | DA-R2 R2-1 |
 
 ---
 
@@ -40,10 +44,10 @@ Each step drives a NAMED counter strictly toward its floor; the suite stays gree
 
 | Step | Findings | Monotonic counter (agent-verifiable) | Floor |
 |------|----------|--------------------------------------|-------|
-| 1 | C3, C1 | `grep -rnE "'pending'" src/ --include='*.py'` (live) **and** count of transition tables (`_TRANSITIONS` deleted) | pending→0 live; 1 machine |
-| 2 | H1 | `grep -rn '"active": "open"' src/` (duplicate forward-maps) | 3 → 1 |
-| 3 | C2 (conv), H2 | `doctor --pre-p8-check --json` `.static.fail` (conversation-cluster legacy refs cut) + shim deleted | strictly ↓ |
-| 4 | C2 (graph), C1 (write) | `doctor --pre-p8-check --json` `.static.fail` → **0**; `INSERT INTO graph_*` in `add_node` = 0 | static.fail → 0 |
+| 1 | C3, C1, **R2-2, R2-4** | `grep -rnE "'pending'" src/ --include='*.py'` (live) **and** count of transition tables (`_TRANSITIONS` deleted). R2-2: engine-delegation is ONE atomic commit (no dangling import). R2-4: M51 fail-LOUD. | pending→0 live; 1 machine |
+| 2 | H1, **R2-1** | `grep -rn '"active": "open"' src/` (duplicate forward-maps) **and** `background` is bijective: `state_for_status('background')=='background'` AND `status_for_state('background')=='background'` (round-trips losslessly) | 3 → 1 maps; background bijective |
+| 3 | C2 (conv), H2, **R2-1** | `doctor --pre-p8-check --json` `.static.fail` (conversation-cluster legacy refs cut, **incl. watchdog/dispatch_core/cmd_context/context_startup**) + shim deleted; reaper + cockpit 2a/2b counts unchanged pre/post flip | strictly ↓ |
+| 4 | C2 (graph), C1 (write), **R2-3, R2-5** | `doctor --pre-p8-check --json` `.static.fail` → **0**; `INSERT INTO graph_*` in `add_node` = 0; `grep -rl db_mirror src/` → empty (R2-5); pre-flip backup artifact present + reverse-backfill documented (R2-3) | static.fail → 0 |
 | 5 | H4, M4 | `CREATE_NODES` column count (+4); gate's `excluded_files` + `import_refs` reported | DDL complete; gate honest |
 | 6 | M1, M2, M3, L1, H5 | legacy tables present (`p8_drop_ready` → `already-dropped`); `test -f juggle_migrate_lifecycle.py` false; spec no longer `LOCKED`-stale | 0 legacy tables |
 
@@ -124,6 +128,7 @@ def _mk(conn):
     conn.execute("INSERT INTO graph_tasks VALUES ('t1','pending'),('t2','ready')")
     conn.execute("INSERT INTO graph_topics VALUES ('p1','pending',0)")
     conn.execute("INSERT INTO nodes VALUES ('t1','task',NULL,'pending'),('c1','conversation',NULL,'open')")
+    conn.commit()   # R2-4: migrate now uses BEGIN IMMEDIATE — setup must be committed first
 
 def test_migration_51_maps_pending_to_open():
     """2026-06-27 P8 C3: existing DBs store task state 'pending'; the unified
@@ -143,6 +148,28 @@ def test_migration_51_idempotent():
     _mk(conn)
     migrate_51_state_vocab(conn); migrate_51_state_vocab(conn)   # second run is a no-op
     assert conn.execute("SELECT COUNT(*) FROM graph_tasks WHERE state='pending'").fetchone()[0] == 0
+
+
+def test_migration_51_fail_loud_on_lock(tmp_path):
+    """2026-06-27 P8 R2-4: M51 must FAIL-LOUD (propagate) on write-lock contention,
+    never silently skip — a swallowed skip strands 'pending' rows the renamed engine
+    cannot process. RED on the v1 fail-soft code (it returns without raising)."""
+    import pytest
+    dbf = str(tmp_path / "m51.db")
+    setup = sqlite3.connect(dbf)
+    setup.execute("CREATE TABLE graph_tasks (id TEXT, state TEXT)")
+    setup.execute("INSERT INTO graph_tasks VALUES ('t1','pending')")
+    setup.commit()
+    holder = sqlite3.connect(dbf, timeout=0); holder.isolation_level = None
+    holder.execute("BEGIN IMMEDIATE")                 # hold the write lock
+    victim = sqlite3.connect(dbf, timeout=0)
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            migrate_51_state_vocab(victim)            # must RAISE, not swallow
+    finally:
+        holder.execute("ROLLBACK")
+    # the still-pending row proves the (failed) migration did NOT partially commit:
+    assert setup.execute("SELECT state FROM graph_tasks WHERE id='t1'").fetchone()[0] == "pending"
 ```
 
 - [ ] **Step 2: Run test to verify it fails** — `uv run pytest tests/test_migration_51_state_vocab.py -q` → FAIL (module missing).
@@ -151,13 +178,21 @@ def test_migration_51_idempotent():
 
 ```python
 # src/dbops/migration_51_state_vocab.py
-"""Migration 51 (P8 C3): unify the task-entry vocab to 'open'.
+"""Migration 51 (P8 C3 + R2-4): unify the task-entry vocab to 'open' — FAIL-LOUD.
 
 Rewrites the legacy 'pending' task/topic state to 'open' in graph_tasks,
 graph_topics, and the mirrored task nodes, so the unified node_transition
-engine (which only models 'open') never meets a 'pending' row. Idempotent;
-value-only (no schema change). Apply via juggle doctor; never run directly
-against the shared prod DB.
+engine (which only models 'open') never meets a 'pending' row. Idempotent
+(WHERE state='pending' -> second run no-ops); value-only (no schema change).
+
+FAIL-LOUD (R2-4): the SAME-RELEASE engine rename (Tasks 1.3+1.4) hard-depends on
+this migration having applied. A fail-soft swallow would silently strand
+'pending' rows the renamed engine can neither see (ready_eligible) nor transition
+(node_transition has no 'pending' entry) -> tasks stall with no error. So we take
+the write lock up front with BEGIN IMMEDIATE (exactly like Migration 45,
+migration_selfheal_status_check.py:38-69) and let lock contention PROPAGATE; the
+init_db caller aborts the upgrade on the raise. Apply via juggle doctor (behind
+assert_migration_allowed); never run directly against the shared prod DB.
 """
 from __future__ import annotations
 import logging
@@ -169,6 +204,13 @@ _log = logging.getLogger(__name__)
 def migrate_51_state_vocab(conn: sqlite3.Connection) -> None:
     tables = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'")}
+    # Pre-Migration-44 DB without any target table -> return BEFORE taking the
+    # lock so a brand-new DB upgrade is a cheap no-op (not a spurious lock grab).
+    if not ({"graph_tasks", "graph_topics", "nodes"} & tables):
+        return
+    prev_isolation = conn.isolation_level
+    conn.isolation_level = None              # explicit transaction control
+    conn.execute("BEGIN IMMEDIATE")          # write lock up front; raises on contention (fail-LOUD)
     try:
         if "graph_tasks" in tables:
             conn.execute("UPDATE graph_tasks SET state='open' WHERE state='pending'")
@@ -177,10 +219,13 @@ def migrate_51_state_vocab(conn: sqlite3.Connection) -> None:
         if "nodes" in tables:
             conn.execute(
                 "UPDATE nodes SET state='open' WHERE kind='task' AND state='pending'")
-        conn.commit()
+        conn.execute("COMMIT")
         _log.info("Migration 51: task-state vocab unified pending->open")
-    except sqlite3.OperationalError as e:   # fail-soft (value-migration convention)
-        _log.warning("Migration 51 (state vocab) skipped: %s", e)
+    except Exception:
+        conn.execute("ROLLBACK")             # fail-LOUD: abort the upgrade, do NOT swallow
+        raise
+    finally:
+        conn.isolation_level = prev_isolation
 ```
 
 Wire it (`migrations_recent.py`, immediately after the migration-50 block at `:328`):
@@ -193,6 +238,8 @@ Wire it (`migrations_recent.py`, immediately after the migration-50 block at `:3
 - [ ] **Step 5: Commit** — `git commit -m "p8(vocab): Migration 51 — unify task-state pending->open for existing DBs [C3]"`
 
 **Acceptance gate (agent):** `uv run python src/juggle_cli.py doctor --dry-run` succeeds against a tmp DB seeded with `pending` rows, and a follow-up `SELECT DISTINCT state FROM graph_tasks` returns no `pending`.
+
+> **Note (R2-6, accepted — no action):** Migration 44 (`migrations_nodes.py`) backfills task nodes with `'pending'`, and M51 then rewrites them to `'open'` on every `init_db` (both idempotent/presence-guarded). This is a permanent double value-migration and the reason the Step-1 `'pending'` grep must keep excluding `migrations_nodes.py`. It is HARMLESS (M51's `WHERE state='pending'` no-ops once converged) and not worth the risk of editing M44's existing pins. Accepted as-is; revisit only if M44's pins later need touching for another reason.
 
 ---
 
@@ -213,6 +260,8 @@ Wire it (`migrations_recent.py`, immediately after the migration-50 block at `:3
 ---
 
 ### Task 1.3 — Rename `db_graph` vocab `pending → open` and delegate `task_transition` to `node_transition`
+
+> **⚠️ ATOMIC COMMIT (R2-2): Tasks 1.3 and 1.4 land as ONE git commit.** `db_topics.py:15` does `from dbops.db_graph import _EVENTS, _TRANSITIONS, _cx` at **module-load time** (used at `:35` `_EVENTS`, `:41,46` `_TRANSITIONS`, and `_cx` at `:64,74,83,128,235`). Deleting `_TRANSITIONS`/`_EVENTS` from `db_graph` (this task) WITHOUT fixing that importer (Task 1.4) leaves `import dbops.db_topics` raising `ImportError` at the in-between commit — every test that transitively imports it is collect-error RED, violating green-per-commit. So **do NOT commit at the end of 1.3**; implement 1.3 + 1.4 together and commit once at the end of 1.4. **`_cx` must REMAIN exported by `db_graph`** (db_topics still imports it) — delete ONLY `_TRANSITIONS` and `_EVENTS`. The "`_TRANSITIONS` greppably gone" acceptance check moves to the end of Task 1.4. (This supersedes v1's D7 "transitional re-export" suggestion, which contradicted 1.3's own acceptance gate.)
 
 **Files:**
 - Modify: `src/dbops/db_graph.py` (`VALID_STATES`, `create_task`, `ready_eligible`, `recompute_ready`, `task_transition`; DELETE `_TRANSITIONS` + `_EVENTS`)
@@ -276,16 +325,16 @@ def test_db_graph_has_no_local_transition_table():
     - `ready_eligible` / `recompute_ready` `state='pending'` → `state='open'`.
   - `schema_graph.py:20,43` `DEFAULT 'pending'` → `DEFAULT 'open'`.
 - [ ] **Step 4: Run** `uv run pytest tests/test_db_graph.py tests/test_node_transition.py tests/test_graph_marking.py -q` → PASS.
-- [ ] **Step 5: Commit** — `git commit -m "p8(engine): db_graph delegates to node_transition; vocab open [C1,C3]"`
+- [ ] **Step 5: DO NOT COMMIT (R2-2).** Leave the working tree dirty and proceed straight to Task 1.4 — 1.3 + 1.4 are one atomic commit (landed at the end of 1.4). Run `uv run pytest tests/test_db_graph.py tests/test_node_transition.py tests/test_graph_marking.py -q` to confirm the db_graph half is internally consistent, but expect `import dbops.db_topics` to still be broken until 1.4 fixes its importer.
 
-**Acceptance gate (agent):** `grep -rn "_TRANSITIONS" src/dbops/db_graph.py` → empty; `grep -n "'pending'" src/dbops/db_graph.py src/dbops/schema_graph.py` → empty.
+**Acceptance gate (agent, checked at the END of Task 1.4 — the shared commit):** `grep -rn "_TRANSITIONS\b" src/dbops/db_graph.py` → empty (only `_NODE_TRANSITIONS` in db_node_machine remains); `grep -n "'pending'" src/dbops/db_graph.py src/dbops/schema_graph.py` → empty; **`grep -n "def _cx\|_cx" src/dbops/db_graph.py` still returns `_cx` (kept for db_topics)**; `python -c "import dbops.db_topics"` exits 0.
 
 ---
 
 ### Task 1.4 — Rename `db_topics` vocab + delegate `topic_transition`; fix `db_graph_marking` walkers
 
 **Files:**
-- Modify: `src/dbops/db_topics.py:15` (stop `from dbops.db_graph import _EVENTS, _TRANSITIONS`; import `node_transition`/`legal_events`), `:33-46` (`topic_transition` delegates), `:76` (INSERT `'pending'`→`'open'`), `:197` (`_DISPATCHABLE_TASK_STATES`), `:214,238` (`state='pending'`), `:253,297,329` (`_ADVANCE_*` / propagate `pending`→`open`)
+- Modify: `src/dbops/db_topics.py:15` — change `from dbops.db_graph import _EVENTS, _TRANSITIONS, _cx` to `from dbops.db_graph import _cx` (KEEP `_cx`; drop `_EVENTS`/`_TRANSITIONS`) and add `from dbops.db_node_machine import node_transition, InvalidTransition, legal_events`; `:33-46` (`topic_transition` delegates to `node_transition` with `kind='task'`, replacing the `_EVENTS`/`_TRANSITIONS` lookups), `:76` (INSERT `'pending'`→`'open'`), `:197` (`_DISPATCHABLE_TASK_STATES`), `:214,238` (`state='pending'`), `:253,297,329` (`_ADVANCE_*` / propagate `pending`→`open`)
 - Modify: `src/dbops/db_graph_marking.py:19,61` (`_ADVANCE_TO_INTEGRATING`/`_ADVANCE_TO_RUNNING` keys `"pending"`→`"open"`), `:119,156` (`("blocked-failed","pending")`/`("pending","ready")` membership → `"open"`)
 - Test: `tests/test_graph_marking.py`, `tests/test_graph_spec_topics.py`, `tests/test_graph_reconcile.py`
 
@@ -301,7 +350,7 @@ def test_marking_walks_from_open_not_pending(tmp_db):
 - [ ] **Step 2: Run** → FAIL.
 - [ ] **Step 3: Implement** the renames above. `db_topics.topic_transition` mirrors the `db_graph.task_transition` delegation (kind `"task"`; topics are `kind='task' AND parent_id IS NULL`). Keep `db_topics` writing `graph_topics` + lockstep `nodes` (Task 1.5).
 - [ ] **Step 4: Run** `uv run pytest tests/test_graph_marking.py tests/test_graph_spec_topics.py tests/test_graph_reconcile.py tests/test_db_mirror.py -q` → PASS, then FULL `make test`.
-- [ ] **Step 5: Commit** — `git commit -m "p8(engine): db_topics + marking delegate/rename to open [C1,C3]"`
+- [ ] **Step 5: Commit BOTH 1.3 + 1.4 as ONE commit (R2-2)** — `git add -A && git commit -m "p8(engine): db_graph+db_topics+marking delegate to node_transition; vocab open [C1,C3,R2-2]"`. Before committing, run `uv run pytest -q --co 2>&1 | grep -i "error" ; echo "collect-exit=$?"` → no import/collection errors, then FULL `make test` green.
 
 **Acceptance gate (agent):** `grep -rnE "'pending'" src/dbops/db_topics.py src/dbops/db_graph_marking.py` → empty; `grep -n "_TRANSITIONS" src/dbops/db_topics.py` → empty.
 
@@ -344,11 +393,100 @@ def test_add_node_task_state_atomic_no_drift(tmp_db):
 
 ---
 
-# STEP 2 — Centralize the vocab maps in `node_translation` [H1]
+# STEP 2 — Centralize the vocab maps + make `background` first-class [H1, R2-1]
 
-**Outcome:** ONE module owns the `status↔state` value map (both directions); `db_node_machine`, `migrations_nodes` import it; the SQL `CASE` is GENERATED from the dict (no hand-synced second encoding); the divergent `db_mirror._THREAD_TO_STATE` is flagged for elimination in Step 4 (it is a semantically distinct thread-status→TOPIC-state map and dies with the module).
+**Outcome:** ONE module owns the `status↔state` value map (both directions); `db_node_machine`, `migrations_nodes` import it; the SQL `CASE` is GENERATED from the dict (no hand-synced second encoding); the divergent `db_mirror._THREAD_TO_STATE` is flagged for elimination in Step 4 (it is a semantically distinct thread-status→TOPIC-state map and dies with the module). **AND (R2-1):** `background` becomes a first-class node state so the `status↔state` map is BIJECTIVE over the live vocab (`background↔background`, not the lossy `background→running`), and `db_node_machine` is taught the `('background', …)` transitions so the single machine accepts it. This MUST land before Step 3 (the conversation flip reads `nodes.state` for background-ness).
 
-**Step-2 monotonic gate:** `grep -rn '"active": "open"' src/ --include='*.py'` → **1** (was 3).
+**Step-2 monotonic gate:** `grep -rn '"active": "open"' src/ --include='*.py'` → **1** (was 3); AND `background` round-trips losslessly — `state_for_status('background')=='background'` and `status_for_state('background')=='background'`; AND `node_transition('background','archive','conversation')` does not raise.
+
+---
+
+### Task 2.0 — Add `background` as a first-class bijective node state [R2-1]
+
+**Files:**
+- Modify: `src/dbops/node_translation.py:5-9` (`STATUS_TO_STATE`: `"background": "running"` → `"background": "background"`), `:20-21` (`STATE_TO_STATUS`: add `"background": "background"`), `:16-19` (update the "bijective" comment to INCLUDE `background`)
+- Modify: `src/dbops/db_node_machine.py` (add the `('background', …)` transitions + the `('open','dispatch_bg')` entry to `_NODE_TRANSITIONS`; extend the `conversation` set in `_KIND_LEGAL`; set `_THREAD_STATUS_TO_NODE_STATE["background"] = "background"` for interim consistency until Task 2.2 re-derives it)
+- Test (REWRITE the two existing pins — see authorization note): `tests/test_node_translation.py` (`test_status_to_state_full_map`, `test_state_for_status_known_values`), `tests/test_node_transition.py` (the `("background", "running")` parametrize row)
+- Test (new pins): `tests/test_node_translation.py`, `tests/test_node_transition.py`
+
+**Interfaces:**
+- Produces: `state_for_status('background')=='background'`, `status_for_state('background')=='background'`; `node_transition('background', <legal event>, 'conversation')` no longer raises.
+
+> **Pin-rewrite authorization (R2-1):** `test_node_translation.py:8` (`test_status_to_state_full_map`), `:23` (`test_state_for_status_known_values`), and `test_node_transition.py:164` (the `("background","running")` parametrize row) currently pin the OLD lossy `background→running`. R2-1 is the user-sanctioned decision to change that behavior, so these pins are **REWRITTEN in place** (not deleted) to assert the new bijective `background→background` — same seam, corrected value (satisfies the regression-pin gate). **Do NOT touch** `test_data_migration.py:50 test_background_maps_to_running` — it pins the SEPARATE, dying `juggle_migrate_lifecycle` migration (threads-level legacy collapse) and is removed *with that module* in Task 6.3.
+
+- [ ] **Step 1: Write/rewrite the failing tests**
+
+```python
+# tests/test_node_translation.py
+#  (a) REWRITE test_status_to_state_full_map's expected dict: "background": "background"
+#  (b) REWRITE test_state_for_status_known_values: state_for_status("background") == "background"
+#  (c) ADD the bijection pin:
+def test_status_state_bijective_over_live_vocab():
+    """2026-06-27 P8 R2-1: status<->state is bijective over the LIVE vocab; a
+    'background' conversation round-trips losslessly (it was collapsed to 'running',
+    which broke the watchdog reaper + the two distinct cockpit panels)."""
+    from dbops.node_translation import STATUS_TO_STATE, STATE_TO_STATUS
+    for status in ("active", "background", "running", "closed", "archived"):
+        state = STATUS_TO_STATE[status]
+        assert STATE_TO_STATUS[state] == status, f"{status!r} not invertible (state={state!r})"
+```
+
+```python
+# tests/test_node_transition.py
+#  (d) REWRITE the parametrize row ("background", "running") -> ("background", "background")
+#  (e) ADD the machine-accepts-background pin:
+def test_background_state_accepted_by_machine():
+    """2026-06-27 P8 R2-1: the unified machine must accept the 'background' state for
+    conversation nodes — it must NOT raise InvalidTransition on a live state (the C3
+    failure mode, now for background)."""
+    from dbops.db_node_machine import node_transition
+    assert node_transition("open", "dispatch_bg", "conversation") == "background"
+    assert node_transition("background", "foreground", "conversation") == "open"
+    assert node_transition("background", "archive", "conversation") == "archived"
+```
+
+- [ ] **Step 2: Run** `uv run pytest tests/test_node_translation.py tests/test_node_transition.py -q` → FAIL (map still collapses background→running; machine has no `('background', …)` key).
+
+- [ ] **Step 3: Implement**
+
+`node_translation.py`:
+```python
+STATUS_TO_STATE = {
+    "active": "open", "closed": "done", "background": "background",
+    "running": "running", "failed": "failed-exec", "done": "done",
+    "archived": "archived",
+}
+# Reverse value-map state -> status. Bijective over the LIVE vocab
+# {active,background,running,closed,archived} <-> {open,background,running,done,archived};
+# legacy-only inputs (failed, done) are non-live pass-throughs (set_thread_status cannot
+# emit them) and are out of the bijective set.
+STATE_TO_STATUS = {"open": "active", "background": "background", "running": "running",
+                   "done": "closed", "archived": "archived"}
+```
+
+`db_node_machine.py` — add to `_NODE_TRANSITIONS` (after the `done` block):
+```python
+    # background — conversation agent dispatched in the background (R2-1).
+    # Kept DISTINCT from 'running' so the watchdog reaper + cockpit 2a/2b stay correct.
+    ("open",       "dispatch_bg"): "background",
+    ("background", "foreground"):  "open",       # agent completes / user resumes -> active
+    ("background", "answer"):      "done",        # bg agent answered/closed the conversation
+    ("background", "archive"):     "archived",
+```
+extend the conversation legal set:
+```python
+    "conversation": frozenset({"answer", "archive", "dispatch_bg", "foreground"}),
+```
+and `_THREAD_STATUS_TO_NODE_STATE["background"] = "background"` (interim; Task 2.2 deletes this dict and re-derives `thread_status_to_node_state` from `STATUS_TO_STATE`, which now yields `background`).
+
+- [ ] **Step 4: Run** `uv run pytest tests/test_node_translation.py tests/test_node_transition.py -q` → PASS, then FULL `make test` (a `conv_node_mirror`-written background thread now mirrors to `nodes.state='background'`; confirm no test asserted the old `'running'` mirror value — there is none in the suite, but run full to be sure).
+- [ ] **Step 5: Commit** — `git commit -m "p8(state): background is a first-class bijective node state [R2-1]"`
+
+**Acceptance gate (agent):**
+```bash
+python -c "from dbops.node_translation import STATUS_TO_STATE as f, STATE_TO_STATUS as r; assert all(r[f[s]]==s for s in ('active','background','running','closed','archived')), 'not bijective'; print('bijective OK')"
+python -c "from dbops.db_node_machine import node_transition; node_transition('background','archive','conversation'); node_transition('open','dispatch_bg','conversation'); print('machine accepts background')"
+```
 
 ---
 
@@ -418,6 +556,8 @@ def test_no_duplicate_forward_map():
 
 **Outcome:** the conversation read-source flips from `threads` to `nodes` AND its consumers adopt `state`/`title`/`last_active_at` IN THE SAME COMMITS (the rename is inseparable from the flip — see DA D1); the legacy conversation WRITES (`threads`) are cut; the unused alias-shim is deleted; conversation `except sqlite3.OperationalError: pass` divergence-hiders are removed.
 
+**Expanded cluster (R2-1):** v1 omitted four conversation-cluster sites that read/write `background`. They are added here: the **watchdog reaper** (`juggle_watchdog.py:875` `SELECT * FROM threads WHERE status='background'`), the **background writer** `juggle_dispatch_core.py:103` (plus watchdog rebinds `:761,:955`), `juggle_cmd_context.py:145`, and `juggle_context_startup.py:32,200`. Because Task 2.0 made `background` a first-class state, each of these flips to `nodes` with the state PRESERVED (`state='background'`, NOT collapsed to `running`) — so the reaper still selects exactly the dispatched-agent conversations and the two cockpit panels (2a `state='running'`, 2b `state='background'`) stay disjoint. The Step-4 `.static.fail==0` gate WOULD otherwise force an unplanned ad-hoc flip of `watchdog:875`/`cockpit:276` with the naive map — that is the concrete break R2-1 prevents.
+
 **Why a cluster, not a phase:** conversation status was historically written only to `threads`; a read flipped to `nodes` before the write flips reads stale state. The whole conversation cluster (write→nodes, read→nodes, consumer rename) is ONE atomic unit (DA H3). Dual-write already added the `nodes` mirror (`conv_node_mirror`), so the write side is staged — this step makes `nodes` the SOLE conversation writer and flips reads+consumers together.
 
 **Step-3 monotonic gate:** `doctor --pre-p8-check --json` `.static.fail` strictly decreases (conversation-cluster `FROM threads` refs removed); `grep -rln "CONV_ALIAS_SHIM\|STATE_AS_STATUS_SQL" src/` → only files that legitimately reverse-map for a real reason (target: shim deleted).
@@ -448,11 +588,18 @@ def test_alias_shim_deleted():
 ### Task 3.1 — Flip conversation consumers to `nodes` + rename columns (atomic, per consumer)
 
 **Files (consumers reading conversation rows):**
-- `src/juggle_cockpit_model.py:264-290` (the 5 `SELECT * FROM threads WHERE status='…'` panels → `FROM nodes WHERE kind='conversation' AND state='…'`, value-mapped)
-- `src/juggle_cmd_threads.py`, `src/juggle_cmd_projects.py`, `src/juggle_cmd_agents_lifecycle.py`, `src/juggle_cmd_runs.py`, `src/juggle_cmd_selfheal.py`, `src/juggle_project_summary.py` (`row['status']`/`['topic']`/`['last_active']` → `row['state']`/`['title']`/`['last_active_at']`, plus value compares `== 'active'` → `== 'open'` etc.)
-- Test: `tests/test_cockpit_model.py`, `tests/test_p8_conv_read_collapse.py`, `tests/test_cmd_threads.py` (+ per-consumer tests)
+- `src/juggle_cockpit_model.py` — panel 2a `:270` (`status='running'` → `state='running'`), panel 2b `:276` (`status='background'` → `state='background'`), and the other `SELECT * FROM threads WHERE status='…'` panels (`:264-290`) → `FROM nodes WHERE kind='conversation' AND state='…'`, value-mapped; plus the tier helper `:123` `if status == "background"` → `if state == "background"`. **2a and 2b MUST stay disjoint** (they only do because `background` is now its own state — Task 2.0).
+- `src/juggle_cmd_threads.py`, `src/juggle_cmd_projects.py`, `src/juggle_cmd_agents_lifecycle.py`, `src/juggle_cmd_runs.py`, `src/juggle_cmd_selfheal.py`, `src/juggle_project_summary.py` (`row['status']`/`['topic']`/`['last_active']` → `row['state']`/`['title']`/`['last_active_at']`, plus value compares `== 'active'` → `== 'open'`, `== 'background'` → `== 'background'`)
+- **R2-1 ADDED conversation-cluster sites (v1 omitted these):**
+  - `src/juggle_watchdog.py:875` — the agent-reaper `SELECT * FROM threads WHERE status='background'` → `FROM nodes WHERE kind='conversation' AND state='background'` (the `:879` join `agents WHERE status='busy'` is unchanged; the reaper still means "dispatched conversations with a busy agent"). Watchdog rebind WRITES `:761,:955` `update_thread(status="background")` flip to the node state-writer with `state='background'`.
+  - `src/juggle_dispatch_core.py:103` — the background WRITER `db.update_thread(thread_id, status="background")` flips to writing `nodes.state='background'` (this is part of why the cluster is atomic: writer + reaper + panels co-commit).
+  - `src/juggle_cmd_context.py:145` (`elif status == "background"`) and `src/juggle_context_startup.py:32,200` (`if status == "background"`) → branch on `state == "background"`.
+  - `src/dbops/threads.py:431-465` `get_archive_candidates` — reads `status`; `status NOT IN ('background','waiting')` and `status == 'idle'` (`:460,455`). **`'waiting'`/`'idle'` are NOT in `STATUS_TO_STATE`** (no node-state equivalent). Step 1: `grep -rnE "update_thread\([^)]*(waiting|idle)|set_thread_status\([^)]*(waiting|idle)|status *= *['\"](waiting|idle)" src/` — if NO writer sets them (expected: they are display-only emoji states, never stored), DROP the dead `'waiting'`/`'idle'` arms when flipping to `state NOT IN ('background',)`; if a writer DOES set them, add the missing key to `STATUS_TO_STATE` first (fail-loud `state_for_status` would otherwise KeyError on such a row).
+  - **`src/dbops/slug_alloc.py:26` `LIVE_SLUG_STATES = ("active","running","background")`** — the canonical live-thread set; flips to the node-state set `("open","running","background")`. `_live_labels`/`next_wheel_slug` (`:34,:117`) and `src/dbops/threads.py:89,96,242,367` (via `_OPEN_THREAD_STATES = LIVE_SLUG_STATES`) flip `threads`→`nodes WHERE kind='conversation'`.
+  - **`src/dbops/migrations_recent.py:362` — the partial UNIQUE INDEX `idx_threads_live_label ON threads(user_label) WHERE status IN ('active','running','background')`.** A NEW conversation-cluster migration must reproduce it on `nodes(user_label) WHERE kind='conversation' AND state IN ('open','running','background')`. **⚠️ This is the slug-collision guard — the naive `background→running` collapse would drop `background` from the index predicate and recycle a LIVE background agent's slug onto a new thread (the exact pre-2026-06-21 incident the `next_wheel_slug` docstring names). This is the single most concrete proof that R2-1's first-class `background` is load-bearing, not cosmetic.** The existing pin `tests/test_thread_label_alloc_atomic.py` ("'background' is a LIVE state — its slug must not be recycled") is REWRITTEN to assert the same invariant over `nodes` (regression-pin gate: rewrite through the new seam, do not delete).
+- Test: `tests/test_cockpit_model.py`, `tests/test_p8_conv_read_collapse.py`, `tests/test_cmd_threads.py`, `tests/watchdog/test_watchdog.py` (+ the R2-1 reaper pin below, + per-consumer tests)
 
-**THIS IS NOT A PURE MECHANICAL RENAME (DA D3).** Each `row['status']` flip carries a VALUE translation (`'active'→'open'`, `'closed'→'done'`, `'background'→'running'`). Do each consumer as its own TDD task: write a test asserting the consumer's behavior over a `nodes`-seeded DB, flip the SELECT + the bracket access + the value compares together, run.
+**THIS IS NOT A PURE MECHANICAL RENAME (DA D3).** Each `row['status']` flip carries a VALUE translation (`'active'→'open'`, `'closed'→'done'`, **`'background'→'background'` — bijective, NOT collapsed to `running` per R2-1/Task 2.0**, `'running'→'running'`, `'archived'→'archived'`). Do each consumer as its own TDD task: write a test asserting the consumer's behavior over a `nodes`-seeded DB, flip the SELECT + the bracket access + the value compares together, run. **Use `node_translation.STATUS_TO_STATE` for every value compare — never re-type the map inline.**
 
 - [ ] **Step 1: Write the failing test (per consumer)** — e.g. cockpit list:
 ```python
@@ -466,12 +613,42 @@ def test_cockpit_lists_active_conversations_from_nodes(tmp_db):
     model = build_model(tmp_db)
     assert any(r["title"] == "alpha" for r in model.active_conversations)
 ```
+
+```python
+# tests/watchdog/test_watchdog.py  (add) — the R2-1 reaper/panel pin
+def test_reaper_distinguishes_background_from_live_conversation(tmp_db):
+    """2026-06-27 P8 R2-1: the background-collapse bug. The watchdog reaper must
+    select dispatched-agent (background) conversation nodes and EXCLUDE a live
+    interactive conversation. Pre-fix (background->running collapse) this query
+    would match both running and background, sweeping live conversations."""
+    from juggle_add_node import add_node
+    bg = add_node(tmp_db, kind="conversation", title="bg", project_id="INBOX")
+    live = add_node(tmp_db, kind="conversation", title="live", project_id="INBOX")
+    # dispatch flips bg's node to state='background'; live stays 'open'
+    tmp_db.update_node_state(bg["node_id"], "background")        # via the node state-writer
+    rows = tmp_db._connect().execute(
+        "SELECT id FROM nodes WHERE kind='conversation' AND state='background'").fetchall()
+    ids = {r[0] for r in rows}
+    assert bg["node_id"] in ids and live["node_id"] not in ids
+
+def test_cockpit_panels_2a_2b_disjoint(tmp_db):
+    """2026-06-27 P8 R2-1: panels 2a (running) and 2b (background) must be disjoint —
+    only true because 'background' is its own node state (Task 2.0)."""
+    conn = tmp_db._connect()
+    running = {r[0] for r in conn.execute("SELECT id FROM nodes WHERE kind='conversation' AND state='running'")}
+    background = {r[0] for r in conn.execute("SELECT id FROM nodes WHERE kind='conversation' AND state='background'")}
+    assert running.isdisjoint(background)
+```
+(`update_node_state`/the node state-writer name: use whatever Task 1.5 named the writer — `write_state(conn, node_id, 'background', now=…)`; adjust the helper call to the real seam.)
 - [ ] **Step 2: Run** → FAIL.
 - [ ] **Step 3: Implement** — flip that consumer's SELECT to `nodes` with the `kind='conversation'` discriminator and the value-mapped state predicate (`node_translation.STATUS_TO_STATE`), and rename its row accesses. Repeat per consumer.
 - [ ] **Step 4: Run** the consumer's tests, then FULL `make test`. For cockpit, also `uv run src/juggle_cli.py cockpit --smoke --all-viewports` and paste the summary.
 - [ ] **Step 5: Commit** per consumer — `git commit -m "p8(conv-flip): <consumer> reads nodes, adopts state/title [C2,H2]"`
 
-**Acceptance gate (agent):** after all conversation consumers flip — `grep -rnE "\['status'\]|\['topic'\]|\['last_active'\]" src/juggle_cmd_threads.py src/juggle_cmd_projects.py src/juggle_cmd_agents_lifecycle.py src/juggle_cmd_runs.py src/juggle_cmd_selfheal.py src/juggle_project_summary.py src/juggle_cockpit_model.py` → **empty**.
+**Acceptance gate (agent):** after all conversation consumers flip —
+- `grep -rnE "\['status'\]|\['topic'\]|\['last_active'\]" src/juggle_cmd_threads.py src/juggle_cmd_projects.py src/juggle_cmd_agents_lifecycle.py src/juggle_cmd_runs.py src/juggle_cmd_selfheal.py src/juggle_project_summary.py src/juggle_cockpit_model.py src/juggle_cmd_context.py src/juggle_context_startup.py` → **empty**.
+- **R2-1 background:** `grep -rnE "status *== *['\"]background['\"]|status='background'|FROM threads WHERE status='background'" src/juggle_watchdog.py src/juggle_cockpit_model.py src/juggle_cmd_context.py src/juggle_context_startup.py src/juggle_cmd_threads.py src/juggle_dispatch_core.py` → **empty** (all flipped to `state='background'` on `nodes`).
+- `test_reaper_distinguishes_background_from_live_conversation` + `test_cockpit_panels_2a_2b_disjoint` pass — the reaper set contains the busy-agent conversation and excludes the live one; panels 2a/2b are disjoint (reaper + cockpit counts unchanged pre/post flip, the R2-1 Agent-verify).
 
 ---
 
@@ -481,6 +658,7 @@ def test_cockpit_lists_active_conversations_from_nodes(tmp_db):
 - Modify: `src/dbops/threads.py` (make the `nodes` write the SOLE conversation write; the `threads` INSERT/UPDATE alongside `mirror_conv_*` is removed once reads no longer touch `threads`), `:108-109` remove `except sqlite3.OperationalError: pass`
 - Modify: `src/dbops/conv_node_mirror.py:32` — narrow/remove the blanket `except OperationalError: pass` so a real schema gap fails LOUD (the H4 fix in Step 5 makes the DDL complete, so this no longer needs to be swallowed)
 - Modify: `src/dbops/messages.py:77-78` remove the `except … pass` hider once `nodes` is guaranteed present
+- **R2-1 background writers** — flip the three `update_thread(..., status="background")` writers to also write `nodes.state='background'` via the node state-writer (Task 1.5 `write_state`): `src/juggle_dispatch_core.py:103`, `src/juggle_watchdog.py:761,955`. (Pre-flip these already mirror through `conv_node_mirror`, which — after Task 2.0 — now maps `background→'background'`; this step makes the node write authoritative and drops the `threads` write.)
 - Test: `tests/test_p8_conv_read_collapse.py`, `tests/test_add_node.py`
 
 > **Ordering caveat:** narrowing `conv_node_mirror`'s `except` (fail-loud) DEPENDS on Step 5's complete DDL (else a fresh-DDL DB raises). If Step 3 must land first, narrow the `except` to catch ONLY "no such table: nodes" (pre-Migration-44) and re-raise a missing-COLUMN error; the full removal completes in Step 5 Task 5.1.
@@ -491,7 +669,7 @@ def test_cockpit_lists_active_conversations_from_nodes(tmp_db):
 - [ ] **Step 4: Run** FULL `make test` → green; `doctor --pre-p8-check --json` `.static.fail` strictly lower than Step-2 baseline.
 - [ ] **Step 5: Commit** — `git commit -m "p8(conv-flip): nodes is sole conversation writer; remove silent except [C2,H4]"`
 
-**Step-3 DONE when:** `make test` green AND the Task-3.1 grep is empty AND `doctor --pre-p8-check --json` `.static.fail` strictly < Step-2 value AND `CONV_ALIAS_SHIM` deleted.
+**Step-3 DONE when:** `make test` green AND the Task-3.1 greps (incl. the R2-1 `background` grep) are empty AND the R2-1 reaper/panel pins pass AND `doctor --pre-p8-check --json` `.static.fail` strictly < Step-2 value AND `CONV_ALIAS_SHIM` deleted AND `python -c "import dbops.threads, juggle_watchdog, juggle_dispatch_core, juggle_cmd_context, juggle_context_startup"` exits 0.
 
 ---
 
@@ -502,6 +680,34 @@ def test_cockpit_lists_active_conversations_from_nodes(tmp_db):
 **Why this is the second cluster:** the task-execution readers (`ready_eligible`, `claim_task`, `get_task`, `unverified_deps`) and the cockpit DAG/orphan_guard reads all key off `graph_*`. They flip to `nodes` together with the write-cut, atomically, so no reader sees a stale or missing row.
 
 **Step-4 monotonic gate:** `doctor --pre-p8-check --json` `.static.fail` → **0** (all live steady-state legacy refs gone); `grep -rnE "INSERT INTO graph_tasks|INSERT INTO graph_edges|INSERT OR IGNORE INTO graph_" src/juggle_add_node.py` → empty; `grep -rnE "FROM threads|FROM graph_topics|FROM graph_tasks" src/juggle_cockpit_model.py src/dbops/orphan_guard.py` → empty.
+
+## Step-4 rollback (R2-3) — Step 4 is the irreversibility boundary, NOT Step 6
+
+**Why this section exists:** the spec's §12.2 rollback ("old tables were never dropped in P1–P7; `DROP TABLE nodes`; system resumes") is valid ONLY while **legacy stays authoritative** — true through Step 3, **false from Task 4.3 onward**. Once 4.3 cuts the `graph_tasks`/`graph_edges` writes, new task/edge rows live ONLY in `nodes`/`node_edges`. A bare `git revert` of the Step-4 commits restores legacy-*reading* code, but nothing back-fills `graph_*` from the nodes-only rows created during the Step-4+ window → those tasks silently vanish from the executor. So Step 4 needs its OWN rollback, not just Step 6's.
+
+**Chosen recovery (do BOTH — backup is the floor, reverse-backfill is the clean path):**
+
+1. **Pre-flip backup (mandatory, before the Task 4.3 commit reaches production).** Mirror the doctor backup idiom: one-shot copy the live DB to `~/.claude/juggle/juggle.db.bak-pre-p8-step4` BEFORE 4.3. This is the no-data-loss floor: "Step 4+ rollback = stop juggle, restore from `juggle.db.bak-pre-p8-step4`, deploy the pre-Step-4 binary." Recovery loses only post-backup work (acceptable for a revert).
+2. **Documented reverse-backfill (the clean path, no full restore).** Author `dbops/p8_reverse_backfill.py::reverse_backfill_nodes_to_graph(conn)` — idempotent, the inverse of `migration_nodes_parity`/`conv_node_mirror`: for every `kind='task'` node it re-INSERTs (OR IGNORE) the equivalent `graph_tasks` row (state value-mapped back via `node_translation.status_for_state`) and re-creates `graph_edges` from `node_edges WHERE kind='dep'`. Running it after a `git revert` of the Step-4 reads makes the nodes-only rows visible to the restored legacy engine WITHOUT a full DB restore. This is the documented Step-4 rollback procedure; ship the function in the SAME PR as Task 4.3 (it is dead in the forward path, live only on revert).
+
+- [ ] **Rollback pin (RED test, lands with Task 4.3):**
+```python
+# tests/test_p8_reverse_backfill.py
+def test_reverse_backfill_reconstructs_graph_tasks(tmp_db):
+    """2026-06-27 P8 R2-3: after the Step-4 write-cut, a nodes-only task must be
+    reconstructable into graph_tasks so a revert of legacy-reading code can see it."""
+    from juggle_add_node import add_node
+    from dbops.p8_reverse_backfill import reverse_backfill_nodes_to_graph
+    r = add_node(tmp_db, kind="task", title="x", project_id="INBOX")   # nodes-only post-4.3
+    conn = tmp_db._connect()
+    assert conn.execute("SELECT COUNT(*) FROM graph_tasks WHERE id=?", (r["node_id"],)).fetchone()[0] == 0
+    reverse_backfill_nodes_to_graph(conn); conn.commit()
+    row = conn.execute("SELECT state FROM graph_tasks WHERE id=?", (r["node_id"],)).fetchone()
+    assert row is not None   # legacy engine can now see the task
+    reverse_backfill_nodes_to_graph(conn)   # idempotent — second run no-ops
+```
+
+**Agent-verify (R2-3):** the plan names a Step-4 rollback procedure (above); `test_reverse_backfill_reconstructs_graph_tasks` passes; the Task-4.3 runbook step "take `juggle.db.bak-pre-p8-step4` before commit" is present (Task 4.3 Step 0 below).
 
 ---
 
@@ -523,7 +729,7 @@ def test_cockpit_lists_active_conversations_from_nodes(tmp_db):
 
 **Files:**
 - Modify: `src/dbops/db_topics.py` (CRUD/queries → `nodes` `kind='task' AND parent_id IS NULL`), `src/dbops/db_topics_reconcile.py`, `src/juggle_cockpit_graph_dag.py` (drop the legacy fallback; read `nodes` only), `src/dbops/orphan_guard.py:48-66,121-132,164-184,214-224` (delete the `graph_topics` compat lookups; resolve thread/dispatch binding via the Step-6 dispatch-edge or `nodes`)
-- Delete: `src/dbops/db_mirror.py` + its callers in `doctor`/project-create/reconcile (the mirror backfill block in `juggle_cmd_doctor.py`)
+- Delete: `src/dbops/db_mirror.py` + **ALL** its importers — enumerate with `git grep -l db_mirror -- src/` (do NOT hand-list). At commit `cyc_EC@4a06d8e` the importers are: `dbops/threads.py`, `dbops/db_topics.py`, `dbops/db_topics_reconcile.py`, `juggle_cmd_doctor.py`, `juggle_cmd_projects.py`, **`juggle_cmd_threads.py`** — i.e. **`threads.py` + `cmd_threads.py` that v1 missed (R2-5)**, plus the mirror-backfill block in `juggle_cmd_doctor.py`. Removing the module without flipping `dbops/threads.py` and `juggle_cmd_threads.py` raises `ImportError` at this commit (green-per-commit break).
 - Test: `tests/test_cockpit_graph_dag_load.py`, `tests/test_graph_mirror.py` (delete or rewrite — mirror concept gone), `tests/test_db_mirror.py` (delete), `tests/test_graph_reconcile.py`
 
 > Per the regression-pin gate: `test_db_mirror.py`/`test_graph_mirror.py` assert behavior of a deleted concept. Deleting them is allowed (obsolete tests), but FIRST confirm no pin inside them guards a still-live invariant (e.g. "mirror topics never dispatched"); if so, rewrite that pin to assert the equivalent over `nodes` (conversation nodes never enter the task dispatch set).
@@ -534,6 +740,8 @@ def test_cockpit_lists_active_conversations_from_nodes(tmp_db):
 - [ ] **Step 4: Run** FULL `make test`; `cockpit --smoke --all-viewports`.
 - [ ] **Step 5: Commit** — `git commit -m "p8(graph-flip): topic/DAG/orphan reads from nodes; delete db_mirror [C2,H1]"`
 
+**Acceptance gate (agent, R2-5):** `grep -rl db_mirror src/` → **empty**; `python -c "import dbops.threads, dbops.db_topics, dbops.db_topics_reconcile, juggle_cmd_threads, juggle_cmd_projects, juggle_cmd_doctor"` exits 0 (every former importer flipped); `test -f src/dbops/db_mirror.py` false.
+
 ---
 
 ### Task 4.3 — Cut the legacy WRITES (`add_node` + engine) — completes C1
@@ -542,8 +750,11 @@ def test_cockpit_lists_active_conversations_from_nodes(tmp_db):
 - Modify: `src/juggle_add_node.py:216-246` (delete the `graph_tasks` INSERT + `graph_edges` INSERTs; keep `nodes` + `node_edges`); update the module docstring (drop the dual-write contract)
 - Modify: `src/dbops/state_write.py` (drop the `graph_tasks`/`graph_topics` mirror half — `nodes` only)
 - Modify: any remaining `except sqlite3.OperationalError: pass` hiding a graph write (`conv_node_mirror`, `messages`, `threads`) — remove now that `nodes` is guaranteed present
+- Create: `src/dbops/p8_reverse_backfill.py` (R2-3 rollback inverse — `reverse_backfill_nodes_to_graph(conn)`; idempotent; nodes→graph_tasks/graph_edges with `status_for_state` value-map)
 - Test: `tests/test_add_node.py`, `tests/test_dispatch_node.py`, `tests/test_graph_autopilot_integration.py`
+- Test: `tests/test_p8_reverse_backfill.py` (the R2-3 rollback pin from the Step-4 rollback section)
 
+- [ ] **Step 0: Take the irreversibility backup (R2-3).** This commit makes `nodes` the SOLE store. BEFORE it lands in production, snapshot the live DB: `cp ~/.claude/juggle/juggle.db ~/.claude/juggle/juggle.db.bak-pre-p8-step4` (orchestrator/runbook step — the agent records this requirement; the actual copy runs at deploy). Rollback if reverted = restore this backup OR run `reverse_backfill_nodes_to_graph` (Step-4 rollback section). Also create `src/dbops/p8_reverse_backfill.py` in THIS commit (dead in the forward path; live only on revert).
 - [ ] **Step 1: Write the failing test** — the C1 capstone pin:
 ```python
 def test_task_lifecycle_never_writes_graph_tasks(tmp_db):
@@ -562,7 +773,7 @@ def test_task_lifecycle_never_writes_graph_tasks(tmp_db):
 - [ ] **Step 4: Run** FULL `make test` → green.
 - [ ] **Step 5: Commit** — `git commit -m "p8(graph-flip): cut legacy graph_* writes; nodes is sole store [C1,C2]"`
 
-**Step-4 DONE when:** `make test` green AND `doctor --pre-p8-check --json` `.static.fail` == **0** AND the three Step-4 greps are empty AND the C1 capstone pin passes AND a test drives a task `open→ready→dispatching→running→integrating→verified→done` through `node_transition` only, asserting `graph_tasks` unwritten (C1 Agent-verify, full).
+**Step-4 DONE when:** `make test` green AND `doctor --pre-p8-check --json` `.static.fail` == **0** AND the three Step-4 greps are empty AND the C1 capstone pin passes AND a test drives a task `open→ready→dispatching→running→integrating→verified→done` through `node_transition` only, asserting `graph_tasks` unwritten (C1 Agent-verify, full). AND (R2-5) `grep -rl db_mirror src/` empty AND (R2-3) `test_reverse_backfill_reconstructs_graph_tasks` passes + the `juggle.db.bak-pre-p8-step4` runbook step is recorded.
 
 ---
 
@@ -702,6 +913,19 @@ def test_gate_a_reports_exclusions_and_imports(tmp_path):
 
 ---
 
+## Plan-DA round 2 (R2) coverage
+
+| Finding | Sev | Covered by | Acceptance gate |
+|---|---|---|---|
+| R2-1 (`background` collapse) | CRIT | Task 2.0 (first-class bijective state + machine transitions); Step 3.1/3.2 (watchdog reaper, dispatch_core/watchdog writers, cmd_context, context_startup, cockpit 2a/2b) | bijection round-trip; `node_transition('background',…,'conversation')` no-raise; reaper-vs-live pin; panels-disjoint pin; `background` grep empty |
+| R2-2 (dangling `_TRANSITIONS` import) | HIGH | Tasks 1.3+1.4 merged into ONE commit; `_cx` kept | `pytest --co` zero import errors at the shared commit; `import dbops.db_topics` exits 0 |
+| R2-3 (Step-4 rollback) | HIGH | Step-4 rollback section + Task 4.3 Step 0 backup + `p8_reverse_backfill.py` | reverse-backfill pin; `juggle.db.bak-pre-p8-step4` runbook step recorded |
+| R2-4 (M51 fail-soft) | MED | Task 1.1 — M51 now `BEGIN IMMEDIATE` fail-LOUD | `test_migration_51_fail_loud_on_lock` |
+| R2-5 (`db_mirror` callers) | MED | Task 4.2 — full `git grep -l db_mirror` enumeration incl. `threads.py`/`cmd_threads.py` | `grep -rl db_mirror src/` empty; former-importer import smoke |
+| R2-6 (M44/M51 double-migration) | LOW | Accepted; noted at Task 1.1 | n/a (documented) |
+
+---
+
 ## Self-Review (against the 13 DA findings)
 
 | Finding | Covered by | Acceptance gate |
@@ -719,9 +943,10 @@ def test_gate_a_reports_exclusions_and_imports(tmp_path):
 | M3 (atomicity) | 1.5 (pin), re-asserted 6.x | M3 no-drift pin |
 | M4 (gate blind spots) | 5.2 | `import_refs==0`; `excluded_files` populated |
 | L1 (dead migrate_lifecycle) | 6.3 | file absent; static floor drops |
+| R2-1 (background first-class) | 2.0, 3.1, 3.2 | bijection round-trip + reaper/panel pins (see R2 table) |
 
 **Placeholder scan:** none — every code step shows the code or the exact edit location + the RED test.
-**Type consistency:** `node_transition(state,event,kind)`, `legal_events(kind)`, `write_state(conn,node_id,new_state,*,now,extra)`, `cas_state(conn,node_id,*,frm,to,now)`, `p8_drop_ready(conn)->(bool,list)`, `pre_p8_report(conn,src_root)->dict` are used consistently across tasks.
+**Type consistency:** `node_transition(state,event,kind)`, `legal_events(kind)`, `write_state(conn,node_id,new_state,*,now,extra)`, `cas_state(conn,node_id,*,frm,to,now)`, `p8_drop_ready(conn)->(bool,list)`, `pre_p8_report(conn,src_root)->dict`, `reverse_backfill_nodes_to_graph(conn)`, `migrate_51_state_vocab(conn)` are used consistently across tasks. The `background` state value is the SAME string in `STATUS_TO_STATE`, `STATE_TO_STATUS`, `_NODE_TRANSITIONS`, and every flipped consumer (no `running` alias).
 
 ---
 
@@ -729,7 +954,7 @@ def test_gate_a_reports_exclusions_and_imports(tmp_path):
 
 **D1 — Is the ~107-consumer rename independently shippable BEFORE the flip? NO.** The shim's entire purpose was to let consumers keep reading `row['status']` after reads flip to `nodes` (where the column is `state`). Renaming `row['status']→row['state']` while the SELECT still hits `threads` (which has `status`, not `state`) is an immediate `KeyError`. **Mitigation (folded in):** the rename is NOT a standalone step — it is co-committed with each consumer's read-source flip (Step 3 for conversation consumers, Step 4 for graph consumers). The task's "step 3 = rename + drop shim" is realized as: delete the *dead* shim up front (3.0, trivially green) + flip-and-rename each consumer atomically (3.1). The greppable `['status']` gate is the JOINT acceptance of Steps 3–4, not a pre-flip step. This is the single biggest deviation from the literal DA ordering and is the only way to keep the suite green.
 
-**D2 — Is the rename "safely mechanical"? NO — it hides VALUE reads.** Every `row['status']` flip carries a value translation (`'active'→'open'`, `'closed'→'done'`, `'background'/'running'→'running'`). A blind rename that forgets the value-map silently changes behavior (e.g. a cockpit panel filtering `state=='active'` matches nothing). **Mitigation:** each consumer is its own TDD task with a behavior test over a `nodes`-seeded DB (3.1), and the value map comes from the single `node_translation.STATUS_TO_STATE` (Step 2) — never re-typed inline.
+**D2 — Is the rename "safely mechanical"? NO — it hides VALUE reads.** Every `row['status']` flip carries a value translation (`'active'→'open'`, `'closed'→'done'`, `'background'→'background'` and `'running'→'running'` — **distinct, NOT collapsed**, per R2-1/Task 2.0, `'archived'→'archived'`). A blind rename that forgets the value-map silently changes behavior (e.g. a cockpit panel filtering `state=='active'` matches nothing; or — the R2-1 bug — folding `background` into `running` so the reaper sweeps live conversations). **Mitigation:** each consumer is its own TDD task with a behavior test over a `nodes`-seeded DB (3.1), and the value map comes from the single `node_translation.STATUS_TO_STATE` (Step 2, made bijective in Task 2.0) — never re-typed inline.
 
 **D3 — Does delegating `db_graph→node_machine` break `pending` data already in DBs? YES, without a migration.** Existing prod/test DBs store `graph_tasks.state='pending'` and `nodes.state='pending'` (the latter from `backfill_graph_parity`). The renamed engine queries `state='open'` and `node_transition` has no `('pending',…)` entry → `ready_eligible` returns nothing and any transition on a migrated row raises. **Mitigation:** Migration 51 (Task 1.1) lands FIRST and is wired BEFORE the engine rename ships in the same release, rewriting `pending→open` across `graph_tasks`/`graph_topics`/`nodes`; idempotent; covered by RED tests. This is also why Task 1.2 deletes `backfill_graph_parity`'s `open→pending` re-introduction in the SAME step.
 
@@ -743,9 +968,18 @@ def test_gate_a_reports_exclusions_and_imports(tmp_path):
 
 **D8 — The terminal drop is irreversible; could a stale checkout drop tables the running code still needs?** **Mitigation:** the drop is gated by BOTH the honest Gate A (`import_refs==0`, `.static.fail==0`, Step 5) AND the runtime `p8_drop_ready` anti-join, runs only in the orchestrator context behind `assert_migration_allowed` (G2), takes a one-shot backup first, and is idempotent (re-run → `already-dropped`). Recommend (OQ1) shipping the drop in its own final PR after the gate is green in production for ≥1 release.
 
+**D9 (R2-1) — Does adding `background` as a state keep every EXISTING test green?** Two suite pins encode the OLD `background→running` (`test_node_translation.py:8,23`, `test_node_transition.py:164`); they are REWRITTEN in Task 2.0 under the R2-1 pin-rewrite authorization (same seam, corrected value), not silently broken. A third, `test_data_migration.py:50 test_background_maps_to_running`, pins the SEPARATE dying `juggle_migrate_lifecycle` (threads-level) and is left untouched until that module is deleted in Task 6.3. No `conv_node_mirror` test asserts the old `'running'` mirror value (grep-verified empty), so the map flip is otherwise transparent. The slug-allocation subsystem (`slug_alloc.LIVE_SLUG_STATES`, the `idx_threads_live_label` partial unique index) and `test_thread_label_alloc_atomic.py` ALREADY treat `background` as a live state distinct from `running` — independent corroboration that the v1 collapse was wrong; those pins are rewritten over `nodes` in Step 3.1, not broken. **Residual:** if a future test seeds a thread `status='running'` and expects it to mean "background", it would now be wrong — but that conflation IS the bug; the bijection is the fix.
+
+**D10 (R2-1) — Does any TASK-state query now accidentally match `'background'`?** No. `background` is written ONLY for `kind='conversation'` nodes (the writers are dispatch_core + watchdog rebinds, all conversation dispatches). Every task-execution query filters `kind='task'` (ready_eligible/claim_task/get_task) and keys on `open/ready/dispatching/running/integrating/verified/done` — none is `background`. The reaper (`watchdog:875`) explicitly filters `kind='conversation' AND state='background'`. So no task query can see a `background` row, and no conversation `background` row enters the dispatch set (re-asserted by the M2 discriminator + the "conversation nodes never dispatched" invariant carried over from the deleted mirror tests in Task 4.2).
+
+**D11 (R2-1) — Is the mapping truly invertible EVERYWHERE it is used?** The forward `STATUS_TO_STATE` still has legacy-only many-to-one entries (`closed→done` AND `done→done`; `failed→failed-exec`) — these are NON-LIVE (`set_thread_status._VALID_STATES={active,running,closed,archived}` cannot emit `done`/`failed`; they appear only in historical rows). Invertibility is REQUIRED and PROVEN only over the LIVE vocab `{active,background,running,closed,archived}` (the `test_status_state_bijective_over_live_vocab` pin). The reverse `status_for_state` is the read-path direction (nodes→legacy status for any code still emitting status during the transition) and is exact for every live state including `background`. `'waiting'`/`'idle'` have NO node-state and NO writer (Task 3.1 proves them dead before dropping their archive-candidate arms) — so `state_for_status` is never called on them. **Residual:** the legacy-only `done`/`failed` inputs remain non-invertible, but they are out of the live set and disappear with the `threads` table drop in Step 6.
+
 ---
 
 ## Open Questions (batched — do NOT block planning)
+
+> **Resolved by R2-1 (NOT open — baked decision, do not re-litigate):** `background` is kept as a distinct first-class node state (option (a) of the DA's R2-1 fix direction). The alternative — DERIVING background-ness from the agent binding (`agents.status='busy' AND assigned_node`) and splitting "focus" (foreground/background) from "lifecycle" into a separate dimension (option (b)) — is a FUTURE refinement, explicitly OUT of P8 scope. P8's bar is ONE model + ONE machine with the existing distinctions preserved losslessly; the dimension split is a clean-architecture follow-up, not a completion blocker.
+
 
 1. **OQ1 — Terminal drop timing.** Author the drop migration in this plan (Task 6.3) but ship it in a SEPARATE final PR after `doctor --pre-p8-check` has reported green in production for ≥1 release (recommended, safest), OR ship it bundled with Step 5? Either keeps the gate; the question is soak time before the irreversible op.
 2. **OQ2 — M1 dispatch-relation model.** Typed `node_edges.kind='dispatch'` edge (recommended — keeps the node→node relation in the edge store, no nullable FK column) vs an `agents.assigned_node` column (the binding "lives" on the agent)? Affects Task 6.1's migration and every `node_edges` query (a `kind='dep'` filter is required if the typed-edge option is chosen).
