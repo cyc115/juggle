@@ -70,14 +70,16 @@ def backfill_nodes_parity(conn: sqlite3.Connection) -> None:
 
 
 def backfill_graph_parity(conn: sqlite3.Connection) -> None:
-    """P8 Q2/Q3 graph-tier backfill (id-anchored, idempotent):
+    """P8 Q2 graph-tier backfill (id-anchored, idempotent):
 
       * dispatch_thread_id ← graph_tasks.thread_id (task-tier nodes) and the real
         graph_topics.thread_id (is_mirror=0, topic-tier nodes). Replaces the
         graph_*.thread_id link that has no other nodes home.
-      * state 'open' → 'pending' on kind='task' nodes whose legacy row was
-        'pending' (Migration 44 mapped task pending→open; db_graph queries
-        state='pending', so the mirrored rows were invisible to the ready set).
+
+    Note (P8 C3, 2026-06-27): the former open->pending state correction is
+    DELETED. The task-entry vocab is now unified to open (db_graph queries
+    state=open), so re-introducing the legacy state would strand the node from
+    the renamed engine. Migration 51 rewrites any residual legacy state to open.
 
     Runs only while the legacy graph tables are still present (pre-drop).
     """
@@ -94,11 +96,6 @@ def backfill_graph_parity(conn: sqlite3.Connection) -> None:
                 WHERE kind='task' AND parent_id IS NOT NULL
                   AND EXISTS (SELECT 1 FROM graph_tasks g WHERE g.id=nodes.id AND g.thread_id IS NOT NULL)
             """)
-            conn.execute("""
-                UPDATE nodes SET state='pending'
-                WHERE kind='task' AND state='open'
-                  AND EXISTS (SELECT 1 FROM graph_tasks g WHERE g.id=nodes.id AND g.state='pending')
-            """)
         if "graph_topics" in tables:
             conn.execute("""
                 UPDATE nodes SET dispatch_thread_id =
@@ -107,13 +104,7 @@ def backfill_graph_parity(conn: sqlite3.Connection) -> None:
                   AND EXISTS (SELECT 1 FROM graph_topics g
                               WHERE g.id=nodes.id AND COALESCE(g.is_mirror,0)=0 AND g.thread_id IS NOT NULL)
             """)
-            conn.execute("""
-                UPDATE nodes SET state='pending'
-                WHERE kind='task' AND parent_id IS NULL AND state='open'
-                  AND EXISTS (SELECT 1 FROM graph_topics g
-                              WHERE g.id=nodes.id AND COALESCE(g.is_mirror,0)=0 AND g.state='pending')
-            """)
         conn.commit()
-        _log.info("Migration 50 graph backfill: dispatch_thread_id + pending-state corrected")
+        _log.info("Migration 50 graph backfill: dispatch_thread_id populated")
     except sqlite3.OperationalError as e:
         _log.warning("Migration 50 graph backfill skipped: %s", e)

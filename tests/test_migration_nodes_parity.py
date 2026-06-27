@@ -122,10 +122,12 @@ def test_backfill_dispatch_thread_id_from_graph_topics(tmp_path):
     assert got == "conv-7"
 
 
-def test_backfill_corrects_pending_state(tmp_path):
-    """Pin (2026-06-23, Q3): Migration 44 mapped task pending->open; backfill must restore
-    'pending' on kind='task' nodes whose legacy row was pending, so db_graph's state machine
-    (which queries state='pending') still sees them after the collapse."""
+def test_backfill_does_not_reintroduce_pending(tmp_path):
+    """2026-06-27 P8 C3: parity backfill must NOT re-introduce 'pending'. The
+    vocab is now unified to 'open' (db_graph queries state='open'), so the legacy
+    open->pending correction is deleted; a task node mirrored by Migration 44 as
+    'open' must STAY 'open' after the graph backfill (only dispatch_thread_id is
+    touched)."""
     db = _fresh(tmp_path)
     from dbops.migration_nodes_parity import backfill_graph_parity
     with db._connect() as conn:
@@ -137,7 +139,7 @@ def test_backfill_corrects_pending_state(tmp_path):
         conn.commit()
         backfill_graph_parity(conn)
         got = conn.execute("SELECT state FROM nodes WHERE id='tp'").fetchone()[0]
-    assert got == "pending"
+    assert got == "open"
 
 
 def test_backfill_populates_parity(tmp_path):
