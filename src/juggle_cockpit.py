@@ -57,7 +57,7 @@ from juggle_cockpit_modals import (
 )
 from juggle_cockpit_widgets import HSplitter, Splitter
 from juggle_cockpit_graph_mode import GraphModeMixin
-from juggle_cockpit_css import COCKPIT_CSS
+from juggle_cockpit_css import COCKPIT_CSS, _MIN_NOTIF_HEIGHT
 from juggle_cockpit_title import _cockpit_subtitle, _drift_banner, _get_version
 from juggle_watchdog_singleton import (
     canonical_repo_path,
@@ -223,7 +223,11 @@ class CockpitApp(GraphModeMixin, App):
                         min_right_pct=int(_MIN_AGENTS_RATIO * 100),
                     )
                     yield Static("", id="agents")
-                yield HSplitter("upper", "notif-region")
+                yield HSplitter(
+                    "upper", "notif-region",
+                    min_top=_MIN_NOTIF_HEIGHT,
+                    min_bottom=_MIN_NOTIF_HEIGHT,
+                )
                 with Vertical(id="notif-region"):
                     yield Static("", id="notifications")
                     with VerticalScroll(id="graph-scroll"):
@@ -247,14 +251,16 @@ class CockpitApp(GraphModeMixin, App):
         inner_total = a + ag
         actions_pct = int(a / inner_total * 100) if inner_total > 0 else 50
         agents_pct = 100 - actions_pct
-        notif_pct = _NOTIF_RATIO       # height % for #notifications
-        upper_pct = 100 - notif_pct   # height % for #upper
+        notif_pct = _NOTIF_RATIO       # height % for #notif-region
 
         self.query_one("#topics").styles.width = f"{topics_w}%"
         self.query_one("#right").styles.width = f"{right_w}%"
         self.query_one("#actions").styles.width = f"{actions_pct}%"
         self.query_one("#agents").styles.width = f"{agents_pct}%"
-        self.query_one("#upper").styles.height = f"{upper_pct}%"
+        # #upper is height:1fr (CSS) — it flexes to fill the space above the
+        # notification floor, so we only set the #notif-region target height.
+        # min-height (CSS) + the 1fr flex guarantee ≥1 notification row stays
+        # visible at any terminal size; #upper yields instead of overflowing.
         self.query_one("#notif-region").styles.height = f"{notif_pct}%"
 
         self._check_tmux_mouse()

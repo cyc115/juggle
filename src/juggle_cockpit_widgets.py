@@ -92,7 +92,13 @@ class HSplitter(Static):
     }
     """
 
-    def __init__(self, top_id: str, bottom_id: str) -> None:
+    def __init__(
+        self,
+        top_id: str,
+        bottom_id: str,
+        min_top: int = 3,
+        min_bottom: int = 3,
+    ) -> None:
         super().__init__("─")
         self._top_id = top_id
         self._bottom_id = bottom_id
@@ -100,6 +106,11 @@ class HSplitter(Static):
         self._drag_start_y: int = 0
         self._top_start_h: int = 0
         self._bottom_start_h: int = 0
+        # Drag floors (cells). min_bottom keeps the bottom pane (#notif-region)
+        # showing ≥1 notification row; min_top keeps the top pane (#upper) usable.
+        # Injected (not cross-imported) so the row-height constant has one home.
+        self._min_top = min_top
+        self._min_bottom = min_bottom
 
     def on_mouse_down(self, event: events.MouseDown) -> None:
         top = self.app.query_one(f"#{self._top_id}")
@@ -115,12 +126,16 @@ class HSplitter(Static):
         if not self._dragging:
             return
         delta = event.screen_y - self._drag_start_y
-        top = self.app.query_one(f"#{self._top_id}")
         bottom = self.app.query_one(f"#{self._bottom_id}")
         total = self._top_start_h + self._bottom_start_h
-        new_top = max(4, min(total - 4, self._top_start_h + delta))
-        new_bottom = total - new_top
-        top.styles.height = new_top
+        # Only the bottom pane gets an explicit height; the top pane is height:1fr
+        # and reflows to fill the remainder (so a later terminal resize cannot
+        # leave it with a stale oversized cell height that starves the bottom).
+        # Floor the bottom at min_bottom and cap it at total-min_top so neither
+        # pane can be dragged below its one-row floor; the bottom floor wins when
+        # the terminal is too short to honour both.
+        desired_bottom = total - (self._top_start_h + delta)
+        new_bottom = max(self._min_bottom, min(total - self._min_top, desired_bottom))
         bottom.styles.height = new_bottom
         event.stop()
 
