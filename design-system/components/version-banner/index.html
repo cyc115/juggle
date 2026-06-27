@@ -1,0 +1,29 @@
+<!-- @dsCard group="Chrome" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Version-drift banner</title>
+<style>
+:root{
+  --fg:#c5c8c6;--warning:#ffa62b;--text:#161616;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:var(--warning);letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.banner{background:var(--warning);color:var(--text);text-align:center;font-weight:700;
+  font-family:var(--mono);font-size:14px;padding:4px 12px;border-radius:3px;width:760px;margin-top:14px}
+</style></head>
+<body>
+<p class="ds-label">Version-drift banner</p>
+<p class="ds-group">group · Chrome</p>
+
+<div class="banner">Cockpit running v0.42.0 (v0.43.1 available) — restart to load</div>
+
+<p class="ds-note">Source: <code>#version-banner</code> CSS (juggle_cockpit_css.py) +
+<code>_drift_banner</code> (juggle_cockpit_title.py). Full-width, <code>background:$warning</code>
+(#ffa62b), dark <code>$text</code>, bold, centered. Height auto — collapses to 0 (hidden) until the
+on-disk plugin version moves past the version captured at cockpit boot; the cockpit never auto-restarts,
+it only surfaces the drift (incident 2026-06-21: a stale cockpit masked a fix for ~4.5h).</p>
+</body></html>

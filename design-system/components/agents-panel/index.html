@@ -1,0 +1,50 @@
+<!-- @dsCard group="Agents" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Agents panel</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--white:#ffffff;
+  --red:#cc555a;--green:#98a84b;--yellow:#d0b344;--cyan:#68a0b3;
+  --grey50:#808080;--bdim:#5f5f5f;--bactive:#1984e9;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:#ffa62b;letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:12px 0 0;max-width:64ch;line-height:1.55}
+.panel{position:relative;border:1px solid var(--bactive);border-radius:8px;background:var(--bg);
+  color:var(--fg);font-family:var(--mono);font-size:14px;line-height:1.7;padding:12px 16px;
+  margin-top:14px;width:380px}
+.panel>.t{position:absolute;top:-.82em;left:50%;transform:translateX(-50%);background:var(--bg);
+  padding:0 10px;color:var(--bactive);white-space:nowrap}
+.r{display:flex;gap:0;align-items:baseline;white-space:pre}
+.g{display:inline-block;min-width:2em}
+.num{color:var(--dim);display:inline-block;min-width:3ch}
+.sec{color:var(--dim)}
+.dim{color:var(--dim)}.grn{color:var(--green)}.yel{color:var(--yellow)}.red{color:var(--red);font-weight:700}
+</style></head>
+<body>
+<p class="ds-label">Agents panel</p>
+<p class="ds-group">group · Agents</p>
+
+<div class="panel term"><span class="t">Agents</span>
+  <div class="sec">Active</div>
+  <div class="r"><span class="num">#1</span><span class="g">🟢</span><span class="grn">[K] (A) coder   12m</span><span class="dim"> claude/opus</span></div>
+  <div class="r"><span class="num">#2</span><span class="g">🟡</span><span class="yel">[J] (A) planner 3h </span><span class="dim"> deepseek</span></div>
+  <div class="sec">──────────────────────</div>
+  <div class="sec">Pool</div>
+  <div class="r"><span class="g">⚫</span><span class="dim">(A) researcher 15m</span></div>
+  <div class="r"><span class="g">🔄</span><span class="dim">(L) nightly-sync</span><span class="dim">  1d</span></div>
+  <div class="r"><span class="g">✅</span><span class="dim">(L) dogfood</span><span class="dim">  Sat 3am</span></div>
+  <div class="r"><span class="g">❌</span><span class="red">(L) reflect-digest</span><span class="dim">  Mon 3am</span></div>
+</div>
+
+<p class="ds-note">Source: <code>render_agents</code> (juggle_cockpit_view.py). Two sections —
+<b>Active</b> (topic-assigned, prefixed #N index) and <b>Pool</b> (idle agents + scheduled launchd
+tasks). Status glyph + color: 🟢 busy = green, 🟡 stale = yellow, ⚫ idle = dim. Agent rows carry the
+<code>(A)</code> harness tag, role, age, then a dim <code>harness/model</code> badge. Scheduled
+<code>(L)</code> rows use 🔄 running / ✅ ok / ❌ failed / ⏸️ unknown; a failed schedule renders its
+label bold red. The 22-char ── divider separates Active from Pool.</p>
+</body></html>

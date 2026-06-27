@@ -1,0 +1,68 @@
+<!-- @dsCard group="Modals" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Help modal</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--accent:#ffa62b;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:var(--accent);letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.modal{border:1px solid var(--accent);border-radius:10px;background:var(--bg);font-family:var(--mono);
+  font-size:13.5px;line-height:1.55;padding:14px 20px;width:640px;margin-top:14px;white-space:pre;
+  color:var(--fg)}
+.h{color:#fff;font-weight:700}
+.grp{color:var(--accent)}
+.dim{color:var(--dim)}
+</style></head>
+<body>
+<p class="ds-label">Help modal (?)</p>
+<p class="ds-group">group · Modals</p>
+
+<div class="modal"><span class="h">Keyboard Shortcuts</span>
+────────────────────────────────────────────────────
+
+  <span class="grp">Navigation</span>
+  ────────────────────────────────────────────────
+  j / k  (↓ / ↑)      ↓↑      Scroll active pane down / up one row
+  PgDn / PgUp         PgDn/Up Scroll active pane down / up 5 rows
+  Tab                 Tab     Cycle active pane (topics → actions → agents → …)
+  f                   Foc     Focus tmux pane of agent by 1-based index
+
+  <span class="grp">Thread actions</span>
+  ────────────────────────────────────────────────
+  s                   Sw      Switch active thread by label (prompts for label)
+  a                   Ack     Ack all open action items on a thread (Z = orphaned)
+  C  (Shift+C)        Cl      Close thread by label (requires y/N confirm)
+  x                   Ar      Archive thread by label (requires y/N confirm)
+
+  <span class="grp">Agent / pane</span>
+  ────────────────────────────────────────────────
+  t                   Tl      Open live tail overlay for agent's tmux pane
+  d                   Dc      Decommission agent by index
+
+  <span class="grp">Views &amp; modals</span>
+  ────────────────────────────────────────────────
+  i                   Info    Show topic info by thread label
+  g                   Gr      Toggle graph mode / notifications panel
+  p                   Proj    Open project arm/disarm overlay
+  w                   Wd      Toggle watchdog: stop if running, start if stopped
+  r  (Shift+W)        Rwd     Kill and relaunch watchdog from main branch
+  /                   Flt     Filter active pane (blank to clear)
+
+  <span class="grp">App</span>
+  ────────────────────────────────────────────────
+  ?                   Help    Show this keyboard shortcuts overlay
+  Ctrl+C              Quit    Quit the cockpit
+
+<span class="dim">Esc / q — close</span></div>
+
+<p class="ds-note">Source: <code>COCKPIT_HELP_TABLE</code> / <code>render_help_lines</code> (juggle_cockpit_modals.py).
+Three-column layout: key (width 18) · short (width 6) · full description, grouped by section.
+Round <code>$accent</code> (#ffa62b) border, width 72 cols. Single source of truth for both the footer
+short labels and this overlay; dismisses on Esc or q.</p>
+</body></html>

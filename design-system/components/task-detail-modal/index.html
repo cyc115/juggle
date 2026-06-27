@@ -1,0 +1,50 @@
+<!-- @dsCard group="Modals" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Task-detail modal</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--accent:#ffa62b;--green:#98a84b;--cyan:#68a0b3;--grey50:#808080;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:var(--accent);letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.modal{border:1px solid var(--accent);border-radius:10px;background:var(--bg);font-family:var(--mono);
+  font-size:13.5px;line-height:1.6;padding:14px 20px;width:560px;margin-top:14px;white-space:pre-wrap;
+  color:var(--fg)}
+.h{color:#fff;font-weight:700}
+.k{color:var(--dim)}
+.dim{color:var(--dim)}
+</style></head>
+<body>
+<p class="ds-label">Task-detail modal (Enter on a graph node)</p>
+<p class="ds-group">group · Modals</p>
+
+<div class="modal"><span class="h">Task build-api</span>
+────────────────────────────────────────
+<span class="k">title</span>    Build the public REST surface
+<span class="k">state</span>    running
+<span class="k">deps</span>     setup, schema-migrate
+<span class="k">thread</span>   WK01
+<span class="k">verify</span>   uv run pytest -q tests/test_api.py
+
+tasks:
+  ✅ scaffold-routes  add empty route stubs
+  🏃 wire-handlers    bind handlers to db layer
+  ⬡ openapi-spec     emit openapi.json
+
+prompt:
+Implement the REST API per the plan. Reuse the existing
+db helpers; do not add new abstractions. Minimal diff.
+
+<span class="dim">Esc / q — close</span></div>
+
+<p class="ds-note">Source: <code>_GraphTaskModal._lines</code> (juggle_cockpit_modals.py), rendered
+<code>markup=False</code> (plain text). Header <code>Task &lt;id&gt;</code> + rule, then aligned
+<code>title / state / deps / thread / verify</code> fields, an optional child <code>tasks:</code> list
+(state glyph + id + title), and 400-char <code>prompt:</code> / <code>handoff:</code> excerpts.
+Round <code>$accent</code> border, 70% × 70% VerticalScroll.</p>
+</body></html>

@@ -1,0 +1,42 @@
+<!-- @dsCard group="Notifications" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Notifications panel</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;
+  --red:#cc555a;--green:#98a84b;--yellow:#d0b344;--bdim:#5f5f5f;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:#ffa62b;letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:12px 0 0;max-width:64ch;line-height:1.55}
+.panel{position:relative;border:1px solid var(--bdim);border-radius:8px;background:var(--bg);
+  color:var(--fg);font-family:var(--mono);font-size:14px;line-height:1.7;padding:12px 16px;
+  margin-top:14px;width:440px}
+.panel>.t{position:absolute;top:-.82em;left:50%;transform:translateX(-50%);background:var(--bg);
+  padding:0 10px;color:var(--bdim);white-space:nowrap}
+.r{display:flex;gap:0;align-items:baseline;white-space:pre}
+.age{color:var(--dim);display:inline-block;min-width:4ch}
+.g{display:inline-block;min-width:2em}
+.dim{color:var(--dim)}.grn{color:var(--green)}.yel{color:var(--yellow)}.red{color:var(--red)}
+</style></head>
+<body>
+<p class="ds-label">Notifications panel</p>
+<p class="ds-group">group · Notifications</p>
+
+<div class="panel term"><span class="t">Notifications</span>
+  <div class="r"><span class="age">30s </span><span class="g">⚡</span><span class="grn">plan v3 ready</span></div>
+  <div class="r"><span class="age">2m  </span><span class="g">⚠️</span><span class="yel">agent timed out</span></div>
+  <div class="r"><span class="age">3m  </span><span class="g">✗</span><span class="red">dispatch failed</span></div>
+  <div class="r"><span class="age">5m  </span><span class="g">❌</span><span class="red">build failed</span></div>
+  <div class="r"><span class="age">8m  </span><span class="g">ℹ️</span><span>watchdog tick</span></div>
+</div>
+
+<p class="ds-note">Source: <code>render_notifications</code> (juggle_cockpit_view.py). Newest-first.
+Row = age (dim) · kind glyph · text. Kind → glyph/color: ⚡ complete = green, ⚠️ warning = yellow,
+✗ error = red, ❌ failed = red, ℹ️ info = default foreground. This panel occupies the lower-right pane
+and is swapped out for the Graph panel when graph mode (g) is active.</p>
+</body></html>

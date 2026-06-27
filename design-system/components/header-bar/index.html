@@ -1,0 +1,39 @@
+<!-- @dsCard group="Chrome" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Header bar</title>
+<style>
+:root{
+  --fg:#c5c8c6;--dim:#868887;--primary:#0178d4;--headbg:#1c2733;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:#ffa62b;letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;background:var(--headbg);
+  font-family:var(--mono);font-size:14px;padding:6px 14px;border-radius:4px;width:760px;margin-top:14px;
+  border-bottom:1px solid var(--primary)}
+.title{grid-column:2;text-align:center;color:#fff}
+.title .app{font-weight:700}
+.title .sub{color:var(--dim)}
+.clock{grid-column:3;text-align:right;color:var(--fg)}
+.icon{grid-column:1;color:var(--dim)}
+</style></head>
+<body>
+<p class="ds-label">Header bar (title + version + clock)</p>
+<p class="ds-group">group · Chrome</p>
+
+<div class="header">
+  <span class="icon">⭘</span>
+  <span class="title"><span class="app">Juggle</span> <span class="sub">— Cockpit v2 · v0.43.1</span></span>
+  <span class="clock">22:13:07</span>
+</div>
+
+<p class="ds-note">Source: Textual <code>Header(show_clock=True)</code> + <code>_cockpit_subtitle</code>
+(juggle_cockpit_title.py). <code>App.title="Juggle"</code>; sub_title = <code>Cockpit v2 · v&lt;version&gt;</code>
+read from .claude-plugin/plugin.json (narrow profiles &lt;100 cols drop the prefix to just
+<code>v&lt;version&gt;</code>). Clock is right-docked. Version is the single source of truth; a drift
+banner (separate card) appears when the on-disk version moves past boot.</p>
+</body></html>

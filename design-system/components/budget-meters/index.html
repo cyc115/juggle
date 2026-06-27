@@ -1,0 +1,41 @@
+<!-- @dsCard group="Chrome" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Budget meters (5h / 7d)</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;
+  --green:#98a84b;--yellow:#d0b344;--red:#cc555a;--bdim:#5f5f5f;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:#ffa62b;letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.proposed{display:inline-block;font-family:var(--sans);font-size:10px;font-weight:700;letter-spacing:.06em;
+  color:#161616;background:#ffa62b;padding:1px 6px;border-radius:3px;margin:0 0 8px}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.panel{border:1px solid var(--bdim);border-radius:8px;background:var(--bg);font-family:var(--mono);
+  font-size:14px;line-height:1.9;padding:12px 16px;width:420px;margin-top:6px}
+.r{white-space:pre}
+.lbl{color:var(--dim);display:inline-block;min-width:3ch}
+.grn{color:var(--green)}.yel{color:var(--yellow)}.red{color:var(--red)}
+.reset{color:var(--dim)}
+</style></head>
+<body>
+<p class="ds-label">Budget meters — 5h / 7d token windows</p>
+<p class="ds-group">group · Chrome</p>
+<span class="proposed">PROPOSED — not yet in source</span>
+
+<div class="panel">
+  <div class="r"><span class="lbl">5h</span> <span class="yel">▕███████░░░▏ 72%</span> <span class="reset">· resets 1h14m</span></div>
+  <div class="r"><span class="lbl">7d</span> <span class="grn">▕████░░░░░░▏ 38%</span> <span class="reset">· resets 4d</span></div>
+  <div class="r"><span class="lbl">5h</span> <span class="red">▕█████████▏ 94%</span> <span class="reset">· resets 22m</span></div>
+</div>
+
+<p class="ds-note"><b>Proposed chrome — no rendering exists in the cockpit source yet</b> (the
+inventory floor lists it). Styled to match the live primitives: the <code>▕█░▏</code> done-fraction bar
+from <code>_progress_bar</code> (juggle_cockpit_graph_panel.py) and the named palette. Fill color is a
+usage threshold — green &lt;70%, yellow 70–89%, red ≥90% (mirrors the project directive to switch the
+agent backend when the 5-hour token budget exceeds 90%). Row = window label · bar · percent · reset ETA.</p>
+</body></html>

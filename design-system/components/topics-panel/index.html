@@ -1,0 +1,62 @@
+<!-- @dsCard group="Topics" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Topics panel</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--white:#ffffff;
+  --red:#cc555a;--green:#98a84b;--yellow:#d0b344;--cyan:#68a0b3;
+  --grey50:#808080;--grey23:#3a3a3a;--bdim:#5f5f5f;--bactive:#1984e9;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:#ffa62b;letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-sub{font-size:11px;color:#9aa0a6;margin:18px 0 4px;font-weight:600;letter-spacing:.04em}
+.ds-note{font-size:12.5px;color:#8a9095;margin:12px 0 0;max-width:64ch;line-height:1.55}
+.panel{position:relative;border:1px solid var(--bdim);border-radius:8px;background:var(--bg);
+  color:var(--fg);font-family:var(--mono);font-size:14px;line-height:1.7;padding:12px 16px;
+  margin-top:14px;width:360px}
+.panel.active{border-color:var(--bactive)}
+.panel>.t{position:absolute;top:-.82em;left:50%;transform:translateX(-50%);background:var(--bg);
+  padding:0 10px;color:var(--bdim);white-space:nowrap}
+.panel.active>.t{color:var(--bactive)}
+.r{display:flex;gap:0;align-items:baseline;white-space:pre}
+.age{color:var(--dim);display:inline-block;min-width:3.4ch}
+.g{display:inline-block;min-width:2em}
+.dim{color:var(--dim)}.cur{color:var(--white);font-weight:700}
+.hdr{margin:2px 0}
+.tag{background:var(--grey23);color:#f3f3f3;font-weight:700;padding:1px 4px}
+.cnt{background:var(--grey23);color:#cfcfcf;padding:1px 4px}
+.prog{background:var(--grey23);color:var(--cyan);padding:1px 4px}
+.rule{border:0;border-top:1px solid var(--dim);opacity:.5;margin:6px 0}
+</style></head>
+<body>
+<p class="ds-label">Topics panel</p>
+<p class="ds-group">group · Topics</p>
+
+<p class="ds-sub">Flat (single-project) — active pane border</p>
+<div class="panel active term"><span class="t">Topics</span>
+  <div class="r"><span class="age">5m </span><span class="g">👉</span><span class="cur">[K] cockpit refactor</span></div>
+  <div class="r"><span class="age">1h </span><span class="g">🏃</span><span>[J] talkback</span></div>
+  <div class="r"><span class="age">2h </span><span class="g">⏸️</span><span>[B] orchestrator hygiene</span></div>
+  <div class="r"><span class="age">2h </span><span class="g">✅</span><span class="dim">[D] done thread</span></div>
+</div>
+
+<p class="ds-sub">Grouped by project (header strip + aggregate progress) — inactive pane border</p>
+<div class="panel term"><span class="t">Topics [↑0]</span>
+  <div class="hdr"><span class="tag">&nbsp;▸ JUGGLE&nbsp;</span><span class="cnt">&nbsp;2&nbsp;</span><span class="prog">&nbsp;⬢ 1/5 done, 1 ready&nbsp;</span></div>
+  <div class="r"><span class="age">5m </span><span class="g">👉</span><span class="cur">[K] cockpit refactor</span></div>
+  <div class="r"><span class="age">1h </span><span class="g">🏃</span><span>[J] talkback</span></div>
+  <hr class="rule">
+  <div class="hdr"><span class="tag">&nbsp;▸ INBOX&nbsp;</span><span class="cnt">&nbsp;1&nbsp;</span></div>
+  <div class="r"><span class="age">2h </span><span class="g">⏸️</span><span>[B] orchestrator hygiene</span></div>
+</div>
+
+<p class="ds-note">Source: <code>render_topics</code> / <code>_add_topic_row</code> (juggle_cockpit_view.py).
+Row = age (dim) · status glyph · [label] · title. Current topic renders bold white;
+done/closed/archived render dim. Glyphs: 👉 current, 🏃 running, ⏸️ paused, ✅ done, 🔒 closed,
+❌ failed, 🗄️ archived. Project group headers use a grey23 background strip with a cyan ⬢ progress
+aggregate. Active pane border = bright_blue (#1984e9); inactive = dim grey.</p>
+</body></html>

@@ -1,0 +1,39 @@
+<!-- @dsCard group="Modals" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Project-arm panel</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--accent:#ffa62b;--green:#98a84b;--red:#cc555a;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:var(--accent);letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.modal{border:1px solid var(--accent);border-radius:10px;background:var(--bg);font-family:var(--mono);
+  font-size:13.5px;line-height:1.7;padding:14px 20px;width:600px;margin-top:14px;color:var(--fg);white-space:pre}
+.hd{font-weight:700;margin-bottom:6px}
+.on{color:var(--green);font-weight:700}
+.cur{color:#fff}
+.dim{color:var(--dim)}
+.foot{color:var(--dim);margin-top:8px}
+</style></head>
+<body>
+<p class="ds-label">Project arm/disarm panel (p)</p>
+<p class="ds-group">group · Modals</p>
+
+<div class="modal"><span class="hd">Projects  global: <span class="on">ON</span></span>
+<span class="cur">▶ ●  proj-alpha          Cockpit Revamp      3/14  · 2 running</span>
+  ○  proj-beta           Docs Sweep          <span class="dim">—/—   — no graph</span>
+  ●  proj-gamma          Graph Engine        8/8   <span class="dim">(complete)</span>
+  ●  proj-delta          Memory Service      0/6
+<span class="foot">j/k navigate  Space/Enter toggle  A arm-all  Esc close</span></div>
+
+<p class="ds-note">Source: <code>_ProjectArmModal</code> + <code>build_project_arm_rows</code>
+(juggle_cockpit_modals.py). Header shows the global autopilot flag (<code>ON</code> green / <code>OFF</code>
+red). Each row: <code>▶</code> cursor · <code>●</code> armed / <code>○</code> disarmed · pid · name ·
+<code>verified/total</code> progress · running count · hint (<code>(complete)</code> / <code>— no graph</code>).
+j/k navigate, Space/Enter toggle, A arm-all, Esc close. Round <code>$accent</code> border, width 80.</p>
+</body></html>

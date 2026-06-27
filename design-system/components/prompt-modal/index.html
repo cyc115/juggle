@@ -1,0 +1,36 @@
+<!-- @dsCard group="Modals" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Prompt modal</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--accent:#ffa62b;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:var(--accent);letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.modal{border:1px solid var(--accent);border-radius:10px;background:var(--bg);font-family:var(--mono);
+  font-size:14px;padding:16px 18px;width:380px;margin-top:14px;color:var(--fg)}
+.prompt{margin-bottom:10px}
+.input{border:1px solid #4a4a4a;border-radius:4px;background:#202020;color:var(--fg);
+  padding:4px 8px;display:block}
+.input .ph{color:var(--dim)}
+.caret{color:var(--accent)}
+</style></head>
+<body>
+<p class="ds-label">Prompt modal (s / / filter input)</p>
+<p class="ds-group">group · Modals</p>
+
+<div class="modal">
+  <div class="prompt">Switch to thread (label):</div>
+  <span class="input"><span class="ph">…</span><span class="caret">▏</span></span>
+</div>
+
+<p class="ds-note">Source: <code>_PromptModal</code> (juggle_cockpit_modals.py). Generic one-line input:
+a prompt Label over a Textual Input with placeholder <code>…</code>. Submit returns the stripped value;
+blank submit returns <code>dismiss_empty_as</code> (None for switch, "" for the filter so a blank clears
+it); Esc always returns None. Round <code>$accent</code> border, width 44, height 6.</p>
+</body></html>

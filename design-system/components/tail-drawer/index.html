@@ -1,0 +1,42 @@
+<!-- @dsCard group="Modals" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Tail drawer</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--accent:#ffa62b;--green:#98a84b;--red:#cc555a;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:var(--accent);letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.modal{border:1px solid var(--accent);border-radius:10px;background:var(--bg);font-family:var(--mono);
+  font-size:13px;line-height:1.55;padding:12px 16px;width:600px;margin-top:14px;color:var(--fg)}
+.head{color:var(--dim);border-bottom:1px solid #3a3a3a;padding-bottom:6px;margin-bottom:6px;white-space:pre}
+.body{white-space:pre;max-height:220px;overflow:auto}
+.grn{color:var(--green)}.red{color:var(--red)}.dim{color:var(--dim)}
+</style></head>
+<body>
+<p class="ds-label">Tail drawer (t — live tmux pane tail)</p>
+<p class="ds-group">group · Modals</p>
+
+<div class="modal">
+  <div class="head">tail %12   (↑/↓/j/k/PgUp/PgDn to scroll · q / t / esc to close)</div>
+  <div class="body">[coder] running tests…
+tests/test_cockpit_view.py ......                       [ 38%]
+tests/test_cockpit_graph_panel.py .........             [ 72%]
+tests/test_cockpit_modals.py ....                       [ 91%]
+<span class="grn">120 passed</span> in 4.21s
+[coder] <span class="grn">✓ suite green</span> — committing increment
+[coder] git commit -m "feat(view): extract render_topics"
+[coder] waiting on integrate lock…</div>
+</div>
+
+<p class="ds-note">Source: <code>_TailModal</code> (juggle_cockpit_modals.py). Header line
+<code>tail &lt;pane_id&gt; (…scroll · q / t / esc to close)</code>, then the last 100 captured lines in a
+scrollable VerticalScroll that auto-follows the tail unless the user scrolls up. Refreshes every 1s via
+a 1.0 set_interval; capture_fn is injected so the modal stays testable. Empty capture renders a dim
+<code>(no output)</code>. Round <code>$accent</code> border, 80% × 70%.</p>
+</body></html>

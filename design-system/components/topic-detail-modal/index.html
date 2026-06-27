@@ -1,0 +1,57 @@
+<!-- @dsCard group="Modals" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Topic-detail modal</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--accent:#ffa62b;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:var(--accent);letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.modal{border:1px solid var(--accent);border-radius:10px;background:var(--bg);font-family:var(--mono);
+  font-size:13.5px;line-height:1.6;padding:14px 20px;width:560px;margin-top:14px;white-space:pre-wrap;
+  color:var(--fg)}
+.h{color:#fff;font-weight:700}
+.k{color:var(--dim)}
+.sec{color:#cdd0ce;font-weight:700}
+.dim{color:var(--dim)}
+</style></head>
+<body>
+<p class="ds-label">Topic-detail modal (i)</p>
+<p class="ds-group">group · Modals</p>
+
+<div class="modal"><span class="h">Topic [K]</span>
+────────────────────────────────────────
+<span class="k">label</span>    K
+<span class="k">title</span>    cockpit refactor
+<span class="k">state</span>    running
+<span class="k">agent</span>    coder
+
+<span class="sec">Context:</span>
+Refactoring the cockpit view layer into per-pane modules.
+
+<span class="sec">Why:</span>
+juggle_cockpit.py outgrew its LOC budget; split by domain seam.
+
+<span class="sec">What:</span>
+Extract render_* into juggle_cockpit_view; keep CSS verbatim.
+
+<span class="sec">Result:</span>
+Tests green; cockpit renders identically at all viewports.
+
+<span class="sec">Recent Activity:</span>
+- coder: extracted render_topics/render_agents
+- system: full suite passed (-n auto)
+
+<span class="dim">Esc / q — close</span></div>
+
+<p class="ds-note">Source: <code>_TopicDetailModal</code> (juggle_cockpit_modals.py). Header
+(label/title/state/agent) renders instantly; the body is LLM-summarised in a background worker into
+<b>Context / Why / What / Result</b> sections (shows "Summarizing…" until ready, falls back to raw
+task/result text on failure), plus a Recent Activity tail. Cached by (thread_id, message_count) so
+re-opens are instant. Round <code>$accent</code> border, 70% × 70% scroll, <code>markup=False</code>.</p>
+</body></html>

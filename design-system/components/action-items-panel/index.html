@@ -1,0 +1,42 @@
+<!-- @dsCard group="Actions" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Action Items panel</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;
+  --red:#cc555a;--yellow:#d0b344;--bdim:#5f5f5f;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:#ffa62b;letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:12px 0 0;max-width:64ch;line-height:1.55}
+.panel{position:relative;border:1px solid var(--bdim);border-radius:8px;background:var(--bg);
+  color:var(--fg);font-family:var(--mono);font-size:14px;line-height:1.7;padding:12px 16px;
+  margin-top:14px;width:520px}
+.panel>.t{position:absolute;top:-.82em;left:50%;transform:translateX(-50%);background:var(--bg);
+  padding:0 10px;color:var(--bdim);white-space:nowrap}
+.r{display:flex;gap:0;align-items:baseline;white-space:pre}
+.age{color:var(--dim);display:inline-block;min-width:4ch}
+.g{display:inline-block;min-width:2em}
+.dim{color:var(--dim)}.red{color:var(--red)}.redb{color:var(--red);font-weight:700}.yel{color:var(--yellow)}
+</style></head>
+<body>
+<p class="ds-label">Action Items panel</p>
+<p class="ds-group">group · Actions</p>
+
+<div class="panel term"><span class="t">Action Items [filter: priority:high]</span>
+  <div class="r"><span class="age">10m </span><span class="g">⚠️</span><span class="red">[J] </span><span class="redb">BLOCKER: missing token</span></div>
+  <div class="r"><span class="age">2m  </span><span class="g">📬</span><span class="yel">[B] review ready</span></div>
+  <div class="r"><span class="age">5m  </span><span class="g">❓</span><span class="dim">[K] </span><span>approve plan v3</span></div>
+  <div class="r"><span class="age">12m </span><span class="g">📝</span><span class="dim">[D] nudge: rebase onto main</span></div>
+</div>
+
+<p class="ds-note">Source: <code>render_actions</code> (juggle_cockpit_view.py). Pre-sorted tier asc,
+age desc. Row = age (dim) · tier glyph · [topic] · text. Priority tiers: ⚠️ tier 0 BLOCKER =
+red bold (topic also red); 📬 tier 1 review = yellow; ❓ tier 2 open-question = default (topic dim);
+📝 tier 3 nudge = dim. An active <code>/</code> filter appends <code>[filter: …]</code> to the panel
+title. Empty state renders a dim green "no actions".</p>
+</body></html>

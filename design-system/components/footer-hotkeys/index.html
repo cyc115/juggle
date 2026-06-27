@@ -1,0 +1,46 @@
+<!-- @dsCard group="Chrome" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Footer hotkey bar</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--accent:#ffa62b;--panel:#1f1f1f;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:var(--accent);letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.footer{display:flex;flex-wrap:wrap;gap:0 14px;background:var(--panel);font-family:var(--mono);
+  font-size:14px;padding:5px 12px;border-radius:4px;width:760px;margin-top:14px;align-items:baseline}
+.k{color:var(--accent);font-weight:700}
+.d{color:var(--fg)}
+.pair{white-space:nowrap}
+</style></head>
+<body>
+<p class="ds-label">Footer hotkey bar (compact)</p>
+<p class="ds-group">group · Chrome</p>
+
+<div class="footer">
+  <span class="pair"><span class="k">?</span> <span class="d">Help</span></span>
+  <span class="pair"><span class="k">Tab</span> <span class="d">Tab</span></span>
+  <span class="pair"><span class="k">s</span> <span class="d">Sw</span></span>
+  <span class="pair"><span class="k">a</span> <span class="d">Ack</span></span>
+  <span class="pair"><span class="k">C</span> <span class="d">Cl</span></span>
+  <span class="pair"><span class="k">x</span> <span class="d">Ar</span></span>
+  <span class="pair"><span class="k">/</span> <span class="d">Flt</span></span>
+  <span class="pair"><span class="k">f</span> <span class="d">Foc</span></span>
+  <span class="pair"><span class="k">t</span> <span class="d">Tl</span></span>
+  <span class="pair"><span class="k">g</span> <span class="d">Gr</span></span>
+  <span class="pair"><span class="k">p</span> <span class="d">Proj</span></span>
+  <span class="pair"><span class="k">w</span> <span class="d">Wd</span></span>
+  <span class="pair"><span class="k">r</span> <span class="d">Rwd</span></span>
+</div>
+
+<p class="ds-note">Source: <code>CockpitApp.BINDINGS</code> + Textual <code>Footer(compact=True)</code>
+(juggle_cockpit.py). Each visible binding renders as <code>key</code> (accent) + short description.
+Hidden bindings (j/k ↓↑, PgDn/PgUp, d Dc, i Info, Ctrl+C Quit) are <code>show=False</code> and omitted
+from the bar but listed in the help modal. Key labels honor <code>key_display</code> (e.g. Shift+C
+shows as <code>C</code>).</p>
+</body></html>

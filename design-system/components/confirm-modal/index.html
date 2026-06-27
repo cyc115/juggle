@@ -1,0 +1,30 @@
+<!-- @dsCard group="Modals" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Confirm modal</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;--warning:#ffa62b;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:var(--warning);letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:14px 0 0;max-width:66ch;line-height:1.55}
+.modal{border:1px solid var(--warning);border-radius:10px;background:var(--bg);font-family:var(--mono);
+  font-size:14px;line-height:1.9;padding:16px 22px;width:420px;margin-top:14px;color:var(--fg)}
+.dim{color:var(--dim)}
+</style></head>
+<body>
+<p class="ds-label">Confirm gate (y/N)</p>
+<p class="ds-group">group · Modals</p>
+
+<div class="modal">Close thread [K]? This cannot be undone.
+<span class="dim">y — confirm    n / Esc — cancel</span></div>
+
+<p class="ds-note">Source: <code>_ConfirmModal</code> (juggle_cockpit_modals.py). Single-keypress gate —
+no Input widget, so it can never be submitted accidentally. Dismisses True on <code>y</code>, False on
+<code>n</code> / Esc. Used by destructive actions (Close, Archive). Round <code>$warning</code> (#ffa62b)
+border, width 52, height 6 — the warning color distinguishes it from the accent-bordered prompt modal.</p>
+</body></html>

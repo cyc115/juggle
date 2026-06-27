@@ -1,0 +1,52 @@
+<!-- @dsCard group="Graph" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Graph panel</title>
+<style>
+:root{
+  --bg:#292929;--fg:#c5c8c6;--dim:#868887;
+  --red:#cc555a;--green:#98a84b;--yellow:#d0b344;--cyan:#68a0b3;--grey50:#808080;
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:26px;background:#161616;font-family:var(--sans);color:var(--fg)}
+.ds-label{font-size:11px;color:#9aa0a6;letter-spacing:.08em;text-transform:uppercase;margin:0;font-weight:600}
+.ds-group{font-size:11px;color:#ffa62b;letter-spacing:.06em;margin:2px 0 10px;font-weight:600}
+.ds-note{font-size:12.5px;color:#8a9095;margin:12px 0 0;max-width:66ch;line-height:1.55}
+.panel{position:relative;border:1px solid var(--cyan);border-radius:8px;background:var(--bg);
+  color:var(--fg);font-family:var(--mono);font-size:14px;line-height:1.7;padding:12px 16px;
+  margin-top:14px;width:640px}
+.panel>.t{position:absolute;top:-.82em;left:50%;transform:translateX(-50%);background:var(--bg);
+  padding:0 10px;color:var(--cyan);white-space:nowrap}
+.hdr{font-weight:700;margin-bottom:4px}
+.bar{color:var(--green)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}
+.cell{white-space:pre}
+.g{display:inline-block;min-width:2em}
+.dim{color:var(--dim)}.grey{color:var(--grey50)}
+.red{color:var(--red)}.grn{color:var(--green)}.yel{color:var(--yellow);font-weight:700}.cyn{color:var(--cyan)}
+.legend{color:var(--dim);margin-top:6px}
+</style></head>
+<body>
+<p class="ds-label">Graph panel (graph mode · g)</p>
+<p class="ds-group">group · Graph</p>
+
+<div class="panel term"><span class="t">Graph · ⚠2</span>
+  <div class="hdr">proj-alpha · Cockpit Revamp  <span class="bar">▕██░░░░░░░░▏</span>  1/5 done, 1 failed, 1 ready, 1 running</div>
+  <div class="cols">
+    <div class="cell red"><span>1 </span><span class="g">❌</span><span>broke ✗</span></div>
+    <div class="cell grn"><span>4 </span><span class="g">✅</span><span>setup</span></div>
+    <div class="cell yel"><span>2 </span><span class="g">🏃</span><span>[WK] build-api</span></div>
+    <div class="cell grey"><span>5 </span><span class="g">⬡</span><span>wait-task ⊣3</span></div>
+    <div class="cell cyn"><span>3 </span><span class="g">◇</span><span>ready-task ▸</span></div>
+    <div class="cell"></div>
+  </div>
+  <div class="legend">🏃 running  ◇ ready  ⬡ blocked  ✅ done  ❌ failed   ⊣n=waits on #n</div>
+</div>
+
+<p class="ds-note">Source: <code>build_graph_panel</code> (juggle_cockpit_graph_panel.py). Cyan border.
+Title <code>Graph · ⚠n</code> carries the unread badge. Header line = <code>project_id · name</code>
++ a <code>▕█░▏</code> done-fraction bar + <code>format_progress</code> counts. Body is a column-major
+multi-column numbered list in topological (execution) order; each cell colored by state
+(green/cyan/yellow/grey50/red). A dim legend pins the glyph key at the bottom.</p>
+</body></html>
