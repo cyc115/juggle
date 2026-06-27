@@ -14,6 +14,7 @@ from juggle_cockpit_graph_dag import (  # noqa: F401 — re-exported for back-co
     GraphDag,
     load_graph_dags as _load_graph_dags,
 )
+from dbops.node_translation import status_for_state
 
 
 @dataclass(frozen=True)
@@ -242,9 +243,10 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
 
         tid = _get("id", "?")
         label = _get("user_label") or _get("label") or (tid[:6] if tid else "?")
-        title = _get("title") or _get("topic") or "?"
-        status = _get("status") or "active"
-        age = _age_secs(_get("last_active_at") or _get("last_active"))
+        title = _get("title") or "?"
+        # P8 Task 3.1: rows come from nodes; map node state -> legacy status vocab.
+        status = status_for_state(_get("state") or "open")
+        age = _age_secs(_get("last_active_at"))
         pid = _get("project_id") or "INBOX"
         pname = projects_by_id.get(pid, "Inbox")
         return Topic(
@@ -259,36 +261,35 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
             task_state=None,
         )
 
+    # Conversation panels read nodes (kind='conversation'); status->state value-mapped (P8 Task 3.1).
     # 1. Active
     for r in conn.execute(
-        "SELECT * FROM threads WHERE status = 'active' ORDER BY last_active_at DESC"
+        "SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'open' ORDER BY last_active_at DESC"
     ).fetchall():
         topics.append(_make_topic(r))
 
     # 2. Running
     for r in conn.execute(
-        "SELECT * FROM threads WHERE status = 'running' ORDER BY last_active_at DESC"
+        "SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'running' ORDER BY last_active_at DESC"
     ).fetchall():
         topics.append(_make_topic(r))
 
     # 2b. Background
     for r in conn.execute(
-        "SELECT * FROM threads WHERE status = 'background' ORDER BY last_active_at DESC"
+        "SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'background' ORDER BY last_active_at DESC"
     ).fetchall():
         topics.append(_make_topic(r))
 
     # 3. Closed within TTL
     for r in conn.execute(
-        "SELECT * FROM threads WHERE status = 'closed' "
-        "AND last_active_at >= ? ORDER BY last_active_at DESC",
+        "SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'done' AND last_active_at >= ? ORDER BY last_active_at DESC",
         (cutoff_s,),
     ).fetchall():
         topics.append(_make_topic(r))
 
     # 4. Archived, most recent N
     for r in conn.execute(
-        "SELECT * FROM threads WHERE status = 'archived' "
-        "ORDER BY last_active_at DESC LIMIT ?",
+        "SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'archived' ORDER BY last_active_at DESC LIMIT ?",
         (_ARCHIVED_DISPLAY_LIMIT,),
     ).fetchall():
         topics.append(_make_topic(r))
@@ -311,7 +312,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
         topic_label = "Z"  # sentinel for orphaned (thread_id IS NULL) items
         if r["thread_id"]:
             t_row = conn.execute(
-                "SELECT user_label, id FROM threads WHERE id = ?",
+                "SELECT user_label, id FROM nodes WHERE id = ? AND kind = 'conversation'",
                 (r["thread_id"],),
             ).fetchone()
             if t_row:
@@ -355,7 +356,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
         topic_label_a: str | None = None
         if r["assigned_thread"]:
             tr = conn.execute(
-                "SELECT user_label, id FROM threads WHERE id = ?",
+                "SELECT user_label, id FROM nodes WHERE id = ? AND kind = 'conversation'",
                 (r["assigned_thread"],),
             ).fetchone()
             if tr:

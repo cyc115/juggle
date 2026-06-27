@@ -208,6 +208,17 @@ def _make_in_memory_db():
           created_at TEXT NOT NULL, last_active TEXT NOT NULL,
           last_active_at TEXT
         );
+        CREATE TABLE nodes (
+          id TEXT PRIMARY KEY, kind TEXT NOT NULL,
+          title TEXT NOT NULL, objective TEXT DEFAULT '',
+          state TEXT NOT NULL DEFAULT 'open',
+          project_id TEXT, parent_id TEXT, user_label TEXT,
+          agent_result TEXT,
+          show_in_list INTEGER NOT NULL DEFAULT 1,
+          summarized_msg_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          last_active_at TEXT
+        );
         CREATE TABLE agents (
           id TEXT PRIMARY KEY, role TEXT NOT NULL, pane_id TEXT NOT NULL,
           assigned_thread TEXT, status TEXT NOT NULL DEFAULT 'idle',
@@ -267,6 +278,13 @@ def _make_in_memory_db():
             now,
             now_min,
         ),
+    )
+    # P8 Task 3.1: cockpit reads conversations from nodes — mirror thread-001.
+    conn.execute(
+        "INSERT INTO nodes(id, kind, title, state, user_label, project_id, "
+        "show_in_list, summarized_msg_count, created_at, updated_at, last_active_at) "
+        "VALUES('thread-001','conversation','cockpit','open','K',NULL,1,0,?,?,?)",
+        (now, now, now_min),
     )
     conn.execute(
         "INSERT INTO agents(id, role, pane_id, assigned_thread, status, "

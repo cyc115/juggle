@@ -30,6 +30,25 @@ def test_topics_ordered_active_running_closed_archived(db):
     assert statuses[3] == "archived"
 
 
+def test_snapshot_reads_conversations_from_nodes(db):
+    """2026-06-27 P8 C2 Task 3.1: cockpit conversation panels read the unified nodes
+    table (kind='conversation', value-mapped state), NOT threads.status. A conversation
+    present ONLY in nodes must surface; pre-flip (panels read threads) it was invisible."""
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO nodes (id, kind, title, state, user_label, project_id, "
+            "show_in_list, summarized_msg_count, created_at, updated_at, last_active_at) "
+            "VALUES ('conv-nodeonly','conversation','only-in-nodes','open','ZZ',NULL,"
+            "1,0,?,?,?)",
+            (now, now, now),
+        )
+        conn.commit()
+    state = snapshot(db)
+    assert "only-in-nodes" in [t.title for t in state.topics]
+
+
 def test_archived_limit_most_recent_n(db):
     # Create and archive sequentially (MAX_THREADS=10 enforced for non-archived)
     ids = []
