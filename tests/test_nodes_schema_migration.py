@@ -310,7 +310,9 @@ def test_migration_state_mapping_threads(tmp_path):
         "th-closed": "done",
         "th-failed": "failed-exec",
         "th-archived": "archived",
-        "th-bg": "running",
+        # R2-1: background is first-class & bijective — Migration 44 now backfills via
+        # the canonical STATUS_TO_STATE, so 'background' maps to itself (was 'running').
+        "th-bg": "background",
     }
     for tid, expected_state in mapping.items():
         row = conn.execute("SELECT state FROM nodes WHERE id=?", (tid,)).fetchone()

@@ -14,20 +14,13 @@ from __future__ import annotations
 import logging
 import sqlite3
 
+from dbops.node_translation import STATUS_TO_STATE
 from dbops.schema_nodes import CREATE_NODE_EDGES, CREATE_NODES, CREATE_NODES_INDEXES
 
 _log = logging.getLogger(__name__)
 
-# threads.status → node.state (§4.3 of the spec)
-_THREAD_STATUS_MAP = {
-    "active": "open",
-    "background": "running",
-    "running": "running",
-    "closed": "done",
-    "failed": "failed-exec",
-    "done": "done",
-    "archived": "archived",
-}
+# threads.status → node.state (§4.3) is owned by the canonical forward map
+# (dbops.node_translation.STATUS_TO_STATE, P8 H1); no duplicate here.
 
 # pending is a legacy state in graph_topics/graph_tasks; map to 'open'
 def _task_state(state: str) -> str:
@@ -104,7 +97,7 @@ def _backfill_threads(conn: sqlite3.Connection) -> None:
 
     _EPOCH = "1970-01-01T00:00:00"
     for r in rows:
-        state = _THREAD_STATUS_MAP.get(r["status"], "open")
+        state = STATUS_TO_STATE.get(r["status"], "open")
         # r[col] is already None for absent columns (NULL AS col in SELECT)
         intent = r["last_user_intent"] or ""
         conn.execute("""

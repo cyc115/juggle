@@ -186,6 +186,21 @@ def test_background_state_accepted_by_machine():
     assert node_transition("background", "archive", "conversation") == "archived"
 
 
+# ── single-source forward-map invariant (P8 H1) ────────────────────────────────
+
+def test_no_duplicate_forward_map():
+    """2026-06-27 P8 H1: the thread-status->node-state forward map ('active':'open' …)
+    is defined exactly ONCE — the canonical dbops.node_translation.STATUS_TO_STATE.
+    The db_node_machine._THREAD_STATUS_TO_NODE_STATE + migrations_nodes._THREAD_STATUS_MAP
+    duplicates are deleted; importers reference the canonical module."""
+    import subprocess
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parent.parent / "src"
+    n = subprocess.run(["grep", "-rn", '"active": "open"', str(src)],
+                       capture_output=True, text=True).stdout.strip().splitlines()
+    assert len(n) == 1, f"expected 1 forward-map definition, found {len(n)}:\n{n}"
+
+
 # ── single-engine invariant (P8 C1): db_graph owns no second transition table ──
 
 def test_db_graph_has_no_local_transition_table():

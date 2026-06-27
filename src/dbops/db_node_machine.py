@@ -7,6 +7,8 @@ engine: the DB wrappers ``db_graph.task_transition`` and
 """
 from __future__ import annotations
 
+from dbops.node_translation import STATUS_TO_STATE
+
 
 class InvalidTransition(ValueError):
     """Raised when an event is unknown, state is unknown, or kind disallows it."""
@@ -124,22 +126,14 @@ def legal_events(kind: str) -> frozenset[str]:
 
 
 # ── threads.status → node.state mapping ────────────────────────────────────────
-# §4.3 of the unified-topic-graph spec. Pure lookup — raises KeyError on unknown.
-
-_THREAD_STATUS_TO_NODE_STATE: dict[str, str] = {
-    "active":     "open",
-    "background": "background",
-    "running":    "running",
-    "closed":     "done",
-    "failed":     "failed-exec",
-    "done":       "done",
-    "archived":   "archived",
-}
+# §4.3 of the unified-topic-graph spec. The forward value-map lives in exactly ONE
+# place — dbops.node_translation.STATUS_TO_STATE (P8 H1); this is a thin delegator.
 
 
 def thread_status_to_node_state(status: str) -> str:
     """Map threads.status to the equivalent node.state per spec §4.3.
 
-    Raises KeyError on an unrecognised status value.
+    Delegates to the canonical forward map; raises KeyError on an unrecognised
+    status value.
     """
-    return _THREAD_STATUS_TO_NODE_STATE[status]
+    return STATUS_TO_STATE[status]
