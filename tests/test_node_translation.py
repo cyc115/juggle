@@ -5,10 +5,20 @@ import pytest
 def test_status_to_state_full_map():
     from dbops.node_translation import STATUS_TO_STATE
     assert STATUS_TO_STATE == {
-        "active": "open", "closed": "done", "background": "running",
+        "active": "open", "closed": "done", "background": "background",
         "running": "running", "failed": "failed-exec", "done": "done",
         "archived": "archived",
     }
+
+
+def test_status_state_bijective_over_live_vocab():
+    """2026-06-27 P8 R2-1: status<->state is bijective over the LIVE vocab; a
+    'background' conversation round-trips losslessly (it was collapsed to 'running',
+    which broke the watchdog reaper + the two distinct cockpit panels)."""
+    from dbops.node_translation import STATUS_TO_STATE, STATE_TO_STATUS
+    for status in ("active", "background", "running", "closed", "archived"):
+        state = STATUS_TO_STATE[status]
+        assert STATE_TO_STATUS[state] == status, f"{status!r} not invertible (state={state!r})"
 
 
 def test_state_for_status_unknown_fails_loud():
@@ -20,7 +30,7 @@ def test_state_for_status_unknown_fails_loud():
 def test_state_for_status_known_values():
     from dbops.node_translation import state_for_status
     assert state_for_status("active") == "open"
-    assert state_for_status("background") == "running"
+    assert state_for_status("background") == "background"
     assert state_for_status("failed") == "failed-exec"
 
 

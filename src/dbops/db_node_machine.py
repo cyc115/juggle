@@ -57,6 +57,12 @@ _NODE_TRANSITIONS: dict[tuple[str, str], str] = {
     ("blocked-failed",      "archive"): "archived",
     # done → archive only
     ("done", "archive"): "archived",
+    # background — conversation agent dispatched in the background (R2-1).
+    # Kept DISTINCT from 'running' so the watchdog reaper + cockpit 2a/2b stay correct.
+    ("open",       "dispatch_bg"): "background",
+    ("background", "foreground"):  "open",        # agent completes / user resumes -> active
+    ("background", "answer"):      "done",        # bg agent answered/closed the conversation
+    ("background", "archive"):     "archived",
 }
 
 # ── Kind-legal event sets ───────────────────────────────────────────────────────
@@ -78,7 +84,7 @@ _KIND_LEGAL: dict[str, frozenset[str]] = {
         "dispatch", "stale_reset",
         "complete", "exec_fail",
     }),
-    "conversation": frozenset({"answer", "archive"}),
+    "conversation": frozenset({"answer", "archive", "dispatch_bg", "foreground"}),
     "decision":     frozenset({"answer", "archive"}),
 }
 
@@ -122,7 +128,7 @@ def legal_events(kind: str) -> frozenset[str]:
 
 _THREAD_STATUS_TO_NODE_STATE: dict[str, str] = {
     "active":     "open",
-    "background": "running",
+    "background": "background",
     "running":    "running",
     "closed":     "done",
     "failed":     "failed-exec",

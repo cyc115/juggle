@@ -161,7 +161,7 @@ def test_unknown_state_raises():
 
 @pytest.mark.parametrize("status,expected_state", [
     ("active",     "open"),
-    ("background", "running"),
+    ("background", "background"),
     ("running",    "running"),
     ("closed",     "done"),
     ("failed",     "failed-exec"),
@@ -175,6 +175,15 @@ def test_thread_status_to_node_state(status, expected_state):
 def test_thread_status_unknown_raises():
     with pytest.raises(KeyError):
         thread_status_to_node_state("bogus_status")
+
+
+def test_background_state_accepted_by_machine():
+    """2026-06-27 P8 R2-1: the unified machine must accept the 'background' state for
+    conversation nodes — it must NOT raise InvalidTransition on a live state (the C3
+    failure mode, now for background)."""
+    assert node_transition("open", "dispatch_bg", "conversation") == "background"
+    assert node_transition("background", "foreground", "conversation") == "open"
+    assert node_transition("background", "archive", "conversation") == "archived"
 
 
 # ── single-engine invariant (P8 C1): db_graph owns no second transition table ──

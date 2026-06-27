@@ -3,7 +3,7 @@ Used by every P8 read-collapse site so the value map is defined exactly once."""
 from __future__ import annotations
 
 STATUS_TO_STATE = {
-    "active": "open", "closed": "done", "background": "running",
+    "active": "open", "closed": "done", "background": "background",
     "running": "running", "failed": "failed-exec", "done": "done",
     "archived": "archived",
 }
@@ -13,11 +13,14 @@ def state_for_status(status: str) -> str:
     return STATUS_TO_STATE[status]   # fail-loud on unknown status
 
 
-# Reverse value-map state -> status. The LIVE thread vocab
-# {active,running,closed,archived} is bijective with node state
-# {open,running,done,archived} (set_thread_status._VALID_STATES), so the reverse
-# is exact for all live data; legacy-only states pass through unchanged.
-STATE_TO_STATUS = {"open": "active", "running": "running", "done": "closed",
+# Reverse value-map state -> status. BIJECTIVE over the LIVE thread vocab
+# {active,background,running,closed,archived} <-> node state
+# {open,background,running,done,archived} (set_thread_status._VALID_STATES).
+# `background` stays first-class (R2-1) — NOT collapsed to 'running' — so the
+# watchdog reaper + the two cockpit panels (2a Running / 2b Background) stay
+# correct. Legacy-only states pass through unchanged.
+STATE_TO_STATUS = {"open": "active", "background": "background",
+                   "running": "running", "done": "closed",
                    "archived": "archived"}
 
 
