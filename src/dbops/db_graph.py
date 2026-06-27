@@ -18,6 +18,7 @@ from contextlib import contextmanager
 
 from dbops.schema import _now
 from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
+from dbops.state_write import cas_state, write_state
 
 
 @contextmanager
@@ -83,20 +84,13 @@ def task_transition(db, task_id: str, event: str, conn=None) -> str:
             f"illegal graph transition: task {task_id!r} in state "
             f"{task['state']!r} got event {event!r}"
         ) from e
-    now = _now()
-    sets, params = ["state=?", "updated_at=?"], [new_state, now]
-    if new_state == "verified":
-        sets.append("verified_at=?")
-        params.append(now)
-    if event == "reload":
-        # A resurrected task must not keep its dead thread's id (DA round-2
-        # minor 4, 2026-06-10): stale bindings resolved to closed threads.
-        sets.append("thread_id=NULL")
+    # Single lockstep writer: nodes + graph_tasks together (M3). 'reload' clears
+    # the dead thread binding (DA round-2 minor 4, 2026-06-10: stale bindings
+    # resolved to closed threads).
     with _cx(db, conn) as c:
-        c.execute(
-            f"UPDATE graph_tasks SET {', '.join(sets)} WHERE id=?",
-            (*params, task_id),
-        )
+        write_state(c, task_id, new_state, now=_now(),
+                    verified=(new_state == "verified"),
+                    clear_thread=(event == "reload"))
     return new_state
 
 
@@ -253,12 +247,8 @@ def recompute_ready(db, project_id: str) -> list[str]:
     newly = []
     for task_id in ready_eligible(db, project_id):
         with _cx(db) as conn:
-            cur = conn.execute(
-                "UPDATE graph_tasks SET state='ready', updated_at=? "
-                "WHERE id=? AND state='open'",
-                (_now(), task_id),
-            )
-        if cur.rowcount == 1:
+            won = cas_state(conn, task_id, frm="open", to="ready", now=_now())
+        if won == 1:
             newly.append(task_id)
     if newly:
         try:

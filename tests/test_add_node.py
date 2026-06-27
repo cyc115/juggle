@@ -61,7 +61,20 @@ def test_add_node_task_no_deps_dual_writes_graph_tasks(db):
 
     task = g.get_task(db, node_id)
     assert task is not None, "graph_tasks dual-write missing"
-    assert task["state"] in ("ready", "pending")  # recompute promotes to ready
+    assert task["state"] in ("ready", "open")  # readiness computed in-transaction
+
+
+def test_add_node_task_state_atomic_no_drift(db):
+    """2026-06-27 P8 M3: a no-dep task's nodes.state must equal graph_tasks.state
+    immediately after add_node returns (computed in-transaction, no post-commit
+    mirror window)."""
+    from juggle_add_node import add_node
+    r = add_node(db, kind="task", title="x", project_id="INBOX")  # no deps → ready
+    with db._connect() as conn:
+        node = conn.execute(
+            "SELECT state FROM nodes WHERE id=?", (r["node_id"],)
+        ).fetchone()
+    assert node[0] == g.get_task(db, r["node_id"])["state"] == "ready"
 
 
 def test_add_node_task_with_deps_state_open(db):

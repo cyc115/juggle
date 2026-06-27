@@ -14,6 +14,7 @@ from __future__ import annotations
 from dbops.schema import _now
 from dbops.db_graph import _cx
 from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
+from dbops.state_write import write_state
 
 
 class UnmergedVerifyRefused(ValueError):
@@ -55,18 +56,11 @@ def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
             f"refusing to verify topic {topic_id!r}: its work is not merged into "
             f"main (git merge-base --is-ancestor failed). Keeping it pre-verified."
         )
-    now = _now()
-    sets, params = ["state=?", "updated_at=?"], [new_state, now]
-    if new_state == "verified":
-        sets.append("verified_at=?")
-        params.append(now)
-    if event == "reload":
-        sets.append("thread_id=NULL")
+    # Single lockstep writer: nodes + graph_topics together (M3).
     with _cx(db, conn) as c:
-        c.execute(
-            f"UPDATE graph_topics SET {', '.join(sets)} WHERE id=?",
-            (*params, topic_id),
-        )
+        write_state(c, topic_id, new_state, now=_now(),
+                    verified=(new_state == "verified"),
+                    clear_thread=(event == "reload"))
     return new_state
 
 

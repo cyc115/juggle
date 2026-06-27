@@ -49,14 +49,11 @@ def claim_task(db, task_id: str) -> bool:
     Single conditional UPDATE; rowcount==1 is the claim token. Any concurrent
     claimer sees rowcount==0 because the row no longer matches state='ready'.
     """
+    from dbops.state_write import cas_state
     with db._connect() as conn:
-        cur = conn.execute(
-            "UPDATE graph_tasks SET state='dispatching', updated_at=? "
-            "WHERE id=? AND state='ready'",
-            (_now(), task_id),
-        )
+        won = cas_state(conn, task_id, frm="ready", to="dispatching", now=_now())
         conn.commit()
-        return cur.rowcount == 1
+        return won == 1
 
 
 def sweep_stale_claims(db, project_id: str) -> list[str]:

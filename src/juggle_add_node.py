@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime, timezone
 
 from dbops.db_node_machine import node_transition, _KIND_LEGAL  # noqa: F401
+from dbops.state_write import write_state
 
 
 VALID_KINDS = frozenset({"task", "research", "conversation", "decision"})
@@ -233,7 +234,7 @@ def _add_task_node(
                 (rb, node_id),
             )
 
-        # Dual-write: graph_edges (for legacy recompute_ready)
+        # Dual-write: graph_edges (legacy dep mirror; dropped in Step 4)
         for dep in deps:
             conn.execute(
                 "INSERT OR IGNORE INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
@@ -245,6 +246,19 @@ def _add_task_node(
                 (rb, node_id),
             )
 
+        # Readiness IN-TRANSACTION (M3 fix): mirror db_graph.ready_eligible's
+        # semantics exactly (a dep counts only if it has a graph_tasks row) and
+        # write nodes + graph_tasks together via the single lockstep writer, so
+        # nodes.state can never drift from graph_tasks.state (no post-commit
+        # mirror window). The new task is 'ready' iff every dep is verified.
+        unverified = conn.execute(
+            "SELECT 1 FROM graph_edges e JOIN graph_tasks d ON d.id=e.depends_on_id "
+            "WHERE e.task_id=? AND d.state != 'verified' LIMIT 1",
+            (node_id,),
+        ).fetchone()
+        new_state = "open" if unverified else "ready"
+        if new_state == "ready":
+            write_state(conn, node_id, "ready", now=now)
         conn.commit()
     except AddNodeError:
         conn.rollback()
@@ -255,32 +269,9 @@ def _add_task_node(
     finally:
         conn.close()
 
-    # After commit: determine readiness.
-    # Use legacy recompute_ready to promote graph_tasks (it also handles
-    # required_by demotion). Then sync nodes.state to match.
-    effective_project = project_id or "INBOX"
-    from dbops import db_graph
-    db_graph.recompute_ready(db, effective_project)
-
-    task = db_graph.get_task(db, node_id)
-    graph_state = task["state"] if task else "open"
-
-    if graph_state == "ready":
-        # Promote the nodes row
-        _update_node_state(db, node_id, "ready", now=_now())
+    if new_state == "ready":
         _poke(db)
-        return {"node_id": node_id, "state": "ready"}
-
-    return {"node_id": node_id, "state": "open"}
-
-
-def _update_node_state(db, node_id: str, state: str, now: str) -> None:
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE nodes SET state=?, updated_at=? WHERE id=?",
-            (state, now, node_id),
-        )
-        conn.commit()
+    return {"node_id": node_id, "state": new_state}
 
 
 def _poke(db) -> None:
