@@ -78,6 +78,7 @@ Track in `TODO.md` (repo root):
 ## Directives
 - **Devil's advocate after every implementation:** After any code change is complete, run a critique pass before reporting done.
 - **Graphify before grepping:** For any search spanning more than one file or module, prefer graphify over grep. Common subcommands: `graphify query "<question>"` (semantic search), `graphify path "<A>" "<B>"` (trace relationship), `graphify explain "<concept>"` (summarize node). Fall back to grep only for exact symbol lookups in a known file.
+- **Tests: lean and high-signal.** Remove obsolete tests freely — prefer a few high-quality tests over many unnecessary ones. Refactor/clean up before a change whenever it yields cleaner, more maintainable code (separate from behavior commits).
 
 ## graphify
 
