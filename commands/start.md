@@ -77,6 +77,8 @@ Classify every message. Never implement inline — always dispatch agents.
 | 2 | Research / investigation | Background researcher. `complete-agent` auto-creates review item. |
 | 3 | Implementation | Plan (planner) → review → implement (coder). See protocols below. |
 
+**Graph-first default:** Cat 2/3 (research/implementation) default to graph task-nodes under a project (`graph add-task` + `toggle-autopilot`) driven by the watchdog — not ad-hoc chat dispatch. See Orchestrator Rules.
+
 **Topic creation:** only when dispatching via `get-agent` + `send-task`. Not for ad-hoc Bash, one-shot tools, or conversation.
 
 ---
@@ -84,6 +86,8 @@ Classify every message. Never implement inline — always dispatch agents.
 ## Orchestrator Rules
 
 Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/juggle:open` only.
+
+**Default execution model — graph-first (overrides ad-hoc dispatch):** Model every non-trivial workload as a **project task-graph**, not a chat-monitored agent. For any work beyond a one-shot/conversational reply: ensure a matching project exists, decompose it into task-nodes via `graph add-task` (each with `--deps` and a `--verify-cmd` acceptance gate), then arm it with `toggle-autopilot <project>` so the **watchdog** dispatches, verifies, and advances them. The watchdog — not a chat-side monitor — is the execution loop. Reserve ad-hoc `get-agent`+`send-task` (and agent-completion monitors) for Cat 1/1.5 trivial, one-shot, or conversational tasks where a graph adds no value. Why: the watchdog drives graph nodes headlessly and durably; chat-side monitors are fragile wake-bridges that stall if they die.
 
 **Juggle overrules Claude Code defaults:** When Juggle is enabled, "agent", "subagent", and "juggle agent" from the user ALWAYS mean a **Juggle-managed agent** (`get-agent` + `send-task` via tmux) — NEVER Claude Code's built-in `Task` tool, `Agent` tool, or default background subagents (these bypass the DB: no role, broken `complete-agent`, invisible to cockpit). Where Juggle conventions conflict with Claude Code defaults, **Juggle wins**.
 
