@@ -18,7 +18,7 @@ def test_prior_dogfood_thread_blocks_run(tmp_path):
     mock_db = MagicMock()
 
     with patch.object(dogfood, "get_db", return_value=mock_db), \
-         patch.object(dogfood, "db_query", return_value=[{"topic": "dogfood-2026-05-11"}]), \
+         patch.object(dogfood, "db_query", return_value=[{"title": "dogfood-2026-05-11"}]), \
          patch.object(dogfood, "_check_active_session", return_value=False), \
          patch.object(common, "STATE_FILE", tmp_path / "state.json"), \
          patch.object(common, "JUGGLE_DIR", tmp_path):

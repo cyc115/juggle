@@ -60,6 +60,58 @@ def test_autofix_schedule_thread_resolves_latest_conversation_node(tmp_path):
     assert _find_or_create_schedule_thread(db) == "c2"
 
 
+def test_dogfood_prior_thread_check_reads_nodes(tmp_path):
+    """2026-06-27 P8 Task 3.1: schedules.dogfood._check_prior_dogfood_thread reads
+    the conversation `nodes` (kind='conversation', title LIKE 'dogfood-%'), not
+    threads.topic. Pre-flip this hits `FROM threads` and finds nothing."""
+    from schedules.dogfood import _check_prior_dogfood_thread
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        seed_node(conn, id="d1", kind="conversation", title="dogfood-2026-06-27",
+                  state="open")
+        conn.commit()
+    assert _check_prior_dogfood_thread(db) == "dogfood-2026-06-27"
+
+
+def test_dogfood_prior_thread_check_excludes_terminal_nodes(tmp_path):
+    """2026-06-27 P8 Task 3.1: a closed (state='done') dogfood conversation must be
+    excluded — the legacy `status NOT IN ('closed',...)` maps to `state NOT IN
+    ('done',...)` via the bijective node-state vocab."""
+    from schedules.dogfood import _check_prior_dogfood_thread
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        seed_node(conn, id="d1", kind="conversation", title="dogfood-done",
+                  state="done")
+        conn.commit()
+    assert _check_prior_dogfood_thread(db) is None
+
+
+def test_dogfood_active_session_reads_nodes(tmp_path):
+    """2026-06-27 P8 Task 3.1: schedules.dogfood._check_active_session reads the
+    most-recent live conversation node (state='open'), not threads.status='active'."""
+    from datetime import datetime, timezone
+    from schedules.dogfood import _check_active_session
+    db = _fresh(tmp_path)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with db._connect() as conn:
+        seed_node(conn, id="a1", kind="conversation", title="live", state="open",
+                  last_active_at=now_iso)
+        conn.commit()
+    assert _check_active_session(db) is True
+
+
+def test_dogfood_schedule_thread_resolves_from_nodes(tmp_path):
+    """2026-06-27 P8 Task 3.1: schedules.dogfood._find_or_create_schedule_thread
+    reads conversation `nodes` (title LIKE 'schedule%', else newest), not threads."""
+    from schedules.dogfood import _find_or_create_schedule_thread
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        seed_node(conn, id="s1", kind="conversation", title="schedule-weekly",
+                  state="open")
+        conn.commit()
+    assert _find_or_create_schedule_thread(db) == "s1"
+
+
 def test_static_legacy_ref_floor_ratchet():
     """Ratchet: live legacy-table refs in shipped src must not climb back above
     the 2026-06-23 floor (123). The residual 123 are blocked (lossy status map,

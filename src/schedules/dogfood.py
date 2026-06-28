@@ -71,13 +71,16 @@ Output a structured report with these sections:
 def _check_prior_dogfood_thread(db) -> str | None:
     """Return open prior dogfood thread id if any, else None."""
     try:
+        # P8 Task 3.1: conversations read from nodes; topic->title, status->state
+        # (terminal closed/archived/failed -> done/archived/failed-exec, bijective).
         rows = db_query(
             db,
-            "SELECT id, topic FROM threads WHERE topic LIKE 'dogfood-%' "
-            "AND status NOT IN ('closed','archived','failed')"
+            "SELECT id, title FROM nodes WHERE kind='conversation' "
+            "AND title LIKE 'dogfood-%' "
+            "AND state NOT IN ('done','archived','failed-exec')"
         )
         if rows:
-            return rows[0]["topic"]
+            return rows[0]["title"]
     except Exception as e:
         logger.warning("prior dogfood thread check failed: %s", e)
     return None
@@ -86,10 +89,11 @@ def _check_prior_dogfood_thread(db) -> str | None:
 def _check_active_session(db) -> bool:
     """Return True if Juggle session actively in use in last 30 min."""
     try:
+        # P8 Task 3.1: live conversations read from nodes; status='active'->state='open'.
         rows = db_query(
             db,
-            "SELECT last_active_at FROM threads WHERE status = 'active' "
-            "ORDER BY last_active_at DESC LIMIT 1"
+            "SELECT last_active_at FROM nodes WHERE kind='conversation' "
+            "AND state = 'open' ORDER BY last_active_at DESC LIMIT 1"
         )
         if not rows:
             return False
@@ -278,10 +282,17 @@ def _file_action_item(db, findings_text: str, thread_id: str | None, dry_run: bo
 def _find_or_create_schedule_thread(db) -> str | None:
     """Return id of a schedule-related thread, or None."""
     try:
-        rows = db_query(db, "SELECT id FROM threads WHERE topic LIKE 'schedule%' LIMIT 1")
+        # P8 Task 3.1: conversations read from nodes (title<-topic).
+        rows = db_query(
+            db,
+            "SELECT id FROM nodes WHERE kind='conversation' "
+            "AND title LIKE 'schedule%' LIMIT 1")
         if rows:
             return rows[0]["id"]
-        rows = db_query(db, "SELECT id FROM threads ORDER BY created_at DESC LIMIT 1")
+        rows = db_query(
+            db,
+            "SELECT id FROM nodes WHERE kind='conversation' "
+            "ORDER BY created_at DESC LIMIT 1")
         if rows:
             return rows[0]["id"]
     except Exception:
