@@ -307,6 +307,45 @@ def test_spawn_pane_uses_new_window_not_split(mgr):
     )
 
 
+def test_spawn_pane_targets_session_not_window(mgr):
+    """spawn_pane's new-window target must be `session:`, never bare `session`.
+
+    Incident 2026-06-28 (total dispatch outage): `new-window -t juggle` uses a
+    bare target that tmux fuzzy-matches against WINDOW names too. When any other
+    session holds a window whose name starts with the session name, the bare
+    target resolves to THAT window and new-window fails with
+    `create window failed: index 1 in use` — every agent spawn (and the
+    watchdog) dies on a freshly-created juggle session.
+
+    Fix: a trailing colon (`session:`) pins the target to "this session, next
+    free window index".
+
+    RED before fix: target is the bare session name.
+    GREEN after fix: target ends with ':'.
+    """
+    tmux_calls = []
+
+    def fake_run(*args):
+        tmux_calls.append(list(args))
+        m = MagicMock()
+        m.stdout = "%11\n"
+        m.stderr = ""
+        m.returncode = 0
+        return m
+
+    with patch.object(mgr, "_run_tmux", side_effect=fake_run):
+        mgr.spawn_pane()
+
+    new_window = next((c for c in tmux_calls if c and c[0] == "new-window"), None)
+    assert new_window is not None, "spawn_pane never called new-window"
+    target = new_window[new_window.index("-t") + 1]
+    assert target == f"{mgr.session_name}:", (
+        f"new-window target must be the session with a trailing colon "
+        f"('{mgr.session_name}:'), got bare {target!r} which tmux fuzzy-matches "
+        "against window names → 'index N in use' dispatch outage"
+    )
+
+
 def test_reap_grace_protects_fresh_agent_with_missing_pane(tmp_path):
     """Agent just created (within cold-start grace) must NOT be reaped even
     if its pane is already gone.

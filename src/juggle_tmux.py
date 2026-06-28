@@ -98,10 +98,17 @@ class JuggleTmuxManager:
         any existing panes. Splitting the first window produces tiny unusable
         panes when multiple agents are running concurrently.
         """
+        # Target the session with a TRAILING COLON (`session:`) so tmux creates
+        # the window at the next free index of THIS session. A bare target
+        # (`-t juggle`) is fuzzy-matched against WINDOW names too, so if any
+        # other session holds a window whose name starts with the session name,
+        # new-window resolves to that window and fails `create window failed:
+        # index N in use` — a total dispatch outage on a fresh juggle session
+        # (incident 2026-06-28).
         result = self._run_tmux(
             "new-window",
             "-t",
-            self.session_name,
+            f"{self.session_name}:",
             "-P",
             "-F",
             "#{pane_id}",
