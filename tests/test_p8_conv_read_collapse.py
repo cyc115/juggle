@@ -112,6 +112,23 @@ def test_dogfood_schedule_thread_resolves_from_nodes(tmp_path):
     assert _find_or_create_schedule_thread(db) == "s1"
 
 
+def test_cleanup_orphaned_threads_reads_running_nodes(tmp_path):
+    """2026-06-27 P8 Task 3.1: juggle_cmd_threads._cleanup_orphaned_threads scans
+    `nodes` (kind='conversation', state='running') with no busy agent, not
+    threads.status='running'. Pre-flip it hits `FROM threads` and finds nothing,
+    so no orphan action item is filed."""
+    from juggle_cmd_threads import _cleanup_orphaned_threads
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        seed_node(conn, id="r1", kind="conversation", title="stuck-topic",
+                  state="running", user_label="Q")
+        conn.commit()
+    _cleanup_orphaned_threads(db)
+    items = db.get_open_action_items()
+    assert any(it["thread_id"] == "r1" and "stuck-topic" in it["message"]
+               for it in items)
+
+
 def test_static_legacy_ref_floor_ratchet():
     """Ratchet: live legacy-table refs in shipped src must not climb back above
     the 2026-06-23 floor (123). The residual 123 are blocked (lossy status map,

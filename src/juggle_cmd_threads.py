@@ -402,10 +402,12 @@ def cmd_close_thread(args):
 def _cleanup_orphaned_threads(db) -> None:
     """Find 'running' threads with no busy agent; convert each to closed + action_item."""
     with db._connect() as conn:
+        # P8 Task 3.1: conversations read from nodes (kind='conversation');
+        # status='running'->state='running', topic->title.
         orphans = conn.execute(
             """
-            SELECT t.id, t.user_label, t.topic FROM threads t
-            WHERE t.status = 'running'
+            SELECT t.id, t.user_label, t.title FROM nodes t
+            WHERE t.kind = 'conversation' AND t.state = 'running'
             AND NOT EXISTS (
                 SELECT 1 FROM agents a WHERE a.assigned_thread = t.id AND a.status = 'busy'
             )
@@ -414,7 +416,7 @@ def _cleanup_orphaned_threads(db) -> None:
     for o in orphans:
         db.add_action_item(
             thread_id=o["id"],
-            message=f"orphaned running thread ({o['topic']}) — no busy agent. Review.",
+            message=f"orphaned running thread ({o['title']}) — no busy agent. Review.",
             type_="failure",
             priority="high",
         )
