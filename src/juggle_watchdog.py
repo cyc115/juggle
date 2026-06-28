@@ -871,8 +871,8 @@ def check_orphaned_threads(
     dedup_cutoff = (now - timedelta(hours=dedup_window_hours)).isoformat()
 
     with db._connect() as conn:
-        thread_rows = conn.execute(
-            "SELECT * FROM threads WHERE status='background'"
+        thread_rows = conn.execute(  # P8 Task 3.1 (R2-1): read background from nodes
+            "SELECT * FROM nodes WHERE kind='conversation' AND state='background'"
         ).fetchall()
         threads = [dict(r) for r in thread_rows]
         busy_rows = conn.execute(

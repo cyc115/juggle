@@ -70,13 +70,11 @@ def test_orphan_recovery_uses_stored_role_not_hardcoded_coder(db, tmp_path):
     db.update_thread(thread_id, status="background")
 
     past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET last_active_at=?, last_dispatched_task=?, "
-            "last_dispatched_role=? WHERE id=?",
-            (past, "run the research", "researcher", thread_id),
-        )
-        conn.commit()
+    # P8 Task 3.1: reaper reads nodes; mirror the seed onto the conversation node.
+    db.update_thread(
+        thread_id, last_active_at=past, last_dispatched_task="run the research",
+        last_dispatched_role="researcher",
+    )
 
     spawned_roles: list[str] = []
 
@@ -105,13 +103,11 @@ def test_orphan_recovery_skips_when_role_unknown(db, tmp_path):
     db.update_thread(thread_id, status="background")
 
     past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET last_active_at=?, last_dispatched_task=?, "
-            "last_dispatched_role=NULL WHERE id=?",
-            (past, "some task", thread_id),
-        )
-        conn.commit()
+    # P8 Task 3.1: reaper reads nodes; mirror the seed onto the conversation node.
+    db.update_thread(
+        thread_id, last_active_at=past, last_dispatched_task="some task",
+        last_dispatched_role=None,
+    )
 
     spawned: list[str] = []
 

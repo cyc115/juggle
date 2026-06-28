@@ -17,6 +17,28 @@ def db(tmp_path):
     return d
 
 
+def test_reaper_reads_background_state_from_nodes(db):
+    """2026-06-27 P8 R2-1: the watchdog reaper selects background conversations from
+    nodes (kind='conversation', state='background'), NOT threads.status. Backdating
+    ONLY the node's last_active_at (threads stays recent) must still flag it orphaned.
+    RED on the pre-flip reaper, which read threads.last_active_at (recent → not stale)."""
+    from datetime import datetime, timezone, timedelta
+    from juggle_watchdog import check_orphaned_threads
+
+    past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
+    t = db.create_thread("bg node-stale", session_id="")
+    db.update_thread(t, status="background")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET last_active_at=? WHERE id=? AND kind='conversation'",
+            (past, t),
+        )
+        conn.commit()
+
+    orphaned = check_orphaned_threads(db, orphan_threshold=300.0)
+    assert t in orphaned
+
+
 def test_orphaned_thread_files_action_item(db, tmp_path):
     from datetime import datetime, timezone, timedelta
     from juggle_watchdog import check_orphaned_threads
@@ -24,11 +46,8 @@ def test_orphaned_thread_files_action_item(db, tmp_path):
     thread_id = db.create_thread("orphan test", session_id="")
     db.update_thread(thread_id, status="background")
     past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id)
-        )
-        conn.commit()
+    # P8 Task 3.1: reaper reads nodes; mirror the backdate onto the conversation node.
+    db.update_thread(thread_id, last_active_at=past)
 
     orphaned = check_orphaned_threads(db, orphan_threshold=300.0)
     assert thread_id in orphaned
@@ -45,11 +64,8 @@ def test_orphaned_thread_dedup(db, tmp_path):
     thread_id = db.create_thread("dedup test", session_id="")
     db.update_thread(thread_id, status="background")
     past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id)
-        )
-        conn.commit()
+    # P8 Task 3.1: reaper reads nodes; mirror the backdate onto the conversation node.
+    db.update_thread(thread_id, last_active_at=past)
 
     check_orphaned_threads(db, orphan_threshold=300.0)
     check_orphaned_threads(db, orphan_threshold=300.0)
@@ -68,11 +84,8 @@ def test_active_thread_not_orphaned(db, tmp_path):
     agent_id = db.create_agent(role="coder", pane_id="%5")
     db.update_agent(agent_id, status="busy", assigned_thread=thread_id)
     past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET last_active_at=? WHERE id=?", (past, thread_id)
-        )
-        conn.commit()
+    # P8 Task 3.1: reaper reads nodes; mirror the backdate onto the conversation node.
+    db.update_thread(thread_id, last_active_at=past)
 
     orphaned = check_orphaned_threads(db, orphan_threshold=300.0)
     assert thread_id not in orphaned
@@ -153,18 +166,12 @@ def test_orphan_detection_repro(db):
     past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
 
     t1 = db.create_thread("orphan", session_id="")
-    db.update_thread(t1, status="background")
-    with db._connect() as conn:
-        conn.execute("UPDATE threads SET last_active_at=? WHERE id=?", (past, t1))
-        conn.commit()
+    db.update_thread(t1, status="background", last_active_at=past)
 
     t2 = db.create_thread("control", session_id="")
-    db.update_thread(t2, status="background")
+    db.update_thread(t2, status="background", last_active_at=past)
     a2 = db.create_agent(role="coder", pane_id="%1")
     db.update_agent(a2, status="busy", assigned_thread=t2)
-    with db._connect() as conn:
-        conn.execute("UPDATE threads SET last_active_at=? WHERE id=?", (past, t2))
-        conn.commit()
 
     orphaned = check_orphaned_threads(db, orphan_threshold=300.0)
     assert t1 in orphaned
@@ -179,14 +186,11 @@ def test_orphan_auto_recovery_dispatches(db):
 
     past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
     t = db.create_thread("recover me", session_id="")
-    db.update_thread(t, status="background")
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET last_active_at=?, last_dispatched_task=?, "
-            "last_dispatched_role=?, last_dispatched_model=? WHERE id=?",
-            (past, "do the work", "coder", "claude-sonnet-4-6", t),
-        )
-        conn.commit()
+    db.update_thread(
+        t, status="background", last_active_at=past,
+        last_dispatched_task="do the work", last_dispatched_role="coder",
+        last_dispatched_model="claude-sonnet-4-6",
+    )
 
     new_agent_id = db.create_agent(role="coder", pane_id="%99")
     new_agent = db.get_agent(new_agent_id)
@@ -219,10 +223,7 @@ def test_orphan_no_task_falls_back_to_manual(db):
 
     past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
     t = db.create_thread("no task", session_id="")
-    db.update_thread(t, status="background")
-    with db._connect() as conn:
-        conn.execute("UPDATE threads SET last_active_at=? WHERE id=?", (past, t))
-        conn.commit()
+    db.update_thread(t, status="background", last_active_at=past)
 
     mgr = MagicMock()
     check_orphaned_threads(db, orphan_threshold=300.0, mgr=mgr)
@@ -244,13 +245,9 @@ def test_orphan_pool_full_falls_back_to_manual(db):
 
     past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
     t = db.create_thread("pool full", session_id="")
-    db.update_thread(t, status="background")
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET last_active_at=?, last_dispatched_task='do work' WHERE id=?",
-            (past, t),
-        )
-        conn.commit()
+    db.update_thread(
+        t, status="background", last_active_at=past, last_dispatched_task="do work"
+    )
 
     mgr = MagicMock()
     check_orphaned_threads(db, orphan_threshold=300.0, mgr=mgr)
@@ -265,13 +262,9 @@ def test_orphan_max_attempts_falls_back_to_manual(db):
 
     past = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
     t = db.create_thread("max attempts", session_id="")
-    db.update_thread(t, status="background")
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET last_active_at=?, last_dispatched_task='do work' WHERE id=?",
-            (past, t),
-        )
-        conn.commit()
+    db.update_thread(
+        t, status="background", last_active_at=past, last_dispatched_task="do work"
+    )
 
     db.add_watchdog_event(
         agent_id="orphan_detector", thread_id=t,

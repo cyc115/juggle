@@ -148,18 +148,12 @@ def test_orphan_auto_recovery_emits_notification_not_action_item(tmp_path):
 
     thread_id = db.create_thread("orphan test", session_id="")
     # Manually set background status + old last_active_at
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET status='background', last_active_at='2020-01-01T00:00:00' "
-            "WHERE id=?",
-            (thread_id,),
-        )
-        conn.execute(
-            "UPDATE threads SET last_dispatched_task='redo work', last_dispatched_role='coder' "
-            "WHERE id=?",
-            (thread_id,),
-        )
-        conn.commit()
+    # P8 Task 3.1: reaper reads nodes; route the seed through update_thread so it
+    # mirrors state='background' + last_active_at + last_dispatched_* onto the node.
+    db.update_thread(
+        thread_id, status="background", last_active_at="2020-01-01T00:00:00",
+        last_dispatched_task="redo work", last_dispatched_role="coder",
+    )
 
     mgr = MagicMock()
     new_agent = {"id": "c" * 32, "pane_id": "%10"}
@@ -193,18 +187,12 @@ def test_orphan_recovery_exhausted_emits_decision_action_item(tmp_path):
     db.init_db()
 
     thread_id = db.create_thread("orphan-exhausted test", session_id="")
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE threads SET status='background', last_active_at='2020-01-01T00:00:00' "
-            "WHERE id=?",
-            (thread_id,),
-        )
-        conn.execute(
-            "UPDATE threads SET last_dispatched_task='redo work', last_dispatched_role='coder' "
-            "WHERE id=?",
-            (thread_id,),
-        )
-        conn.commit()
+    # P8 Task 3.1: reaper reads nodes; route the seed through update_thread so it
+    # mirrors state='background' + last_active_at + last_dispatched_* onto the node.
+    db.update_thread(
+        thread_id, status="background", last_active_at="2020-01-01T00:00:00",
+        last_dispatched_task="redo work", last_dispatched_role="coder",
+    )
 
     # Pre-populate watchdog_events to simulate max attempts already consumed
     max_attempts = 2
