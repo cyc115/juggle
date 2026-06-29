@@ -1,6 +1,73 @@
 # Spec: Unified Topic Graph (topic ≡ graph node)
 
-_2026-06-18 · status: LOCKED design_
+_2026-06-18 · status: SUPERSEDED — see the As-Built Addendum (§0) below_
+
+> This was the design spec for the unified-nodes collapse. The design shipped (P1–P8)
+> with the deviations and honest scoping recorded in **§0 — As-Built Addendum**. Read §0
+> FIRST; the body (§1–§15) is the original design and is retained for provenance only —
+> where §0 and the body disagree, **§0 is authoritative**.
+
+---
+
+## 0. As-Built Addendum (2026-06-29, P8 c6-spec)
+
+The collapse is implemented. `nodes` + `node_edges` are the authoritative model and
+`db_node_machine.node_transition` is the single task-lifecycle engine. This addendum
+records the resolved design questions, the as-built end-state, and — in the spirit of an
+honest as-built — exactly where the body over-claims.
+
+### 0.1 Resolved design questions (Q1–Q4)
+
+| # | Question | As-built resolution |
+|---|----------|---------------------|
+| Q1 | Permanent alias-shim for `status`/`topic`/`last_active` consumers? | **No shim.** Consumers read `state`/`title`/`last_active_at` directly. The permanent `CONV_ALIAS_SHIM` is deleted; `STATE_AS_STATUS_SQL` is now GENERATED from the `STATE_TO_STATUS` dict (single source — `node_translation.py`), not a hand-synced literal. |
+| Q2 | How to model the task→dispatch-thread relation? | **Typed `node_edges` edge**, not a nullable column. `node_edges` carries two typed relations discriminated by `kind`: `'dep'` (the DAG) and `'dispatch'` (the agent-thread binding). No live query reads the raw `nodes.dispatch_thread_id` column. |
+| Q3 | One task-entry vocabulary? | **`'open'`.** `'pending'` is gone from live code; the two dated migrations (`migrations_nodes.py` M44 backfill, `migration_51_state_vocab.py` M51 `pending→open`) carry the historical value by design and are idempotent. |
+| Q4 | Dead `juggle_migrate_lifecycle.py`? | **Deleted by the terminal drop task (Task 6.3).** Still present until that capstone runs (see §0.3). |
+
+### 0.2 Single model, single machine — scoped honestly (R3-3)
+
+- **One model:** `nodes` + `node_edges` are authoritative. The legacy `threads` /
+  `graph_topics` / `graph_tasks` / `graph_edges` tables are no longer dual-read for
+  steady-state logic, but they are still **physically present** — see §0.3.
+- **One machine, scoped to the executor (task) kinds.** `node_transition` is the SOLE
+  transition engine for the **task lifecycle**: `db_graph.task_transition` and
+  `db_topics.topic_transition` both delegate to it with `kind='task'` (the only two call
+  sites). The machine ALSO defines `conversation` entries — `('open','dispatch_bg')`,
+  `('background','foreground')`, `('background','answer')`, `('background','archive')`,
+  and the `conversation` legal-event set — but these are **reserved scaffolding with zero
+  callers**: nothing routes through `node_transition(..., 'conversation')`. The
+  conversation `'background'` state is written **directly** via `write_state` in
+  `threads.set_conversation_background` (called by `juggle_dispatch_core.py` and
+  `juggle_watchdog.py`), bypassing the machine. So the honest claim is: **one machine
+  governs the task lifecycle; the conversation machine surface is built but unexercised.**
+  Wiring conversation writers through the machine — or splitting "focus"
+  (foreground/background) from "lifecycle" into its own dimension — is a FUTURE refinement,
+  explicitly OUT of P8 scope.
+- **`background` is a first-class node state** (bijective `status↔state` map: `active↔open`,
+  `background↔background`, `running↔running`, `closed↔done`, `archived↔archived`). It is
+  NOT collapsed into `running`; the §4.3 / §8.2 body tables that map `background → running`
+  are **superseded** by this bijection.
+
+### 0.3 §10 Deletion List — partially realized (the honest scope)
+
+§10 is the **full-project (P1–P8)** deletion target and is only PARTIALLY realized as-built.
+The `tests/test_spec_as_built.py` pins assert ONLY the items genuinely removed.
+
+- **Landed (data-model / read collapse):** the cockpit `task_state_by_thread` JOIN is gone
+  (cockpit reads `state` straight from `nodes`); the `db_mirror` engine module is deleted
+  (the mirror concept is dead).
+- **Deferred to the terminal drop (Task 6.3, gated + soaking per OQ1):** the legacy-table
+  DDL (`CREATE_GRAPH_TOPICS` / `_TASKS` / `_EDGES`, the `threads` DDL), `set_topic_thread`
+  / `graph_topics.is_mirror`, the raw `nodes.dispatch_thread_id` column, and
+  `juggle_migrate_lifecycle.py`. These remain physically present until that capstone runs.
+- **Compat-retained (intentionally NOT removed):** the CLI surface —
+  `get-agent` / `send-task` / `release-agent` registration, per-project arming +
+  `autopilot_armed_project`, `--force-task` / `check_task_guard`,
+  `_dispatch_flat_task_fallback`, and `_dispatch_via_pool` (still the active dispatch path).
+  The body's claims that these are deleted describe the eventual target, not the as-built.
+- **Explicitly retained by §10.1:** `reconcile_out_of_band_merges` (renamed
+  `verify_merged_nodes`) — never "eliminated".
 
 ---
 
