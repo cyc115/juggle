@@ -39,6 +39,30 @@ def _armed_db(tmp_path):
     return db_path
 
 
+def _topic_db(tmp_path):
+    """Project whose DAG root is a kind='topic' node — the case the topic-info
+    modal must populate from the authoritative nodes row."""
+    from juggle_db import JuggleDB
+    from dbops import db_topics as dt
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO projects(id,name,status,created_at,last_active) "
+            "VALUES(?,?,?,?,?)", ("P", "Proj", "active", now, now),
+        )
+        conn.commit()
+    dt.create_topic(
+        db, topic_id="T1", project_id="P", title="Topic One", objective="ship it"
+    )
+    return db_path
+
+
 # ---------------------------------------------------------------------------
 # Binding + free-key invariants
 # ---------------------------------------------------------------------------
@@ -134,6 +158,29 @@ async def test_enter_opens_detail_modal(tmp_path):
         await pilot.press("escape")
         await pilot.pause(0.1)
         assert not isinstance(app.screen, _GraphTaskModal)
+
+
+@pytest.mark.asyncio
+async def test_enter_on_topic_node_populates_modal(tmp_path):
+    """REGRESSION: opening the info modal on a TOPIC node must show its
+    id/title/state from the nodes row — NOT a blank 'Task ?'. The caller fetched
+    via get_task (kind='task'), which returns None for a topic id, so the modal
+    rendered an empty dict (P8 c4-topic-dag flip missed this read-path)."""
+    from juggle_cockpit import CockpitApp
+    from juggle_cockpit_modals import _GraphTaskModal
+
+    app = CockpitApp(db_path=_topic_db(tmp_path))
+    async with app.run_test(size=(160, 40)) as pilot:
+        await pilot.press("g")
+        await pilot.pause(0.1)
+        assert app._graph_sel == 0
+        await pilot.press("enter")
+        await pilot.pause(0.15)
+        assert isinstance(app.screen, _GraphTaskModal)
+        row = app.screen._task_row
+        assert row.get("id") == "T1"
+        assert row.get("title")   # non-empty title from the nodes row
+        assert row.get("state")   # non-empty state from the nodes row
 
 
 @pytest.mark.asyncio

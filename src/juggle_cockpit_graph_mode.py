@@ -114,6 +114,7 @@ class GraphModeMixin:
         """Enter — open the read-only detail modal for the selected topic/task."""
         from juggle_cockpit_model import snapshot as _snapshot
         from dbops import db_graph as _g
+        from dbops import db_topics as _t
 
         try:
             state = _snapshot(self._db, load_graph_dag=True)
@@ -133,7 +134,11 @@ class GraphModeMixin:
         # Find which DAG owns this task and get its task list.
         owner_dag = next((d for d in dags if any(n.id == task_id for n in d.tasks)), None)
         tasks = (owner_dag.member_tasks or {}).get(task_id, []) if owner_dag else []
-        full = _g.get_task(self._db, task_id) or {}
+        # DAG roots are topics (kind='topic') OR parentless tasks (kind='task').
+        # get_task filters kind='task' and returns None for a topic id, so fall
+        # back to get_topic to populate the modal from the authoritative nodes
+        # row (P8 c4-topic-dag flip missed this read-path → blank 'Task ?').
+        full = _g.get_task(self._db, task_id) or _t.get_topic(self._db, task_id) or {}
         try:
             deps = _g.get_deps(self._db, task_id)
         except Exception:
