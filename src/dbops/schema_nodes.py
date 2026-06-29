@@ -52,7 +52,17 @@ CREATE TABLE IF NOT EXISTS nodes (
 
   -- Timestamps
   created_at      TEXT NOT NULL,
-  updated_at      TEXT NOT NULL
+  updated_at      TEXT NOT NULL,
+
+  -- Parity columns (P8 H4): folded in from migration_nodes_parity (Migration 50)
+  -- so a fresh DDL is complete and conv_node_mirror never meets a missing column.
+  -- The Migration-50 ALTERs stay as idempotent no-ops for already-migrated DBs.
+  -- Placed LAST to match the physical column order ALTER TABLE ADD COLUMN
+  -- produces on already-migrated DBs (so `SELECT *` order is provenance-identical).
+  user_label              TEXT,
+  assigned_by             TEXT NOT NULL DEFAULT 'auto',
+  last_active_at          TEXT,
+  dispatch_thread_id      TEXT
 );
 """
 

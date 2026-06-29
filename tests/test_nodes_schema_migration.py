@@ -737,3 +737,69 @@ def test_backfill_threads_missing_col_parametrized(tmp_path, missing_col):
     assert row["kind"] == "conversation"
     assert row["state"] == "open"
     assert row["title"]  # title falls back to id when topic is absent
+
+
+# ---------------------------------------------------------------------------
+# P8 c5-ddl (2026-06-27): CREATE_NODES is complete on its own (H4) + the nodes
+# slug-uniqueness index keeps 'background' in its predicate (R2-1 slug guard,
+# folded in from c3-write-cut).
+# ---------------------------------------------------------------------------
+
+
+def test_create_nodes_is_complete():
+    """2026-06-27 P8 H4: a fresh nodes table from CREATE_NODES alone (no
+    migrations) must contain every column conv_node_mirror writes — the parity
+    columns are folded into the DDL so the mirror no longer needs to swallow a
+    missing-column OperationalError."""
+    from dbops.schema_nodes import CREATE_NODES
+    conn = sqlite3.connect(":memory:")
+    conn.execute(CREATE_NODES)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(nodes)")}
+    for c in ("user_label", "assigned_by", "last_active_at", "dispatch_thread_id",
+              "session_id", "summarized_msg_count", "show_in_list"):
+        assert c in cols, f"CREATE_NODES missing {c}"
+
+
+def test_nodes_slug_index_predicate_covers_background(tmp_path):
+    """2026-06-27 P8 R2-1 (folded from c3-write-cut): the nodes slug-uniqueness
+    index predicate MUST include the live 'background' state. RED on the prior
+    state IN ('open','running') predicate that dropped 'background' — the exact
+    2026-06-21 recycled-slug incident, now on the nodes seam."""
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "t.db"))
+    db.init_db()
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE name='idx_nodes_user_label'"
+        ).fetchone()
+    assert row is not None, "idx_nodes_user_label missing"
+    assert "background" in row[0], (
+        "background dropped from nodes slug-index predicate — a live background "
+        "agent's slug could be recycled onto a new live conversation"
+    )
+
+
+def test_nodes_index_rejects_duplicate_live_background_slug(tmp_path):
+    """2026-06-27 P8 R2-1 (folded from c3-write-cut): two LIVE conversation
+    nodes — one 'background', one 'open' — must not share a user_label. The
+    partial unique index forbids it. RED on the 2-state predicate (a 'background'
+    node was unindexed, so its slug could be recycled to a new 'open' node)."""
+    from juggle_db import JuggleDB
+    db = JuggleDB(str(tmp_path / "t.db"))
+    db.init_db()
+    now = "2026-06-27T00:00:00"
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO nodes (id, kind, title, state, user_label, created_at, updated_at) "
+            "VALUES ('n-bg','conversation','bg','background','ZZ',?,?)",
+            (now, now),
+        )
+        conn.commit()
+    with pytest.raises(sqlite3.IntegrityError):
+        with db._connect() as conn:
+            conn.execute(
+                "INSERT INTO nodes (id, kind, title, state, user_label, created_at, updated_at) "
+                "VALUES ('n-open','conversation','open','open','ZZ',?,?)",
+                (now, now),
+            )
+            conn.commit()

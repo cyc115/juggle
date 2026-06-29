@@ -26,16 +26,23 @@ def migrate_50_nodes_parity(conn: sqlite3.Connection) -> None:
                 conn.execute(ddl)
         # Partial unique index scoped to LIVE conversation nodes only — mirrors the
         # legacy idx_threads_live_label (live states active/running/background ->
-        # node states 'open'/'running'). Kind-scoped because nodes unions kinds; and
-        # state-scoped because the slug wheel recycles a freed user_label to a new
-        # live thread while archived threads keep it as a historical handle, so a
-        # live + archived conversation node can legitimately share a slug (both
+        # node states open/running/background). Kind-scoped because nodes unions
+        # kinds; and state-scoped because the slug wheel recycles a freed user_label
+        # to a new live thread while archived threads keep it as a historical handle,
+        # so a live + archived conversation node can legitimately share a slug (both
         # mirrored by Migration 44). An unscoped index would crash backfill on any
         # such prod DB (2026-06-22 recycled-slug IntegrityError).
+        #
+        # P8 R2-1 (2026-06-27): 'background' MUST stay in the predicate. It is a
+        # first-class live node state; dropping it would recycle a LIVE background
+        # agent's slug onto a new live conversation — the exact 2026-06-21 incident.
+        # DROP+CREATE (not bare IF NOT EXISTS) so an already-migrated DB carrying the
+        # prior 2-state ('open','running') index is upgraded to include background.
+        conn.execute("DROP INDEX IF EXISTS idx_nodes_user_label")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_nodes_user_label "
             "ON nodes(user_label) WHERE kind='conversation' AND user_label IS NOT NULL "
-            "AND state IN ('open', 'running')")
+            "AND state IN ('open', 'running', 'background')")
         conn.commit()
         _log.info("Migration 50: nodes parity columns + slug index ensured")
     except sqlite3.OperationalError as e:   # fail-soft (additive convention)

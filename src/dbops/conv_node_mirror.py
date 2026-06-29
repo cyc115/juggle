@@ -19,7 +19,13 @@ _CONV_COL_RENAME = {"topic": "title", "last_active": "last_active_at"}
 def mirror_conv_insert(
     conn, thread_id: str, *, topic: str, session_id: str, user_label, now: str
 ) -> None:
-    """Mirror a freshly-created thread as a kind='conversation' node."""
+    """Mirror a freshly-created thread as a kind='conversation' node.
+
+    P8 H4 (2026-06-27): CREATE_NODES now carries every column written here, so a
+    missing COLUMN can no longer occur on a migrated DB — and if one ever does it
+    FAILS LOUD (real schema gap), never swallowed. A missing nodes TABLE
+    (pre-Migration-44) stays tolerated, pinned by
+    test_p8_conv_read_collapse.test_conv_mirror_fails_loud_on_missing_column."""
     try:
         conn.execute(
             "INSERT OR IGNORE INTO nodes "
