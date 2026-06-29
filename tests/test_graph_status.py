@@ -37,9 +37,11 @@ def _mk(db, task_id, state="open", title=None, thread_id=None):
     )
     if state != "open":
         with db._connect() as conn:  # test seam: force a display state directly
+            # P8 c4-write-cut: nodes is the authoritative task store the display
+            # aggregates read; force the state there (graph_tasks is no longer read).
             conn.execute(
-                "UPDATE graph_tasks SET state=?, thread_id=? WHERE id=?",
-                (state, thread_id, task_id),
+                "UPDATE nodes SET state=? WHERE id=? AND kind='task'",
+                (state, task_id),
             )
             conn.commit()
 
@@ -89,6 +91,24 @@ def test_graph_counts_reads_db(db):
     _mk(db, "c")
     c = gs.graph_counts(db, "INBOX")
     assert c["total"] == 3 and c["verified"] == 1 and c["ready"] == 1
+
+
+def test_graph_counts_reads_from_nodes_not_graph_tasks(db):
+    """2026-06-29 P8 c4-write-cut: graph_counts must aggregate kind='task' nodes
+    (the authoritative store), not the legacy graph_tasks table the write-cut
+    stops populating. RED on the pre-flip code (it SELECTs FROM graph_tasks, so a
+    nodes-only task is invisible and graph_counts returns None)."""
+    now = "2026-06-29 00:00"
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO nodes (id, kind, title, objective, state, project_id, "
+            "created_at, updated_at) "
+            "VALUES ('x','task','X','do','verified','INBOX',?,?)",
+            (now, now),
+        )
+        conn.commit()
+    c = gs.graph_counts(db, "INBOX")
+    assert c is not None and c["total"] == 1 and c["verified"] == 1
 
 
 # ── progress string (cockpit row, DA m2) ──────────────────────────────────────

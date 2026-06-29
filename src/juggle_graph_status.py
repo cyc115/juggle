@@ -1,10 +1,13 @@
-"""juggle_graph_status — read-only display aggregates over graph_tasks.
+"""juggle_graph_status — read-only display aggregates over task nodes.
 
 Owns: per-project task-state counts, the cockpit progress string
 ("3/14 done, 1 failed, 2 ready" — DA m2), and the char-budgeted
 UserPromptSubmit graph-status injection (HARD 500 chars, DA m4).
 Must not own: task state semantics (dbops.db_graph), dispatching
 (juggle_graph_dispatch), or any state writes — this module is read-only.
+
+P8 c4-write-cut: aggregates read kind='task' nodes (the authoritative store),
+not the legacy graph_tasks table — the write-cut no longer populates it.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ _ELLIPSIS = "…"
 
 
 def counts_from_states(states: list[str]) -> dict:
-    """Aggregate raw graph_tasks.state values into display counts. Pure."""
+    """Aggregate raw task-node state values into display counts. Pure."""
     return {
         "total": len(states),
         "verified": sum(1 for s in states if s == "verified"),
@@ -36,10 +39,11 @@ def graph_counts(db, project_id: str) -> dict | None:
     try:
         with db._connect() as conn:
             rows = conn.execute(
-                "SELECT state FROM graph_tasks WHERE project_id=?", (project_id,)
+                "SELECT state FROM nodes WHERE kind='task' AND project_id=?",
+                (project_id,),
             ).fetchall()
     except Exception:
-        return None  # pre-migration DB without graph_tasks
+        return None  # pre-migration DB without nodes
     states = [r[0] for r in rows]
     return counts_from_states(states) if states else None
 
@@ -57,7 +61,7 @@ def _titled(db, project_id: str, states: tuple[str, ...]) -> list[tuple[str, str
     with db._connect() as conn:
         ph = ",".join("?" * len(states))
         rows = conn.execute(
-            f"SELECT id, title FROM graph_tasks WHERE project_id=? "
+            f"SELECT id, title FROM nodes WHERE kind='task' AND project_id=? "
             f"AND state IN ({ph}) ORDER BY created_at, id",
             (project_id, *states),
         ).fetchall()

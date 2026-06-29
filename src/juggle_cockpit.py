@@ -789,9 +789,15 @@ class CockpitApp(GraphModeMixin, App):
             import sqlite3
             with self._db._connect() as conn:
                 conn.row_factory = sqlite3.Row
+                # P8 c4-write-cut: task nodes are the authoritative store; project
+                # the legacy graph_tasks row shape (objective->prompt, dispatch edge
+                # ->thread_id) so the topic modal keeps its column names.
                 rows = conn.execute(
-                    "SELECT id, project_id, title, state, thread_id, verify_cmd, "
-                    "prompt, handoff FROM graph_tasks"
+                    "SELECT id, project_id, title, state, "
+                    "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id "
+                    " AND kind='dispatch' LIMIT 1) AS thread_id, "
+                    "verify_cmd, objective AS prompt, handoff "
+                    "FROM nodes WHERE kind='task'"
                 ).fetchall()
             for r in rows:
                 d = dict(r)
