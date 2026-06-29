@@ -1,6 +1,6 @@
 """dbops.dispatch_edge — the task→dispatch-thread binding as a typed node_edge (P8 M1/Q2).
 
-The relation that used to live on ``nodes.dispatch_thread_id`` is now an explicit
+The relation that used to live on a column of the node row is now an explicit
 ``kind='dispatch'`` row in ``node_edges``:
 ``(node_id=<task/topic node>, depends_on_id=<conversation node>, kind='dispatch')``.
 
