@@ -241,6 +241,23 @@ def cmd_doctor(args) -> int:
     # backfill was removed; reuse is handled by the wheel's skip-live rule plus
     # the partial unique index idx_threads_live_label. Nothing to backfill.
 
+    # 3.5 Reconcile node parentage/state (DEFECT #4907): re-link nodes.parent_id
+    # from the legacy authoritative graph_tasks.topic_id and resync drifted
+    # task-node state. Runs BEFORE the topic reconcile below — that pass reads
+    # child states via nodes.parent_id, so a NULL parent_id would hide children
+    # and a verified topic would look childless (the watchdog re-dispatch loop).
+    # Idempotent; orchestrator-only DB repair (no git), so it runs even in dry.
+    from dbops.db_graph_reconcile import reconcile_node_parentage
+
+    pc = reconcile_node_parentage(JuggleDB(DB_PATH))
+    if pc["parent_relinked"] or pc["state_resynced"]:
+        print(
+            f"graph parentage: {pc['parent_relinked']} parent link(s) re-linked, "
+            f"{pc['state_resynced']} state(s) resynced from graph_tasks"
+        )
+    else:
+        print("graph parentage: all task nodes consistent")
+
     # 4. Reconcile graph topic states (repair drift between task tier + topic tier)
     from dbops import db_topics as dbt
 

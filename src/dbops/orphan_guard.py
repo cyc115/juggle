@@ -144,8 +144,17 @@ def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
     G1-pure verification: only advances topics whose branch IS an ancestor of
     main — genuinely-unmerged topics (branch ahead of main, or branch ref gone)
     are left untouched. Returns reconciled node ids.
+
+    Self-heals graph drift FIRST (DEFECT #4907): a task node with a NULL
+    parent_id makes its topic look childless to ``find_unmerged_completed_topics``
+    so it is never reconciled and the watchdog re-dispatches it forever. Re-link
+    parent_id + resync state from the legacy authoritative graph_tasks before
+    detecting, so a stranded-but-completed topic is found and stamped.
     """
     from dbops import db_topics
+    from dbops.db_graph_reconcile import reconcile_node_parentage
+
+    reconcile_node_parentage(db)
 
     reconciled: list[str] = []
     for node in find_unmerged_completed_topics(db):
