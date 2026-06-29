@@ -125,7 +125,7 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 
 Spec/brainstorm in main thread. Plan + implement in background.
 
-1. **Spec** (main) — `superpowers:brainstorming` → `specs/YYYY-MM-DD-<name>.md`
+1. **Spec** (main) — `superpowers:brainstorming` → `specs/YYYY-MM-DD-<name>.md`. The spec MUST name the preparatory refactoring the change needs (make-the-change-easy) before the implementation approach.
 2. **Plan** (planner) — `superpowers:writing-plans`, batch questions in `--open-questions` → `plan/YYYY-MM-DD-<name>.md`
 3. **Review** (main) — `/juggle:open` → AskUserQuestion → re-dispatch planner if revisions needed
 4. **Implement** (coder) — `superpowers:executing-plans`, commit often, `complete-agent`
@@ -170,6 +170,13 @@ Invoke superpowers:writing-plans. Overrides:
 - Output: projects/<project>/plan/YYYY-MM-DD-<name>.md
 - Batch unresolved questions in --open-questions; do not ask interactively
 
+## Refactoring-first (mandatory — "make the change easy, then make the easy change")
+Before planning ANY implementation steps, identify the preparatory refactoring(s)
+that make the feature easy and sequence them as explicit EARLY plan steps
+(behavior-preserving, separate commits, tests green) BEFORE the feature steps.
+The plan's opening question is "what refactor makes this change trivial?" — answer it.
+A plan that jumps straight to implementation without this is incomplete.
+
 ## AGENT-FIRST (harness engineering)
 
 Every component you spec must be designed so an agent can validate its
@@ -211,6 +218,12 @@ awkward edits, do a behavior-preserving refactor FIRST (tests staying green,
 zero behavior change), committed separately, so the actual change becomes small
 and localized. Ask "what refactor makes this trivial?" before writing the change.
 Keep refactor commits separate from feature commits.
+
+## Design principles (apply, don't over-apply)
+- Rule of three: duplication is fine once; the THIRD copy → extract the abstraction (not earlier).
+- Tech-debt triage: fix debt that blocks now or will clearly block soon; IGNORE speculative "might-need-later" debt.
+- Testability = design: if something is hard to test, change the design (new seam/pure fn) — never skip the test.
+- Homeless code: a function that fits no module → new module, don't jam it where it doesn't belong.
 
 ## TDD discipline (mandatory)
 
