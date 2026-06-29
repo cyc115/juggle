@@ -220,10 +220,9 @@ def synth_project(db, project_id: str, force: bool = False) -> str | None:
         return None
     with db._connect() as conn:
         rows = conn.execute(
-            # P8 T-c3-reads: conversation titles read from nodes (title AS topic
-            # keeps build_match_profile_prompt's 'topic' contract).
-            "SELECT title AS topic, assigned_by FROM nodes "
-            "WHERE kind='conversation' AND project_id=? AND show_in_list=1 "
+            # P8 T-c3-reads: nodes read; `title AS topic` keeps build_match_profile_prompt's contract.
+            "SELECT title AS topic, assigned_by FROM nodes WHERE kind='conversation' "
+            "AND project_id=? AND show_in_list=1 "
             "ORDER BY CASE assigned_by WHEN 'human' THEN 0 ELSE 1 END, last_active_at DESC",
             (project_id,),
         ).fetchall()
@@ -298,9 +297,8 @@ def check_and_resynth_if_drifted(
         return
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT title AS topic FROM nodes "
-            "WHERE kind='conversation' AND project_id=? AND show_in_list=1 "
-            "ORDER BY last_active_at DESC LIMIT 50",
+            "SELECT title AS topic FROM nodes WHERE kind='conversation' "
+            "AND project_id=? AND show_in_list=1 ORDER BY last_active_at DESC LIMIT 50",
             (project_id,),
         ).fetchall()
     topics = [r["topic"] for r in rows]
@@ -337,13 +335,9 @@ def resweep_inbox(db, limit: int = _RESWEEP_DEFAULT_LIMIT) -> int:
         return 0
     with db._connect() as conn:
         rows = conn.execute(
-            # P8 T-c3-reads: INBOX conversations read from nodes. assigned_confidence
-            # has no nodes column, so the low-confidence-first ordering term is dropped
-            # (re-sweep falls back to recency); the reclassify WRITE still uses threads.
-            "SELECT id, title AS topic FROM nodes "
-            "WHERE kind='conversation' AND project_id='INBOX' AND show_in_list=1 "
-            "ORDER BY last_active_at DESC "
-            "LIMIT ?",
+            # P8 T-c3-reads: INBOX conversations from nodes; nodes-absent assigned_confidence ordering dropped (falls back to recency).
+            "SELECT id, title AS topic FROM nodes WHERE kind='conversation' "
+            "AND project_id='INBOX' AND show_in_list=1 ORDER BY last_active_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
     reclassified = 0
