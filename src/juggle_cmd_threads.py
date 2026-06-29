@@ -238,6 +238,7 @@ def _render_briefing(thread: dict, db) -> str:
     label = thread.get("user_label") or thread.get("label") or thread["id"][:8]
     title = thread.get("title") or "Untitled"
     state = thread.get("state", "open")
+    summary = thread.get("summary") or ""
     last_active_str = _humanize_dt(thread.get("last_active_at") or "")
     current_id = db.get_current_thread()
     state_emoji = get_thread_state(db, thread, current_id)
@@ -310,16 +311,16 @@ def _render_briefing(thread: dict, db) -> str:
     lines.append("")
     lines.append("⚡ NEXT STEPS")
     agent_result = thread.get("agent_result") or ""
-    if status == "background":
+    if state == "background":
         lines.append("  • Agent is running — check back or work on another topic.")
-    elif status == "failed":
+    elif state == "failed-exec":
         lines.append("  • Review what failed. Decide whether to retry or close.")
     elif agent_result.startswith("⚠️ BLOCKER:"):
         blocker_text = agent_result[len("⚠️ BLOCKER:") :].strip()
         lines.append(f"  • Resolve the blocker: {blocker_text}")
-    elif status == "done" and open_questions:
+    elif state == "done" and open_questions:
         lines.append("  • Address open questions, then archive.")
-    elif status == "done":
+    elif state == "done":
         lines.append("  • Archive this thread.")
     else:
         lines.append("  • Continue working.")

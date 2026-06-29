@@ -123,3 +123,42 @@ def test_cmd_create_thread_prints_output(mock_get_db):
 
     mock_print.assert_called_once()
     assert "Created Topic" in str(mock_print.call_args)
+
+
+def test_render_briefing_uses_node_state_vocab(tmp_path):
+    """Regression (2026-06-29, P8 Task 4.2 conversation reads-collapse):
+    _render_briefing's header def was migrated status->state but the NEXT-STEPS
+    branches still read an UNDEFINED `status`, and `summary` was referenced but
+    never defined — so rendering a briefing for any thread WITH messages crashed
+    with NameError. _render_briefing is otherwise untested, so the green suite
+    missed it. Pin the node-vocab branches + the summary fallback past the
+    empty-thread guard."""
+    from juggle_db import JuggleDB
+    from juggle_cmd_threads import _render_briefing
+
+    db = JuggleDB(str(tmp_path / "t.db"))
+    db.init_db()
+
+    # background state -> "Agent is running" next step (reads node state vocab)
+    tid = db.create_thread("brief test", session_id="s1")
+    db.update_thread(tid, status="background")
+    db.add_message(tid, "assistant", "did the thing")
+    out = _render_briefing(db.get_thread(tid), db)
+    assert "Agent is running" in out
+
+    # failed -> node state 'failed-exec' -> review-what-failed branch
+    db.update_thread(tid, status="failed")
+    out = _render_briefing(db.get_thread(tid), db)
+    assert "Review what failed" in out
+
+    # summary fallback: a user-only thread with a node summary renders it
+    tid2 = db.create_thread("brief test 2", session_id="s1")
+    db.add_message(tid2, "user", "hello")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET summary=? WHERE id=? AND kind='conversation'",
+            ("my summary text", tid2),
+        )
+        conn.commit()
+    out2 = _render_briefing(db.get_thread(tid2), db)
+    assert "my summary text" in out2
