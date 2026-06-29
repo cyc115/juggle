@@ -51,7 +51,6 @@ from juggle_cockpit_helpers import (
 from juggle_cockpit_modals import (
     _ConfirmModal,
     _HelpModal,
-    _NodeDetailModal,
     _PromptModal,
     _TailModal,
 )
