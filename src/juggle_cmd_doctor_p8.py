@@ -46,6 +46,11 @@ def run_pre_p8_check(json_out: bool) -> int:
         else:
             static_line = f"FAIL:{s['fail']}"
         print(f"pre-p8 STATIC: {static_line}")
+        if s is not None:
+            # Honesty surface (P8 M4): name the scan's blind spots + prove the
+            # retired engines are unreachable, so PASS:0 cannot mislead.
+            print(f"pre-p8 EXCLUDED: {len(s['excluded_files'])} files skipped; "
+                  f"import_refs={s['import_refs']}")
         rt = rep["runtime"]
         if rt["already_dropped"]:
             print("pre-p8 RUNTIME: ALREADY-DROPPED")

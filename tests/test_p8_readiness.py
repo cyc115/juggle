@@ -127,6 +127,21 @@ def test_pre_p8_report_shape(tmp_path):
     assert rep["pass"] is False
 
 
+def test_gate_a_reports_exclusions_and_imports():
+    """2026-06-29 P8 M4: the gate must LOG which files it skipped (excluded_files)
+    and assert the retired legacy engines are unreachable (import_refs==0) — no
+    PASS:0 while db_mirror still imports. Scans the shipped src/ so the report
+    reflects the running binary, like doctor --pre-p8-check."""
+    from pathlib import Path
+    from dbops.p8_readiness import pre_p8_report
+    src_root = Path(__file__).resolve().parent.parent / "src"
+    rep = pre_p8_report(sqlite3.connect(":memory:"), src_root)
+    assert isinstance(rep["static"]["excluded_files"], list)
+    # the scan must actually skip the schema/migration + sanctioned-inverse modules:
+    assert rep["static"]["excluded_files"], "excluded_files must not be empty"
+    assert rep["static"]["import_refs"] == 0   # db_mirror deleted; no legacy-engine imports
+
+
 def test_doctor_pre_p8_check_exit_nonzero(tmp_path, monkeypatch, capsys):
     import juggle_db
     import juggle_cmd_doctor

@@ -80,11 +80,61 @@ def _excluded(path: Path) -> bool:
     # graph_tasks/graph_edges by design (dead in the forward path, live only on a
     # revert), so its legacy writes are not a steady-state violation — excluded
     # alongside p8_readiness.py itself.
+    #
+    # NOTE (P8 M4, 2026-06-29): the former-legacy ENGINE modules db_graph.py /
+    # db_topics.py are NOT excluded here — they no longer match schema*/migration*
+    # and are scanned like any other live module. db_mirror.py is gone entirely
+    # (Step 4). So the only blind spots are the schema/migration DDL + the two
+    # sanctioned files named below; import_refs() proves the retired engines are
+    # actually unreachable rather than merely uncounted.
     return (
         name in ("p8_readiness.py", "p8_reverse_backfill.py")
         or (path.parent.name == "dbops"
             and (name.startswith("schema") or name.startswith("migration")))
     )
+
+
+# Engines RETIRED by P8: no live module may import them and their source files
+# must be gone. db_graph/db_topics are intentionally KEPT (thin wrappers that
+# delegate to the unified node_transition), so they are NOT retired here — only
+# db_mirror, whose mirror concept is dead.
+_RETIRED_ENGINES = ("db_mirror",)
+
+
+def excluded_files(src_root: Path) -> list[str]:
+    """The shipped .py files Gate A's static scan SKIPS (schema/migration DDL +
+    p8_readiness + the sanctioned reverse-backfill inverse). Logged so the gate's
+    blind spots are EXPLICIT, not silent — an honest gate names what it ignores."""
+    return [str(py) for py in sorted(Path(src_root).rglob("*.py")) if _excluded(py)]
+
+
+def import_refs(src_root: Path) -> int:
+    """Count references that keep a RETIRED legacy engine reachable: a surviving
+    retired-engine module file, or any non-comment line importing one (any of the
+    `import dbops.X`, `from dbops.X import …`, `from dbops import X` forms).
+
+    0 == the gate is HONEST: the retired engine is deleted AND unimported across
+    the shipped src/. A non-zero count means a `PASS:0` static scan would be a lie
+    (the engine is still wired in, just not via a scanned table literal)."""
+    root = Path(src_root)
+    retired = "|".join(_RETIRED_ENGINES)
+    count = 0
+    # (1) A surviving retired-engine module file is itself a violation.
+    for eng in _RETIRED_ENGINES:
+        if (root / "dbops" / f"{eng}.py").exists():
+            count += 1
+    # (2) Any non-comment line importing a retired engine.
+    pat = re.compile(
+        rf"\b(?:import\s+dbops\.(?:{retired})\b"
+        rf"|from\s+dbops\.(?:{retired})\s+import"
+        rf"|from\s+dbops\s+import\s+[^\n#]*\b(?:{retired})\b)")
+    for py in sorted(root.rglob("*.py")):
+        for raw in py.read_text(errors="replace").splitlines():
+            if raw.lstrip().startswith("#"):
+                continue
+            if pat.search(raw):
+                count += 1
+    return count
 
 
 @dataclass
@@ -122,7 +172,9 @@ def pre_p8_report(conn: sqlite3.Connection, src_root: Path) -> dict:
     return {
         "static": {"fail": len(refs),
                    "refs": [{"file": str(r.file), "line": r.line, "text": r.text}
-                            for r in refs]},
+                            for r in refs],
+                   "excluded_files": excluded_files(src_root),
+                   "import_refs": import_refs(src_root)},
         "runtime": {"ready": ready, "already_dropped": already, "reasons": reasons},
         "pass": (len(refs) == 0 and (ready or already)),
     }
