@@ -2,13 +2,12 @@
 
 Backs `juggle add-node` CLI. create-thread and graph add-task shim into here.
 
-DUAL-WRITE CONTRACT (valid through P8):
-  kind=task        → nodes + graph_tasks + graph_edges + node_edges
+WRITE CONTRACT (P8 c4-write-cut — nodes is the sole task store):
+  kind=task        → nodes + node_edges (the legacy graph_tasks/graph_edges
+                     INSERTs were cut; readiness is computed from nodes/node_edges)
   kind=conversation → nodes + threads (via db.create_thread)
   kind=research    → nodes only (new kind; no legacy table)
   kind=decision    → nodes only (new kind; no legacy table)
-
-P8 removes the legacy writes.
 """
 from __future__ import annotations
 
@@ -54,16 +53,6 @@ def _all_node_ids(conn) -> frozenset:
     )
 
 
-def _all_legacy_task_ids(conn) -> frozenset:
-    """All ids in graph_tasks — needed during transition for dep validation."""
-    try:
-        return frozenset(
-            r[0] for r in conn.execute("SELECT id FROM graph_tasks").fetchall()
-        )
-    except Exception:
-        return frozenset()
-
-
 def _node_edges_for(conn, project_id) -> list[tuple[str, str]]:
     """All (node_id, depends_on_id) edges currently in node_edges."""
     return [
@@ -90,7 +79,8 @@ def add_node(
 ) -> dict:
     """Create a new unified node. Returns {'node_id': str, 'state': str}.
 
-    Validates, then inserts into nodes (and dual-writes to legacy tables).
+    Validates, then inserts into nodes (the sole task store; conversations also
+    write the legacy threads row via db.create_thread).
     Raises AddNodeError on any validation failure — nothing written.
     """
     deps = list(deps or [])
@@ -168,7 +158,7 @@ def _add_task_node(
     parent_id: str | None,
     node_id: str | None = None,
 ) -> dict:
-    """Create a task node with dual-write to graph_tasks + edges."""
+    """Create a task node in nodes + node_edges (P8: no legacy graph_* writes)."""
     from juggle_graph_upsert import find_cycle, lint_verify_cmd
 
     if verify_cmd:
@@ -182,8 +172,7 @@ def _add_task_node(
     conn = db._connect()
     try:
         existing_nodes = _all_node_ids(conn)
-        legacy_tasks = _all_legacy_task_ids(conn)
-        all_valid = existing_nodes | legacy_tasks
+        all_valid = existing_nodes
 
         for dep in deps:
             if dep == node_id:
@@ -205,7 +194,8 @@ def _add_task_node(
         if cycle:
             raise AddNodeError(f"dependency cycle would form involving: {', '.join(cycle)}")
 
-        # Insert into nodes (state='open' initially)
+        # Insert into nodes (state='open' initially) — the SOLE task store (P8
+        # c4-write-cut: the legacy graph_tasks/graph_edges INSERTs are gone).
         conn.execute(
             """INSERT INTO nodes
                (id, kind, title, objective, state, project_id, parent_id,
@@ -214,15 +204,7 @@ def _add_task_node(
             (node_id, title, objective, project_id, parent_id, verify_cmd, now, now),
         )
 
-        # Dual-write: graph_tasks (unified entry state 'open')
-        conn.execute(
-            """INSERT INTO graph_tasks
-               (id, project_id, title, prompt, verify_cmd, state, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, 'open', ?, ?)""",
-            (node_id, project_id or "INBOX", title, objective, verify_cmd, now, now),
-        )
-
-        # Write node_edges
+        # Write node_edges (the sole dependency store)
         for dep in deps:
             conn.execute(
                 "INSERT OR IGNORE INTO node_edges (node_id, depends_on_id) VALUES (?,?)",
@@ -234,26 +216,12 @@ def _add_task_node(
                 (rb, node_id),
             )
 
-        # Dual-write: graph_edges (legacy dep mirror; dropped in Step 4)
-        for dep in deps:
-            conn.execute(
-                "INSERT OR IGNORE INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
-                (node_id, dep),
-            )
-        for rb in required_by:
-            conn.execute(
-                "INSERT OR IGNORE INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
-                (rb, node_id),
-            )
-
-        # Readiness IN-TRANSACTION (M3 fix): mirror db_graph.ready_eligible's
-        # semantics exactly (a dep counts only if it has a graph_tasks row) and
-        # write nodes + graph_tasks together via the single lockstep writer, so
-        # nodes.state can never drift from graph_tasks.state (no post-commit
-        # mirror window). The new task is 'ready' iff every dep is verified.
+        # Readiness IN-TRANSACTION (M3): mirror db_graph.ready_eligible's
+        # semantics over nodes/node_edges and write nodes via the single state
+        # writer, so the new task is 'ready' iff every dep is 'verified'.
         unverified = conn.execute(
-            "SELECT 1 FROM graph_edges e JOIN graph_tasks d ON d.id=e.depends_on_id "
-            "WHERE e.task_id=? AND d.state != 'verified' LIMIT 1",
+            "SELECT 1 FROM node_edges e JOIN nodes d ON d.id=e.depends_on_id "
+            "WHERE e.node_id=? AND d.state != 'verified' LIMIT 1",
             (node_id,),
         ).fetchone()
         new_state = "open" if unverified else "ready"
