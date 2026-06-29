@@ -152,10 +152,11 @@ def cmd_project_graph_load(args):
         conn.close()
 
     # Self-heal graph drift (DEFECT #4907): the guarded upsert skips
-    # set_task_topic for protected/unchanged tasks, so a verified task whose node
-    # carries a stale/NULL parent_id is never re-linked by the reload itself.
-    # Re-link parent_id + resync state from the legacy authoritative graph_tasks
+    # set_task_topic for protected/unchanged tasks, so a pre-read-flip task whose
+    # node carries a still-NULL parent_id is never re-linked by the reload itself.
+    # Heal a still-NULL parent_id from the frozen-but-correct graph_tasks.topic_id
     # for the whole project so orphan detection never sees a childless topic.
+    # (P8 c4-write-cut: nodes.state is authoritative and is NOT resynced.)
     from dbops.migration_parent_relink import reconcile_node_parentage
     reconcile_node_parentage(db, project_id=args.project)
 
