@@ -40,13 +40,17 @@ def make_legacy_tables(conn, *which):
     matches what the one-shot upgrade migration reads.
     """
     import importlib
+    import sqlite3
 
     for name in (which or tuple(_LEGACY_CREATE)):
         mod_name, const = _LEGACY_CREATE[name].rsplit(".", 1)
         ddl = getattr(importlib.import_module(mod_name), const)
         conn.execute(ddl)
         for alter in _LEGACY_ALTERS.get(name, ()):
-            conn.execute(alter)
+            try:
+                conn.execute(alter)        # idempotent: column may already exist
+            except sqlite3.OperationalError:
+                pass
     conn.commit()
 
 

@@ -30,7 +30,11 @@ def _flat_task(db, nid, state="pending", thread_id=None, updated_at=None):
     # Migration-37 backfill (graph_tasks → synthetic graph_topics), whose behavior
     # is unchanged; only the seeding seam moves off create_task.
     now = "2026-05-01T00:00:00+00:00"
+    from helpers.node_seed import make_legacy_tables
     with db._connect() as conn:
+        # P8 terminal: graph_tasks/graph_topics dropped on init_db; re-create them
+        # so the Migration-37 backfill under test has its legacy source/target.
+        make_legacy_tables(conn, "graph_tasks", "graph_topics")
         conn.execute(
             "INSERT INTO graph_tasks (id, project_id, title, prompt, state, "
             "thread_id, topic_id, created_at, updated_at) "
@@ -42,18 +46,28 @@ def _flat_task(db, nid, state="pending", thread_id=None, updated_at=None):
 
 
 def _migrate(db):
-    from dbops.migrations_recent import apply_recent_migrations
+    # P8 terminal: apply_recent_migrations now ends with the legacy-table DROP
+    # (Migration 55), which would erase the graph_topics this test inspects. Run
+    # ONLY the graph chain (M35-37/39) so the Migration-37 synthetic-topic backfill
+    # is exercised in isolation, on the legacy tables, without the terminal drop.
+    from dbops.migrations_graph import apply_graph_migrations
     with db._connect() as conn:
-        apply_recent_migrations(conn)
+        apply_graph_migrations(conn)
         conn.commit()
 
 
 def test_fresh_db_has_graph_topics_table(db):
+    """P8 terminal: a fresh DB has NO graph_topics — it is dropped (Migration 55).
+    Topics are kind='topic' nodes in the unified store."""
     with db._connect() as conn:
-        row = conn.execute(
+        gone = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='graph_topics'"
-        ).fetchone()
-    assert row, "graph_topics must exist after init_db"
+        ).fetchone() is None
+        has_nodes = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'"
+        ).fetchone() is not None
+    assert gone, "graph_topics must be dropped (terminal drop)"
+    assert has_nodes, "the unified nodes store must exist"
 
 
 def test_backfill_wraps_flat_task_in_synthetic_topic(db):

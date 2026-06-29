@@ -15,6 +15,12 @@ from helpers.node_seed import seed_thread, seed_node
 def _fresh(tmp_path):
     db = JuggleDB(db_path=str(tmp_path / "j.db"))
     db.init_db()
+    # P8 terminal: legacy tables are dropped on init_db. Gate B (p8_drop_ready) is
+    # the PRE-drop readiness predicate — to exercise it the legacy tables must be
+    # present, so re-create them (a real upgrade DB still has them pre-drop).
+    from helpers.node_seed import make_legacy_tables
+    with db._connect() as conn:
+        make_legacy_tables(conn)
     return db
 
 
