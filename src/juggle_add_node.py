@@ -176,13 +176,13 @@ def _add_task_node(
 
         for dep in deps:
             if dep == node_id:
-                raise AddNodeError(f"node cannot depend on itself")
+                raise AddNodeError("node cannot depend on itself")
             if dep not in all_valid:
                 raise AddNodeError(f"unknown dep {dep!r}")
 
         for rb in required_by:
             if rb == node_id:
-                raise AddNodeError(f"node cannot be required_by itself")
+                raise AddNodeError("node cannot be required_by itself")
             if rb not in all_valid:
                 raise AddNodeError(f"unknown required_by target {rb!r}")
 
