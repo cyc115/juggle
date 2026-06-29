@@ -443,3 +443,17 @@ def test_get_task_and_deps_read_nodes_only(db):
     assert g.get_dependents(db, "dep") == ["t"]
     assert g.unverified_deps(db, "t") == ["dep"]
     assert {x["id"] for x in g.list_tasks(db, "INBOX")} == {"dep", "t"}
+
+
+def test_create_task_writes_no_graph_tasks_row(db):
+    """2026-06-29 P8 C1 (c4-write-cut): db_graph.create_task writes ONLY the
+    authoritative nodes row — the legacy graph_tasks INSERT is cut. RED before the
+    cut (create_task dual-wrote graph_tasks). The task stays resolvable via
+    get_task (which reads nodes)."""
+    g.create_task(db, task_id="t1", project_id="INBOX", title="X", prompt="do")
+    with db._connect() as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM graph_tasks WHERE id='t1'"
+        ).fetchone()[0]
+    assert n == 0, "create_task must NOT write graph_tasks (nodes is the sole store)"
+    assert g.get_task(db, "t1")["state"] == "open"

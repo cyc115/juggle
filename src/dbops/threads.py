@@ -83,17 +83,18 @@ class ThreadsMixin:
                     f"AND state IN ({_ph})",
                     _LIVE_NODE_STATES,
                 ).fetchall()
-            owned: set[str] = set()
-            for tbl in ("graph_topics", "graph_tasks"):
-                try:
-                    owned.update(
-                        r["thread_id"]
-                        for r in conn.execute(
-                            f"SELECT thread_id FROM {tbl} WHERE thread_id IS NOT NULL"
-                        ).fetchall()
-                    )
-                except sqlite3.OperationalError:
-                    pass  # graph tables absent on a pre-autopilot DB
+            # Threads that already OWN a graph topic/task are bound via the typed
+            # kind='dispatch' node_edge (depends_on_id = the conversation node).
+            # P8 c4-write-cut: read that edge, not the retired graph_*.thread_id.
+            try:
+                owned: set[str] = {
+                    r["depends_on_id"]
+                    for r in conn.execute(
+                        "SELECT depends_on_id FROM node_edges WHERE kind='dispatch'"
+                    ).fetchall()
+                }
+            except sqlite3.OperationalError:
+                owned = set()  # node_edges absent on a pre-migration DB
         for row in rows:
             if row["id"] in owned:
                 continue

@@ -116,15 +116,11 @@ def create_task(
     db, *, task_id: str, project_id: str, title: str, prompt: str, verify_cmd=None,
     conn=None,
 ) -> None:
-    """Insert a new task in state 'open' (raises on dup). Dual-writes the
-    authoritative nodes row (objective=prompt) + legacy graph_tasks (Task 4.1)."""
+    """Insert a new task node in state 'open' (raises on dup). Writes ONLY the
+    authoritative nodes row (objective=prompt) — the legacy graph_tasks INSERT was
+    cut (P8 c4-write-cut); nodes is the sole task store."""
     now = _now()
     with _cx(db, conn) as c:
-        c.execute(
-            "INSERT INTO graph_tasks (id, project_id, title, prompt, verify_cmd, "
-            "state, created_at, updated_at) VALUES (?,?,?,?,?, 'open', ?, ?)",
-            (task_id, project_id, title, prompt, verify_cmd, now, now),
-        )
         c.execute(
             "INSERT INTO nodes (id, kind, title, objective, state, project_id, "
             "verify_cmd, created_at, updated_at) "
@@ -138,15 +134,11 @@ def update_task_content(
 ) -> None:
     """Update plan content (title/prompt/verify_cmd). Never touches state.
 
-    Dual-writes nodes (objective=prompt) so the flipped readers stay current.
+    Writes ONLY nodes (objective=prompt) — the legacy graph_tasks UPDATE was cut
+    (P8 c4-write-cut).
     """
     now = _now()
     with _cx(db, conn) as c:
-        c.execute(
-            "UPDATE graph_tasks SET title=?, prompt=?, verify_cmd=?, updated_at=? "
-            "WHERE id=?",
-            (title, prompt, verify_cmd, now, task_id),
-        )
         c.execute(
             "UPDATE nodes SET title=?, objective=?, verify_cmd=?, updated_at=? "
             "WHERE id=? AND kind='task'",
@@ -156,13 +148,10 @@ def update_task_content(
 
 def set_task_thread(db, task_id: str, thread_id) -> None:
     """Bind the dispatch thread as a typed kind='dispatch' node_edge (P8 M1/Q2;
-    thread_id=None unbinds). Compat graph_tasks.thread_id is no longer read."""
+    thread_id=None unbinds). The legacy graph_tasks.thread_id write was cut
+    (P8 c4-write-cut)."""
     now = _now()
     with db._connect() as conn:
-        conn.execute(
-            "UPDATE graph_tasks SET thread_id=?, updated_at=? WHERE id=?",
-            (thread_id, now, task_id),
-        )
         conn.execute(
             "UPDATE nodes SET updated_at=? WHERE id=? AND kind='task'",
             (now, task_id),
@@ -175,10 +164,6 @@ def set_task_handoff(db, task_id: str, handoff: str) -> None:
     now = _now()
     with db._connect() as conn:
         conn.execute(
-            "UPDATE graph_tasks SET handoff=?, updated_at=? WHERE id=?",
-            (handoff, now, task_id),
-        )
-        conn.execute(
             "UPDATE nodes SET handoff=?, updated_at=? WHERE id=? AND kind='task'",
             (handoff, now, task_id),
         )
@@ -190,10 +175,6 @@ def set_task_diffstat(db, task_id: str, diffstat: str) -> None:
     now = _now()
     with db._connect() as conn:
         conn.execute(
-            "UPDATE graph_tasks SET diffstat=?, updated_at=? WHERE id=?",
-            (diffstat, now, task_id),
-        )
-        conn.execute(
             "UPDATE nodes SET diffstat=?, updated_at=? WHERE id=? AND kind='task'",
             (diffstat, now, task_id),
         )
@@ -201,12 +182,10 @@ def set_task_diffstat(db, task_id: str, diffstat: str) -> None:
 
 
 def set_task_topic(db, task_id: str, topic_id, conn=None) -> None:
-    """Assign a task to its topic — dual-writes legacy graph_tasks.topic_id and
-    authoritative nodes.parent_id (get_task maps parent_id→topic_id)."""
+    """Assign a task to its topic — writes the authoritative nodes.parent_id
+    (get_task maps parent_id→topic_id). The legacy graph_tasks.topic_id write was
+    cut (P8 c4-write-cut)."""
     with _cx(db, conn) as c:
-        c.execute(
-            "UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic_id, task_id)
-        )
         c.execute(
             "UPDATE nodes SET parent_id=? WHERE id=? AND kind='task'",
             (topic_id, task_id),

@@ -39,8 +39,8 @@ from juggle_graph_upsert import (
 
 
 def cmd_project_graph_load(args):
-    """Load (or guarded-upsert) a graph spec markdown file into graph_topics +
-    graph_tasks."""
+    """Load (or guarded-upsert) a graph spec markdown file into the unified node
+    store (kind='topic' + kind='task' nodes)."""
     from juggle_cmd_graph import pr_mode_refusal  # lazy: avoid import cycle
 
     db = get_db(getattr(args, "db_path", None), init=True)
@@ -95,9 +95,10 @@ def cmd_project_graph_load(args):
     created = updated = unchanged = 0
     conn = db._connect()
     try:
-        # Topics first (graph_tasks.topic_id FK references graph_topics). A topic
+        # Topics first (a task node's parent_id references its topic node). A topic
         # in a PROTECTED_STATE keeps its state untouched; title/objective of a
-        # non-protected existing topic may update.
+        # non-protected existing topic may update. Writes the authoritative
+        # kind='topic' node (P8 c4-write-cut: graph_topics is no longer written).
         for t in topics:
             et = existing_topics.get(t["id"])
             if et is None:
@@ -107,7 +108,7 @@ def cmd_project_graph_load(args):
                 )
             elif et["state"] not in db_graph.PROTECTED_STATES:
                 conn.execute(
-                    "UPDATE graph_topics SET title=?, objective=? WHERE id=?",
+                    "UPDATE nodes SET title=?, objective=? WHERE id=? AND kind='topic'",
                     (t["title"], t.get("objective", ""), t["id"]),
                 )
         for n in tasks:

@@ -118,3 +118,16 @@ def test_topic_counts_shape(db):
     _topic(db, "A"); _topic(db, "B")
     c = t.topic_counts(db, "INBOX")
     assert c["total"] == 2 and c["open"] == 2
+
+
+def test_create_topic_writes_no_graph_topics_row(db):
+    """2026-06-29 P8 C1 (c4-write-cut): db_topics.create_topic writes ONLY the
+    authoritative kind='topic' node — the legacy graph_topics INSERT is cut. RED
+    before the cut (create_topic dual-wrote graph_topics)."""
+    t.create_topic(db, topic_id="p1", project_id="INBOX", title="P", objective="o")
+    with db._connect() as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM graph_topics WHERE id='p1'"
+        ).fetchone()[0]
+    assert n == 0, "create_topic must NOT write graph_topics (nodes is the sole store)"
+    assert t.get_topic(db, "p1")["state"] == "open"

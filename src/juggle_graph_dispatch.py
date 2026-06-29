@@ -141,20 +141,21 @@ def _all_project_ids(db) -> list[str]:
             ).fetchall()
             listed = [r[0] if not hasattr(r, "__getitem__") or isinstance(r, tuple) else r[0]
                       for r in proj_rows]
-            # Also collect project ids only present in graph tables (e.g. test fixtures
-            # that create tasks without inserting a projects row).
+            # Also collect project ids only present in the node store (e.g. test
+            # fixtures that create tasks/topics without inserting a projects row).
+            # P8 c4-write-cut: discover from kind='task'/'topic' nodes, not the
+            # retired graph_tasks/graph_topics tables.
             extra: set[str] = set()
-            for tbl in ("graph_topics", "graph_tasks"):
-                try:
-                    for r in conn.execute(
-                        f"SELECT DISTINCT project_id FROM {tbl} "
-                        f"WHERE project_id IS NOT NULL"
-                    ).fetchall():
-                        pid = r[0]
-                        if pid and pid not in listed:
-                            extra.add(pid)
-                except Exception:
-                    pass
+            try:
+                for r in conn.execute(
+                    "SELECT DISTINCT project_id FROM nodes "
+                    "WHERE kind IN ('task','topic') AND project_id IS NOT NULL"
+                ).fetchall():
+                    pid = r[0]
+                    if pid and pid not in listed:
+                        extra.add(pid)
+            except Exception:
+                pass
         return listed + sorted(extra)
     except Exception:
         return []

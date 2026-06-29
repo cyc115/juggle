@@ -168,31 +168,6 @@ def _csv(value) -> list[str]:
     return [tok.strip() for tok in value.split(",") if tok.strip()]
 
 
-def _create_node_for_task(
-    db, *, task_id: str, title: str, prompt: str,
-    project_id: str, verify_cmd: str | None,
-) -> None:
-    """P5 shim: write a nodes row for an existing graph_tasks row.
-
-    INSERT OR IGNORE so it's safe to call on re-adds (idempotent).
-    State is synced from graph_tasks after the fact.
-    Fail-silent: if nodes table not yet migrated or db is mocked, skip.
-    """
-    try:
-        from juggle_add_node import _create_node_row
-        from dbops import db_graph as _dg
-        task = _dg.get_task(db, task_id)
-        # Vocab is unified (P8 C3): the node state is the graph_tasks state verbatim.
-        state = (task or {}).get("state", "open")
-        _create_node_row(
-            db, node_id=task_id, kind="task", title=title, objective=prompt,
-            state=state, project_id=project_id, verify_cmd=verify_cmd,
-            parent_id=None,
-        )
-    except Exception:
-        pass
-
-
 def cmd_graph_add_task(args):
     """Inject one new task into an EXISTING project graph mid-execution.
 
@@ -244,9 +219,8 @@ def cmd_graph_add_task(args):
                 print(f"add-task REFUSED — graph unchanged: {e}", file=sys.stderr)
             sys.exit(1)
 
-        # Dual-write nodes row (P5 shim; P8 drops).
-        _create_node_for_task(db, task_id=args.id, title=args.title, prompt=prompt,
-                              project_id=args.project, verify_cmd=args.verify_cmd)
+        # add_task → db_graph.create_task already wrote the authoritative task node
+        # (P8 c4-write-cut: nodes is the sole store), so no extra mirror is needed.
 
         if getattr(args, "json_out", False):
             print(json.dumps({"ok": True, **result}))

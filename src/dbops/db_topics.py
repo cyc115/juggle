@@ -88,16 +88,11 @@ def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
 
 def create_topic(db, *, topic_id, project_id, title, objective="", conn=None) -> None:
     """Insert a topic as an authoritative kind='topic' node (parent_id NULL =
-    topic-tier) AND a compat legacy graph_topics row. The kind discriminator
-    (P8 M2) is what separates topics from bare tasks; graph_topics is dual-written
-    only until the terminal drop retires it."""
+    topic-tier). The kind discriminator (P8 M2) is what separates topics from bare
+    tasks. Writes ONLY nodes — the legacy graph_topics INSERT was cut
+    (P8 c4-write-cut)."""
     now = _now()
     with _cx(db, conn) as c:
-        c.execute(
-            "INSERT INTO graph_topics (id, project_id, title, objective, state, "
-            "created_at, updated_at) VALUES (?,?,?,?, 'open', ?, ?)",
-            (topic_id, project_id, title, objective, now, now),
-        )
         c.execute(
             "INSERT OR IGNORE INTO nodes (id, kind, title, objective, state, "
             "project_id, parent_id, created_at, updated_at) "
@@ -147,10 +142,6 @@ def set_topic_thread(db, topic_id, thread_id) -> None:
     now = _now()
     with db._connect() as conn:
         conn.execute(
-            "UPDATE graph_topics SET thread_id=?, updated_at=? WHERE id=?",
-            (thread_id, now, topic_id),
-        )
-        conn.execute(
             "UPDATE nodes SET updated_at=? WHERE id=? AND kind='topic'",
             (now, topic_id),
         )
@@ -163,14 +154,11 @@ def set_topic_merged_sha(db, topic_id, merged_sha, conn=None) -> None:
 
     The single source of truth for the verified gate (T-verified-merged-sha):
     integrate writes this on a successful ff-merge/push so the topic can verify.
-    Dual-writes nodes.merged_sha (the flipped _verified_allowed / orphan reads).
+    Writes ONLY nodes.merged_sha — the legacy graph_topics UPDATE was cut
+    (P8 c4-write-cut).
     """
     now = _now()
     with _cx(db, conn) as c:
-        c.execute(
-            "UPDATE graph_topics SET merged_sha=?, updated_at=? WHERE id=?",
-            (merged_sha, now, topic_id),
-        )
         c.execute(
             "UPDATE nodes SET merged_sha=?, updated_at=? WHERE id=? AND kind='topic'",
             (merged_sha, now, topic_id),
@@ -178,13 +166,10 @@ def set_topic_merged_sha(db, topic_id, merged_sha, conn=None) -> None:
 
 
 def set_topic_handoff(db, topic_id, handoff) -> None:
-    """Record the topic handoff; dual-writes nodes.handoff for the flipped reads."""
+    """Record the topic handoff on the authoritative nodes.handoff — the legacy
+    graph_topics UPDATE was cut (P8 c4-write-cut)."""
     now = _now()
     with db._connect() as conn:
-        conn.execute(
-            "UPDATE graph_topics SET handoff=?, updated_at=? WHERE id=?",
-            (handoff, now, topic_id),
-        )
         conn.execute(
             "UPDATE nodes SET handoff=?, updated_at=? WHERE id=? AND kind='topic'",
             (handoff, now, topic_id),

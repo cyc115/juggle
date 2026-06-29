@@ -15,7 +15,6 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from juggle_db import JuggleDB  # noqa: E402
-from dbops import db_graph as g  # noqa: E402
 
 
 @pytest.fixture
@@ -26,12 +25,18 @@ def db(tmp_path: Path) -> JuggleDB:
 
 
 def _flat_task(db, nid, state="pending", thread_id=None, updated_at=None):
-    g.create_task(db, task_id=nid, project_id="INBOX", title=f"N {nid}", prompt="p")
+    # P8 c4-write-cut: db_graph.create_task no longer writes graph_tasks, so seed
+    # the flat graph_tasks row (topic_id NULL) DIRECTLY — this test pins the legacy
+    # Migration-37 backfill (graph_tasks → synthetic graph_topics), whose behavior
+    # is unchanged; only the seeding seam moves off create_task.
+    now = "2026-05-01T00:00:00+00:00"
     with db._connect() as conn:
         conn.execute(
-            "UPDATE graph_tasks SET state=?, thread_id=?, topic_id=NULL, "
-            "updated_at=COALESCE(?, updated_at) WHERE id=?",
-            (state, thread_id, updated_at, nid),
+            "INSERT INTO graph_tasks (id, project_id, title, prompt, state, "
+            "thread_id, topic_id, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,NULL,?,?)",
+            (nid, "INBOX", f"N {nid}", "p", state, thread_id, now,
+             updated_at or now),
         )
         conn.commit()
 
