@@ -185,7 +185,8 @@ def test_counter_monotonic_across_deletes(db):
 
     db.set_thread_status(a, "closed")
     with db._connect() as conn:
-        conn.execute("DELETE FROM threads WHERE id = ?", (b,))
+        # P8 terminal: the conversation lives in nodes (threads dropped).
+        conn.execute("DELETE FROM nodes WHERE id = ? AND kind='conversation'", (b,))
         conn.commit()
 
     c = db.create_thread("c", session_id="s")  # seq=2 -> 'AC', seq -> 3
@@ -225,14 +226,13 @@ def test_allocation_succeeds_with_many_closed_threads(db):
 
 
 def test_init_db_idempotent_with_all_702_labels_used(tmp_path, monkeypatch):
-    """A second init_db must not raise when all 702 Excel labels are in use.
+    """A second init_db must not raise when all 702 Excel labels are already held.
 
-    2026-06-16: Migration 4 re-added the dead 'label' column after Migration 16
-    dropped it.  On the next init_db Migration 16 re-ran _next_excel_label
-    against 702 persisted labels (A-Z + AA-ZZ), raising 'All 702 user labels
-    in use' on a thread with NULL user_label.
-
-    Fixed by guarding Migration 4 so it skips when user_label already exists.
+    2026-06-16: Migration 16 re-ran _next_excel_label against 702 persisted labels
+    (A-Z + AA-ZZ), raising 'All 702 user labels in use' on a NULL-label row. P8
+    terminal: slugs persist on conversation nodes (threads dropped, Migration 55);
+    a saturated label set held by NON-live (closed) conversations must NOT break a
+    re-init, and a new live conversation can still reuse a freed slug.
     """
     import string
     import uuid
@@ -254,27 +254,25 @@ def test_init_db_idempotent_with_all_702_labels_used(tmp_path, monkeypatch):
     now = datetime.now(timezone.utc).isoformat()
     with d._connect() as conn:
         for lbl in excel_labels:
+            # CLOSED ('done') conversation nodes hold every label — not live, so
+            # the slug wheel may reuse them.
             conn.execute(
-                "INSERT INTO threads(id, user_label, session_id, topic, status, "
-                "created_at, last_active, last_active_at) VALUES (?,?,?,?,?,?,?,?)",
-                (str(uuid.uuid4()), lbl, "s", "t", "closed", now, now, now),
+                "INSERT INTO nodes(id, kind, title, state, user_label, "
+                "created_at, updated_at) VALUES (?, 'conversation', 't', 'done', ?, ?, ?)",
+                (str(uuid.uuid4()), lbl, now, now),
             )
-        # One thread with NULL user_label — the victim that triggers the backfill.
+        # One NULL-label closed conversation (the historical backfill victim).
         conn.execute(
-            "INSERT INTO threads(id, user_label, session_id, topic, status, "
-            "created_at, last_active, last_active_at) VALUES (?,NULL,?,?,?,?,?,?)",
-            (str(uuid.uuid4()), "s", "extra", "closed", now, now, now),
+            "INSERT INTO nodes(id, kind, title, state, user_label, "
+            "created_at, updated_at) VALUES (?, 'conversation', 't', 'done', NULL, ?, ?)",
+            (str(uuid.uuid4()), now, now),
         )
         conn.commit()
 
-    # Second init_db (what juggle graph add-task calls): M4 adds 'label' back,
-    # M16 sees it and tries to backfill the NULL row — must not raise.
-    d.init_db()  # was: ValueError('All 702 user labels in use')
+    # A second init_db (what `juggle graph add-task` calls) must not raise.
+    d.init_db()
 
-    # 'label' column must be gone.
-    with d._connect() as conn:
-        cols = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(threads)").fetchall()
-        }
-    assert "label" not in cols
+    # A new LIVE conversation still allocates — the wheel reuses a non-live slug.
+    new_tid = d.create_thread("live-after-saturation", session_id="s")
+    label = d.get_thread(new_tid)["user_label"]
+    assert label is not None and len(label) == 2 and label.isalpha()

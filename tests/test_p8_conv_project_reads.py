@@ -24,6 +24,11 @@ _T = "2026-01-01 00:00"
 def _fresh(tmp_path):
     db = JuggleDB(db_path=str(tmp_path / "j.db"))
     db.init_db()
+    # P8 terminal: legacy threads dropped on init_db; re-create it so the
+    # Migration-50 backfill test can seed a pre-mirror prod threads row.
+    from helpers.node_seed import make_legacy_tables
+    with db._connect() as conn:
+        make_legacy_tables(conn, "threads")
     return db
 
 

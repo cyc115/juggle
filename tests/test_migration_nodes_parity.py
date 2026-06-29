@@ -8,6 +8,11 @@ from juggle_db import JuggleDB
 def _fresh(tmp_path):
     db = JuggleDB(db_path=str(tmp_path / "j.db"))
     db.init_db()
+    # P8 terminal: legacy tables are dropped on init_db; re-create them so the
+    # parity/backfill migrations under test have their legacy source tables.
+    from helpers.node_seed import make_legacy_tables
+    with db._connect() as conn:
+        make_legacy_tables(conn)
     return db
 
 

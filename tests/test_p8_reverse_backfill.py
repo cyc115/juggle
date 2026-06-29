@@ -24,6 +24,12 @@ from juggle_db import JuggleDB
 def tmp_db(tmp_path: Path) -> JuggleDB:
     db = JuggleDB(db_path=str(tmp_path / "rb.db"))
     db.init_db()
+    # P8 terminal: legacy tables dropped on init_db. The reverse-backfill inverse
+    # (the revert path) re-INSERTs into graph_tasks/graph_edges but does not create
+    # them — re-create the empty legacy tables it targets, as a revert would.
+    from helpers.node_seed import make_legacy_tables
+    with db._connect() as conn:
+        make_legacy_tables(conn, "graph_tasks", "graph_edges")
     return db
 
 
