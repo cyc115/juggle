@@ -72,8 +72,8 @@ def test_get_thread(db):
     tid = db.create_thread("My topic", session_id="s1")
     t = db.get_thread(tid)
     assert t is not None
-    assert t["topic"] == "My topic"
-    assert t["status"] == "active"
+    assert t["title"] == "My topic"
+    assert t["state"] == "open"
 
 
 def test_get_thread_missing(db):
@@ -93,7 +93,7 @@ def test_update_thread(db):
     tid = db.create_thread("My topic", session_id="s1")
     db.update_thread(tid, status="background")
     t = db.get_thread(tid)
-    assert t["status"] == "background"
+    assert t["state"] == "background"
 
 
 def test_update_thread_list_serialized(db):
@@ -165,7 +165,7 @@ def test_get_thread_by_uuid(db):
     assert thread is not None
     assert thread["id"] == tid
     assert thread["user_label"] == "AA"
-    assert thread["topic"] == "My topic"
+    assert thread["title"] == "My topic"
 
 
 def test_get_all_threads_includes_id_and_user_label(db):
@@ -187,7 +187,7 @@ def test_archive_thread_keeps_user_label(db):
     slug = db.get_thread(tid)["user_label"]
     db.archive_thread(tid)
     thread = db.get_thread(tid)
-    assert thread["status"] == "archived"
+    assert thread["state"] == "archived"
     assert thread["user_label"] == slug  # persists, not recycled-by-erasure
     assert thread["show_in_list"] == 0
 
@@ -241,7 +241,10 @@ def test_get_thread_by_user_label_newest_wins_after_reuse(db):
     # A newer thread reuses slug 'AA' (forced onto the same slot).
     tid_b = db.create_thread("New holder", session_id="s1")  # 'AB'
     with db._connect() as conn:
-        conn.execute("UPDATE threads SET user_label = 'AA' WHERE id = ?", (tid_b,))
+        # get_thread_by_user_label resolves from nodes (P8 Task 4.2) — force the
+        # slug collision on the authoritative conversation node.
+        conn.execute("UPDATE nodes SET user_label = 'AA' WHERE id = ? "
+                     "AND kind='conversation'", (tid_b,))
         conn.commit()
 
     resolved = db.get_thread_by_user_label("AA")

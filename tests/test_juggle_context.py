@@ -145,7 +145,7 @@ def test_topic_header_present(active_db):
 def test_current_thread_rendered_in_active(active_db):
     """Current thread appears in the Active Threads block."""
     ctx = ContextBuilder(active_db).build()
-    assert "[AA] 🟢 active | Topic A" in ctx
+    assert "[AA] 🟢 open | Topic A" in ctx
 
 
 def test_done_thread_suffix(active_db):

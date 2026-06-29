@@ -29,7 +29,7 @@ def test_tier1_active_thread_renders_full_block(db):
     )
     db.set_current_thread(tid)
     out = _build(db)
-    assert "[AA] 🟢 active | Cockpit refactor" in out
+    assert "[AA] 🟢 open | Cockpit refactor" in out
     assert "Key decisions:" in out
     assert "Chose Rich over Textual" in out
 

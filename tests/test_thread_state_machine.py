@@ -16,7 +16,7 @@ def test_set_thread_status_to_running_updates_last_active(db):
     before = db.get_thread(tid)["last_active_at"]
     db.set_thread_status(tid, "running")
     t = db.get_thread(tid)
-    assert t["status"] == "running"
+    assert t["state"] == "running"
     assert t["last_active_at"] >= before
 
 
@@ -31,7 +31,7 @@ def test_set_thread_status_closed_sets_last_active_now(db):
     tid = db.create_thread("t", session_id="s")
     db.set_thread_status(tid, "closed")
     t = db.get_thread(tid)
-    assert t["status"] == "closed"
+    assert t["state"] == "done"
     assert t["last_active_at"]
 
 

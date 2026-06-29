@@ -47,7 +47,7 @@ def test_unrecoverable_creates_high_action_item_and_notification(tmp_path):
     notifs = db.get_notifications_for_session("sess-1")
     assert any("✗" in n["message"] and "pane died" in n["message"] for n in notifs)
     # Thread closed
-    assert db.get_thread(tid)["status"] == "closed"
+    assert db.get_thread(tid)["state"] == "done"
 
 
 def test_recovery_dispatched_notifies_no_action_item(tmp_path):
@@ -73,4 +73,4 @@ def test_recovery_dispatched_notifies_no_action_item(tmp_path):
     notifs = db.get_notifications_for_session("sess-2")
     assert any("⟳" in n["message"] for n in notifs)
     # Thread stays running
-    assert db.get_thread(tid)["status"] == "running"
+    assert db.get_thread(tid)["state"] == "running"

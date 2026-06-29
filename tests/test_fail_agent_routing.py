@@ -31,7 +31,7 @@ def test_fail_agent_persistent_creates_action_item_and_closes(db):
     assert len(items) == 1
     assert items[0]["priority"] == "high"
     assert items[0]["type"] == "failure"
-    assert db.get_thread(tid)["status"] == "closed"
+    assert db.get_thread(tid)["state"] == "done"
 
 
 def test_fail_agent_transient_keeps_running_no_action_item(db):
@@ -44,7 +44,7 @@ def test_fail_agent_transient_keeps_running_no_action_item(db):
     )
     cmd_fail_agent(args)
     assert db.get_open_action_items() == []
-    assert db.get_thread(tid)["status"] == "running"
+    assert db.get_thread(tid)["state"] == "running"
 
 
 def test_fail_agent_autoclassifies_network_as_transient(db):

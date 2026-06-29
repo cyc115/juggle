@@ -41,23 +41,34 @@ def _insert_raw(db, **cols):
     return tid
 
 
+def _thread_rows(db):
+    """All raw threads rows (legacy status vocab). juggle_migrate_lifecycle is a
+    threads-ONLY migration — it never touches nodes — so its effect is verified
+    against the threads table, not the node reader get_thread (P8 Task 4.2)."""
+    with db._connect() as conn:
+        return {r["id"]: r for r in conn.execute("SELECT * FROM threads").fetchall()}
+
+
+def _thread_status(db, tid):
+    return _thread_rows(db)[tid]["status"]
+
+
 def test_done_maps_to_closed(db):
     tid = _insert_raw(db, status="done")
     migrate(db)
-    assert db.get_thread(tid)["status"] == "closed"
+    assert _thread_status(db, tid) == "closed"
 
 
 def test_background_maps_to_running(db):
     tid = _insert_raw(db, status="background")
     migrate(db)
-    assert db.get_thread(tid)["status"] == "running"
+    assert _thread_status(db, tid) == "running"
 
 
 def test_failed_with_open_questions_creates_action_item(db):
     tid = _insert_raw(db, status="failed", open_questions=["Retry?"])
     migrate(db)
-    t = db.get_thread(tid)
-    assert t["status"] == "closed"
+    assert _thread_status(db, tid) == "closed"
     items = db.get_open_action_items()
     assert any("Retry?" in i["message"] for i in items)
     assert items[0]["priority"] == "high"
@@ -67,14 +78,13 @@ def test_failed_with_open_questions_creates_action_item(db):
 def test_failed_without_questions_creates_notification(db):
     tid = _insert_raw(db, status="failed", agent_result="timeout")
     migrate(db)
-    assert db.get_thread(tid)["status"] == "closed"
+    assert _thread_status(db, tid) == "closed"
 
 
 def test_needs_action_creates_question_action_item(db):
     tid = _insert_raw(db, status="needs_action", open_questions=["Push?"])
     migrate(db)
-    t = db.get_thread(tid)
-    assert t["status"] == "closed"
+    assert _thread_status(db, tid) == "closed"
     items = db.get_open_action_items()
     assert any("Push?" in i["message"] and i["type"] == "question" for i in items)
 
@@ -83,24 +93,24 @@ def test_backfill_user_label_in_creation_order(db):
     _insert_raw(db, status="done", topic="first")
     _insert_raw(db, status="active", topic="second")
     migrate(db)
-    threads = sorted(db.get_all_threads(), key=lambda t: t["created_at"])
-    assert threads[0]["user_label"] == "AA"
-    assert threads[1]["user_label"] == "AB"
+    rows = sorted(_thread_rows(db).values(), key=lambda r: r["created_at"])
+    assert rows[0]["user_label"] == "AA"
+    assert rows[1]["user_label"] == "AB"
 
 
 def test_backfill_last_active_at(db):
     tid = _insert_raw(db, status="active")
     migrate(db)
-    assert db.get_thread(tid)["last_active_at"] is not None
+    assert _thread_rows(db)[tid]["last_active_at"] is not None
 
 
 def test_idempotent(db):
     _insert_raw(db, status="done")
     migrate(db)
     migrate(db)  # second run should be a no-op
-    threads = db.get_all_threads()
     assert all(
-        t["status"] in {"active", "running", "closed", "archived"} for t in threads
+        r["status"] in {"active", "running", "closed", "archived"}
+        for r in _thread_rows(db).values()
     )
 
 

@@ -21,19 +21,19 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
     Priority (highest wins): current > background > done > failed > archived > waiting > idle
     """
     tid = thread["id"]
-    status = thread.get("status") or "active"
-    last_active = thread.get("last_active") or ""
+    state = thread.get("state") or "open"
+    last_active = thread.get("last_active_at") or ""
 
     # Current
     if tid == current_thread_id:
         return "👉"
 
     # Background (agent running)
-    if status == "background":
+    if state == "background":
         return "🏃\u200d♂️"
 
-    # Done
-    if status == "done":
+    # Done (terminal: node 'done' covers legacy closed+done)
+    if state == "done":
         with db._connect() as conn:
             asst_row = conn.execute(
                 "SELECT id, content FROM messages WHERE thread_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
@@ -52,7 +52,7 @@ def get_thread_state(db: JuggleDB, thread: dict, current_thread_id: str) -> str:
         return "✅"
 
     # Failed
-    if status == "failed":
+    if state == "failed-exec":
         return "❌"
 
     # Archived: last_active > archive threshold
@@ -134,7 +134,7 @@ def render_topics_tree(db: JuggleDB) -> str:
             tier = 3
         else:
             tier = 2
-        last_active = t.get("last_active") or ""
+        last_active = t.get("last_active_at") or ""
         inverted = (
             "".join(chr(0x10FFFF - ord(c)) for c in last_active) if last_active else ""
         )
@@ -162,9 +162,8 @@ def render_topics_tree(db: JuggleDB) -> str:
 
         tid = t["id"]
         label = t.get("user_label") or t.get("label") or tid[:8]
-        topic = t["topic"]
-        title = t.get("title") or topic
-        last_active = _humanize_dt(t.get("last_active") or "")
+        title = t.get("title") or "(untitled)"
+        last_active = _humanize_dt(t.get("last_active_at") or "")
 
         emoji = get_thread_state(db, t, current or "")
         state_suffix = _state_suffix_text.get(emoji, "")
@@ -196,8 +195,8 @@ def render_topics_tree(db: JuggleDB) -> str:
         for question in open_questions:
             output_lines.append(f"{vert}├── ❓ {question}")
 
-        status = t["status"]
-        if status == "background":
+        state = t["state"]
+        if state == "background":
             agent_status = (
                 t.get("last_user_intent") or t.get("agent_task_id") or "running..."
             )
@@ -229,8 +228,8 @@ def _auto_archive_closed_threads(db: JuggleDB) -> int:
     )
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
     archived = 0
-    for t in db.get_threads_by_status("closed"):
-        la = t.get("last_active_at") or t.get("last_active") or ""
+    for t in db.get_threads_by_status("done"):
+        la = t.get("last_active_at") or ""
         try:
             dt = datetime.strptime(la[:16], "%Y-%m-%d %H:%M").replace(
                 tzinfo=timezone.utc
@@ -258,7 +257,7 @@ def build_startup_output(db: JuggleDB) -> str:
     active = [
         t
         for t in threads
-        if t.get("status") != "archived" and t.get("show_in_list", 1) != 0
+        if t.get("state") != "archived" and t.get("show_in_list", 1) != 0
     ]
 
     if not active:

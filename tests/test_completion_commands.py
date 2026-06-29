@@ -63,7 +63,7 @@ def test_cmd_complete_agent_creates_notification_and_closes_thread(db, capsys):
         open_questions=None,
     )
     cmd_complete_agent(args)
-    assert db.get_thread(tid)["status"] == "closed"
+    assert db.get_thread(tid)["state"] == "done"
     notifs = db.get_notifications_for_session("sessA")
     assert any("merged PR #412" in n["message"] for n in notifs)
 
@@ -92,7 +92,7 @@ def test_cmd_complete_agent_preserves_feature_topic_with_user_messages(db):
     )
     cmd_complete_agent(args)
     # Feature topic must survive — not closed.
-    assert db.get_thread(tid)["status"] != "closed"
+    assert db.get_thread(tid)["state"] != "done"
 
 
 def test_cmd_complete_agent_closes_thread_with_only_orchestrator_chatter(db):
@@ -117,7 +117,7 @@ def test_cmd_complete_agent_closes_thread_with_only_orchestrator_chatter(db):
     )
     cmd_complete_agent(args)
     # No real human message → agent-owned ephemeral thread → closes.
-    assert db.get_thread(tid)["status"] == "closed"
+    assert db.get_thread(tid)["state"] == "done"
 
 
 def test_cmd_complete_agent_does_not_reopen_closed_feature_topic(db):
@@ -138,7 +138,7 @@ def test_cmd_complete_agent_does_not_reopen_closed_feature_topic(db):
     )
     cmd_complete_agent(args)
     # Must stay closed — not reopened.
-    assert db.get_thread(tid)["status"] == "closed"
+    assert db.get_thread(tid)["state"] == "done"
 
 
 def test_cmd_complete_agent_converts_open_questions_to_action_items(db):
@@ -178,7 +178,7 @@ def test_cmd_request_action_creates_action_item_keeps_state(db):
     )
     cmd_request_action(args)
     # Thread remains running; action_items row created
-    assert db.get_thread(tid)["status"] == "running"
+    assert db.get_thread(tid)["state"] == "running"
     items = db.get_open_action_items()
     assert len(items) == 1
     assert items[0]["message"] == "push to prod pending"
@@ -202,7 +202,7 @@ def test_cmd_close_thread_sets_closed_state(db, capsys):
     tid = db.create_thread("t", session_id="sessA")
     args = argparse.Namespace(thread_id=tid)
     cmd_close_thread(args)
-    assert db.get_thread(tid)["status"] == "closed"
+    assert db.get_thread(tid)["state"] == "done"
 
 
 # ── Fix 3: Worktree finalization tests ──────────────────────────────────────

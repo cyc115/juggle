@@ -24,9 +24,9 @@ _CHAR_LIMIT: int = _get_settings()["context_injection_char_limit"]
 # --------------------------------------------------------------------------
 
 _STATE_EMOJI = {
-    "active": "🟢",
-    "running": "🏃",
-    "closed": "✅",
+    "open": "🟢",
+    "running": "🏃", "background": "🏃",
+    "done": "✅",
     "archived": "🗄",
 }
 
@@ -83,9 +83,9 @@ def _render_tier1(t: dict, db) -> list[str]:
     import json as _json
 
     label = t.get("user_label") or t.get("label") or t["id"][:6]
-    state = t.get("status") or "active"
+    state = t.get("state") or "open"
     emoji = _STATE_EMOJI.get(state, "🟢")
-    title = t.get("title") or t.get("topic") or "(untitled)"
+    title = t.get("title") or "(untitled)"
     task_tag = _graph_task_tag(db, t["id"])
     lines = [f"[{label}] {emoji} {state} | {_strip_articles(title)}{task_tag}"]
 
@@ -137,7 +137,7 @@ def _render_tier1(t: dict, db) -> list[str]:
 
 def _render_tier2(t: dict) -> str:
     label = t.get("user_label") or t.get("label") or t["id"][:6]
-    title = _strip_articles(t.get("title") or t.get("topic") or "")
+    title = _strip_articles(t.get("title") or "")
     return f"[{label}] ✅ closed  | {title}"
 
 
@@ -217,7 +217,7 @@ def _build(db: JuggleDB) -> str:
 
     # --- Threads: Tier 1 (active + running) ---
     tier1 = [
-        t for t in db.get_threads_by_status("active") if t.get("show_in_list", 1) != 0
+        t for t in db.get_threads_by_status("open") if t.get("show_in_list", 1) != 0
     ] + [
         t for t in db.get_threads_by_status("running") if t.get("show_in_list", 1) != 0
     ]
@@ -232,11 +232,11 @@ def _build(db: JuggleDB) -> str:
     ttl_secs = int(
         db.get_setting("thread_auto_archive_ttl_secs", default="3600") or "3600"
     )
-    closed = db.get_threads_by_status("closed")
+    closed = db.get_threads_by_status("done")
     tier2 = []
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_secs)
     for t in closed:
-        la = t.get("last_active_at") or t.get("last_active") or ""
+        la = t.get("last_active_at") or ""
         try:
             dt = datetime.strptime(la[:16], "%Y-%m-%d %H:%M").replace(
                 tzinfo=timezone.utc

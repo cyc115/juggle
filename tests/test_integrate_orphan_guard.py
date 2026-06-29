@@ -44,14 +44,12 @@ def _repo_with_out_of_band_merge(repo):
 
 
 def _bind_thread(db, *, repo, branch):
-    """Create a thread carrying main_repo_path + worktree_branch; return its id."""
+    """Create a thread carrying main_repo_path + worktree_branch; return its id.
+
+    Routes through update_thread so the binding mirrors onto the conversation
+    node — orphan_guard reads it via get_thread, which now reads nodes (P8 4.2)."""
     tid = db.create_thread(topic="orphan-test", session_id="s")
-    with db._connect() as c:
-        c.execute(
-            "UPDATE threads SET main_repo_path=?, worktree_branch=? WHERE id=?",
-            (str(repo), branch, tid),
-        )
-        c.commit()
+    db.update_thread(tid, main_repo_path=str(repo), worktree_branch=branch)
     return tid
 
 

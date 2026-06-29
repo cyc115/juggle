@@ -81,8 +81,8 @@ def test_cmd_stop_prints_threads(mock_get_db):
     from juggle_cmd_threads import cmd_stop
 
     threads = [
-        {"id": "t1", "label": "A", "topic": "topic1", "status": "active"},
-        {"id": "t2", "user_label": "B", "topic": "topic2", "status": "done"},
+        {"id": "t1", "label": "A", "title": "topic1", "state": "open"},
+        {"id": "t2", "user_label": "B", "title": "topic2", "state": "done"},
     ]
     mock_get_db.get_all_threads.return_value = threads
 

@@ -542,7 +542,7 @@ def cmd_project_assign(args):
         from_project = t.get("project_id", "INBOX")
         _assign_thread_to_project(db, t["id"], project_id, assigned_by="human")
         if from_project != project_id:
-            db.log_project_correction(t["topic"], from_project=from_project, to_project=project_id)
+            db.log_project_correction(t["title"], from_project=from_project, to_project=project_id)
         print(f"Thread [{tid_input}] -> project {project_id} ({p['name']})")
 
 

@@ -46,7 +46,7 @@ def test_release_agent_files_failure_action_item(db):
         and "released without completing" in item["message"]
         for item in items
     ), f"Expected failure action item, got: {items}"
-    assert db.get_thread(tid)["status"] == "failed"
+    assert db.get_thread(tid)["state"] == "failed-exec"
 
 
 # ---------------------------------------------------------------------------

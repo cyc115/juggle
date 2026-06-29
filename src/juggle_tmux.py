@@ -701,7 +701,7 @@ def reconcile_oneshot_agents(db) -> int:
         thread_id = agent.get("assigned_thread")
         if thread_id:
             thread = db.get_thread(thread_id)
-            if thread and thread.get("status") in ("closed", "failed", "archived"):
+            if thread and thread.get("state") in ("done", "failed-exec", "archived"):
                 continue
 
         # Still alive → leave untouched.

@@ -102,6 +102,11 @@ class ProjectsMixin:
                     "UPDATE threads SET show_in_list=0 WHERE id=?",
                     (tid,),
                 )
+                # P8 Task 4.2: get_thread reads nodes, so mirror the hide there too.
+                conn.execute(
+                    "UPDATE nodes SET show_in_list=0 WHERE id=? AND kind='conversation'",
+                    (tid,),
+                )
             if thread_ids:
                 placeholders = ",".join("?" * len(thread_ids))
                 conn.execute(
@@ -120,6 +125,12 @@ class ProjectsMixin:
             )
             conn.execute(
                 "UPDATE threads SET show_in_list=1 WHERE project_id=?",
+                (project_id,),
+            )
+            # P8 Task 4.2: get_thread reads nodes, so mirror the unhide there too.
+            conn.execute(
+                "UPDATE nodes SET show_in_list=1 WHERE project_id=? "
+                "AND kind='conversation'",
                 (project_id,),
             )
             conn.commit()

@@ -121,7 +121,7 @@ def test_create_thread_allows_real_topic(db, monkeypatch):
 
     threads = db.get_all_threads()
     assert len(threads) == 1
-    assert threads[0]["topic"] == "add a hotkey to dismiss dossier items"
+    assert threads[0]["title"] == "add a hotkey to dismiss dossier items"
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +162,8 @@ def test_close_junk_threads_selector(db):
 
     # Verify status in DB
     junk_thread = db.get_thread(junk_id)
-    assert junk_thread["status"] in ("closed", "archived", "done"), (
+    assert junk_thread["state"] in ("done", "archived"), (
         f"Expected junk thread closed, got {junk_thread['status']!r}"
     )
     real_thread = db.get_thread(real_id)
-    assert real_thread["status"] == "active", "Real thread must remain active"
+    assert real_thread["state"] == "open", "Real thread must remain active"

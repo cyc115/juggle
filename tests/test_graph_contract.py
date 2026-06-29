@@ -77,7 +77,7 @@ def test_complete_refuses_missing_handoff_when_task_has_dependents(db, capsys):
     out = capsys.readouterr().out + capsys.readouterr().err
     assert "--handoff" in out and "b" in out  # names the dependents
     assert g.get_task(db, "a")["state"] == "running"  # task untouched
-    assert db.get_thread(tid)["status"] == "running"  # thread NOT closed
+    assert db.get_thread(tid)["state"] == "running"  # thread NOT closed
     assert db.get_open_action_items() == []  # no partial side effects
 
 
@@ -124,7 +124,7 @@ def test_complete_unbound_thread_unaffected_by_enforcement(db):
     db.update_thread(tid, agent_task_id="task-1", status="running")
     db._set_session_key_external("session_id", "sessA")
     _complete(tid, handoff=None)  # no task — must not raise
-    assert db.get_thread(tid)["status"] == "closed"
+    assert db.get_thread(tid)["state"] == "done"
 
 
 # ── send-task task guard (DA B5) ───────────────────────────────────────────────

@@ -55,11 +55,12 @@ _PERMISSION_ASKING_PATTERNS = [
 def get_classification_candidates(threads: list[dict]) -> list[dict]:
     """Return threads eligible for topic classification match.
 
-    Only threads with status not in ('done', 'archived') are considered.
-    If no match is found among these candidates, a new thread should be
-    created — closed threads are never resurrected.
+    Only conversations with state not in ('done', 'archived') are considered
+    (node vocab; 'done' covers legacy closed+done). If no match is found among
+    these candidates, a new thread should be created — closed threads are never
+    resurrected.
     """
-    return [t for t in threads if t.get("status") not in ("done", "archived")]
+    return [t for t in threads if t.get("state") not in ("done", "archived")]
 
 
 def auto_approve_blocked_agents() -> None:

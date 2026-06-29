@@ -112,7 +112,7 @@ def cmd_complete_agent(args):
     preserve_feature_topic = db.has_human_user_message(thread_uuid)
     if not preserve_feature_topic:
         db.set_thread_status(thread_uuid, "closed")
-    elif (thread.get("status") or "") in ("background", "running"):
+    elif (thread.get("state") or "") in ("background", "running"):
         # Un-hijack an in-flight wrongful bind. Gate on the in-flight status so a
         # duplicate/retry completion never RESURRECTS an already-terminal
         # (closed/archived/failed) feature topic to 'active' — idempotency
@@ -136,7 +136,7 @@ def cmd_complete_agent(args):
         db.update_agent(agent["id"], status="idle", assigned_thread=None)
 
     # 5. Create notification row (informational, session TTL)
-    title = thread.get("title") or thread.get("topic") or "thread"
+    title = thread.get("title") or "thread"
     db.add_notification_v2(
         thread_id=thread_uuid,
         message=f"{title}: {args.result_summary}",

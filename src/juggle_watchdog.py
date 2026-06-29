@@ -569,7 +569,7 @@ def execute_recovery(
             _t = live.get("assigned_thread")
             if _t:
                 _thread = db.get_thread(_t)
-                if _thread and _thread.get("status") == "closed":
+                if _thread and _thread.get("state") == "done":
                     _log.info(
                         "Watchdog: agent %s alive_slow but thread %s is closed — idling agent",
                         agent_id[:8], _t[:8],
@@ -661,13 +661,13 @@ def execute_recovery(
     _log.info("Watchdog: recovery snapshot saved to %s", snap_path)
 
     if thread_id:
-        with db._connect() as conn:
-            conn.execute(
-                "UPDATE threads SET last_dispatched_task=?, last_dispatched_role=?, "
-                "last_dispatched_model=? WHERE id=?",
-                (last_task, role, model, thread_id),
-            )
-            conn.commit()
+        # P8 Task 4.2: update_thread mirrors the conversation node get_thread reads.
+        db.update_thread(
+            thread_id,
+            last_dispatched_task=last_task,
+            last_dispatched_role=role,
+            last_dispatched_model=model,
+        )
 
     # Kill pane (best-effort) then delete agent from DB directly
     try:
@@ -737,7 +737,7 @@ def execute_recovery(
     # overwrite the "closed" status, hiding the completion.
     if thread_id:
         _thread_post_spawn = db.get_thread(thread_id)
-        if _thread_post_spawn and _thread_post_spawn.get("status") == "closed":
+        if _thread_post_spawn and _thread_post_spawn.get("state") == "done":
             _log.info(
                 "Watchdog: recovery agent %s released — thread %s closed during spawn window",
                 new_agent_id[:8], thread_id[:8],

@@ -99,7 +99,7 @@ def test_execute_recovery_toctou_agent_released_during_recovery(db, mock_mgr, tm
 
     # DA-6 abort must not corrupt thread status to failed
     thread = db.get_thread(thread_id)
-    assert thread["status"] != "failed"
+    assert thread["state"] != "failed-exec"
 
 
 def test_execute_recovery_uses_live_record_fields(db, mock_mgr, tmp_path):
@@ -620,7 +620,7 @@ def test_recovery_updates_thread_status_to_failed_on_no_retry(db, mock_mgr, tmp_
 
     # Thread should be marked as failed (retry_blocked path sets this)
     thread = db.get_thread(thread_id)
-    assert thread["status"] == "failed"
+    assert thread["state"] == "failed-exec"
 
 
 def test_recovery_updates_thread_status_to_background_on_retry(db, mock_mgr, tmp_path):

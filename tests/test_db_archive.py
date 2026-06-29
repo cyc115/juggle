@@ -28,7 +28,7 @@ def test_archive_thread_sets_status_and_show_in_list(db):
     db.archive_thread(tid)
     t = db.get_thread(tid)
     assert t is not None
-    assert t["status"] == "archived"
+    assert t["state"] == "archived"
     assert t["show_in_list"] == 0
 
 
@@ -151,7 +151,7 @@ def test_unarchive_thread_sets_status_active(db):
     db.unarchive_thread(tid)
     t = db.get_thread(tid)
     assert t is not None
-    assert t["status"] == "active"
+    assert t["state"] == "open"
 
 
 def test_unarchive_thread_returns_user_label(db):
@@ -176,12 +176,12 @@ def test_unarchive_thread_full_cycle(db):
 
     db.archive_thread(tid)
     t = db.get_thread(tid)
-    assert t["status"] == "archived"
+    assert t["state"] == "archived"
     assert t["user_label"] == slug  # slug persists on archive
     assert t["show_in_list"] == 0
 
     db.unarchive_thread(tid)
     t = db.get_thread(tid)
-    assert t["status"] == "active"
+    assert t["state"] == "open"
     assert t["show_in_list"] == 1
     assert t["user_label"] == slug  # original slug reused (no live conflict)

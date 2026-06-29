@@ -87,10 +87,10 @@ def cmd_release_agent(args):
     # Guard: block release if thread is still active unless --force
     if not getattr(args, "force", False) and assigned:
         thread = db.get_thread(assigned)
-        if thread and thread["status"] not in ("closed", "failed", "archived"):
+        if thread and thread["state"] not in ("done", "failed-exec", "archived"):
             label = thread.get("user_label") or assigned[:8]
             print(
-                f"Error: Thread {label} is still active ({thread.get('status')}). "
+                f"Error: Thread {label} is still active ({thread.get('state')}). "
                 f"Call complete-agent or fail-agent first. Use --force to override (operator only)."
             )
             sys.exit(1)
@@ -112,22 +112,19 @@ def cmd_release_agent(args):
     else:
         db.update_agent(agent_id, status="idle", last_active=now)
 
-    # Copy dispatch payload to thread before the agent record is cleared
+    # Copy dispatch payload to thread before the agent record is cleared.
+    # P8 Task 4.2: route through update_thread so the conversation node is
+    # mirrored — get_thread now READS the node, so a raw `threads` UPDATE would
+    # leave the read path stale.
     if assigned:
         agent_snap = db.get_agent(agent_id)
         if agent_snap:
-            with db._connect() as conn:
-                conn.execute(
-                    "UPDATE threads SET last_dispatched_task=?, last_dispatched_role=?, "
-                    "last_dispatched_model=? WHERE id=?",
-                    (
-                        agent_snap.get("last_task"),
-                        agent_snap.get("role"),
-                        agent_snap.get("model"),
-                        assigned,
-                    ),
-                )
-                conn.commit()
+            db.update_thread(
+                assigned,
+                last_dispatched_task=agent_snap.get("last_task"),
+                last_dispatched_role=agent_snap.get("role"),
+                last_dispatched_model=agent_snap.get("model"),
+            )
 
     # Clear task state so a re-pooled agent doesn't carry stale last_task
     # into its next assignment — prevents watchdog from replaying a previous
@@ -146,7 +143,7 @@ def cmd_release_agent(args):
     # without completing — mark the thread as failed so it doesn't appear stuck.
     if assigned:
         thread = db.get_thread(assigned)
-        if thread and thread["status"] == "background":
+        if thread and thread["state"] == "background":
             label = thread.get("user_label") or thread.get("label") or assigned[:8]
             db.update_thread(assigned, status="failed")
             with db._connect() as conn:

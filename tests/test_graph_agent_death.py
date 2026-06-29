@@ -109,7 +109,7 @@ def test_fail_agent_unbound_thread_untouched(db):
     db.update_thread(tid, status="running")
     db._set_session_key_external("session_id", "sessA")
     _fail(tid)
-    assert db.get_thread(tid)["status"] == "closed"
+    assert db.get_thread(tid)["state"] == "done"
 
 
 # ── path 2: watchdog give-up (retry exhausted) ─────────────────────────────────

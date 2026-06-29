@@ -121,7 +121,7 @@ def test_create_thread_ignores_closed_twin(db):
     fresh = db.create_thread("slug wheel rotation", session_id="s")
 
     assert fresh != old
-    assert db.get_thread(fresh)["status"] == "active"
+    assert db.get_thread(fresh)["state"] == "open"
 
 
 def test_create_thread_ignores_archived_twin(db):

@@ -162,7 +162,7 @@ class MessagesMixin:
             thread = self.get_thread(thread_id)
             if thread and thread.get("agent_result"):
                 result["last_assistant"] = thread["agent_result"]
-                result["last_assistant_at"] = thread.get("last_active")
+                result["last_assistant_at"] = thread.get("last_active_at")
 
         return result
 

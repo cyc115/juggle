@@ -257,7 +257,9 @@ def test_post_tool_use_agent_no_violation_warning(monkeypatch, capsys):
 
 
 def _make_thread(tid: str, status: str) -> dict:
-    return {"thread_id": tid, "topic": f"Topic {tid}", "status": status}
+    # P8 Task 4.2: conversations carry node vocab — get_classification_candidates
+    # filters on `state` (excludes done/archived).
+    return {"thread_id": tid, "title": f"Topic {tid}", "state": status}
 
 
 def test_classification_candidates_excludes_done():
@@ -363,7 +365,7 @@ def test_post_tool_use_no_agent_task_id_tracking(active_db, monkeypatch):
         juggle_hooks.handle_post_tool_use(data)
 
     thread = active_db.get_thread(thread_id)
-    assert thread["status"] != "background"
+    assert thread["state"] != "background"
 
 
 # ---------------------------------------------------------------------------

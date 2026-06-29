@@ -22,10 +22,10 @@ def cmd_check_agents(_):
         {
             "thread_id": t.get("user_label") or t["id"][:8],
             "task_id": t.get("agent_task_id", ""),
-            "topic": t["topic"],
+            "topic": t["title"],
         }
         for t in threads
-        if t["status"] == "background"
+        if t["state"] == "background"
     ]
     print(json.dumps(background))
 

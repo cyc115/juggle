@@ -307,7 +307,7 @@ def test_tick_dispatch_failure_releases_task_and_files_action_item(db):
     items = db.get_open_action_items()
     assert any("dispatch failed" in i["message"] and "a" in i["message"] for i in items)
     # orphan thread was archived, not leaked into the active cap
-    assert all(t["status"] == "archived" for t in db.get_all_threads() if t)
+    assert all(t["state"] == "archived" for t in db.get_all_threads() if t)
 
 
 def test_tick_capacity_error_defers_quietly(db):

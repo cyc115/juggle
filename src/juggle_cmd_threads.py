@@ -116,9 +116,9 @@ def cmd_start(_):
         print(f"Juggle v{ver} started. Topic {label} created.")
     else:
         # Auto-switch to most recently active non-archived thread
-        active_threads = [t for t in threads if t.get("status") != "archived"]
+        active_threads = [t for t in threads if t.get("state") != "archived"]
         if active_threads:
-            most_recent = max(active_threads, key=lambda t: t.get("last_active") or "")
+            most_recent = max(active_threads, key=lambda t: t.get("last_active_at") or "")
             db.set_current_thread(most_recent["id"])
         from juggle_context import build_startup_output
 
@@ -135,7 +135,7 @@ def cmd_stop(_):
         print("Topics:")
         for t in threads:
             label = t.get("user_label") or t.get("label") or t["id"][:8]
-            print(f"  [{label}] {t['topic']} — {t['status']}")
+            print(f"  [{label}] {t['title']} — {t['state']}")
     else:
         print("No topics.")
 
@@ -202,10 +202,19 @@ def close_junk_threads(db) -> list[dict]:
     dicts so callers can report what was cleaned up.
     """
     closed: list[dict] = []
+    # Junk detection keys on the IMMUTABLE original topic (the orchestrator-chatter
+    # marker). The conversation node only carries the (regeneratable) title, so the
+    # original topic is read from the legacy threads row — the write path still
+    # populates it (P8 conversation read-collapse keeps threads writes for now).
+    with db._connect() as conn:
+        orig_topics = {
+            r["id"]: r["topic"]
+            for r in conn.execute("SELECT id, topic FROM threads").fetchall()
+        }
     for thread in db.get_all_threads():
-        if thread.get("status") in ("archived", "closed", "done"):
+        if thread.get("state") in ("archived", "done"):
             continue
-        topic = thread.get("topic") or ""
+        topic = orig_topics.get(thread["id"]) or thread.get("title") or ""
         if is_auto_topic_eligible(topic):
             continue  # not chatter — leave it alone
         if thread.get("worktree_path"):
@@ -227,15 +236,15 @@ def _render_briefing(thread: dict, db) -> str:
 
     # ── Header ──────────────────────────────────────────────────────────────
     label = thread.get("user_label") or thread.get("label") or thread["id"][:8]
-    title = thread.get("title") or thread.get("topic") or "Untitled"
-    status = thread.get("status", "active")
-    last_active_str = _humanize_dt(thread.get("last_active") or "")
+    title = thread.get("title") or "Untitled"
+    state = thread.get("state", "open")
+    last_active_str = _humanize_dt(thread.get("last_active_at") or "")
     current_id = db.get_current_thread()
     state_emoji = get_thread_state(db, thread, current_id)
 
     lines.append(border)
     lines.append(f"  {state_emoji} [{label}] {title}")
-    lines.append(f"  Status: {status}  •  Last active: {last_active_str}")
+    lines.append(f"  Status: {state}  •  Last active: {last_active_str}")
     lines.append(border)
 
     # ── Empty thread guard ───────────────────────────────────────────────────
@@ -330,7 +339,7 @@ def cmd_switch_thread(args):
     db.set_current_thread(thread_uuid)
 
     # Mark as reviewed if switching to a done thread with agent results
-    if thread.get("status") == "done" and thread.get("agent_result"):
+    if thread.get("state") == "done" and thread.get("agent_result"):
         db.update_thread(thread_uuid, reviewed=1)
 
     print(_render_briefing(thread, db))
@@ -396,7 +405,7 @@ def cmd_close_thread(args):
         if dismissed
         else ""
     )
-    print(f"Thread {label} ({thread['topic']}) closed.{suffix}")
+    print(f"Thread {label} ({thread['title']}) closed.{suffix}")
 
 
 def _cleanup_orphaned_threads(db) -> None:
@@ -429,16 +438,16 @@ def cmd_show_topics(_):
 
     db = get_db()
     _cleanup_orphaned_threads(db)
-    threads = [t for t in db.get_all_threads() if t.get("status") != "archived"]
+    threads = [t for t in db.get_all_threads() if t.get("state") != "archived"]
     if not threads:
         print("No topics.")
         return
     now = datetime.now(timezone.utc)
     for t in threads:
         lbl = t.get("user_label") or t["id"][:6]
-        status = t.get("status") or "active"
-        title = (t.get("title") or t.get("topic") or "")[:30]
-        last_active = t.get("last_active_at") or t.get("last_active") or ""
+        status = t.get("state") or "open"
+        title = (t.get("title") or "")[:30]
+        last_active = t.get("last_active_at") or ""
         age = "-"
         if last_active:
             try:
@@ -480,9 +489,9 @@ def cmd_get_archive_candidates(_):
         return
     for t in candidates:
         label = t.get("user_label") or t.get("label") or t["id"][:8]
-        title = t.get("title") or t["topic"]
-        status = t["status"]
-        last_active = t.get("last_active") or ""
+        title = t.get("title") or ""
+        status = t["state"]
+        last_active = t.get("last_active_at") or ""
         print(f"[{label}] {title}  {status}  ({last_active})")
 
 
@@ -547,7 +556,7 @@ def cmd_get_stale_threads(args):
         return
     for t in stale:
         label = t.get("user_label") or t.get("label") or t["id"][:8]
-        print(f"{label} {t['topic']} (delta={t['delta']})")
+        print(f"{label} {t['title']} (delta={t['delta']})")
 
 
 def cmd_get_messages(args):

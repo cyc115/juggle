@@ -84,17 +84,17 @@ def _parse_cutoff(since: str) -> str:
     return start.astimezone(timezone.utc).isoformat()
 
 
-def _state_icon(status: str, agent_result: str | None) -> str:
-    """Simple status icon for digest output."""
+def _state_icon(state: str, agent_result: str | None) -> str:
+    """Simple state icon for digest output (node vocab)."""
     if agent_result and agent_result.startswith("⚠️ BLOCKER:"):
         return "⚠️"
     return {
-        "active": "👉",
+        "open": "👉",
         "background": "🏃",
         "done": "✅",
-        "failed": "❌",
+        "failed-exec": "❌",
         "archived": "🗄️",
-    }.get(status, "💤")
+    }.get(state, "💤")
 
 
 def cmd_digest(args):
@@ -106,9 +106,9 @@ def cmd_digest(args):
     active_threads = [
         t
         for t in all_threads
-        if t.get("status") != "archived"
+        if t.get("state") != "archived"
         and (
-            (t.get("last_active") or "") >= cutoff
+            (t.get("last_active_at") or "") >= cutoff
             or (t.get("created_at") or "") >= cutoff
         )
     ]
@@ -123,9 +123,9 @@ def cmd_digest(args):
 
     # TOPICS
     new_count = sum(1 for t in active_threads if (t.get("created_at") or "") >= cutoff)
-    done_count = sum(1 for t in active_threads if t.get("status") == "done")
+    done_count = sum(1 for t in active_threads if t.get("state") == "done")
     running_count = sum(
-        1 for t in active_threads if t.get("status") in ("active", "background")
+        1 for t in active_threads if t.get("state") in ("open", "background")
     )
     lines.append(
         f"\n📦 TOPICS  ({running_count} active, {done_count} completed, {new_count} new)"
@@ -133,16 +133,16 @@ def cmd_digest(args):
 
     for t in active_threads:
         label = t.get("label") or t["id"][:4]
-        title = t.get("title") or t.get("topic") or ""
-        status = t.get("status") or "active"
-        icon = _state_icon(status, t.get("agent_result"))
-        detail = _humanize_dt(t.get("last_active") or "")
+        title = t.get("title") or ""
+        state = t.get("state") or "open"
+        icon = _state_icon(state, t.get("agent_result"))
+        detail = _humanize_dt(t.get("last_active_at") or "")
 
-        if (t.get("created_at") or "") >= cutoff and status == "active":
+        if (t.get("created_at") or "") >= cutoff and state == "open":
             tag = f"new {detail}"
-        elif status == "done":
+        elif state == "done":
             tag = f"completed {detail}"
-        elif status == "background":
+        elif state == "background":
             tag = "agent running"
         elif t["id"] == current_id:
             tag = "current"
@@ -171,7 +171,7 @@ def cmd_digest(args):
     # BLOCKERS
     blockers: list[str] = []
     for t in all_threads:
-        if t.get("status") == "archived":
+        if t.get("state") == "archived":
             continue
         ar = t.get("agent_result") or ""
         if ar.startswith("⚠️ BLOCKER:"):
@@ -226,7 +226,7 @@ def cmd_next_action(args):
     visible = [
         t
         for t in all_threads
-        if t.get("show_in_list", 1) != 0 and t.get("status") != "archived"
+        if t.get("show_in_list", 1) != 0 and t.get("state") != "archived"
     ]
 
     from juggle_db import _thread_age_seconds  # private import — acceptable for v1
@@ -248,9 +248,9 @@ def cmd_next_action(args):
     if target_thread is None:
         for t in visible:
             tid = t["id"]
-            status = t.get("status") or "active"
+            state = t.get("state") or "open"
             ar = t.get("agent_result") or ""
-            if status == "done" and ar and tid != current_id and not t.get("reviewed"):
+            if state == "done" and ar and tid != current_id and not t.get("reviewed"):
                 label = t.get("label") or "?"
                 target_thread = t
                 action_line = f"📬 [{label}] Agent finished — results ready"
@@ -262,7 +262,7 @@ def cmd_next_action(args):
             oq = json.loads(t.get("open_questions") or "[]")
             if not oq:
                 continue
-            age = _thread_age_seconds(t.get("last_active"))
+            age = _thread_age_seconds(t.get("last_active_at"))
             if age is not None and age > 2 * 3600:
                 label = t.get("label") or "?"
                 target_thread = t

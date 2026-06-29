@@ -158,16 +158,91 @@ def test_conv_mirror_fails_loud_on_missing_column():
                            user_label="AA", now="2026-06-27 00:00")
 
 
+def test_get_thread_resolves_from_nodes_with_node_vocab(tmp_path):
+    """2026-06-29 P8 Task 4.2 (final conv read-collapse): get_thread reads the
+    authoritative kind='conversation' node and returns NODE vocab — state/title/
+    last_active_at — with the legacy status/topic/last_active keys GONE (Q1, no
+    shim). Pre-flip it hit `FROM threads` and a node-only seed found nothing."""
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        seed_node(conn, id="c1", kind="conversation", title="hello",
+                  state="open", last_active_at="2026-06-29 01:00", user_label="A")
+        conn.commit()
+    t = db.get_thread("c1")
+    assert t is not None
+    assert t["state"] == "open" and t["title"] == "hello"
+    assert t["last_active_at"] == "2026-06-29 01:00"
+    # legacy aliases are gone — node vocab only (no dual-vocab shim):
+    assert "status" not in t and "topic" not in t and "last_active" not in t
+
+
+def test_get_thread_ignores_non_conversation_nodes(tmp_path):
+    """A kind='task' node sharing the id space must NOT resolve as a thread."""
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        seed_node(conn, id="k1", kind="task", title="a task", state="open")
+        conn.commit()
+    assert db.get_thread("k1") is None
+
+
+def test_get_all_threads_reads_conversation_nodes(tmp_path):
+    """2026-06-29 P8 Task 4.2: get_all_threads enumerates kind='conversation'
+    nodes (node vocab), not `threads`. Task/topic nodes are excluded."""
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        seed_node(conn, id="c1", kind="conversation", title="one", state="open",
+                  created_at="2026-01-01 00:00")
+        seed_node(conn, id="c2", kind="conversation", title="two", state="done",
+                  created_at="2026-01-02 00:00")
+        seed_node(conn, id="k1", kind="task", title="task", state="open")
+        conn.commit()
+    rows = db.get_all_threads()
+    ids = [r["id"] for r in rows]
+    assert ids == ["c1", "c2"]            # task excluded, ordered by created_at
+    assert all("status" not in r and "topic" not in r for r in rows)
+
+
+def test_get_thread_by_user_label_live_first_from_nodes(tmp_path):
+    """2026-06-29 P8 Task 4.2: get_thread_by_user_label resolves a slug to the
+    NEWEST live conversation node (state in open/running/background), then the
+    newest terminal holder — reading `nodes`, not `threads`."""
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        seed_node(conn, id="old_live", kind="conversation", title="live",
+                  state="open", user_label="Z", created_at="2026-01-01 00:00")
+        seed_node(conn, id="new_dead", kind="conversation", title="dead",
+                  state="archived", user_label="Z", created_at="2026-01-03 00:00")
+        conn.commit()
+    t = db.get_thread_by_user_label("z")   # case-insensitive; live wins over newer-dead
+    assert t is not None and t["id"] == "old_live"
+
+
+def test_get_threads_by_status_filters_node_state(tmp_path):
+    """2026-06-29 P8 Task 4.2: get_threads_by_status now filters nodes.state
+    (node vocab) — callers pass a node state value (e.g. 'running', 'done')."""
+    db = _fresh(tmp_path)
+    with db._connect() as conn:
+        seed_node(conn, id="r1", kind="conversation", title="r", state="running")
+        seed_node(conn, id="d1", kind="conversation", title="d", state="done")
+        conn.commit()
+    assert [t["id"] for t in db.get_threads_by_status("running")] == ["r1"]
+    assert [t["id"] for t in db.get_threads_by_status("done")] == ["d1"]
+
+
 def test_static_legacy_ref_floor_ratchet():
     """Ratchet: live legacy-table refs in shipped src must not climb back above
-    the current floor (60). Lowered from the 2026-06-23 floor (123) → 107 (Task 3.1
+    the current floor (47). Lowered from the 2026-06-23 floor (123) → 107 (Task 3.1
     direct-read flips) → 103 (T-c3-reads: project-keyed conversation reads) → 63
     (2026-06-29 c4-topic-dag: the topic-tier + DAG + orphan readers flipped to
     nodes/node_edges, db_mirror.py + all its graph_topics-projection writes DELETED,
     and the topic claim/sweep/reconcile state writers routed through the nodes-
     authoritative state_write helper) → 60 (2026-06-29 c4-write-cut PARTIAL: add_node
     graph_tasks/graph_edges write-cut, and the sanctioned p8_reverse_backfill inverse
-    excluded from the steady-state scan).
+    excluded from the steady-state scan) → 47 (2026-06-29 c4-conv-reads: the
+    get_thread/get_all_threads/get_thread_by_user_label/get_threads_by_status/
+    get_archive_candidates + dedup readers flipped to kind='conversation' nodes,
+    and the ~24 threads-family consumers adopted node vocab — status→state,
+    topic→title, last_active→last_active_at; writes stay dual-write).
 
     The residual 60 are NOT reachable to 0 by this node alone: the graph-family
     (~22: db_graph/db_topics _TASK_ONLY/_TOPIC_ONLY discriminator subqueries +
@@ -183,4 +258,4 @@ def test_static_legacy_ref_floor_ratchet():
     from pathlib import Path
     from dbops.p8_readiness import scan_legacy_refs
     src_root = Path(__file__).resolve().parent.parent / "src"
-    assert len(scan_legacy_refs(src_root)) <= 60
+    assert len(scan_legacy_refs(src_root)) <= 47

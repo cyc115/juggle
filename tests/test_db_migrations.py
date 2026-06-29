@@ -75,10 +75,16 @@ def test_migration_preserves_existing_threads(tmp_path):
     db = JuggleDB(str(old_db_path))
     db.init_db()  # triggers migration
 
-    thread = db.get_thread("A")
-    assert thread is not None
-    assert thread["id"] == "A"
-    assert thread["topic"] == "Legacy Topic"
+    # This pins the legacy thread_id->id + label rename (a threads-table
+    # migration). get_thread now reads the conversation node (P8 Task 4.2), but
+    # this synthetic ultra-minimal schema never reaches the nodes backfill, so
+    # verify the migrated row through the threads seam this test actually covers.
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT id, topic FROM threads WHERE id = 'A'").fetchone()
+    assert row is not None
+    assert row["id"] == "A"
+    assert row["topic"] == "Legacy Topic"
 
 
 

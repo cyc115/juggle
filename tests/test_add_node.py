@@ -155,7 +155,7 @@ def test_add_node_conversation_dual_writes_thread(db):
 
     thread = db.get_thread(node_id)
     assert thread is not None, "threads dual-write missing"
-    assert thread["topic"] == "My convo"
+    assert thread["title"] == "My convo"
 
 
 def test_add_node_conversation_nodes_row_created(db):
@@ -210,7 +210,7 @@ def test_create_thread_shim_returns_thread_id(db):
     assert thread_id is not None
     thread = db.get_thread(thread_id)
     assert thread is not None
-    assert thread["topic"] == "Test topic"
+    assert thread["title"] == "Test topic"
 
 
 def test_create_thread_shim_also_creates_node(db):

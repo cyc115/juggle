@@ -44,6 +44,13 @@ from dbops.thread_dedup import (  # noqa: E402,F401
 # dbops.slug_alloc (must match the partial unique index idx_threads_live_label).
 _OPEN_THREAD_STATES = LIVE_SLUG_STATES
 
+# Node-vocab equivalents of LIVE_SLUG_STATES for the conversation READ-collapse
+# (P8 Task 4.2): the get_* readers resolve from kind='conversation' nodes, whose
+# `state` column uses node vocab. 'open' ≡ legacy 'active' (bijective map in
+# dbops.node_translation). The legacy `threads` WRITE path (create/unarchive/
+# slug_alloc) still uses status vocab — it is cut in the later write-cut node.
+_LIVE_NODE_STATES = ("open", "running", "background")
+
 
 class ThreadsMixin:
     """Mixin for thread CRUD, state machine, archive ops, and stale detection."""
@@ -62,19 +69,19 @@ class ThreadsMixin:
         graph topic or task is excluded — those are real in-flight work and must
         never be collapsed into another topic.
         """
+        _ph = ",".join("?" * len(_LIVE_NODE_STATES))
         with self._connect() as conn:
             if project_id is not None:
                 rows = conn.execute(
-                    "SELECT id, topic, title FROM threads "
-                    f"WHERE status IN ({','.join('?' * len(_OPEN_THREAD_STATES))}) "
-                    "AND project_id = ?",
-                    (*_OPEN_THREAD_STATES, project_id),
+                    "SELECT id, title FROM nodes WHERE kind='conversation' "
+                    f"AND state IN ({_ph}) AND project_id = ?",
+                    (*_LIVE_NODE_STATES, project_id),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT id, topic, title FROM threads "
-                    f"WHERE status IN ({','.join('?' * len(_OPEN_THREAD_STATES))})",
-                    _OPEN_THREAD_STATES,
+                    "SELECT id, title FROM nodes WHERE kind='conversation' "
+                    f"AND state IN ({_ph})",
+                    _LIVE_NODE_STATES,
                 ).fetchall()
             owned: set[str] = set()
             for tbl in ("graph_topics", "graph_tasks"):
@@ -90,7 +97,7 @@ class ThreadsMixin:
         for row in rows:
             if row["id"] in owned:
                 continue
-            candidate = row["title"] or row["topic"] or ""
+            candidate = row["title"] or ""
             if _title_similarity(topic, candidate) >= THREAD_DEDUP_THRESHOLD:
                 return row["id"]
         return None
@@ -193,48 +200,58 @@ class ThreadsMixin:
         return next_wheel_slug(conn)
 
     def get_thread(self, thread_id: str) -> dict | None:
-        """Look up a thread by its UUID `id`. Returns None if not found.
+        """Look up a conversation by its UUID `id`. Returns None if not found.
 
-        P8: still a legacy `threads` reader (paired with get_all_threads) — the
-        conversation read-collapse (Task 4.2) is deferred to the c4-write-cut /
-        terminal drop, per the static_legacy_ref_floor_ratchet residual budget.
-        The c4-topic-dag step flips only the topic/DAG/orphan readers, NOT this
-        single-row conversation read."""
+        P8 Task 4.2 (conversation read-collapse): reads the authoritative
+        kind='conversation' node. The returned dict carries NODE vocab —
+        ``state``/``title``/``last_active_at`` — and the legacy ``status``/
+        ``topic``/``last_active`` keys are GONE (Q1, no shim). Callers adopt the
+        node vocab directly. The legacy `threads` WRITE path still mirrors here,
+        so a migrated DB always has the node; it is cut in the write-cut node."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM threads WHERE id = ?", (thread_id,)
+                "SELECT * FROM nodes WHERE id = ? AND kind='conversation'",
+                (thread_id,),
             ).fetchone()
             if row is None:
                 return None
             return dict(row)
 
     def get_thread_by_user_label(self, label: str | None) -> dict | None:
-        """Resolve a user-typed slug to a thread — the SINGLE chokepoint.
+        """Resolve a user-typed slug to a conversation — the SINGLE chokepoint.
 
         Newest-wins (T-slug-wheel): since slugs rotate and persist on closed/
         archived rows, a reused slug always resolves to the NEWEST holder —
-        a live ('active'/'running') holder first, then the most recently
+        a live (open/running/background) holder first, then the most recently
         created terminal holder. Case-insensitive. Returns None if not found.
 
-        Every feature that maps a user-typed slug -> thread MUST route through
-        this function so reuse resolves consistently everywhere.
+        P8 Task 4.2: reads kind='conversation' nodes (node vocab). Every feature
+        that maps a user-typed slug -> conversation MUST route through this
+        function so reuse resolves consistently everywhere.
         """
         if not label:
             return None
-        _ph = ",".join("?" * len(LIVE_SLUG_STATES))
+        _ph = ",".join("?" * len(_LIVE_NODE_STATES))
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM threads WHERE user_label = ? COLLATE NOCASE "
-                f"ORDER BY (CASE WHEN status IN ({_ph}) THEN 0 ELSE 1 END), "
-                "created_at DESC "
+                "SELECT * FROM nodes WHERE kind='conversation' "
+                "AND user_label = ? COLLATE NOCASE "
+                f"ORDER BY (CASE WHEN state IN ({_ph}) THEN 0 ELSE 1 END), "
+                # created_at on a conversation node is minute-precision (the mirror
+                # writes now_min), so rowid DESC is the stable newest-wins tiebreak
+                # for two holders created within the same minute (T-slug-wheel).
+                "created_at DESC, rowid DESC "
                 "LIMIT 1",
-                (label, *LIVE_SLUG_STATES),
+                (label, *_LIVE_NODE_STATES),
             ).fetchone()
         return dict(row) if row else None
 
     def get_all_threads(self) -> list[dict]:
+        """All conversations as node-vocab dicts (P8 Task 4.2: from `nodes`)."""
         with self._connect() as conn:
-            rows = conn.execute("SELECT * FROM threads ORDER BY created_at").fetchall()
+            rows = conn.execute(
+                "SELECT * FROM nodes WHERE kind='conversation' ORDER BY created_at"
+            ).fetchall()
             return [dict(row) for row in rows]
 
     def update_thread(self, thread_id: str, **kwargs):
@@ -312,11 +329,16 @@ class ThreadsMixin:
             mirror_conv_update(conn, thread_id, last_active_at=now)
             conn.commit()
 
-    def get_threads_by_status(self, status: str) -> list[dict]:
+    def get_threads_by_status(self, state: str) -> list[dict]:
+        """Conversations in a given node ``state`` (P8 Task 4.2: from `nodes`).
+
+        ``state`` is a NODE-vocab value (e.g. 'open', 'running', 'done',
+        'archived') — callers pass node states, not legacy statuses."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM threads WHERE status = ? ORDER BY last_active DESC",
-                (status,),
+                "SELECT * FROM nodes WHERE kind='conversation' AND state = ? "
+                "ORDER BY last_active_at DESC",
+                (state,),
             ).fetchall()
             return [dict(row) for row in rows]
 
@@ -424,35 +446,34 @@ class ThreadsMixin:
         return stale
 
     def get_archive_candidates(self) -> list[dict]:
-        """Return threads that are candidates for archiving.
+        """Return conversations that are candidates for archiving (node vocab).
 
-        A thread qualifies if ANY of:
-          - status == 'done'
-          - status == 'failed'
-          - last_active > 48 hours ago AND status NOT IN ('background', 'waiting')
-          - status == 'idle' AND last_active > 24 hours ago
+        A conversation qualifies if ANY of:
+          - state in ('done', 'failed-exec')  (terminal: 'done' covers legacy
+            closed+done via the bijective status↔state map)
+          - last_active_at > 48 hours ago AND state != 'background'
 
-        Excludes the current thread and already-archived threads.
+        Excludes the current conversation and already-archived ones.
         """
         current_thread = self.get_current_thread()
         threads = self.get_all_threads()
         candidates = []
         for t in threads:
             tid = t["id"]
-            status = t.get("status") or "active"
+            state = t.get("state") or "open"
 
-            if tid == current_thread or status == "archived":
+            if tid == current_thread or state == "archived":
                 continue
 
-            if status in ("done", "failed", "closed"):
+            if state in ("done", "failed-exec"):
                 candidates.append(t)
                 continue
 
-            age = _thread_age_seconds(t.get("last_active") or "")
+            age = _thread_age_seconds(t.get("last_active_at") or "")
             if (
                 age is not None
                 and age > _get_settings()["thread_archive_threshold_secs"]
-                and status not in ("background", "waiting")
+                and state != "background"
             ):
                 candidates.append(t)
 

@@ -122,7 +122,7 @@ def test_close_thread(started_db):
     db.update_thread(general_tid, status="closed")
     t = db.get_thread(general_tid)
     assert t is not None
-    assert t["status"] == "closed"
+    assert t["state"] == "done"
 
 
 def test_set_and_check_agent(started_db):
@@ -135,7 +135,7 @@ def test_set_and_check_agent(started_db):
     threads = [
         t
         for t in db.get_all_threads()
-        if t["status"] == "background" and t.get("agent_task_id")
+        if t["state"] == "background" and t.get("agent_task_id")
     ]
     assert len(threads) == 1
     assert threads[0]["agent_task_id"] == "task_abc"
@@ -151,7 +151,7 @@ def test_complete_agent(started_db):
     db.update_thread(general_tid, agent_result="Done", status="done")
     t = db.get_thread(general_tid)
     assert t is not None
-    assert t["status"] == "done"
+    assert t["state"] == "done"
 
 
 def test_fail_agent(started_db):
@@ -163,7 +163,7 @@ def test_fail_agent(started_db):
     db.update_thread(general_tid, status="failed", agent_result="timeout")
     t = db.get_thread(general_tid)
     assert t is not None
-    assert t["status"] == "failed"
+    assert t["state"] == "failed-exec"
 
 
 def test_set_summarized_count(started_db):
@@ -235,7 +235,7 @@ def test_archive_thread_cli(started_db):
     db = JuggleDB(str(db_path))
     t = db.get_thread(general_tid)
     assert t is not None
-    assert t["status"] == "archived"
+    assert t["state"] == "archived"
     assert t["show_in_list"] == 0
 
 
@@ -308,7 +308,7 @@ def test_unarchive_thread_cli(started_db):
 
     t = db.get_thread(second_tid)
     assert t is not None
-    assert t["status"] == "active"
+    assert t["state"] == "open"
     assert t["show_in_list"] == 1
     assert t["user_label"] is not None
 
@@ -330,7 +330,7 @@ def test_unarchive_thread_cli_by_uuid(started_db):
 
     t = db.get_thread(tid)
     assert t is not None
-    assert t["status"] == "active"
+    assert t["state"] == "open"
     assert t["show_in_list"] == 1
 
 

@@ -110,7 +110,7 @@ def test_create_thread_robust_to_terminal_label_collision(db):
     new_id = db.create_thread("new topic", session_id="s1")
     new_thread = db.get_thread(new_id)
     assert new_thread is not None
-    assert new_thread["status"] == "active"
+    assert new_thread["state"] == "open"
     assert new_thread["user_label"] == held  # reuses the slug from the closed row
 
 

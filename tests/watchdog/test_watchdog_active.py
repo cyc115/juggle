@@ -225,7 +225,7 @@ def test_crashed_thread_marked_failed(tmux_pane, fake_agent, test_db):
     items = _action_items(test_db, fake_agent["thread_id"])
     assert len(items) == 1
     thread = test_db.get_thread(fake_agent["thread_id"])
-    assert thread["status"] == "failed"
+    assert thread["state"] == "failed-exec"
     agent = _agent_row(test_db, fake_agent["agent_id"])
     assert agent is None or agent["status"] in ("idle", "dead")
 

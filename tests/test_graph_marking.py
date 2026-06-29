@@ -102,7 +102,7 @@ def test_complete_agent_integrate_failure_marks_failed_never_verified(db, monkey
     # blocked-failed (never 'ready'/'verified') — same behavior, new seam.
     assert g.get_task(db, "b")["state"] == "blocked-failed"
     # thread still closed (existing behavior) — task state is the truth
-    assert db.get_thread(tid)["status"] == "closed"
+    assert db.get_thread(tid)["state"] == "done"
 
 
 def test_complete_agent_unbound_thread_untouched_by_graph(db):

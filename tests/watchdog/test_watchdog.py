@@ -413,7 +413,7 @@ def test_execute_recovery_second_stall_blocked(tmp_path):
     assert any("Decide:" in it["message"] for it in items)
     mgr.spawn_agent.assert_not_called()
     # DA-5: thread must be 'failed' even in retry-blocked case
-    assert db.get_thread(thread_id)["status"] == "failed"
+    assert db.get_thread(thread_id)["state"] == "failed-exec"
 
 
 def test_execute_recovery_full_flow(tmp_path):

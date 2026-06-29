@@ -147,7 +147,7 @@ def test_execute_recovery_no_last_task_thread_not_failed(db, mock_mgr, tmp_path)
     )
 
     thread = db.get_thread(thread_id)
-    assert thread["status"] != "failed", (
+    assert thread["state"] != "failed-exec", (
         f"Thread should not be 'failed', got {thread['status']!r}. "
         "Never-tasked agents must not fail the thread."
     )

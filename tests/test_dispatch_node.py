@@ -119,8 +119,12 @@ def test_acquire_agent_spawns_new_sets_thread_background(db, thread_id, tmp_path
     assert agent["status"] == "busy"
     assert agent["assigned_thread"] == thread_id
     assert _conv_state(db, thread_id) == "background"
-    # write-cut: the legacy threads.status is no longer advanced to background.
-    assert db.get_thread(thread_id)["status"] != "background"
+    # write-cut: the legacy threads.status is no longer advanced to background —
+    # only nodes.state is (get_thread now reads nodes, so check threads directly).
+    with db._connect() as _c:
+        _legacy = _c.execute(
+            "SELECT status FROM threads WHERE id=?", (thread_id,)).fetchone()
+    assert _legacy is None or _legacy["status"] != "background"
 
 
 def test_acquire_agent_reuses_idle_agent_via_cas(db, thread_id, monkeypatch):
@@ -137,8 +141,12 @@ def test_acquire_agent_reuses_idle_agent_via_cas(db, thread_id, monkeypatch):
     assert agent["status"] == "busy"
     assert agent["assigned_thread"] == thread_id
     assert _conv_state(db, thread_id) == "background"
-    # write-cut: the legacy threads.status is no longer advanced to background.
-    assert db.get_thread(thread_id)["status"] != "background"
+    # write-cut: the legacy threads.status is no longer advanced to background —
+    # only nodes.state is (get_thread now reads nodes, so check threads directly).
+    with db._connect() as _c:
+        _legacy = _c.execute(
+            "SELECT status FROM threads WHERE id=?", (thread_id,)).fetchone()
+    assert _legacy is None or _legacy["status"] != "background"
 
 
 # ── dispatch_node composition ──────────────────────────────────────────────────

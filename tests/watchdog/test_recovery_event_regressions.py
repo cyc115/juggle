@@ -245,7 +245,7 @@ def test_stalled_event_no_task_content(db, mock_mgr, tmp_path):
 
     # Thread must NOT be marked failed
     thread = db.get_thread(thread_id)
-    assert thread["status"] != "failed"
+    assert thread["state"] != "failed-exec"
 
 
 def test_stalled_event_empty_task_string(db, mock_mgr, tmp_path):
@@ -470,7 +470,7 @@ def test_retry_blocked_thread_marked_failed(db, mock_mgr, tmp_path):
     )
 
     thread = db.get_thread(thread_id)
-    assert thread["status"] == "failed"
+    assert thread["state"] == "failed-exec"
 
 
 def test_stalled_thread_marked_failed(db, mock_mgr, tmp_path):
@@ -497,7 +497,7 @@ def test_stalled_thread_marked_failed(db, mock_mgr, tmp_path):
     )
 
     thread = db.get_thread(thread_id)
-    assert thread["status"] != "failed"
+    assert thread["state"] != "failed-exec"
 
 
 # =============================================================================
