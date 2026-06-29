@@ -82,8 +82,8 @@ def test_cockpit_snapshot_task_state_none(tmp_path):
     tid = db.create_thread("conv", session_id="s")
     with db._connect() as conn:
         conn.execute(
-            "UPDATE threads SET status='active', "
-            "last_active_at=datetime('now') WHERE id=?",
+            "UPDATE nodes SET state='open', "
+            "last_active_at=datetime('now') WHERE id=? AND kind='conversation'",
             (tid,),
         )
         conn.commit()

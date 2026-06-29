@@ -24,8 +24,7 @@ def test_flush_once_copies_live_to_durable(tmp_path):
     # Write a marker row to live
     conn = sqlite3.connect(str(live))
     conn.execute(
-        "INSERT INTO threads (id, topic, status, created_at, last_active) "
-        "VALUES ('test-uuid-1', 'test', 'active', '2026-01-01', '2026-01-01')"
+        "INSERT INTO settings (key, value) VALUES ('test-uuid-1', 'test')"
     )
     conn.commit()
     conn.close()
@@ -35,7 +34,7 @@ def test_flush_once_copies_live_to_durable(tmp_path):
     assert durable.exists(), "durable should exist after flush"
     conn2 = sqlite3.connect(str(durable))
     row = conn2.execute(
-        "SELECT id FROM threads WHERE id='test-uuid-1'"
+        "SELECT key FROM settings WHERE key='test-uuid-1'"
     ).fetchone()
     conn2.close()
     assert row is not None, "flushed data should be in durable"
@@ -52,8 +51,7 @@ def test_flush_once_atomic_on_interrupt(tmp_path):
     # Write original content to durable
     conn_d = sqlite3.connect(str(durable))
     conn_d.execute(
-        "INSERT INTO threads (id, topic, status, created_at, last_active) "
-        "VALUES ('original-row', 'orig', 'active', '2026-01-01', '2026-01-01')"
+        "INSERT INTO settings (key, value) VALUES ('original-row', 'orig')"
     )
     conn_d.commit()
     conn_d.close()
@@ -66,7 +64,7 @@ def test_flush_once_atomic_on_interrupt(tmp_path):
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()}
     conn2.close()
-    assert "threads" in tables
+    assert "nodes" in tables
 
 
 def test_flush_status_returns_dict(tmp_path):

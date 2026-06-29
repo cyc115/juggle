@@ -108,6 +108,8 @@ def fake_agent(tmux_pane, test_db):
         conn.execute("DELETE FROM action_items WHERE thread_id = ?", (tid,))
         conn.execute("DELETE FROM notifications_v2 WHERE thread_id = ?", (tid,))
         conn.execute("DELETE FROM messages WHERE thread_id = ?", (tid,))
-        conn.execute("DELETE FROM threads WHERE id = ?", (tid,))
+        # P8 terminal: the conversation is a kind='conversation' node (legacy
+        # threads table dropped, Migration 55).
+        conn.execute("DELETE FROM nodes WHERE id = ?", (tid,))
 
 

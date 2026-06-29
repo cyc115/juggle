@@ -20,9 +20,8 @@ def db(tmp_path):
 def _set_last_active(db, tid, dt):
     s = dt.strftime("%Y-%m-%d %H:%M")
     with db._connect() as conn:
-        conn.execute("UPDATE threads SET last_active_at = ? WHERE id = ?", (s, tid))
-        # _auto_archive_closed_threads reads the conversation node (P8 Task 4.2),
-        # so the staleness timestamp must land there too.
+        # _auto_archive_closed_threads reads the conversation node (P8 Task 4.2;
+        # legacy threads dropped).
         conn.execute("UPDATE nodes SET last_active_at = ? WHERE id = ? "
                      "AND kind='conversation'", (s, tid))
         conn.commit()

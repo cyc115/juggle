@@ -62,7 +62,9 @@ def test_agents_has_last_activity_at(db):
 
 
 def test_threads_has_last_dispatched_columns(db):
-    cols = _col_names(db, "threads")
+    """P8 terminal: the last_dispatched_* columns live on the conversation node now
+    (legacy threads table dropped, Migration 55)."""
+    cols = _col_names(db, "nodes")
     assert "last_dispatched_task" in cols
     assert "last_dispatched_role" in cols
     assert "last_dispatched_model" in cols

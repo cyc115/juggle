@@ -119,12 +119,13 @@ def test_acquire_agent_spawns_new_sets_thread_background(db, thread_id, tmp_path
     assert agent["status"] == "busy"
     assert agent["assigned_thread"] == thread_id
     assert _conv_state(db, thread_id) == "background"
-    # write-cut: the legacy threads.status is no longer advanced to background —
-    # only nodes.state is (get_thread now reads nodes, so check threads directly).
+    # P8 terminal: the legacy threads table is dropped entirely (Migration 55) —
+    # the strongest form of the write-cut (nodes.state is the sole conversation store).
     with db._connect() as _c:
-        _legacy = _c.execute(
-            "SELECT status FROM threads WHERE id=?", (thread_id,)).fetchone()
-    assert _legacy is None or _legacy["status"] != "background"
+        gone = _c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='threads'"
+        ).fetchone() is None
+    assert gone, "threads must be dropped (nodes is the sole conversation store)"
 
 
 def test_acquire_agent_reuses_idle_agent_via_cas(db, thread_id, monkeypatch):
@@ -141,12 +142,13 @@ def test_acquire_agent_reuses_idle_agent_via_cas(db, thread_id, monkeypatch):
     assert agent["status"] == "busy"
     assert agent["assigned_thread"] == thread_id
     assert _conv_state(db, thread_id) == "background"
-    # write-cut: the legacy threads.status is no longer advanced to background —
-    # only nodes.state is (get_thread now reads nodes, so check threads directly).
+    # P8 terminal: the legacy threads table is dropped entirely (Migration 55) —
+    # the strongest form of the write-cut (nodes.state is the sole conversation store).
     with db._connect() as _c:
-        _legacy = _c.execute(
-            "SELECT status FROM threads WHERE id=?", (thread_id,)).fetchone()
-    assert _legacy is None or _legacy["status"] != "background"
+        gone = _c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='threads'"
+        ).fetchone() is None
+    assert gone, "threads must be dropped (nodes is the sole conversation store)"
 
 
 # ── dispatch_node composition ──────────────────────────────────────────────────

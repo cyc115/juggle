@@ -13,10 +13,15 @@ from juggle_cmd_doctor import _migrate_config  # noqa: E402
 def _make_current_db(db_path: Path) -> None:
     """Create a minimal DB that looks 'current' to doctor (no stale/node_era markers)."""
     conn = sqlite3.connect(str(db_path))
+    # Realistic legacy threads schema: the Migration-50 backfill (threads ->
+    # conversation nodes) reads session_id/topic/created_at/last_active/
+    # assigned_by/project_id, so a too-minimal table makes it skip and the slug
+    # never lands on the node (P8 terminal: threads is then dropped).
     conn.execute(
         "CREATE TABLE threads ("
-        "id TEXT PRIMARY KEY, status TEXT DEFAULT 'active',"
-        " user_label TEXT, last_active_at TEXT)"
+        "id TEXT PRIMARY KEY, session_id TEXT, topic TEXT,"
+        " status TEXT DEFAULT 'active', user_label TEXT, assigned_by TEXT,"
+        " project_id TEXT, created_at TEXT, last_active TEXT, last_active_at TEXT)"
     )
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_threads_user_label "
@@ -116,10 +121,12 @@ def test_doctor_migrates_node_era_db(tmp_path, monkeypatch, capsys):
     tables = {
         r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
-    ids = {r[0] for r in conn.execute("SELECT id FROM graph_tasks")}
+    # P8 terminal: graph_nodes → graph_tasks (M39) → nodes (M44) → legacy dropped
+    # (M55). The node-era row must survive all the way into nodes (kind='task').
+    ids = {r[0] for r in conn.execute("SELECT id FROM nodes WHERE kind='task'")}
     conn.close()
-    assert "graph_nodes" not in tables and "graph_tasks" in tables
-    assert ids == {"z"}, "node-era rows must migrate into graph_tasks, not be lost"
+    assert "graph_nodes" not in tables and "graph_tasks" not in tables
+    assert "z" in ids, "node-era rows must migrate into nodes, not be lost"
 
 
 def test_doctor_always_calls_init_db_on_current_schema(tmp_path, monkeypatch, capsys):
@@ -218,8 +225,11 @@ def test_doctor_preserves_archived_labels(tmp_path, monkeypatch):
 
     assert doc.cmd_doctor(_Args()) == 0
 
+    # P8 terminal: doctor's init_db migrates threads → conversation nodes and
+    # drops the legacy table (Migration 55); the slug persists on the node.
     conn = sqlite3.connect(str(db_path))
-    rows = {r[0]: r[1] for r in conn.execute("SELECT id, user_label FROM threads")}
+    rows = {r[0]: r[1] for r in conn.execute(
+        "SELECT id, user_label FROM nodes WHERE kind='conversation'")}
     conn.close()
 
     assert rows["t1"] == "AA", "archived thread label must persist"
@@ -229,7 +239,8 @@ def test_doctor_preserves_archived_labels(tmp_path, monkeypatch):
     # Idempotency: run again, labels still intact
     assert doc.cmd_doctor(_Args()) == 0
     conn = sqlite3.connect(str(db_path))
-    rows2 = {r[0]: r[1] for r in conn.execute("SELECT id, user_label FROM threads")}
+    rows2 = {r[0]: r[1] for r in conn.execute(
+        "SELECT id, user_label FROM nodes WHERE kind='conversation'")}
     conn.close()
     assert rows2["t1"] == "AA"
     assert rows2["t2"] == "AB"
