@@ -140,7 +140,6 @@ def test_check_task_guard_refuses_tick_owned_states(db):
 
     for state in sorted(g.TICK_OWNED_STATES):
         with db._connect() as conn:
-            conn.execute("UPDATE graph_tasks SET state=? WHERE id='n'", (state,))
             conn.execute("UPDATE nodes SET state=? WHERE id='n'", (state,))
             conn.commit()
         err = check_task_guard(db, tid)
@@ -157,7 +156,6 @@ def test_check_task_guard_allows_operator_states_and_unbound(db):
     for state in ("open", "failed-exec", "failed-integration", "failed-verify",
                   "blocked-failed"):
         with db._connect() as conn:
-            conn.execute("UPDATE graph_tasks SET state=? WHERE id='n'", (state,))
             conn.execute("UPDATE nodes SET state=? WHERE id='n'", (state,))
             conn.commit()
         assert check_task_guard(db, tid) is None, state
@@ -320,8 +318,6 @@ def test_topic_with_failed_task_completes_as_failed_verify(db, monkeypatch):
     _mk_topic_task(db, "A", "a2")
     _mk_topic_task(db, "B", "b1")
     with db._connect() as conn:  # B derives on A (b1 → a1)
-        conn.execute("INSERT INTO graph_edges (task_id, depends_on_id) "
-                     "VALUES ('b1','a1')")
         conn.execute("INSERT OR IGNORE INTO node_edges (node_id, depends_on_id) "
                      "VALUES ('b1','a1')")
         conn.commit()
@@ -374,7 +370,6 @@ def test_guard_topic_bound_operator_state_allowed(db):
     tid = db.create_thread("t", session_id="s")
     tp_.set_topic_thread(db, "T1", tid)
     with db._connect() as conn:
-        conn.execute("UPDATE graph_topics SET state='failed-exec' WHERE id='T1'")
         conn.execute("UPDATE nodes SET state='failed-exec' WHERE id='T1'")
         conn.commit()
     assert check_task_guard(db, tid) is None

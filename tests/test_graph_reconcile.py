@@ -69,12 +69,8 @@ def _mk_project(db, pid="P1"):
 def _mk_topic(db, topic_id, project_id, state="open"):
     t.create_topic(db, topic_id=topic_id, project_id=project_id, title=topic_id)
     if state != "open":
-        # Topic state now reads from nodes (P8 Task 4.2) — force BOTH stores so
-        # the flipped reader and the legacy mirror agree.
+        # Topic state reads from nodes (P8 Task 4.2; legacy graph_topics dropped).
         with db._connect() as conn:
-            conn.execute(
-                "UPDATE graph_topics SET state=? WHERE id=?", (state, topic_id)
-            )
             conn.execute(
                 "UPDATE nodes SET state=? WHERE id=? AND kind='topic'",
                 (state, topic_id),
@@ -95,12 +91,9 @@ def _mk_task(db, task_id, project_id, topic_id, state="open"):
         elif state == "failed-exec":
             g.mark_exec_failed(db, task_id)
         elif state in ("running", "dispatching", "integrating"):
-            # manually set for simplicity — force the state in BOTH stores
-            # (task readers now read nodes; P8 Task 4.1).
+            # manually set for simplicity — task readers read nodes (P8 Task 4.1;
+            # legacy graph_tasks dropped).
             with db._connect() as conn:
-                conn.execute(
-                    "UPDATE graph_tasks SET state=? WHERE id=?", (state, task_id)
-                )
                 conn.execute(
                     "UPDATE nodes SET state=? WHERE id=?", (state, task_id)
                 )

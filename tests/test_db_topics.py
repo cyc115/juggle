@@ -121,13 +121,14 @@ def test_topic_counts_shape(db):
 
 
 def test_create_topic_writes_no_graph_topics_row(db):
-    """2026-06-29 P8 C1 (c4-write-cut): db_topics.create_topic writes ONLY the
-    authoritative kind='topic' node — the legacy graph_topics INSERT is cut. RED
-    before the cut (create_topic dual-wrote graph_topics)."""
+    """2026-06-29 P8 C1 (c4-write-cut) / terminal drop: db_topics.create_topic
+    writes ONLY the authoritative kind='topic' node. The legacy graph_topics table
+    is now DROPPED entirely (Migration 55) — the strongest proof nodes is the sole
+    store — and create_topic still works against nodes alone."""
     t.create_topic(db, topic_id="p1", project_id="INBOX", title="P", objective="o")
     with db._connect() as conn:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM graph_topics WHERE id='p1'"
-        ).fetchone()[0]
-    assert n == 0, "create_topic must NOT write graph_topics (nodes is the sole store)"
+        gone = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='graph_topics'"
+        ).fetchone() is None
+    assert gone, "graph_topics must be dropped (nodes is the sole store)"
     assert t.get_topic(db, "p1")["state"] == "open"

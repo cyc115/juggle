@@ -43,6 +43,8 @@ def _mk(db, task_id, deps=(), project_id="INBOX", **kw):
 
 
 def test_init_db_creates_graph_tables(db):
+    """init_db stands up the unified store; the legacy graph_* tables are
+    terminally dropped (Migration 55)."""
     with db._connect() as conn:
         tables = {
             r[0]
@@ -50,12 +52,16 @@ def test_init_db_creates_graph_tables(db):
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
-    assert "graph_tasks" in tables
-    assert "graph_edges" in tables
+    assert "nodes" in tables
+    assert "node_edges" in tables
+    assert "graph_tasks" not in tables
+    assert "graph_edges" not in tables
 
 
 def test_migration_adds_graph_tables_to_existing_db(tmp_path):
-    """Migration 35: pre-existing DB without graph tables gains them on init_db."""
+    """A pre-existing DB without the graph machinery is brought to the CURRENT
+    unified store (nodes/node_edges) on init_db; the legacy graph_*/threads tables
+    are terminally dropped (Migration 55)."""
     import sqlite3
 
     db_path = tmp_path / "old.db"
@@ -72,7 +78,8 @@ def test_migration_adds_graph_tables_to_existing_db(tmp_path):
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
-    assert {"graph_tasks", "graph_edges"} <= tables
+    assert {"nodes", "node_edges"} <= tables
+    assert not ({"graph_tasks", "graph_edges", "graph_topics", "threads"} & tables)
 
 
 # ── CRUD ───────────────────────────────────────────────────────────────────────
@@ -446,14 +453,14 @@ def test_get_task_and_deps_read_nodes_only(db):
 
 
 def test_create_task_writes_no_graph_tasks_row(db):
-    """2026-06-29 P8 C1 (c4-write-cut): db_graph.create_task writes ONLY the
-    authoritative nodes row — the legacy graph_tasks INSERT is cut. RED before the
-    cut (create_task dual-wrote graph_tasks). The task stays resolvable via
-    get_task (which reads nodes)."""
+    """2026-06-29 P8 C1 (c4-write-cut) / terminal drop: db_graph.create_task writes
+    ONLY the authoritative nodes row. The legacy graph_tasks table is now DROPPED
+    entirely (Migration 55) — the strongest proof nodes is the sole store — and the
+    task stays resolvable via get_task (which reads nodes)."""
     g.create_task(db, task_id="t1", project_id="INBOX", title="X", prompt="do")
     with db._connect() as conn:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM graph_tasks WHERE id='t1'"
-        ).fetchone()[0]
-    assert n == 0, "create_task must NOT write graph_tasks (nodes is the sole store)"
+        gone = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='graph_tasks'"
+        ).fetchone() is None
+    assert gone, "graph_tasks must be dropped (nodes is the sole store)"
     assert g.get_task(db, "t1")["state"] == "open"
