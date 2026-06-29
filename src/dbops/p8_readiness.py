@@ -70,7 +70,7 @@ def p8_drop_ready(conn: sqlite3.Connection) -> tuple[bool, list[str]]:
 
 _GATE = re.compile(
     r"(FROM|JOIN|INTO|UPDATE|DELETE\s+FROM|CREATE\s+TABLE(\s+IF\s+NOT\s+EXISTS)?|"
-    r"DROP\s+TABLE(\s+IF\s+EXISTS)?|REFERENCES)\s+(threads|graph_topics|graph_tasks)\b",
+    r"DROP\s+TABLE(\s+IF\s+EXISTS)?|REFERENCES)\s+(threads|graph_topics|graph_tasks|graph_edges)\b",
     re.IGNORECASE)
 
 

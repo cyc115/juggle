@@ -101,13 +101,16 @@ def test_scan_excludes_reverse_backfill_inverse(tmp_path):
     assert scan_legacy_refs(tmp_path / "src") == []
 
 
-def test_scan_legacy_refs_matches_three_tables(tmp_path):
+def test_scan_legacy_refs_matches_four_tables(tmp_path):
+    """graph_edges is a legacy table too — the scanner must catch a live writer of
+    it (its omission hid the db_graph_edges.replace_edges dual-write, P8 terminal)."""
     from dbops.p8_readiness import scan_legacy_refs
     root = tmp_path / "src"
     root.mkdir()
     (root / "m.py").write_text(
-        "a='UPDATE threads SET x=1'\nb='FROM graph_topics'\nc='JOIN graph_tasks t'\n")
-    assert len(scan_legacy_refs(root)) == 3
+        "a='UPDATE threads SET x=1'\nb='FROM graph_topics'\n"
+        "c='JOIN graph_tasks t'\nd='INSERT INTO graph_edges (task_id) VALUES (1)'\n")
+    assert len(scan_legacy_refs(root)) == 4
 
 
 # ── Gate A+B: combined report + doctor --pre-p8-check wiring ───────────────────
