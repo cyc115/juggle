@@ -76,8 +76,12 @@ _GATE = re.compile(
 
 def _excluded(path: Path) -> bool:
     name = path.name
+    # p8_reverse_backfill.py is the SANCTIONED Step-4 rollback inverse: it writes
+    # graph_tasks/graph_edges by design (dead in the forward path, live only on a
+    # revert), so its legacy writes are not a steady-state violation — excluded
+    # alongside p8_readiness.py itself.
     return (
-        name == "p8_readiness.py"
+        name in ("p8_readiness.py", "p8_reverse_backfill.py")
         or (path.parent.name == "dbops"
             and (name.startswith("schema") or name.startswith("migration")))
     )

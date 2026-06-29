@@ -88,6 +88,19 @@ def test_scan_legacy_refs_live_only(tmp_path):
     assert len(refs) == 1
 
 
+def test_scan_excludes_reverse_backfill_inverse(tmp_path):
+    """2026-06-29 P8 c4-write-cut: p8_reverse_backfill.py is the sanctioned Step-4
+    rollback inverse (writes graph_tasks/graph_edges by design, dead in the forward
+    path). The static gate must NOT count it as a steady-state legacy violation —
+    same exclusion class as p8_readiness.py."""
+    from dbops.p8_readiness import scan_legacy_refs
+    root = tmp_path / "src" / "dbops"
+    root.mkdir(parents=True)
+    (root / "p8_reverse_backfill.py").write_text(
+        "x = conn.execute('INSERT OR IGNORE INTO graph_tasks (id) VALUES (1)')\n")
+    assert scan_legacy_refs(tmp_path / "src") == []
+
+
 def test_scan_legacy_refs_matches_three_tables(tmp_path):
     from dbops.p8_readiness import scan_legacy_refs
     root = tmp_path / "src"
