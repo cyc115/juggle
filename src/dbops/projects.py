@@ -101,11 +101,8 @@ class ProjectsMixin:
                 (now, project_summary, project_id),
             )
             for tid in thread_ids:
-                conn.execute(
-                    "UPDATE threads SET show_in_list=0 WHERE id=?",
-                    (tid,),
-                )
-                # P8 Task 4.2: get_thread reads nodes, so mirror the hide there too.
+                # P8 c4-write-cut: nodes is the sole conversation store; hide it
+                # there (the legacy threads.show_in_list write is gone).
                 conn.execute(
                     "UPDATE nodes SET show_in_list=0 WHERE id=? AND kind='conversation'",
                     (tid,),
@@ -126,11 +123,8 @@ class ProjectsMixin:
                 "UPDATE projects SET status='active', closed_at=NULL WHERE id=?",
                 (project_id,),
             )
-            conn.execute(
-                "UPDATE threads SET show_in_list=1 WHERE project_id=?",
-                (project_id,),
-            )
-            # P8 Task 4.2: get_thread reads nodes, so mirror the unhide there too.
+            # P8 c4-write-cut: nodes is the sole conversation store; unhide there
+            # (the legacy threads.show_in_list write is gone).
             conn.execute(
                 "UPDATE nodes SET show_in_list=1 WHERE project_id=? "
                 "AND kind='conversation'",

@@ -63,12 +63,9 @@ class MessagesMixin:
                 """,
                 (thread_id, role, content, token_estimate, now),
             )
-            # Also update last_active on the thread
-            conn.execute(
-                "UPDATE threads SET last_active = ? WHERE id = ?",
-                (now, thread_id),
-            )
-            # P8 dual-write: keep the conversation node's last_active_at fresh.
+            # Keep the conversation node's last_active_at fresh. P8 c4-write-cut:
+            # nodes is the sole conversation store — the legacy threads.last_active
+            # write is gone.
             try:
                 conn.execute(
                     "UPDATE nodes SET last_active_at = ? WHERE id = ? AND kind='conversation'",
