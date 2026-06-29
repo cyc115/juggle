@@ -28,3 +28,5 @@ def apply_p8_migrations(conn: sqlite3.Connection) -> None:
     migrate_52_dispatch_edge(conn)  # type node_edges.kind; legacy binding -> kind='dispatch' edge
     from dbops.migration_53_kind_topic import migrate_53_kind_topic  # P8 M2
     migrate_53_kind_topic(conn)  # graph topics -> kind='topic' (FAIL-LOUD; runs after 44 backfill)
+    from dbops.migration_54_conv_state_parity import migrate_54_conv_state_parity  # P8 c4
+    migrate_54_conv_state_parity(conn)  # nodes.state <- threads.status; live-label uniqueness on nodes

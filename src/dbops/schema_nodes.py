@@ -100,3 +100,9 @@ CREATE_NODES_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_nodes_kind    ON nodes(kind);",
     "CREATE INDEX IF NOT EXISTS idx_nodes_parent  ON nodes(parent_id);",
 ]
+# The partial UNIQUE index idx_nodes_live_label (live-label uniqueness, the
+# node-store equivalent of idx_threads_live_label) is created by Migration 54 —
+# NOT here — because it must run AFTER that migration reconciles state and repairs
+# any duplicate live labels (a UNIQUE index over duplicate rows raises
+# IntegrityError, which Migration 44's index loop does not catch). init_db always
+# runs migrations, so fresh DBs acquire it via Migration 54 too.
