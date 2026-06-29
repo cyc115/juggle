@@ -452,7 +452,13 @@ def test_execute_recovery_full_flow(tmp_path):
     )
 
     assert db.get_agent(agent_id) is None
-    assert db.get_thread(thread_id)["status"] == "background"
+    # P8 c3-write-cut: recovery marks the conversation background on nodes (the
+    # SOLE conversation writer), not the legacy threads.status.
+    with db._connect() as _c:
+        _state = _c.execute(
+            "SELECT state FROM nodes WHERE id=? AND kind='conversation'", (thread_id,)
+        ).fetchone()["state"]
+    assert _state == "background"
     updated_new = db.get_agent(new_agent_id)
     assert updated_new["watchdog_retried"] == 1
     assert updated_new["status"] == "busy"

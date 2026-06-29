@@ -647,9 +647,13 @@ def test_recovery_updates_thread_status_to_background_on_retry(db, mock_mgr, tmp
         session_id="test-session",
     )
 
-    # Thread should be marked as background (retry in progress)
-    thread = db.get_thread(thread_id)
-    assert thread["status"] == "background"
+    # Thread should be marked as background (retry in progress). P8 c3-write-cut:
+    # nodes is the SOLE conversation writer — read state from nodes, not threads.
+    with db._connect() as _c:
+        _state = _c.execute(
+            "SELECT state FROM nodes WHERE id=? AND kind='conversation'", (thread_id,)
+        ).fetchone()["state"]
+    assert _state == "background"
 
 
 def test_recovery_stores_retry_attempt_fields(db, mock_mgr, tmp_path):

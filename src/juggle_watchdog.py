@@ -758,7 +758,7 @@ def execute_recovery(
         last_task=last_task,
     )
     if thread_id:
-        db.update_thread(thread_id, status="background")
+        db.set_conversation_background(thread_id)
 
     try:
         mgr.send_task(new_pane_id, last_task)
@@ -952,7 +952,7 @@ def check_orphaned_threads(
                         busy_since=ts,
                         last_task=last_task,
                     )
-                    db.update_thread(thread_id, status="background")
+                    db.set_conversation_background(thread_id)
                     mgr.send_task(new_pane_id, last_task)
                     db.add_watchdog_event(
                         agent_id="orphan_detector",

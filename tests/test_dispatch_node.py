@@ -40,6 +40,15 @@ def _fake_mgr(pane_id="%fake"):
     return mgr
 
 
+def _conv_state(db, tid):
+    """Read the authoritative conversation-node state (P8: nodes, not threads)."""
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT state FROM nodes WHERE id=? AND kind='conversation'", (tid,)
+        ).fetchone()
+    return row["state"] if row else None
+
+
 # ── Import gate ────────────────────────────────────────────────────────────────
 
 
@@ -92,7 +101,10 @@ def test_acquire_agent_raises_capacity_error_when_pool_full(db, thread_id, monke
 
 
 def test_acquire_agent_spawns_new_sets_thread_background(db, thread_id, tmp_path, monkeypatch):
-    """acquire_agent spawns a new agent and sets thread status=background."""
+    """acquire_agent spawns a new agent and marks the conversation background.
+
+    2026-06-27 P8 c3-write-cut/R3-2: nodes is the SOLE conversation writer for the
+    'background' state — read it from nodes.state, NOT the now-uncut threads.status."""
     from juggle_dispatch_core import acquire_agent
 
     # Mock env so spawn_agent uses a fake pane without real tmux
@@ -106,7 +118,9 @@ def test_acquire_agent_spawns_new_sets_thread_background(db, thread_id, tmp_path
     assert agent is not None
     assert agent["status"] == "busy"
     assert agent["assigned_thread"] == thread_id
-    assert db.get_thread(thread_id)["status"] == "background"
+    assert _conv_state(db, thread_id) == "background"
+    # write-cut: the legacy threads.status is no longer advanced to background.
+    assert db.get_thread(thread_id)["status"] != "background"
 
 
 def test_acquire_agent_reuses_idle_agent_via_cas(db, thread_id, monkeypatch):
@@ -122,7 +136,9 @@ def test_acquire_agent_reuses_idle_agent_via_cas(db, thread_id, monkeypatch):
     assert agent["id"] == existing_id
     assert agent["status"] == "busy"
     assert agent["assigned_thread"] == thread_id
-    assert db.get_thread(thread_id)["status"] == "background"
+    assert _conv_state(db, thread_id) == "background"
+    # write-cut: the legacy threads.status is no longer advanced to background.
+    assert db.get_thread(thread_id)["status"] != "background"
 
 
 # ── dispatch_node composition ──────────────────────────────────────────────────

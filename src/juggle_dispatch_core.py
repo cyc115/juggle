@@ -100,7 +100,7 @@ def acquire_agent(
         if _extra:
             db.update_agent(agent["id"], **_extra)
 
-    db.update_thread(thread_id, status="background")
+    db.set_conversation_background(thread_id)
     return db.get_agent(agent["id"])
 
 

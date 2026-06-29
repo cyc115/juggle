@@ -20,6 +20,7 @@ from dbops.schema import (
 )
 from dbops.conv_node_mirror import mirror_conv_insert, mirror_conv_update
 from dbops.slug_alloc import LIVE_SLUG_STATES, next_wheel_slug
+from dbops.state_write import write_state
 
 # Read MAX_THREADS via module reference so tests can patch dbops.threads.MAX_THREADS
 # (or dbops.schema.MAX_THREADS) to bypass the cap in seeding fixtures.
@@ -305,6 +306,21 @@ class ThreadsMixin:
             conn.commit()
         if status in _TERMINAL_THREAD_STATUSES:
             self._prune_thread_mirror(thread_id)
+
+    def set_conversation_background(self, thread_id: str) -> None:
+        """Mark a conversation node background (a dispatched agent owns it).
+
+        P8 c3-write-cut: ``nodes`` is the SOLE conversation writer for the
+        ``'background'`` state — the legacy ``threads.status='background'`` write
+        is gone. Writes ``nodes.state='background'`` in one transaction via the
+        unified state-writer (its graph_tasks/graph_topics mirror no-ops for a
+        conversation id). Background-ness is now READ from ``nodes.state`` (the
+        watchdog reaper + cockpit panels flipped in c3-reads).
+        """
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        with self._connect() as conn:
+            write_state(conn, thread_id, "background", now=now)
+            conn.commit()
 
     def touch_last_active(self, thread_id: str) -> None:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
