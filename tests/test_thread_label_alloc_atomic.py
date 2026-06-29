@@ -157,39 +157,38 @@ def test_full_two_char_space_degrades_to_three_char(db):
 # (c) Widen migration repairs pre-existing duplicate live labels.
 # ---------------------------------------------------------------------------
 def test_widen_migration_repairs_existing_duplicate_live_labels(db):
-    """doctor's slug-wheel migration must break pre-existing duplicate live
-    labels before creating the widened unique index (2026-06-21 — an affected
-    prod DB already holds active+background rows sharing a slug)."""
-    from dbops.migrations_recent import run_migration_slug_wheel
+    """The node-store widen migration (Migration 54) must break pre-existing
+    duplicate live labels before creating the widened unique index (2026-06-21 —
+    an affected prod DB already holds open+background conversation nodes sharing a
+    slug). P8 terminal: this lives on conversation nodes (threads dropped)."""
+    from dbops.migration_54_conv_state_parity import migrate_54_conv_state_parity
 
     now = datetime.now(timezone.utc).isoformat()
     a_id, b_id = str(uuid.uuid4()), str(uuid.uuid4())
     with db._connect() as conn:
-        # Simulate the legacy NARROW index, then plant a live duplicate that the
-        # narrow index allowed (active + background both holding 'QQ').
-        conn.execute("DROP INDEX IF EXISTS idx_threads_live_label")
-        conn.execute(
-            "CREATE UNIQUE INDEX idx_threads_live_label ON threads(user_label) "
-            "WHERE user_label IS NOT NULL AND status IN ('active','running')"
-        )
-        for tid, status in ((a_id, "active"), (b_id, "background")):
+        # Drop the live-label uniqueness indexes so a pre-existing duplicate can be
+        # planted — an open + a background conversation both holding 'QQ', the exact
+        # 2026-06-21 prod state the widen migration (M54) must repair before it
+        # (re)builds the unique index covering ALL live states incl. background.
+        conn.execute("DROP INDEX IF EXISTS idx_nodes_user_label")
+        conn.execute("DROP INDEX IF EXISTS idx_nodes_live_label")
+        for tid, state in ((a_id, "open"), (b_id, "background")):
             conn.execute(
-                "INSERT INTO threads(id, user_label, session_id, topic, status, "
-                "created_at, last_active, last_active_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                (tid, "QQ", "s", "dup", status, now, now, now),
+                "INSERT INTO nodes(id, kind, title, state, user_label, "
+                "created_at, updated_at) VALUES (?, 'conversation', 'dup', ?, 'QQ', ?, ?)",
+                (tid, state, now, now),
             )
         conn.commit()
 
     # The widen migration must not raise and must break the duplicate.
     with db._connect() as conn:
-        run_migration_slug_wheel(conn)
+        migrate_54_conv_state_parity(conn)
 
     labels = _live_labels(db)
     assert len(labels) == len(set(labels)), f"duplicate survived: {labels}"
     # Widened index now covers 'background'.
     with db._connect() as conn:
         sql = conn.execute(
-            "SELECT sql FROM sqlite_master WHERE name = 'idx_threads_live_label'"
+            "SELECT sql FROM sqlite_master WHERE name = 'idx_nodes_live_label'"
         ).fetchone()["sql"]
     assert "background" in sql

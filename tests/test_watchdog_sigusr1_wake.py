@@ -299,13 +299,8 @@ def test_recompute_topic_ready_pokes_watchdog(tmp_path, monkeypatch):
             "INSERT INTO projects (id, name, created_at, last_active) VALUES ('P', 'P', ?, ?)",
             (now, now),
         )
-        conn.execute(
-            "INSERT INTO graph_topics (id, project_id, title, state, created_at, updated_at) "
-            "VALUES ('TOP1', 'P', 'Topic 1', 'open', ?, ?)",
-            (_now(), _now()),
-        )
-        # P8 Task 4.2: topic_ready_eligible reads the topic from nodes (root task
-        # node), so the topic must exist there too.
+        # P8 Task 4.2 / terminal: topic_ready_eligible reads the topic from nodes
+        # (kind='topic'); the legacy graph_topics table is dropped (Migration 55).
         conn.execute(
             "INSERT INTO nodes (id, kind, title, objective, state, project_id, "
             "parent_id, created_at, updated_at) "

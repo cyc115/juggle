@@ -47,9 +47,11 @@ def test_action_items_table_exists(db):
 
 
 def test_threads_has_user_label_and_last_active_at(db):
+    """P8 terminal: the conversation lives in nodes (threads dropped, Migration 55);
+    user_label/last_active_at are carried by the kind='conversation' node."""
     with db._connect() as conn:
         cols = {
-            r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()
+            r["name"] for r in conn.execute("PRAGMA table_info(nodes)").fetchall()
         }
     assert "user_label" in cols
     assert "last_active_at" in cols

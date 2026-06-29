@@ -41,20 +41,23 @@ def _all_excel_labels():
 
 
 def _seed_threads(db, labels, extra_null=0):
-    """Insert closed threads with the given user_labels (raw SQL, bypasses cap)."""
+    """Seed CLOSED conversation nodes holding the given user_labels (raw SQL,
+    bypasses the create cap). P8 terminal: the conversation store is nodes — the
+    legacy threads table is dropped (Migration 55). 'done' is non-live, so the
+    live-label unique index tolerates arbitrarily many held slugs."""
     now = _now()
     with db._connect() as conn:
         for lbl in labels:
             conn.execute(
-                "INSERT INTO threads(id, user_label, session_id, topic, status, "
-                "created_at, last_active, last_active_at) VALUES (?,?,?,?,?,?,?,?)",
-                (str(uuid.uuid4()), lbl, "s", "t", "closed", now, now, now),
+                "INSERT INTO nodes(id, kind, title, state, user_label, "
+                "created_at, updated_at) VALUES (?, 'conversation', 't', 'done', ?, ?, ?)",
+                (str(uuid.uuid4()), lbl, now, now),
             )
         for _ in range(extra_null):
             conn.execute(
-                "INSERT INTO threads(id, user_label, session_id, topic, status, "
-                "created_at, last_active, last_active_at) VALUES (?,NULL,?,?,?,?,?,?)",
-                (str(uuid.uuid4()), "s", "extra", "closed", now, now, now),
+                "INSERT INTO nodes(id, kind, title, state, user_label, "
+                "created_at, updated_at) VALUES (?, 'conversation', 't', 'done', NULL, ?, ?)",
+                (str(uuid.uuid4()), now, now),
             )
         conn.commit()
 
@@ -93,8 +96,10 @@ def test_run_migrations_800_threads_no_label_col_after(tmp_path):
     with d._connect() as conn:
         cols = {
             row["name"]
-            for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+            for row in conn.execute("PRAGMA table_info(nodes)").fetchall()
         }
+    # P8 terminal: the conversation store (nodes) never carries the dead 'label'
+    # column — only 'user_label' (threads + its 'label' column are dropped).
     assert "label" not in cols
 
 
@@ -114,8 +119,10 @@ def test_run_migrations_702_labels_plus_null_thread_no_raise(tmp_path):
     with d._connect() as conn:
         cols = {
             row["name"]
-            for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+            for row in conn.execute("PRAGMA table_info(nodes)").fetchall()
         }
+    # P8 terminal: the conversation store (nodes) never carries the dead 'label'
+    # column — only 'user_label' (threads + its 'label' column are dropped).
     assert "label" not in cols
 
 
@@ -136,8 +143,10 @@ def test_run_migrations_idempotent_multiple_calls(tmp_path):
     with d._connect() as conn:
         cols = {
             row["name"]
-            for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+            for row in conn.execute("PRAGMA table_info(nodes)").fetchall()
         }
+    # P8 terminal: the conversation store (nodes) never carries the dead 'label'
+    # column — only 'user_label' (threads + its 'label' column are dropped).
     assert "label" not in cols
 
 
@@ -156,7 +165,8 @@ def test_null_user_labels_remain_null_after_migration(tmp_path):
 
     with d._connect() as conn:
         null_count = conn.execute(
-            "SELECT COUNT(*) FROM threads WHERE user_label IS NULL"
+            "SELECT COUNT(*) FROM nodes "
+            "WHERE kind='conversation' AND user_label IS NULL"
         ).fetchone()[0]
     # NULL rows must stay NULL — no backfill.
     assert null_count == 3

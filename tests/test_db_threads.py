@@ -141,10 +141,11 @@ def test_create_thread_second_user_label_is_ab(db):
 
 
 def test_schema_has_id_and_user_label_not_label(db):
-    """threads table has 'id' and 'user_label'; 'label' and 'thread_id' are absent."""
+    """P8 terminal: the conversation node (threads dropped, Migration 55) has 'id'
+    and 'user_label'; the dead 'label'/'thread_id' columns are absent."""
     with db._connect() as conn:
         cols = {
-            row["name"] for row in conn.execute("PRAGMA table_info(threads)").fetchall()
+            row["name"] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()
         }
     assert "id" in cols
     assert "user_label" in cols

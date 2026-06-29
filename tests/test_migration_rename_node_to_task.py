@@ -157,5 +157,8 @@ def test_fresh_db_has_graph_tasks_not_graph_nodes(tmp_path):
     d.init_db()
     with d._connect() as conn:
         tables = _tables(conn)
-    assert "graph_tasks" in tables
+    # P8 terminal: both the node-era graph_nodes AND the graph_tasks rename target
+    # are gone (Migration 55); tasks live in the unified nodes store.
     assert "graph_nodes" not in tables
+    assert "graph_tasks" not in tables
+    assert "nodes" in tables

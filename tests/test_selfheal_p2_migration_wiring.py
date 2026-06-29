@@ -94,7 +94,12 @@ def test_run_migrations_rewires_p2_schema_on_upgraded_db(tmp_path):
         assert "selfheal_audit" not in tables
 
     # run_migrations must re-add all three via the wired P2 chain (47/48/49).
+    # P8 terminal: run_migrations ALTERs the legacy threads table (dropped on the
+    # prior init_db), so re-create it first — exactly as init_db does before each
+    # migration pass — then the wired P2 chain restores the dropped P2 schema.
+    from helpers.node_seed import make_legacy_tables
     with db._connect() as conn:
+        make_legacy_tables(conn, "threads")
         run_migrations(conn)
         conn.commit()
 

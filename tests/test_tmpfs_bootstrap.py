@@ -45,7 +45,7 @@ def test_bootstrap_live_has_correct_tables(tmp_path):
         ).fetchall()
     }
     conn.close()
-    assert "threads" in tables
+    assert "nodes" in tables
     assert "messages" in tables
 
 

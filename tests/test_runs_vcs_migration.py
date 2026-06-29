@@ -16,7 +16,6 @@ if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
 from juggle_db import JuggleDB  # noqa: E402
-from dbops.migrations_recent import apply_recent_migrations  # noqa: E402
 
 VCS_COLS = {"repo_path", "vcs_type", "before_sha", "after_sha", "was_dirty"}
 
@@ -41,13 +40,11 @@ def test_migration_is_idempotent(tmp_path):
     p = str(tmp_path / "re.db")
     JuggleDB(p).init_db()
     before = _cols(p)
-    conn = sqlite3.connect(p)
-    conn.row_factory = sqlite3.Row
-    try:
-        apply_recent_migrations(conn)  # second pass — must not raise
-        conn.commit()
-    finally:
-        conn.close()
+    # P8 terminal: the legacy tables are dropped on init_db; the idempotent
+    # migration entry point is init_db itself (it re-creates the legacy tables
+    # before each migration pass), NOT a bare apply_recent_migrations on the
+    # post-drop DB. Re-run the production path — it must not raise.
+    JuggleDB(p).init_db()
     assert _cols(p) == before
     assert VCS_COLS <= _cols(p)
 
@@ -57,15 +54,13 @@ def test_migration_converges_when_columns_preexist(tmp_path):
     p = str(tmp_path / "preexist.db")
     db = JuggleDB(p)
     db.init_db()
-    # Drop+recreate a minimal agent_runs WITHOUT vcs cols, then re-migrate to add
-    # them, then add them again manually to prove the guard skips existing cols.
+    # The VCS columns already exist from init_db; a second init_db re-runs the
+    # ALTER chain, which would raise "duplicate column" without the guard — assert
+    # it does NOT (P8 terminal: init_db is the idempotent migration entry point).
+    JuggleDB(p).init_db()
     conn = sqlite3.connect(p)
     conn.row_factory = sqlite3.Row
     try:
-        # columns already exist from init_db; manually re-running the ALTER chain
-        # would raise "duplicate column" without the guard — assert it does NOT.
-        apply_recent_migrations(conn)
-        conn.commit()
         assert VCS_COLS <= {r["name"] for r in conn.execute("PRAGMA table_info(agent_runs)")}
     finally:
         conn.close()
