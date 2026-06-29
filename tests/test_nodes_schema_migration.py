@@ -803,3 +803,59 @@ def test_nodes_index_rejects_duplicate_live_background_slug(tmp_path):
                 (now, now),
             )
             conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# P8 M2 — kind discriminator: verify_cmd is an execution-only (kind='task')
+# column. The wide nodes table is NOT split per-kind; a CHECK constraint on
+# CREATE_NODES enforces the discriminator so a non-task node can never carry a
+# verify_cmd (the column conv_node_mirror / topic writers leave NULL).
+# ---------------------------------------------------------------------------
+
+
+def _insert_node(conn, *, node_id, kind, verify_cmd=None):
+    conn.execute(
+        "INSERT INTO nodes (id, kind, title, objective, state, verify_cmd, "
+        "created_at, updated_at) "
+        "VALUES (?, ?, 'x', '', 'open', ?, datetime('now'), datetime('now'))",
+        (node_id, kind, verify_cmd),
+    )
+
+
+def test_kind_discriminator_rejects_verify_cmd_on_conversation(tmp_path):
+    """2026-06-29 P8 M2: verify_cmd is execution-only — a conversation node that
+    carries one must be rejected at the DB layer (CHECK on CREATE_NODES). RED on
+    the pre-constraint DDL that accepted any cross-kind column."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        _insert_node(conn, node_id="c-bad", kind="conversation",
+                     verify_cmd="pytest -q")
+
+
+def test_kind_discriminator_rejects_verify_cmd_on_topic(tmp_path):
+    """2026-06-29 P8 M2: a topic node is not executable — verify_cmd is task-only."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        _insert_node(conn, node_id="t-bad", kind="topic", verify_cmd="pytest -q")
+
+
+def test_kind_discriminator_allows_verify_cmd_on_task(tmp_path):
+    """A kind='task' node — the only executable kind — may carry verify_cmd."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+    _insert_node(conn, node_id="task-ok", kind="task", verify_cmd="pytest -q")
+    assert conn.execute(
+        "SELECT verify_cmd FROM nodes WHERE id='task-ok'"
+    ).fetchone()[0] == "pytest -q"
+
+
+def test_no_conversation_node_carries_verify_cmd_after_backfill(tmp_path):
+    """2026-06-29 P8 M2 pin: the migration backfill never sets verify_cmd on a
+    conversation node — COUNT pinned at 0."""
+    conn = _make_db(tmp_path)
+    _run_migration(conn)
+    assert conn.execute(
+        "SELECT COUNT(*) FROM nodes WHERE kind='conversation' AND verify_cmd IS NOT NULL"
+    ).fetchone()[0] == 0

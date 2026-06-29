@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS nodes (
   project_id      TEXT REFERENCES projects(id),
   parent_id       TEXT REFERENCES nodes(id),
 
-  -- Execution (kind='task' only; NULL for conversation/decision)
+  -- Execution. verify_cmd is task-only and the kind discriminator is enforced
+  -- (P8 M2): a non-task node can never carry one. worktree_*/main_repo_path are
+  -- NOT constrained — a conversation node legitimately mirrors them from threads.
   verify_cmd      TEXT,
   worktree_path   TEXT,
   worktree_branch TEXT,
@@ -62,7 +64,15 @@ CREATE TABLE IF NOT EXISTS nodes (
   user_label              TEXT,
   assigned_by             TEXT NOT NULL DEFAULT 'auto',
   last_active_at          TEXT,
-  dispatch_thread_id      TEXT
+  dispatch_thread_id      TEXT,
+
+  -- Kind discriminator (P8 M2): ONE wide table holds every kind (NOT split
+  -- per-kind). This CHECK enforces that verify_cmd — the execution-only column —
+  -- is carried ONLY by a kind='task' node, so a conversation/topic/research/
+  -- decision node can never be mistaken for an executable task. Existing DBs
+  -- acquire it at the terminal-drop table rebuild (SQLite cannot ADD a CHECK via
+  -- ALTER); fresh DBs get it here.
+  CHECK (kind = 'task' OR verify_cmd IS NULL)
 );
 """
 
