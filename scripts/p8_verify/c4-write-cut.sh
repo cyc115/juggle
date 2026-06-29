@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export CLAUDE_PLUGIN_DATA="$HOME/.claude/juggle" JUGGLE_MAX_BACKGROUND_AGENTS=5 JUGGLE_MAX_THREADS=10 && ! git grep -qnE "INSERT INTO graph_tasks|INSERT INTO graph_edges|INSERT OR IGNORE INTO graph_" -- src/juggle_add_node.py && PYTHONPATH=src uv run python -c "from pathlib import Path; from dbops.p8_readiness import scan_legacy_refs; n=len(scan_legacy_refs(Path('src'))); assert n==0, f'static.fail={n}'; print('static.fail=0')" && uv run pytest tests/test_p8_reverse_backfill.py tests/test_add_node.py tests/test_dispatch_node.py tests/test_p8_readiness.py -q
