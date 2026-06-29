@@ -231,7 +231,7 @@ def test_get_threads_by_status_filters_node_state(tmp_path):
 
 def test_static_legacy_ref_floor_ratchet():
     """Ratchet: live legacy-table refs in shipped src must not climb back above
-    the current floor (47). Lowered from the 2026-06-23 floor (123) → 107 (Task 3.1
+    the current floor (9). Lowered from the 2026-06-23 floor (123) → 107 (Task 3.1
     direct-read flips) → 103 (T-c3-reads: project-keyed conversation reads) → 63
     (2026-06-29 c4-topic-dag: the topic-tier + DAG + orphan readers flipped to
     nodes/node_edges, db_mirror.py + all its graph_topics-projection writes DELETED,
@@ -242,20 +242,22 @@ def test_static_legacy_ref_floor_ratchet():
     get_thread/get_all_threads/get_thread_by_user_label/get_threads_by_status/
     get_archive_candidates + dedup readers flipped to kind='conversation' nodes,
     and the ~24 threads-family consumers adopted node vocab — status→state,
-    topic→title, last_active→last_active_at; writes stay dual-write).
+    topic→title, last_active→last_active_at; writes stay dual-write) → 9
+    (2026-06-29 c4-writes-collapse: the LAST collapse before the legacy-table DROP —
+    db_graph/db_topics create_task/create_topic/set_* + state_write stopped
+    dual-writing graph_tasks/graph_topics; graph_status/cockpit/graph_load/cmd_graph
+    + graph_dispatch project discovery read the node store; threads.create_thread/
+    update_thread/set_thread_status/touch_last_active/archive/unarchive cut every
+    `threads` write (nodes is the sole conversation store, slug live-set + cap +
+    junk-topic resolve from nodes, idx_nodes_live_label enforces slug uniqueness);
+    messages/projects/cockpit_model/monitor_daemon/slug_alloc flipped; the
+    threads-index repair relocated into the excluded migration layer).
 
-    The residual 60 are NOT reachable to 0 by this node alone: the graph-family
-    (~22: db_graph/db_topics _TASK_ONLY/_TOPIC_ONLY discriminator subqueries +
-    create_task/create_topic/set_* writes, graph_status/cockpit/graph_load/
-    graph_dispatch) is blocked on the topic/task kind discriminator that node c6
-    (Task 6.2 / M2) owns — a topic vs a bare task cannot be separated by
-    `parent_id IS NULL` alone (2026-06-29 incident). The threads-family (~38:
-    threads.py + projects/slug_alloc/messages/cockpit_model/monitor_daemon/
-    watchdog/cmd_agents_lifecycle get_thread/get_all_threads consumers, plus the
-    dead juggle_migrate_lifecycle.py the terminal drop deletes) is the conversation
-    collapse — independent of the discriminator but reverted once (a300e30) for a
-    KeyError cascade across ~30 consumers/71 tests. This pin may only ever be lowered."""
+    The residual 9 are ALL in the dead juggle_migrate_lifecycle.py — the one-shot
+    legacy lifecycle backfill the terminal-drop node (Task 6.3) deletes together
+    with the DROP TABLE migration. No steady-state code path reaches a legacy table
+    any longer. This pin may only ever be lowered."""
     from pathlib import Path
     from dbops.p8_readiness import scan_legacy_refs
     src_root = Path(__file__).resolve().parent.parent / "src"
-    assert len(scan_legacy_refs(src_root)) <= 47
+    assert len(scan_legacy_refs(src_root)) <= 9
