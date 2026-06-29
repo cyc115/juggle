@@ -24,6 +24,7 @@ from juggle_hooks_autopilot import (  # noqa: F401 — re-exported for juggle_ho
     _AUTOPILOT_DIRECTIVE,
     autopilot_context as _autopilot_context,
 )
+from juggle_hooks_prose import clear_prose_decision, record_prose_decision
 
 
 # Patterns that are always safe to approve (send "1" = proceed).
@@ -176,10 +177,14 @@ def handle_user_prompt_submit(data: dict) -> None:
             }
             print(json.dumps(output))
 
+        db = get_db()
+        # Auto-ack: the user's reply answers the most recent prose decision
+        # surfaced on the prior Stop (mirrors clear_askuser_decision).
+        clear_prose_decision(db)
+
         # Save the user prompt to the messages table for the current thread.
         prompt = data.get("prompt", "")
         if prompt:
-            db = get_db()
             thread_id = db.get_current_thread()
             if thread_id is not None:
                 db.add_message(thread_id, "user", prompt)
@@ -226,6 +231,11 @@ def handle_stop(data: dict, scan_class_b_fn) -> None:
                     logging.warning(
                         "Stop: permission-asking detected in thread %s", thread_id
                     )
+
+                # Prose decision/advisory ("your call", "say X to proceed", …):
+                # no tool call fired, so mirror the AskUserQuestion bridge and
+                # auto-file a [auto-decision] action item (deduped).
+                record_prose_decision(db, last_msg)
         # Class B: scan transcript for Juggle-caused tool errors
         scan_class_b_fn(data)
         # Clean up pre-compaction checkpoint on normal session end.
