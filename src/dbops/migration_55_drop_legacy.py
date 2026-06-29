@@ -148,7 +148,7 @@ def _rebuild_fk_to_nodes(conn: sqlite3.Connection, name: str) -> None:
     # and the quoted dangling artifact ``REFERENCES "threads_old"(thread_id)``
     # (notifications, Migration 56); both target nodes' ``id`` primary key.
     new_sql = re.sub(
-        r'REFERENCES\s+("threads_old"|threads)\s*\(\s*\w+\s*\)',
+        r'REFERENCES\s+"?threads(?:_old)?"?\s*\(\s*\w+\s*\)',
         "REFERENCES nodes(id)",
         create_sql,
         flags=re.IGNORECASE,
