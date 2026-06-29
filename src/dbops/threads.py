@@ -193,10 +193,15 @@ class ThreadsMixin:
         return next_wheel_slug(conn)
 
     def get_thread(self, thread_id: str) -> dict | None:
-        """Look up a thread by its UUID `id`. Returns None if not found."""
+        """Look up a conversation by its UUID `id`. Returns None if not found.
+
+        P8 (Task 4.2): reads the authoritative kind='conversation' node. Callers
+        use the node vocab (state/title/last_active_at) — the legacy status/topic/
+        last_active aliases are gone (Q1, no shim)."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM threads WHERE id = ?", (thread_id,)
+                "SELECT * FROM nodes WHERE id = ? AND kind='conversation'",
+                (thread_id,),
             ).fetchone()
             if row is None:
                 return None
