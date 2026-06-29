@@ -160,18 +160,27 @@ def test_conv_mirror_fails_loud_on_missing_column():
 
 def test_static_legacy_ref_floor_ratchet():
     """Ratchet: live legacy-table refs in shipped src must not climb back above
-    the current floor (63). Lowered from the 2026-06-23 floor (123) → 107 (Task 3.1
+    the current floor (60). Lowered from the 2026-06-23 floor (123) → 107 (Task 3.1
     direct-read flips) → 103 (T-c3-reads: project-keyed conversation reads) → 63
     (2026-06-29 c4-topic-dag: the topic-tier + DAG + orphan readers flipped to
     nodes/node_edges, db_mirror.py + all its graph_topics-projection writes DELETED,
     and the topic claim/sweep/reconcile state writers routed through the nodes-
-    authoritative state_write helper). The residual 63 are the still-dual-written
-    legacy stores: the threads write-path + shared get_thread/get_all_threads readers
-    (cut at c4-write-cut / the terminal drop), the graph_tasks writes in add_node
-    (c4-write-cut), the graph_topics/graph_tasks _TASK_ONLY/_TOPIC_ONLY discriminator
-    subqueries (retired by the c6 kind discriminator), and juggle_migrate_lifecycle.py
-    (deleted in the terminal drop). This pin may only ever be lowered."""
+    authoritative state_write helper) → 60 (2026-06-29 c4-write-cut PARTIAL: add_node
+    graph_tasks/graph_edges write-cut, and the sanctioned p8_reverse_backfill inverse
+    excluded from the steady-state scan).
+
+    The residual 60 are NOT reachable to 0 by this node alone: the graph-family
+    (~22: db_graph/db_topics _TASK_ONLY/_TOPIC_ONLY discriminator subqueries +
+    create_task/create_topic/set_* writes, graph_status/cockpit/graph_load/
+    graph_dispatch) is blocked on the topic/task kind discriminator that node c6
+    (Task 6.2 / M2) owns — a topic vs a bare task cannot be separated by
+    `parent_id IS NULL` alone (2026-06-29 incident). The threads-family (~38:
+    threads.py + projects/slug_alloc/messages/cockpit_model/monitor_daemon/
+    watchdog/cmd_agents_lifecycle get_thread/get_all_threads consumers, plus the
+    dead juggle_migrate_lifecycle.py the terminal drop deletes) is the conversation
+    collapse — independent of the discriminator but reverted once (a300e30) for a
+    KeyError cascade across ~30 consumers/71 tests. This pin may only ever be lowered."""
     from pathlib import Path
     from dbops.p8_readiness import scan_legacy_refs
     src_root = Path(__file__).resolve().parent.parent / "src"
-    assert len(scan_legacy_refs(src_root)) <= 63
+    assert len(scan_legacy_refs(src_root)) <= 60
