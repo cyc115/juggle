@@ -90,7 +90,7 @@ def cmd_release_agent(args):
         if thread and thread["status"] not in ("closed", "failed", "archived"):
             label = thread.get("user_label") or assigned[:8]
             print(
-                f"Error: Thread {label} is still active ({thread['status']}). "
+                f"Error: Thread {label} is still active ({thread.get('status')}). "
                 f"Call complete-agent or fail-agent first. Use --force to override (operator only)."
             )
             sys.exit(1)

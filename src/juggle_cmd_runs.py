@@ -48,7 +48,7 @@ def cmd_runs_list(args):
     for r in runs:
         io = f"{_teaser(r['input_prompt'], 32)} → {_teaser(r['output'], 24)}"
         print(
-            f"{r['id']:>5}  {r['status']:<10} {(r['role'] or ''):<9} "
+            f"{r['id']:>5}  {r.get('status', ''):<10} {(r['role'] or ''):<9} "
             f"{(r['model'] or ''):<10} {(r['project_id'] or ''):<10} "
             f"{(r['topic_id'] or ''):<8} {(r['task_id'] or ''):<8} "
             f"{(r['dispatched_at'] or ''):<26} {io}"
@@ -64,7 +64,7 @@ def cmd_runs_show(args):
     if getattr(args, "json_out", False):
         print(json.dumps(run, indent=2))
         return
-    print(f"Run {run['id']} — {run['status']}")
+    print(f"Run {run['id']} — {run.get('status')}")
     for k in ("thread_id", "project_id", "topic_id", "task_id", "agent_id",
               "role", "model", "harness", "dispatched_at", "completed_at"):
         print(f"  {k:<14} {run.get(k)}")

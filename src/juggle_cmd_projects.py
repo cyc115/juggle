@@ -449,7 +449,7 @@ def cmd_project_list(args):
             last = (p.get("last_active") or "")[:16]
             closed_tag = " [closed]" if p.get("status") == "closed" else ""
             print(
-                f"{p['id']:<8} {p['name']:<25} {p['status']:<8} {last:<16} "
+                f"{p['id']:<8} {p['name']:<25} {p.get('status', ''):<8} {last:<16} "
                 f"{p.get('thread_count', 0):>3} threads  {summary_line}{closed_tag}"
             )
 
@@ -495,7 +495,7 @@ def cmd_project_open(args):
         print(f"Project not found: {query}")
         sys.exit(1)
     if p.get("status") != "closed":
-        print(f"Project {p['id']} is not closed (status: {p['status']}).")
+        print(f"Project {p['id']} is not closed (status: {p.get('status')}).")
         sys.exit(1)
 
     db.open_project(p["id"])
@@ -518,7 +518,7 @@ def cmd_project_show(args):
     criteria = json.loads(p.get("success_criteria") or "[]")
     if _console:
         _console.print(f"[bold cyan]{p['id']}[/bold cyan]  {p['name']}")
-        _console.print(f"[dim]Status:[/dim]    {p['status']}")
+        _console.print(f"[dim]Status:[/dim]    {p.get('status')}")
         _console.print(f"[dim]Objective:[/dim] {p['objective']}")
         if criteria:
             _console.print("[dim]Success criteria:[/dim]")
@@ -528,7 +528,7 @@ def cmd_project_show(args):
             _console.print(f"[dim]Out of scope:[/dim] {p['out_of_scope']}")
     else:
         print(f"{p['id']}  {p['name']}")
-        print(f"Status:    {p['status']}")
+        print(f"Status:    {p.get('status')}")
         print(f"Objective: {p['objective']}")
         if criteria:
             print("Success criteria:")
