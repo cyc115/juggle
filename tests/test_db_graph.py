@@ -388,3 +388,58 @@ def test_concurrent_recompute_ready_exactly_one_promotes(db, tmp_path):
     assert not any(isinstance(r, Exception) for r in results), results
     assert sum(r.count("d") for r in results) == 1  # promoted exactly once
     assert g.get_task(db, "d")["state"] == "ready"
+
+
+# ── P8 Task 4.1 (c4-task-reads): reads come from nodes/node_edges ──────────────
+
+
+def _seed_node_task(db, task_id, *, state="open", project_id="INBOX", deps=(),
+                    title=None, prompt=None):
+    """Seed a task into nodes/node_edges ONLY (no graph_tasks row) — P8 Task 4.1.
+
+    Proves the readers compute purely from the unified store.
+    """
+    from dbops.schema import _now
+    now = _now()
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO nodes (id, kind, title, objective, state, project_id, "
+            "created_at, updated_at) VALUES (?, 'task', ?, ?, ?, ?, ?, ?)",
+            (task_id, title or task_id, prompt or f"do {task_id}", state,
+             project_id, now, now),
+        )
+        for d in deps:
+            conn.execute(
+                "INSERT INTO node_edges (node_id, depends_on_id) VALUES (?,?)",
+                (task_id, d),
+            )
+        conn.commit()
+
+
+def test_ready_eligible_reads_nodes_only(db):
+    """2026-06-29 P8 Task 4.1 (c4-task-reads): ready_eligible computes the ready
+    set from nodes/node_edges. A task present ONLY in nodes (no graph_tasks row)
+    whose deps are all verified is eligible; one with an unverified dep is not.
+    RED before the flip — the old query read FROM graph_tasks and returned []."""
+    _seed_node_task(db, "dep", state="verified")
+    _seed_node_task(db, "t", state="open", deps=["dep"])
+    assert g.ready_eligible(db, "INBOX") == ["t"]
+    _seed_node_task(db, "dep2", state="open")
+    _seed_node_task(db, "t2", state="open", deps=["dep2"])
+    assert "t2" not in g.ready_eligible(db, "INBOX")
+
+
+def test_get_task_and_deps_read_nodes_only(db):
+    """2026-06-29 P8 Task 4.1 (c4-task-reads): get_task/get_deps/get_dependents/
+    unverified_deps read nodes/node_edges, with the legacy column aliases
+    (objective→prompt) preserved for consumers. RED before the flip."""
+    _seed_node_task(db, "dep", state="open")
+    _seed_node_task(db, "t", state="open", deps=["dep"], prompt="hello")
+    task = g.get_task(db, "t")
+    assert task is not None
+    assert task["state"] == "open"
+    assert task["prompt"] == "hello"
+    assert g.get_deps(db, "t") == ["dep"]
+    assert g.get_dependents(db, "dep") == ["t"]
+    assert g.unverified_deps(db, "t") == ["dep"]
+    assert {x["id"] for x in g.list_tasks(db, "INBOX")} == {"dep", "t"}

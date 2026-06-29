@@ -79,11 +79,7 @@ def _mk_topic(db, topic_id, project_id, state="open"):
 def _mk_task(db, task_id, project_id, topic_id, state="open"):
     g.create_task(db, task_id=task_id, project_id=project_id, title=task_id,
                   prompt=f"do {task_id}")
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic_id, task_id)
-        )
-        conn.commit()
+    g.set_task_topic(db, task_id, topic_id)  # dual-writes graph_tasks + nodes
     if state != "open":
         # Walk the task to the desired state via mark_completion
         if state == "verified":
@@ -93,10 +89,14 @@ def _mk_task(db, task_id, project_id, topic_id, state="open"):
         elif state == "failed-exec":
             g.mark_exec_failed(db, task_id)
         elif state in ("running", "dispatching", "integrating"):
-            # manually set for simplicity
+            # manually set for simplicity — force the state in BOTH stores
+            # (task readers now read nodes; P8 Task 4.1).
             with db._connect() as conn:
                 conn.execute(
                     "UPDATE graph_tasks SET state=? WHERE id=?", (state, task_id)
+                )
+                conn.execute(
+                    "UPDATE nodes SET state=? WHERE id=?", (state, task_id)
                 )
                 conn.commit()
 

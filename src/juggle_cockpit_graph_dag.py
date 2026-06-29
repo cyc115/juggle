@@ -154,7 +154,7 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
         r["parent_id"]: (r["done"], r["total"]) for r in count_rows
     }
 
-    # Derived edges: node_edges that cross parent boundaries.
+    # Derived edges: node_edges that cross parent boundaries (topic→topic deps).
     try:
         edge_rows = conn.execute(
             "SELECT DISTINCT np.id AS src, dp.id AS dst "
@@ -170,6 +170,22 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
     except Exception:
         edge_rows = []
     edges = [(r["src"], r["dst"]) for r in edge_rows]
+    # Direct edges between two root nodes — a flat task-tier DAG whose tasks have
+    # no parent topic (the legacy flat-task projects). The cross-parent join
+    # above misses these because both endpoints have parent_id NULL.
+    try:
+        root_edge_rows = conn.execute(
+            f"SELECT node_id AS src, depends_on_id AS dst FROM node_edges "
+            f"WHERE node_id IN ({ph}) AND depends_on_id IN ({ph}) "
+            "ORDER BY node_id, depends_on_id",
+            (*topic_ids, *topic_ids),
+        ).fetchall()
+    except Exception:
+        root_edge_rows = []
+    for r in root_edge_rows:
+        e = (r["src"], r["dst"])
+        if e not in edges:
+            edges.append(e)
 
     # Children per parent (member_tasks for the detail modal).
     try:

@@ -103,19 +103,13 @@ def _seed_topic(db, topic_id, task_states, *, state="integrating",
     for i, st in enumerate(task_states):
         tid = f"{topic_id}-t{i}"
         db_graph.create_task(db, task_id=tid, project_id="INBOX", title=tid, prompt="x")
+        # create_task dual-writes the child nodes row; bind it to the topic
+        # (parent_id) and force the desired state in BOTH stores so orphan_guard
+        # (which reads nodes.parent_id/state) sees it (P8 Task 4.1).
+        db_graph.set_task_topic(db, tid, topic_id)
         with db._connect() as c:
-            c.execute("UPDATE graph_tasks SET topic_id=?, state=? WHERE id=?",
-                      (topic_id, st, tid))
-            c.commit()
-        # P8: child nodes
-        with db._connect() as c:
-            c.execute(
-                "INSERT OR IGNORE INTO nodes "
-                "(id, kind, title, objective, state, project_id, parent_id, "
-                "created_at, updated_at) "
-                "VALUES (?, 'task', ?, '', ?, 'INBOX', ?, ?, ?)",
-                (tid, tid, st, topic_id, now, now),
-            )
+            c.execute("UPDATE graph_tasks SET state=? WHERE id=?", (st, tid))
+            c.execute("UPDATE nodes SET state=? WHERE id=?", (st, tid))
             c.commit()
 
 

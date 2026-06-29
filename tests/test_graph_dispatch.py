@@ -128,6 +128,9 @@ def test_concurrent_claim_exactly_one_wins(db, tmp_path):
 def _age_claim(db, task_id, secs):
     old = (datetime.now(timezone.utc) - timedelta(seconds=secs)).isoformat()
     with db._connect() as conn:
+        # sweep_stale_claims reads nodes.updated_at (P8 Task 4.1) — age both the
+        # authoritative store and the legacy mirror.
+        conn.execute("UPDATE nodes SET updated_at=? WHERE id=?", (old, task_id))
         conn.execute(
             "UPDATE graph_tasks SET updated_at=? WHERE id=?", (old, task_id)
         )
@@ -711,3 +714,48 @@ def test_single_project_single_topic_behavior_unchanged(db):
     _arm(db)  # legacy scalar arm helper
     stats = gd.graph_tick(db, dispatch_fn=FakeDispatch())
     assert stats["dispatched"] == ["T-a"]  # T-b gated on T-a via derived dep
+
+
+# ── P8 Task 4.1 (c4-task-reads): claim/sweep operate on nodes ─────────────────
+
+
+def _seed_node_task(db, task_id, *, state="ready", project_id="INBOX",
+                    dispatch_thread_id=None, updated_at=None):
+    """Seed a task into nodes ONLY (no graph_tasks row) — P8 Task 4.1."""
+    from dbops.schema import _now
+    now = updated_at or _now()
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO nodes (id, kind, title, objective, state, project_id, "
+            "dispatch_thread_id, created_at, updated_at) "
+            "VALUES (?, 'task', ?, '', ?, ?, ?, ?, ?)",
+            (task_id, task_id, state, project_id, dispatch_thread_id, now, now),
+        )
+        conn.commit()
+
+
+def test_claim_task_operates_on_nodes_only(db):
+    """2026-06-29 P8 Task 4.1 (c4-task-reads): claim_task's CAS runs against
+    nodes — a 'ready' task present ONLY in nodes (no graph_tasks row) is claimed
+    exactly once and lands in 'dispatching'. RED before the flip: cas_state used
+    the legacy row as the claim token, so a nodes-only task was never claimable."""
+    _seed_node_task(db, "n", state="ready")
+    assert gd.claim_task(db, "n") is True
+    assert gd.claim_task(db, "n") is False  # already dispatching — lost race
+    row = db._connect().execute(
+        "SELECT state FROM nodes WHERE id='n'").fetchone()
+    assert row[0] == "dispatching"
+
+
+def test_sweep_stale_claims_reads_nodes_only(db):
+    """2026-06-29 P8 Task 4.1 (c4-task-reads): sweep_stale_claims finds stale
+    'dispatching' tasks via nodes (dispatch_thread_id IS NULL, updated_at old),
+    not graph_tasks, and resets them to 'ready'. RED before the flip."""
+    old = "2000-01-01T00:00:00+00:00"
+    _seed_node_task(db, "s", state="dispatching", dispatch_thread_id=None,
+                    updated_at=old)
+    swept = gd.sweep_stale_claims(db, "INBOX")
+    assert "s" in swept
+    row = db._connect().execute(
+        "SELECT state FROM nodes WHERE id='s'").fetchone()
+    assert row[0] == "ready"

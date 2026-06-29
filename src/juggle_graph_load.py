@@ -122,10 +122,7 @@ def cmd_project_graph_load(args):
                     verify_cmd=n["verify_cmd"],
                     conn=conn,
                 )
-                conn.execute(
-                    "UPDATE graph_tasks SET topic_id=? WHERE id=?",
-                    (task_topic[n["id"]], n["id"]),
-                )
+                db_graph.set_task_topic(db, n["id"], task_topic[n["id"]], conn=conn)
                 db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
                 created += 1
             elif prev["state"] in db_graph.PROTECTED_STATES or not _content_changed(
@@ -137,10 +134,7 @@ def cmd_project_graph_load(args):
                     db, n["id"], title=n["title"], prompt=n["prompt"],
                     verify_cmd=n["verify_cmd"], conn=conn,
                 )
-                conn.execute(
-                    "UPDATE graph_tasks SET topic_id=? WHERE id=?",
-                    (task_topic[n["id"]], n["id"]),
-                )
+                db_graph.set_task_topic(db, n["id"], task_topic[n["id"]], conn=conn)
                 db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
                 if prev["state"] != "open":
                     db_graph.task_transition(db, n["id"], "reload", conn=conn)

@@ -46,8 +46,9 @@ class CapacityError(RuntimeError):
 def claim_task(db, task_id: str) -> bool:
     """Atomic ready→dispatching claim (DA B4). True iff THIS caller won.
 
-    Single conditional UPDATE; rowcount==1 is the claim token. Any concurrent
-    claimer sees rowcount==0 because the row no longer matches state='ready'.
+    Single conditional UPDATE on ``nodes`` (the authoritative claim token, P8
+    Task 4.1); rowcount==1 is the claim. Any concurrent claimer sees rowcount==0
+    because the row no longer matches state='ready'.
     """
     from dbops.state_write import cas_state
     with db._connect() as conn:
@@ -60,15 +61,18 @@ def sweep_stale_claims(db, project_id: str) -> list[str]:
     """Reset crashed claims: dispatching >10 min with no thread → ready.
 
     Crash-safe + idempotent: a dispatcher that died between claim and
-    send-task never set thread_id, so the task is reclaimable next tick.
+    send-task never set the dispatch thread, so the task is reclaimable next
+    tick. Reads the stale set from ``nodes`` (dispatch_thread_id, P8 Task 4.1).
     """
     cutoff = (
         datetime.now(timezone.utc) - timedelta(seconds=STALE_CLAIM_SECS)
     ).isoformat()
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT id FROM graph_tasks WHERE project_id=? AND state='dispatching' "
-            "AND thread_id IS NULL AND updated_at < ?",
+            "SELECT id FROM nodes WHERE kind='task' AND project_id=? "
+            "AND id NOT IN (SELECT id FROM graph_topics) "
+            "AND state='dispatching' AND dispatch_thread_id IS NULL "
+            "AND updated_at < ?",
             (project_id, cutoff),
         ).fetchall()
     stale = [r["id"] for r in rows]

@@ -141,6 +141,7 @@ def test_check_task_guard_refuses_tick_owned_states(db):
     for state in sorted(g.TICK_OWNED_STATES):
         with db._connect() as conn:
             conn.execute("UPDATE graph_tasks SET state=? WHERE id='n'", (state,))
+            conn.execute("UPDATE nodes SET state=? WHERE id='n'", (state,))
             conn.commit()
         err = check_task_guard(db, tid)
         assert err and "tick" in err, f"expected refusal for state={state!r}, got: {err!r}"
@@ -157,6 +158,7 @@ def test_check_task_guard_allows_operator_states_and_unbound(db):
                   "blocked-failed"):
         with db._connect() as conn:
             conn.execute("UPDATE graph_tasks SET state=? WHERE id='n'", (state,))
+            conn.execute("UPDATE nodes SET state=? WHERE id='n'", (state,))
             conn.commit()
         assert check_task_guard(db, tid) is None, state
     tid2 = db.create_thread("t2", session_id="s")
@@ -217,9 +219,7 @@ def _mk_topic_task(db, topic_id, task_id, project="INBOX"):
     if tp.get_topic(db, topic_id) is None:
         tp.create_topic(db, topic_id=topic_id, project_id=project, title=topic_id)
     g.create_task(db, task_id=task_id, project_id=project, title=task_id, prompt="p")
-    with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic_id, task_id))
-        conn.commit()
+    g.set_task_topic(db, task_id, topic_id)  # dual-writes graph_tasks + nodes
 
 
 def _verify_task(db, task_id, fail=False):

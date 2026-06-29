@@ -42,23 +42,23 @@ def write_state(conn, node_id, new_state, *, now, verified=False, clear_thread=F
 def cas_state(conn, node_id, *, frm, to, now) -> int:
     """Conditional state write (compare-and-swap): ``UPDATE ... WHERE state=:frm``.
 
-    The legacy graph_tasks/graph_topics row is the claim token — it always exists
-    for a task/topic, whereas a ``nodes`` row may be absent for directly-created
-    rows (e.g. db_graph.create_task in unit tests) until Step 4 makes nodes the
-    sole table. Its rowcount is returned as the claim result; ``nodes`` is mirrored
-    under the SAME guard so the two stay in lockstep. Returns the legacy rowcount
-    (0 = lost race / row not in ``frm``).
+    ``nodes`` is the authoritative claim token (P8 Task 4.1) — the task readers
+    now compute the ready set from it, and db_graph.create_task dual-writes a
+    nodes row for every task, so the row always exists. Its rowcount is returned
+    as the claim result; the legacy graph_tasks/graph_topics row is mirrored under
+    the SAME guard so the two stay in lockstep until the Step-4 write-cut drops
+    the legacy half. Returns the nodes rowcount (0 = lost race / row not in
+    ``frm``).
     """
-    won = 0
-    for tbl in ("graph_tasks", "graph_topics"):
-        cur = conn.execute(
-            f"UPDATE {tbl} SET state=?, updated_at=? WHERE id=? AND state=?",
-            (to, now, node_id, frm),
-        )
-        won += cur.rowcount
+    cur = conn.execute(
+        "UPDATE nodes SET state=?, updated_at=? WHERE id=? AND state=?",
+        (to, now, node_id, frm),
+    )
+    won = cur.rowcount
     if won:
-        conn.execute(
-            "UPDATE nodes SET state=?, updated_at=? WHERE id=? AND state=?",
-            (to, now, node_id, frm),
-        )
+        for tbl in ("graph_tasks", "graph_topics"):
+            conn.execute(
+                f"UPDATE {tbl} SET state=?, updated_at=? WHERE id=? AND state=?",
+                (to, now, node_id, frm),
+            )
     return won

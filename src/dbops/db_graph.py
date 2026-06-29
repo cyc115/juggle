@@ -59,6 +59,22 @@ TICK_OWNED_STATES = frozenset(
     {"ready", "dispatching", "running", "integrating", "verified"}
 )
 
+# Topic/task discriminator (M2): the migration backfills BOTH topics and tasks
+# as kind='task' nodes (bare task and empty topic are both parent_id-NULL), so
+# nodes alone can't separate them — during dual-write graph_topics is the source
+# of truth, so the legacy graph_tasks set is kind='task' nodes NOT in graph_topics.
+# (Step 6 swaps this for a real kind discriminator and drops the legacy read.)
+_TASK_ONLY = "id NOT IN (SELECT id FROM graph_topics)"
+
+# nodes projection reproducing the legacy graph_tasks row shape so task-execution
+# consumers keep their column names after the P8 read-flip (Task 4.1):
+# objective→prompt, dispatch_thread_id→thread_id, parent_id→topic_id.
+_TASK_SELECT = (
+    "SELECT id, project_id, title, objective AS prompt, verify_cmd, state, "
+    "dispatch_thread_id AS thread_id, parent_id AS topic_id, handoff, diffstat, "
+    f"verified_at, created_at, updated_at FROM nodes WHERE kind='task' AND {_TASK_ONLY}"
+)
+
 
 # ── state machine ──────────────────────────────────────────────────────────────
 
@@ -101,7 +117,8 @@ def create_task(
     db, *, task_id: str, project_id: str, title: str, prompt: str, verify_cmd=None,
     conn=None,
 ) -> None:
-    """Insert a new task in state 'open'. Raises on duplicate id."""
+    """Insert a new task in state 'open' (raises on dup). Dual-writes the
+    authoritative nodes row (objective=prompt) + legacy graph_tasks (Task 4.1)."""
     now = _now()
     with _cx(db, conn) as c:
         c.execute(
@@ -109,60 +126,104 @@ def create_task(
             "state, created_at, updated_at) VALUES (?,?,?,?,?, 'open', ?, ?)",
             (task_id, project_id, title, prompt, verify_cmd, now, now),
         )
+        c.execute(
+            "INSERT INTO nodes (id, kind, title, objective, state, project_id, "
+            "verify_cmd, created_at, updated_at) "
+            "VALUES (?, 'task', ?, ?, 'open', ?, ?, ?, ?)",
+            (task_id, title, prompt, project_id, verify_cmd, now, now),
+        )
 
 
 def update_task_content(
     db, task_id: str, *, title: str, prompt: str, verify_cmd, conn=None
 ) -> None:
-    """Update plan content (title/prompt/verify_cmd). Never touches state."""
+    """Update plan content (title/prompt/verify_cmd). Never touches state.
+
+    Dual-writes nodes (objective=prompt) so the flipped readers stay current.
+    """
+    now = _now()
     with _cx(db, conn) as c:
         c.execute(
             "UPDATE graph_tasks SET title=?, prompt=?, verify_cmd=?, updated_at=? "
             "WHERE id=?",
-            (title, prompt, verify_cmd, _now(), task_id),
+            (title, prompt, verify_cmd, now, task_id),
+        )
+        c.execute(
+            "UPDATE nodes SET title=?, objective=?, verify_cmd=?, updated_at=? "
+            "WHERE id=? AND kind='task'",
+            (title, prompt, verify_cmd, now, task_id),
         )
 
 
 def set_task_thread(db, task_id: str, thread_id) -> None:
+    """Bind the dispatch thread; dual-writes nodes.dispatch_thread_id for the
+    flipped sweep_stale_claims / get_task_by_thread readers."""
+    now = _now()
     with db._connect() as conn:
         conn.execute(
             "UPDATE graph_tasks SET thread_id=?, updated_at=? WHERE id=?",
-            (thread_id, _now(), task_id),
+            (thread_id, now, task_id),
+        )
+        conn.execute(
+            "UPDATE nodes SET dispatch_thread_id=?, updated_at=? "
+            "WHERE id=? AND kind='task'",
+            (thread_id, now, task_id),
         )
         conn.commit()
 
 
 def set_task_handoff(db, task_id: str, handoff: str) -> None:
+    now = _now()
     with db._connect() as conn:
         conn.execute(
             "UPDATE graph_tasks SET handoff=?, updated_at=? WHERE id=?",
-            (handoff, _now(), task_id),
+            (handoff, now, task_id),
+        )
+        conn.execute(
+            "UPDATE nodes SET handoff=?, updated_at=? WHERE id=? AND kind='task'",
+            (handoff, now, task_id),
         )
         conn.commit()
 
 
 def set_task_diffstat(db, task_id: str, diffstat: str) -> None:
     """Pre-merge diffstat captured by integrate (hydration enrichment)."""
+    now = _now()
     with db._connect() as conn:
         conn.execute(
             "UPDATE graph_tasks SET diffstat=?, updated_at=? WHERE id=?",
-            (diffstat, _now(), task_id),
+            (diffstat, now, task_id),
+        )
+        conn.execute(
+            "UPDATE nodes SET diffstat=?, updated_at=? WHERE id=? AND kind='task'",
+            (diffstat, now, task_id),
         )
         conn.commit()
 
 
+def set_task_topic(db, task_id: str, topic_id, conn=None) -> None:
+    """Assign a task to its topic — dual-writes legacy graph_tasks.topic_id and
+    authoritative nodes.parent_id (get_task maps parent_id→topic_id)."""
+    with _cx(db, conn) as c:
+        c.execute(
+            "UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic_id, task_id)
+        )
+        c.execute(
+            "UPDATE nodes SET parent_id=? WHERE id=? AND kind='task'",
+            (topic_id, task_id),
+        )
+
+
 def get_task(db, task_id: str, conn=None) -> dict | None:
     with _cx(db, conn) as c:
-        row = c.execute(
-            "SELECT * FROM graph_tasks WHERE id=?", (task_id,)
-        ).fetchone()
+        row = c.execute(f"{_TASK_SELECT} AND id=?", (task_id,)).fetchone()
         return dict(row) if row else None
 
 
 def get_task_by_thread(db, thread_id: str) -> dict | None:
     with db._connect() as conn:
         row = conn.execute(
-            "SELECT * FROM graph_tasks WHERE thread_id=?", (thread_id,)
+            f"{_TASK_SELECT} AND dispatch_thread_id=?", (thread_id,)
         ).fetchone()
     return dict(row) if row else None
 
@@ -170,52 +231,14 @@ def get_task_by_thread(db, thread_id: str) -> dict | None:
 def list_tasks(db, project_id: str) -> list[dict]:
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM graph_tasks WHERE project_id=? ORDER BY created_at, id",
+            f"{_TASK_SELECT} AND project_id=? ORDER BY created_at, id",
             (project_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
 
-def replace_edges(db, task_id: str, dep_ids: list[str], conn=None) -> None:
-    """Replace the full dependency list of ``task_id``."""
-    with _cx(db, conn) as c:
-        c.execute("DELETE FROM graph_edges WHERE task_id=?", (task_id,))
-        c.executemany(
-            "INSERT INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
-            [(task_id, dep) for dep in dep_ids],
-        )
-
-
-def get_deps(db, task_id: str) -> list[str]:
-    with db._connect() as conn:
-        rows = conn.execute(
-            "SELECT depends_on_id FROM graph_edges WHERE task_id=? ORDER BY depends_on_id",
-            (task_id,),
-        ).fetchall()
-        return [r["depends_on_id"] for r in rows]
-
-
-def get_dependents(db, task_id: str) -> list[str]:
-    """Task ids that depend on ``task_id`` (reverse edges)."""
-    with db._connect() as conn:
-        rows = conn.execute(
-            "SELECT task_id FROM graph_edges WHERE depends_on_id=? ORDER BY task_id",
-            (task_id,),
-        ).fetchall()
-        return [r["task_id"] for r in rows]
-
-
-def unverified_deps(db, task_id: str) -> list[str]:
-    """Dep ids of ``task_id`` whose state is not 'verified' (blocking deps)."""
-    with db._connect() as conn:
-        rows = conn.execute(
-            "SELECT e.depends_on_id FROM graph_edges e "
-            "JOIN graph_tasks d ON d.id = e.depends_on_id "
-            "WHERE e.task_id=? AND d.state != 'verified' "
-            "ORDER BY e.depends_on_id",
-            (task_id,),
-        ).fetchall()
-        return [r["depends_on_id"] for r in rows]
+# Dependency-edge CRUD (node_edges) extracted to db_graph_edges (LOC gate);
+# re-exported below so ``from dbops.db_graph import get_deps`` keeps working.
 
 
 # ── ready set ──────────────────────────────────────────────────────────────────
@@ -225,10 +248,11 @@ def ready_eligible(db, project_id: str) -> list[str]:
     """Open tasks of ``project_id`` whose deps are ALL 'verified'."""
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT n.id FROM graph_tasks n WHERE n.project_id=? "
+            "SELECT n.id FROM nodes n WHERE n.kind='task' AND n.project_id=? "
+            "AND n.id NOT IN (SELECT id FROM graph_topics) "
             "AND n.state='open' AND NOT EXISTS ("
-            "  SELECT 1 FROM graph_edges e JOIN graph_tasks d ON d.id=e.depends_on_id"
-            "  WHERE e.task_id=n.id AND d.state != 'verified') "
+            "  SELECT 1 FROM node_edges e JOIN nodes d ON d.id=e.depends_on_id"
+            "  WHERE e.node_id=n.id AND d.state != 'verified') "
             "ORDER BY n.created_at, n.id",
             (project_id,),
         ).fetchall()
@@ -259,8 +283,14 @@ def recompute_ready(db, project_id: str) -> list[str]:
     return newly
 
 
-# ── completion marking + failure propagation (extracted seam) ─────────────────
+# ── extracted seams (re-exported for back-compat) ─────────────────────────────
 
+from dbops.db_graph_edges import (  # noqa: E402,F401
+    get_dependents,
+    get_deps,
+    replace_edges,
+    unverified_deps,
+)
 from dbops.db_graph_marking import (  # noqa: E402,F401
     mark_completion,
     mark_exec_failed,

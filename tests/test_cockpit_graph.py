@@ -60,14 +60,10 @@ def test_snapshot_exposes_graph_by_project(db):
     g.create_task(db, task_id="a", project_id="INBOX", title="A", prompt="p")
     g.create_task(db, task_id="b", project_id="INBOX", title="B", prompt="p")
     with db._connect() as conn:
+        # create_task dual-writes the nodes rows (state 'open'); force 'a' to
+        # verified in BOTH stores (snapshot reads graph_by_project from nodes).
         conn.execute("UPDATE graph_tasks SET state='verified' WHERE id='a'")
-        # Also write to nodes (P8 primary read source)
-        conn.execute(
-            "INSERT OR IGNORE INTO nodes (id,kind,title,objective,state,project_id,"
-            "parent_id,created_at,updated_at) VALUES "
-            "('a','task','A','','verified','INBOX',NULL,datetime('now'),datetime('now')),"
-            "('b','task','B','','pending','INBOX',NULL,datetime('now'),datetime('now'))"
-        )
+        conn.execute("UPDATE nodes SET state='verified' WHERE id='a'")
         conn.commit()
     state = snapshot(db)
     assert state.graph_by_project is not None

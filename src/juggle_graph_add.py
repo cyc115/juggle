@@ -186,10 +186,7 @@ def add_task(
                 prompt=prompt, verify_cmd=verify_cmd, conn=conn,
             )
         if topic_id:
-            conn.execute(
-                "UPDATE graph_tasks SET topic_id=? WHERE id=?",
-                (topic_id, task_id),
-            )
+            db_graph.set_task_topic(db, task_id, topic_id, conn=conn)
         db_graph.replace_edges(db, task_id, sorted(deps), conn=conn)
 
         # Downstream inserts: each --required-by target gains a dep on task_id.

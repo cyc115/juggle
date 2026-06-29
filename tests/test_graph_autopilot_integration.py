@@ -44,15 +44,17 @@ def _topic(db, tid, project="INBOX"):
     tp.create_topic(db, topic_id=tid, project_id=project, title=f"Topic {tid}")
     g.create_task(db, task_id=f"{tid}1", project_id=project, title=f"{tid}1",
                   prompt=f"build {tid}")
-    with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (tid, f"{tid}1"))
-        conn.commit()
+    g.set_task_topic(db, f"{tid}1", tid)  # dual-writes graph_tasks + nodes
 
 
 def _task_edge(db, child_task, parent_task):
     with db._connect() as conn:
+        # task readers now read node_edges (P8 Task 4.1) — write both stores.
         conn.execute("INSERT INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
                      (child_task, parent_task))
+        conn.execute(
+            "INSERT OR IGNORE INTO node_edges (node_id, depends_on_id) VALUES (?,?)",
+            (child_task, parent_task))
         conn.commit()
 
 
