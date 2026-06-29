@@ -12,7 +12,7 @@ Mixed into CockpitApp; relies on these attributes existing on self:
 """
 from __future__ import annotations
 
-from juggle_cockpit_modals import _GraphTaskModal
+from juggle_cockpit_modals import _NodeDetailModal, build_summary_ctx
 
 
 class GraphModeMixin:
@@ -138,12 +138,25 @@ class GraphModeMixin:
         # get_task filters kind='task' and returns None for a topic id, so fall
         # back to get_topic to populate the modal from the authoritative nodes
         # row (P8 c4-topic-dag flip missed this read-path → blank 'Task ?').
-        full = _g.get_task(self._db, task_id) or _t.get_topic(self._db, task_id) or {}
+        task_row = _g.get_task(self._db, task_id)
+        is_topic = task_row is None
+        full = task_row or _t.get_topic(self._db, task_id) or {}
         try:
             deps = _g.get_deps(self._db, task_id)
         except Exception:
             deps = [d for dag in dags for (nid, d) in dag.edges if nid == task_id]
-        self.push_screen(_GraphTaskModal(full, deps, tasks=tasks))
+        if is_topic:
+            # Topic node → unified modal with the async LLM summary streamed in
+            # below the structured fields (header renders immediately).
+            ctx = build_summary_ctx(self._db, full.get("thread_id"))
+            if not ctx.get("task_input") and (full.get("objective") or "").strip():
+                ctx["task_input"] = full["objective"].strip()
+            self.push_screen(_NodeDetailModal(
+                full, deps, is_topic=True, tasks=tasks,
+                summary_ctx=ctx, label=full.get("id", task_id),
+            ))
+        else:
+            self.push_screen(_NodeDetailModal(full, deps, is_topic=False, tasks=tasks))
 
     # -- key capture ----------------------------------------------------------
 

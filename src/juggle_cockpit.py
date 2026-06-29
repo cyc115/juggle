@@ -50,8 +50,8 @@ from juggle_cockpit_helpers import (
 )
 from juggle_cockpit_modals import (
     _ConfirmModal,
-    _GraphTaskModal,
     _HelpModal,
+    _NodeDetailModal,
     _PromptModal,
     _TailModal,
 )
@@ -768,15 +768,16 @@ class CockpitApp(GraphModeMixin, App):
         """i — prompt for a task id or label and show its detail.
 
         Resolution order:
-          1. Thread/topic human-readable label (e.g. "AO") → _TopicDetailModal
-          2. Graph-task id / prefix / _label               → _GraphTaskModal
+          1. Thread/topic human-readable label (e.g. "AO") → topic _NodeDetailModal
+          2. Graph-task id / prefix / _label               → task _NodeDetailModal
           3. Neither match → warning notification
         """
         from juggle_cockpit_model import snapshot as _snapshot
         from juggle_cockpit_modals import (
             resolve_task_detail,
             resolve_thread_detail,
-            _TopicDetailModal,
+            _NodeDetailModal,
+            build_summary_ctx,
         )
         import dbops.db_graph as _g
 
@@ -815,53 +816,20 @@ class CockpitApp(GraphModeMixin, App):
             # Priority 1: thread/topic human-readable label
             topic = resolve_thread_detail(state.topics, q)
             if topic is not None:
-                extra: dict = {}
+                # Shared summary-context builder (messages, task input/result).
+                extra = build_summary_ctx(self._db, topic.id)
                 agent = agent_by_label.get(topic.label.upper())
                 if agent:
                     extra["agent"] = agent
-                # Fetch enriched data from DB
                 try:
                     thread = self._db.get_thread(topic.id)
                     if thread:
                         summary = (thread.get("summary") or "").strip()
                         if summary:
                             extra["summary"] = summary
-                    # First substantive user message = task input
-                    import sqlite3
-                    with self._db._connect() as conn:
-                        conn.row_factory = sqlite3.Row
-                        first_row = conn.execute(
-                            "SELECT content FROM messages "
-                            "WHERE thread_id = ? AND role = 'user' "
-                            "ORDER BY id ASC LIMIT 1",
-                            (topic.id,),
-                        ).fetchone()
-                    if first_row:
-                        extra["task_input"] = (first_row["content"] or "").strip()
-                    # Last assistant message = result output
-                    exchange = self._db.get_last_exchange(topic.id)
-                    last_asst = (exchange.get("last_assistant") or "").strip()
-                    if last_asst:
-                        extra["result_output"] = last_asst
-                    # All messages for LLM context (last 20) + recent activity (last 5)
-                    with self._db._connect() as conn:
-                        conn.row_factory = sqlite3.Row
-                        all_rows = conn.execute(
-                            "SELECT role, content FROM messages "
-                            "WHERE thread_id = ? ORDER BY id ASC",
-                            (topic.id,),
-                        ).fetchall()
-                    messages_all = [
-                        {"role": r["role"], "content": r["content"]}
-                        for r in all_rows
-                    ]
-                    extra["messages_all"] = messages_all[-20:]
-                    extra["recent"] = messages_all[-5:]
-                    extra["thread_id"] = topic.id
-                    extra["message_count"] = len(messages_all)
                 except Exception:
                     pass
-                self.push_screen(_TopicDetailModal(topic, extra=extra))
+                self.push_screen(_NodeDetailModal.from_conversation(topic, extra))
                 return
 
             # Priority 2: graph-task id / prefix / _label fallback
@@ -875,7 +843,7 @@ class CockpitApp(GraphModeMixin, App):
                 real_deps = _g.get_deps(self._db, task_id)
             except Exception:
                 real_deps = deps
-            self.push_screen(_GraphTaskModal(task, real_deps, tasks=all_tasks))
+            self.push_screen(_NodeDetailModal(task, real_deps, is_topic=False, tasks=all_tasks))
 
         self.push_screen(
             _PromptModal("Task id or label (e.g. AI):", dismiss_empty_as=None),

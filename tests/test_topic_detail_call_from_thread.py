@@ -1,6 +1,7 @@
-"""Regression pin (2026-06-17): _TopicDetailModal._fetch_summary called
+"""Regression pin (2026-06-17): the topic-detail modal's _fetch_summary called
 self.call_from_thread() which doesn't exist on ModalScreen — must use
-self.app.call_from_thread() instead.
+self.app.call_from_thread() instead. (FM: assert through the unified
+_NodeDetailModal._fetch_summary seam.)
 """
 import os
 import sys
@@ -11,16 +12,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 def _make_modal_instance():
-    """Build a minimal stand-in for _TopicDetailModal with no call_from_thread."""
-    from juggle_cockpit_modals import _TopicDetailModal
+    """Build a minimal _NodeDetailModal stand-in with no call_from_thread."""
+    from juggle_cockpit_modals import _NodeDetailModal
 
-    # Minimal topic namedtuple-like object
-    topic = types.SimpleNamespace(
-        label="T1",
-        title="Test topic",
-        status="active",
-    )
-    extra = {
+    summary_ctx = {
         "task_input": "do the thing",
         "result_output": "done",
         "messages_all": [],
@@ -28,9 +23,12 @@ def _make_modal_instance():
         "message_count": 3,
     }
     # Instantiate without __init__ to avoid Textual widget machinery
-    obj = object.__new__(_TopicDetailModal)
-    obj._topic = topic
-    obj._extra = extra
+    obj = object.__new__(_NodeDetailModal)
+    obj._node = {"id": "T1", "title": "Test topic", "state": "active"}
+    obj._summary_ctx = summary_ctx
+    obj._label = "T1"
+    obj._is_topic = True
+    obj._cursor = 3
     return obj
 
 
@@ -53,7 +51,6 @@ def test_fetch_summary_uses_app_call_from_thread(monkeypatch):
 
     # Patch the `app` property at class level to return our mock
     app_mock = mock.MagicMock()
-    from juggle_cockpit_modals import _TopicDetailModal
     with mock.patch.object(type(obj), "app", new_callable=lambda: property(lambda self: app_mock)):
         # self must NOT have call_from_thread (simulates ModalScreen — only App has it)
         assert not hasattr(obj, "call_from_thread"), (
@@ -79,7 +76,7 @@ def test_fetch_summary_does_not_cache_empty_or_failed_summary(monkeypatch):
     import juggle_cockpit_modals as mod
 
     obj = _make_modal_instance()
-    obj._extra = {**obj._extra, "thread_id": "thread-r7-empty", "message_count": 3}
+    obj._summary_ctx = {**obj._summary_ctx, "thread_id": "thread-r7-empty", "message_count": 3}
     mod._topic_summary_cache.pop(("thread-r7-empty", 3), None)
 
     empty_sections = {"context": "", "why": "", "what": "", "result": ""}

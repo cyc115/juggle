@@ -199,49 +199,100 @@ def test_resolve_thread_detail_empty_query():
     assert resolve_thread_detail(topics, None) is None
 
 
-def test_topic_detail_modal_exists():
-    """_TopicDetailModal class must be importable from juggle_cockpit_modals."""
-    from juggle_cockpit_modals import _TopicDetailModal  # noqa: F401
-    assert _TopicDetailModal is not None
+def test_node_detail_modal_exists():
+    """The unified _NodeDetailModal must be importable from juggle_cockpit_modals."""
+    from juggle_cockpit_modals import _NodeDetailModal  # noqa: F401
+    assert _NodeDetailModal is not None
 
 
-def test_topic_detail_modal_accepts_topic():
-    """_TopicDetailModal can be constructed with a Topic and optional extra dict."""
-    from juggle_cockpit_modals import _TopicDetailModal
+def test_node_detail_modal_accepts_topic():
+    """_NodeDetailModal.from_conversation builds a TOPIC modal from a Topic."""
+    from juggle_cockpit_modals import _NodeDetailModal
     topic = _make_topic("AO", title="My Topic")
-    modal = _TopicDetailModal(topic)
+    modal = _NodeDetailModal.from_conversation(topic)
     assert modal is not None
+    assert modal._is_topic is True
 
 
-def test_topic_detail_modal_lines_contain_fields():
-    """_TopicDetailModal._lines() includes label, title, and state."""
-    from juggle_cockpit_modals import _TopicDetailModal
+def test_node_detail_modal_lines_contain_fields():
+    """A topic modal's lines include label, title, and state."""
+    from juggle_cockpit_modals import _NodeDetailModal
     topic = _make_topic("AO", title="My Topic", status="active")
-    modal = _TopicDetailModal(topic)
+    modal = _NodeDetailModal.from_conversation(topic)
     lines = "\n".join(modal._lines())
     assert "AO" in lines
     assert "My Topic" in lines
     assert "active" in lines
 
 
-def test_topic_detail_modal_shows_graph_task_state():
-    """When topic.task_state is set, _lines() includes it."""
-    from juggle_cockpit_modals import _TopicDetailModal
+def test_node_detail_modal_shows_graph_task_state():
+    """When topic.task_state is set, the topic modal lines include it."""
+    from juggle_cockpit_modals import _NodeDetailModal
     topic = _make_topic("AO", title="My Topic", task_state="running")
-    modal = _TopicDetailModal(topic)
+    modal = _NodeDetailModal.from_conversation(topic)
     lines = "\n".join(modal._lines())
     assert "running" in lines
 
 
-def test_topic_detail_modal_extra_data():
-    """_TopicDetailModal._lines() includes extra data (agent, summary, recent_msg)."""
-    from juggle_cockpit_modals import _TopicDetailModal
+def test_node_detail_modal_extra_data():
+    """A topic modal's lines include extra data (agent, summary, recent_msg)."""
+    from juggle_cockpit_modals import _NodeDetailModal
     topic = _make_topic("AO", title="My Topic")
-    modal = _TopicDetailModal(topic, extra={"agent": "coder-abc", "summary": "A summary", "recent_msg": "Hello"})
+    modal = _NodeDetailModal.from_conversation(
+        topic, {"agent": "coder-abc", "summary": "A summary", "recent_msg": "Hello"}
+    )
     lines = "\n".join(modal._lines())
     assert "coder-abc" in lines
     assert "A summary" in lines
     assert "Hello" in lines
+
+
+def test_node_detail_modal_topic_header_has_summary_section():
+    """A topic modal renders a 'Summary' section header for the async LLM body."""
+    from juggle_cockpit_modals import _NodeDetailModal
+    topic = _make_topic("AO", title="My Topic")
+    modal = _NodeDetailModal.from_conversation(topic)
+    sections = {"context": "c", "why": "w", "what": "x", "result": "r"}
+    body = "\n".join(modal._summary_body_lines(sections))
+    assert "Summary:" in body
+    assert "Context:" in body
+
+
+def test_node_detail_modal_topic_shows_label_title_state_tasks():
+    """A TOPIC node modal renders label + title + state in the header AND the
+    member-tasks list (the unified-modal acceptance for topics)."""
+    from juggle_cockpit_modals import _NodeDetailModal
+    node = {"id": "FE", "title": "Front end", "state": "open", "thread_id": None}
+    tasks = [
+        {"id": "FE1", "title": "build form", "state": "verified"},
+        {"id": "FE2", "title": "wire api", "state": "open"},
+    ]
+    modal = _NodeDetailModal(node, [], is_topic=True, tasks=tasks, label="FE")
+    header = "\n".join(modal._field_lines())
+    assert "Topic [FE] - Front end" in header
+    assert "open" in header          # state field
+    assert "tasks:" in header
+    assert "FE1" in header and "build form" in header
+    assert "FE2" in header and "wire api" in header
+    # Summary section is rendered by the async body (topic only).
+    body = "\n".join(modal._summary_body_lines({"context": "c"}))
+    assert "Summary:" in body
+
+
+def test_node_detail_modal_task_shows_fields_only():
+    """A TASK node modal shows the structured fields + header 'Task <id>', and
+    NO Summary / Recent-Activity section."""
+    from juggle_cockpit_modals import _NodeDetailModal
+    task = {"id": "N1", "title": "do thing", "state": "open", "verify_cmd": "pytest"}
+    modal = _NodeDetailModal(task, ["DEP1"], is_topic=False)
+    lines = "\n".join(modal._lines())
+    assert "Task N1" in lines
+    assert "do thing" in lines
+    assert "open" in lines
+    assert "pytest" in lines
+    assert "DEP1" in lines
+    assert "Summary" not in lines
+    assert "Recent Activity" not in lines
 
 
 # ---------------------------------------------------------------------------
@@ -297,15 +348,15 @@ def test_action_task_detail_method_exists():
 
 
 # ---------------------------------------------------------------------------
-# Cycle 5 — enriched _TopicDetailModal sections (task_input, result_output, recent)
+# Cycle 5 — enriched topic-modal sections (task_input, result_output, recent)
 # ---------------------------------------------------------------------------
 
 
-def test_topic_detail_modal_shows_task_input():
-    """_TopicDetailModal renders task_input section when provided in extra."""
-    from juggle_cockpit_modals import _TopicDetailModal
+def test_node_detail_modal_shows_task_input():
+    """A topic modal renders the task_input section when provided in extra."""
+    from juggle_cockpit_modals import _NodeDetailModal
     topic = _make_topic("AO", title="My Topic")
-    modal = _TopicDetailModal(topic, extra={"task_input": "Please implement feature X"})
+    modal = _NodeDetailModal.from_conversation(topic, {"task_input": "Please implement feature X"})
     lines = "\n".join(modal._lines())
     assert "task" in lines.lower() and "input" in lines.lower(), (
         "Expected 'task' and 'input' header in modal lines"
@@ -313,11 +364,11 @@ def test_topic_detail_modal_shows_task_input():
     assert "Please implement feature X" in lines
 
 
-def test_topic_detail_modal_shows_result_output():
-    """_TopicDetailModal renders result_output section when provided in extra."""
-    from juggle_cockpit_modals import _TopicDetailModal
+def test_node_detail_modal_shows_result_output():
+    """A topic modal renders the result_output section when provided in extra."""
+    from juggle_cockpit_modals import _NodeDetailModal
     topic = _make_topic("AO", title="My Topic")
-    modal = _TopicDetailModal(topic, extra={"result_output": "Done: feature implemented"})
+    modal = _NodeDetailModal.from_conversation(topic, {"result_output": "Done: feature implemented"})
     lines = "\n".join(modal._lines())
     assert ("output" in lines.lower() or "result" in lines.lower()), (
         "Expected 'output' or 'result' header in modal lines"
@@ -325,15 +376,15 @@ def test_topic_detail_modal_shows_result_output():
     assert "Done: feature implemented" in lines
 
 
-def test_topic_detail_modal_shows_recent():
-    """_TopicDetailModal renders recent activity list when provided in extra."""
-    from juggle_cockpit_modals import _TopicDetailModal
+def test_node_detail_modal_shows_recent():
+    """A topic modal renders the recent activity list when provided in extra."""
+    from juggle_cockpit_modals import _NodeDetailModal
     topic = _make_topic("AO", title="My Topic")
     recent = [
         {"role": "user", "content": "check this please"},
         {"role": "assistant", "content": "all done"},
     ]
-    modal = _TopicDetailModal(topic, extra={"recent": recent})
+    modal = _NodeDetailModal.from_conversation(topic, {"recent": recent})
     lines = "\n".join(modal._lines())
     assert "recent" in lines.lower(), "Expected 'recent' header in modal lines"
     assert "check this please" in lines

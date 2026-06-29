@@ -146,7 +146,7 @@ async def test_right_left_pans(tmp_path):
 @pytest.mark.asyncio
 async def test_enter_opens_detail_modal(tmp_path):
     from juggle_cockpit import CockpitApp
-    from juggle_cockpit_modals import _GraphTaskModal
+    from juggle_cockpit_modals import _NodeDetailModal
 
     app = CockpitApp(db_path=_armed_db(tmp_path))
     async with app.run_test(size=(160, 40)) as pilot:
@@ -154,10 +154,12 @@ async def test_enter_opens_detail_modal(tmp_path):
         await pilot.pause(0.1)
         await pilot.press("enter")
         await pilot.pause(0.15)
-        assert isinstance(app.screen, _GraphTaskModal)
+        # The DAG root is a synthetic single-task topic (T-<id>) → unified modal.
+        assert isinstance(app.screen, _NodeDetailModal)
+        assert app.screen._node.get("id")
         await pilot.press("escape")
         await pilot.pause(0.1)
-        assert not isinstance(app.screen, _GraphTaskModal)
+        assert not isinstance(app.screen, _NodeDetailModal)
 
 
 @pytest.mark.asyncio
@@ -165,9 +167,13 @@ async def test_enter_on_topic_node_populates_modal(tmp_path):
     """REGRESSION: opening the info modal on a TOPIC node must show its
     id/title/state from the nodes row — NOT a blank 'Task ?'. The caller fetched
     via get_task (kind='task'), which returns None for a topic id, so the modal
-    rendered an empty dict (P8 c4-topic-dag flip missed this read-path)."""
+    rendered an empty dict (P8 c4-topic-dag flip missed this read-path).
+
+    Post-unification (FM): a TOPIC node opens the unified _NodeDetailModal in
+    is_topic mode; the same id/title/state must still populate from the nodes
+    row, now rendered as the 'Topic [T1] - <title>' header + state field."""
     from juggle_cockpit import CockpitApp
-    from juggle_cockpit_modals import _GraphTaskModal
+    from juggle_cockpit_modals import _NodeDetailModal
 
     app = CockpitApp(db_path=_topic_db(tmp_path))
     async with app.run_test(size=(160, 40)) as pilot:
@@ -176,11 +182,16 @@ async def test_enter_on_topic_node_populates_modal(tmp_path):
         assert app._graph_sel == 0
         await pilot.press("enter")
         await pilot.pause(0.15)
-        assert isinstance(app.screen, _GraphTaskModal)
-        row = app.screen._task_row
+        assert isinstance(app.screen, _NodeDetailModal)
+        assert app.screen._is_topic is True
+        row = app.screen._node
         assert row.get("id") == "T1"
         assert row.get("title")   # non-empty title from the nodes row
         assert row.get("state")   # non-empty state from the nodes row
+        # The header line carries the human id + title (not a blank 'Task ?').
+        header = "\n".join(app.screen._field_lines())
+        assert "Topic [T1]" in header
+        assert "Topic One" in header
 
 
 @pytest.mark.asyncio
