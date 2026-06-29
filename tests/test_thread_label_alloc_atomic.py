@@ -61,12 +61,14 @@ def _rewind_wheel_to(db, label):
 
 
 def _live_labels(db):
+    # P8 c4-write-cut: the live-label set lives on kind='conversation' nodes
+    # (node vocab: open/running/background) — the sole conversation store.
     with db._connect() as conn:
         return [
             r["user_label"]
             for r in conn.execute(
-                "SELECT user_label FROM threads "
-                "WHERE status IN ('active','running','background')"
+                "SELECT user_label FROM nodes WHERE kind='conversation' "
+                "AND state IN ('open','running','background')"
             ).fetchall()
         ]
 
@@ -88,17 +90,20 @@ def test_background_slug_not_recycled_to_new_active(db):
 
 
 def test_widened_index_rejects_duplicate_live_label(db):
-    """The partial unique index must forbid an active thread from taking a
-    slug already held by a LIVE 'background' thread (2026-06-21)."""
+    """The partial unique index must forbid an active conversation from taking a
+    slug already held by a LIVE 'background' conversation (2026-06-21). P8
+    c4-write-cut: the invariant now lives on idx_nodes_live_label (the node store);
+    the legacy threads index is retired with the threads write."""
     bg = db.create_thread("bg", session_id="s")
     held = db.get_thread(bg)["user_label"]
-    db.update_thread(bg, status="background")
+    db.update_thread(bg, status="background")  # node state -> 'background' (live)
     other = db.create_thread("act", session_id="s")  # distinct slug
 
     with pytest.raises(sqlite3.IntegrityError):
         with db._connect() as conn:
             conn.execute(
-                "UPDATE threads SET user_label = ? WHERE id = ?", (held, other)
+                "UPDATE nodes SET user_label = ? WHERE id = ? AND kind='conversation'",
+                (held, other),
             )
             conn.commit()
 

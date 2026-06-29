@@ -42,13 +42,22 @@ def test_create_thread_mirrors_project_id_inbox(tmp_path):
 
 def test_backfill_populates_node_project_id(tmp_path):
     """Migration-50 backfill copies threads.project_id onto id-matched conversation
-    nodes (prod DBs created before the mirror fix had NULL node.project_id)."""
+    nodes (prod DBs created before the mirror fix had NULL node.project_id). P8
+    c4-write-cut: create_thread/update_thread no longer write threads, so seed the
+    legacy threads row DIRECTLY to simulate that pre-mirror prod DB — the backfill
+    (a migration over the still-present threads table) is unchanged."""
     from dbops.migration_nodes_parity import backfill_nodes_parity
     db = _fresh(tmp_path)
     pid = db.create_project("Proj", "obj")
-    tid = db.create_thread("topic", session_id="s1")
-    db.update_thread(tid, project_id=pid)
+    tid = db.create_thread("topic", session_id="s1")  # conversation node only
     with db._connect() as conn:
+        # Legacy prod row: a threads row carrying project_id, and a conversation
+        # node whose project_id is (still) NULL.
+        conn.execute(
+            "INSERT INTO threads (id, session_id, topic, status, project_id, "
+            "created_at, last_active) VALUES (?, 's1', 'topic', 'active', ?, ?, ?)",
+            (tid, pid, _T, _T),
+        )
         conn.execute("UPDATE nodes SET project_id=NULL WHERE id=?", (tid,))
         conn.commit()
         backfill_nodes_parity(conn)

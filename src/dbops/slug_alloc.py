@@ -25,18 +25,25 @@ from dbops.schema import WHEEL_SIZE, _slug_from_wheel
 # a new active thread (2026-06-21 duplicate-label incident).
 LIVE_SLUG_STATES = ("active", "running", "background")
 
+# Node-vocab equivalents of LIVE_SLUG_STATES (P8 c4-write-cut): the live-label
+# scan resolves from the authoritative kind='conversation' nodes, whose `state`
+# column uses node vocab ('active'≡'open' via the bijective map). MUST stay in
+# lock-step with the partial unique index idx_nodes_live_label (Migration 54).
+LIVE_NODE_STATES = ("open", "running", "background")
+
 _THREE_CHAR_SPACE = 26 ** 3
 
 
 def _live_labels(conn) -> set[str]:
-    """Slugs currently held by a LIVE thread."""
-    ph = ",".join("?" * len(LIVE_SLUG_STATES))
+    """Slugs currently held by a LIVE conversation node (P8 c4-write-cut: reads
+    nodes, the sole conversation store, not the retired threads table)."""
+    ph = ",".join("?" * len(LIVE_NODE_STATES))
     return {
         r["user_label"]
         for r in conn.execute(
-            f"SELECT user_label FROM threads WHERE user_label IS NOT NULL "
-            f"AND status IN ({ph})",
-            LIVE_SLUG_STATES,
+            f"SELECT user_label FROM nodes WHERE kind='conversation' "
+            f"AND user_label IS NOT NULL AND state IN ({ph})",
+            LIVE_NODE_STATES,
         ).fetchall()
     }
 
@@ -102,34 +109,7 @@ def _first_free_slug(held: set[str]) -> str:
     return _next_wide_slug(held)
 
 
-def repair_duplicate_live_labels(conn) -> int:
-    """Reassign fresh slugs to live threads that share a label. Returns count.
-
-    Before the widened unique index can be (re)created, any pre-existing
-    duplicate live labels must be broken or ``CREATE UNIQUE INDEX`` fails.
-    Pre-2026-06-21 the narrow index/skip-live omitted 'background', so a live
-    background agent could share a slug with a new active thread. Keeps the
-    oldest holder of each slug and gives each newer duplicate a free slug.
-    """
-    ph = ",".join("?" * len(LIVE_SLUG_STATES))
-    rows = conn.execute(
-        f"SELECT id, user_label FROM threads "
-        f"WHERE user_label IS NOT NULL AND status IN ({ph}) "
-        f"ORDER BY user_label, created_at, id",
-        LIVE_SLUG_STATES,
-    ).fetchall()
-    held = {r["user_label"] for r in rows}
-    seen: set[str] = set()
-    reassigned = 0
-    for r in rows:
-        lbl = r["user_label"]
-        if lbl not in seen:
-            seen.add(lbl)
-            continue
-        new = _first_free_slug(held)
-        held.add(new)
-        conn.execute(
-            "UPDATE threads SET user_label = ? WHERE id = ?", (new, r["id"])
-        )
-        reassigned += 1
-    return reassigned
+# repair_duplicate_live_labels (the legacy-threads-index repair) moved to
+# dbops.migration_slug_repair — it is a migration-only operation on the frozen
+# `threads` table (the slug-wheel migration's pre-index repair), not part of the
+# live allocation path that slug_alloc owns.

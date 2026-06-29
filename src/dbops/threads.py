@@ -119,12 +119,14 @@ class ThreadsMixin:
         if existing is not None:
             return existing
         new_id = str(uuid.uuid4())
-        now_iso = datetime.now(timezone.utc).isoformat()
         now_min = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         # ATOMIC allocation (2026-06-21): take the write lock with BEGIN IMMEDIATE
         # BEFORE reading label_seq so the read-modify-write of the counter and the
         # live-set scan are serialized across processes — no two creates can land
         # on the same slug. The retry loop is a backstop for lock contention.
+        # P8 c4-write-cut: the conversation node is the SOLE store; the cap count
+        # and the live-set scan both resolve from kind='conversation' nodes, whose
+        # unique idx_nodes_live_label enforces the no-shared-live-slug invariant.
         with self._connect() as conn:
             conn.isolation_level = None  # manual transaction control
             last_exc: Exception | None = None
@@ -135,26 +137,17 @@ class ThreadsMixin:
                     last_exc = exc  # busy; retry
                     continue
                 try:
-                    rows = conn.execute("SELECT status FROM threads").fetchall()
+                    rows = conn.execute(
+                        "SELECT state FROM nodes WHERE kind='conversation'"
+                    ).fetchall()
                     active_count = sum(
-                        1 for r in rows if r["status"] != "archived"
+                        1 for r in rows if r["state"] != "archived"
                     )
                     if active_count >= MAX_THREADS:
                         conn.execute("ROLLBACK")
                         break  # over cap — raise structured guidance below
                     user_label = self._next_wheel_slug(conn)
-                    conn.execute(
-                        """
-                        INSERT INTO threads
-                          (id, user_label, session_id, topic, status,
-                           key_decisions, open_questions,
-                           last_user_intent, agent_task_id, agent_result,
-                           show_in_list, summarized_msg_count, created_at, last_active, last_active_at)
-                        VALUES (?, ?, ?, ?, 'active', '[]', '[]', '', NULL, NULL, 1, 0, ?, ?, ?)
-                        """,
-                        (new_id, user_label, session_id, topic, now_iso, now_iso, now_min),
-                    )
-                    # P8 dual-write: the conversation is a first-class node too.
+                    # The conversation is a first-class node — the sole store.
                     mirror_conv_insert(
                         conn, new_id, topic=topic, session_id=session_id,
                         user_label=user_label, now=now_min,
@@ -164,7 +157,7 @@ class ThreadsMixin:
                 except sqlite3.IntegrityError as exc:
                     conn.execute("ROLLBACK")
                     last_exc = exc
-                    if "user_label" not in str(exc) and "idx_threads_live_label" not in str(exc):
+                    if "user_label" not in str(exc) and "idx_nodes_live_label" not in str(exc):
                         raise
                     continue  # backstop; BEGIN IMMEDIATE should prevent this
                 except Exception:
@@ -267,14 +260,10 @@ class ThreadsMixin:
         for key, val in kwargs.items():
             if isinstance(val, list):
                 kwargs[key] = json.dumps(val)
-        set_clause = ", ".join(f"{col} = ?" for col in kwargs)
-        values = list(kwargs.values()) + [thread_id]
+        # P8 c4-write-cut: nodes is the sole conversation store — mirror_conv_update
+        # maps status→state, renames topic/last_active, and drops columns the node
+        # lacks (reviewed/assigned_confidence, already non-functional post read-flip).
         with self._connect() as conn:
-            conn.execute(
-                f"UPDATE threads SET {set_clause} WHERE id = ?",
-                values,
-            )
-            # P8 dual-write: mirror the same column edits onto the conversation node.
             mirror_conv_update(conn, thread_id, **kwargs)
             conn.commit()
 
@@ -296,12 +285,11 @@ class ThreadsMixin:
             )
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
-            # T-slug-wheel: the slug stays on the row through any terminal
-            # transition — it is a permanent historical handle.
-            conn.execute(
-                "UPDATE threads SET status = ?, last_active_at = ? WHERE id = ?",
-                (status, now, thread_id),
-            )
+            # P8 c4-write-cut: nodes is the sole conversation store. mirror_conv_update
+            # maps the legacy status→node state (active→open, closed→done, archived→
+            # archived, background→background) so nodes.state is the truth — the fix
+            # for the archive/close-state divergence defect. T-slug-wheel: the slug
+            # stays on the node through any terminal transition (historical handle).
             mirror_conv_update(conn, thread_id, status=status, last_active_at=now)
             conn.commit()
 
@@ -323,10 +311,7 @@ class ThreadsMixin:
     def touch_last_active(self, thread_id: str) -> None:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
-            conn.execute(
-                "UPDATE threads SET last_active_at = ? WHERE id = ?",
-                (now, thread_id),
-            )
+            # P8 c4-write-cut: nodes is the sole conversation store.
             mirror_conv_update(conn, thread_id, last_active_at=now)
             conn.commit()
 
@@ -355,11 +340,8 @@ class ThreadsMixin:
         the wheel's skip-live rule, not by nulling this row."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
-            conn.execute(
-                "UPDATE threads SET status = 'archived', "
-                "show_in_list = 0, last_active_at = ? WHERE id = ?",
-                (now, thread_id),
-            )
+            # P8 c4-write-cut: nodes is the sole conversation store (status='archived'
+            # maps to state='archived').
             mirror_conv_update(
                 conn, thread_id, status="archived", show_in_list=0, last_active_at=now
             )
@@ -373,17 +355,21 @@ class ThreadsMixin:
         to satisfy the partial unique 'no two live share a slug' invariant."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
+            # P8 c4-write-cut: nodes is the sole conversation store — resolve the
+            # existing label and the live-set from kind='conversation' nodes.
             cur = conn.execute(
-                "SELECT user_label FROM threads WHERE id = ?", (thread_id,)
+                "SELECT user_label FROM nodes WHERE id = ? AND kind='conversation'",
+                (thread_id,),
             ).fetchone()
             existing = cur["user_label"] if cur else None
-            _ph = ",".join("?" * len(LIVE_SLUG_STATES))
+            _ph = ",".join("?" * len(_LIVE_NODE_STATES))
             live = {
                 row["user_label"]
                 for row in conn.execute(
-                    "SELECT user_label FROM threads WHERE user_label IS NOT NULL"
-                    f" AND status IN ({_ph}) AND id != ?",
-                    (*LIVE_SLUG_STATES, thread_id),
+                    "SELECT user_label FROM nodes WHERE kind='conversation' "
+                    "AND user_label IS NOT NULL"
+                    f" AND state IN ({_ph}) AND id != ?",
+                    (*_LIVE_NODE_STATES, thread_id),
                 ).fetchall()
             }
             new_label = (
@@ -391,11 +377,8 @@ class ThreadsMixin:
                 if existing and existing not in live
                 else self._next_wheel_slug(conn)
             )
-            conn.execute(
-                "UPDATE threads SET status = 'active', show_in_list = 1, "
-                "user_label = ?, last_active_at = ? WHERE id = ?",
-                (new_label, now, thread_id),
-            )
+            # status='active' maps to state='open' (live); the unique
+            # idx_nodes_live_label holds because new_label is free among live nodes.
             mirror_conv_update(
                 conn, thread_id, status="active", show_in_list=1,
                 user_label=new_label, last_active_at=now,

@@ -345,7 +345,7 @@ def run_migration_slug_wheel(conn: sqlite3.Connection) -> None:
 
     DO NOT run against the shared production DB directly; apply via juggle doctor.
     """
-    from dbops.slug_alloc import repair_duplicate_live_labels
+    from dbops.migration_slug_repair import repair_duplicate_live_labels
     try:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS juggle_meta "

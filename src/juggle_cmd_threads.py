@@ -203,13 +203,15 @@ def close_junk_threads(db) -> list[dict]:
     """
     closed: list[dict] = []
     # Junk detection keys on the IMMUTABLE original topic (the orchestrator-chatter
-    # marker). The conversation node only carries the (regeneratable) title, so the
-    # original topic is read from the legacy threads row — the write path still
-    # populates it (P8 conversation read-collapse keeps threads writes for now).
+    # marker). The conversation node's `title` is regeneratable, so the original
+    # topic is read from the node's `objective` — where create_thread stores it
+    # verbatim (P8 c4-write-cut; survives the threads-table drop).
     with db._connect() as conn:
         orig_topics = {
-            r["id"]: r["topic"]
-            for r in conn.execute("SELECT id, topic FROM threads").fetchall()
+            r["id"]: r["objective"]
+            for r in conn.execute(
+                "SELECT id, objective FROM nodes WHERE kind='conversation'"
+            ).fetchall()
         }
     for thread in db.get_all_threads():
         if thread.get("state") in ("archived", "done"):

@@ -19,7 +19,13 @@ _CONV_COL_RENAME = {"topic": "title", "last_active": "last_active_at"}
 def mirror_conv_insert(
     conn, thread_id: str, *, topic: str, session_id: str, user_label, now: str
 ) -> None:
-    """Mirror a freshly-created thread as a kind='conversation' node.
+    """Write a freshly-created conversation as a kind='conversation' node.
+
+    P8 c4-write-cut: this is the SOLE writer of a new conversation row (the legacy
+    threads INSERT is gone). The IMMUTABLE original ``topic`` is stored in
+    ``objective`` (a conversation node otherwise leaves it empty) so junk-cleanup
+    can key on the original orchestrator-chatter marker even after ``title`` is
+    regenerated — and after the threads table is dropped.
 
     P8 H4 (2026-06-27): CREATE_NODES now carries every column written here, so a
     missing COLUMN can no longer occur on a migrated DB — and if one ever does it
@@ -32,11 +38,11 @@ def mirror_conv_insert(
             "(id, kind, title, objective, state, project_id, session_id, user_label, "
             " show_in_list, summarized_msg_count, open_questions, key_decisions, "
             " last_active_at, created_at, updated_at) "
-            # project_id mirrors the threads column DEFAULT 'INBOX' (create_thread
-            # never sets it explicitly) so project-keyed node reads (resweep_inbox)
-            # resolve the conversation — without this the node's project_id was NULL.
-            "VALUES (?, 'conversation', ?, '', 'open', 'INBOX', ?, ?, 1, 0, '[]', '[]', ?, ?, ?)",
-            (thread_id, topic, session_id, user_label, now, now, now),
+            # project_id defaults to 'INBOX' (create_thread never sets it
+            # explicitly) so project-keyed node reads (resweep_inbox) resolve the
+            # conversation. objective holds the immutable original topic.
+            "VALUES (?, 'conversation', ?, ?, 'open', 'INBOX', ?, ?, 1, 0, '[]', '[]', ?, ?, ?)",
+            (thread_id, topic, topic, session_id, user_label, now, now, now),
         )
     except sqlite3.OperationalError as e:
         # A missing nodes TABLE (pre-Migration-44) is tolerated; a missing COLUMN

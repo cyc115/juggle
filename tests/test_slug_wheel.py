@@ -79,22 +79,25 @@ def test_rotation_wraps_zz_to_aa(db):
 #    it; the partial unique index is never violated.
 # ---------------------------------------------------------------------------
 def test_skip_live_slug(db):
+    # P8 c4-write-cut: the live-set scan resolves from kind='conversation' nodes,
+    # so the skip-live setup forces the label on the NODE (the sole store).
     live = db.create_thread("live", session_id="s")  # gets 'AA', seq -> 1
     with db._connect() as conn:
         conn.execute(
-            "UPDATE threads SET user_label = 'AB', status = 'active' WHERE id = ?",
+            "UPDATE nodes SET user_label = 'AB', state = 'open' "
+            "WHERE id = ? AND kind='conversation'",
             (live,),
         )
         conn.commit()
-    # Point the wheel back at index 1 ('AB'); a live thread holds it -> skip to 'AC'.
+    # Point the wheel back at index 1 ('AB'); a live node holds it -> skip to 'AC'.
     _set_seq(db, 1)
     nid = db.create_thread("next", session_id="s")
     assert _label(db, nid) == "AC"
     # Exactly one live 'AB' — index intact.
     with db._connect() as conn:
         n = conn.execute(
-            "SELECT COUNT(*) FROM threads WHERE user_label = 'AB' "
-            "AND status IN ('active','running')"
+            "SELECT COUNT(*) FROM nodes WHERE kind='conversation' "
+            "AND user_label = 'AB' AND state IN ('open','running')"
         ).fetchone()[0]
     assert n == 1
 
@@ -156,13 +159,17 @@ def test_newest_wins_is_case_insensitive(db):
 # 5. No two live threads may share a slug — DB index enforces it.
 # ---------------------------------------------------------------------------
 def test_two_live_cannot_share_slug(db):
+    # P8 c4-write-cut: the no-shared-live-slug invariant is enforced by the partial
+    # unique idx_nodes_live_label on the node store (the threads index is retired).
     a = db.create_thread("a", session_id="s")  # 'AA'
     b = db.create_thread("b", session_id="s")  # 'AB'
     assert _label(db, a) == "AA"
     with pytest.raises(sqlite3.IntegrityError):
         with db._connect() as conn:
             conn.execute(
-                "UPDATE threads SET user_label = 'AA' WHERE id = ?", (b,)
+                "UPDATE nodes SET user_label = 'AA' "
+                "WHERE id = ? AND kind='conversation'",
+                (b,),
             )
             conn.commit()
 
