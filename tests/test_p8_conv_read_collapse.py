@@ -253,11 +253,12 @@ def test_static_legacy_ref_floor_ratchet():
     messages/projects/cockpit_model/monitor_daemon/slug_alloc flipped; the
     threads-index repair relocated into the excluded migration layer).
 
-    The residual 9 are ALL in the dead juggle_migrate_lifecycle.py — the one-shot
-    legacy lifecycle backfill the terminal-drop node (Task 6.3) deletes together
-    with the DROP TABLE migration. No steady-state code path reaches a legacy table
-    any longer. This pin may only ever be lowered."""
+    The residual 9 were ALL in the dead juggle_migrate_lifecycle.py — the one-shot
+    legacy lifecycle backfill. The terminal-drop node (Migration 55) DELETED that
+    file together with the DROP TABLE migration, taking the count to 0. No
+    steady-state code path reaches a legacy table any longer. This pin may only
+    ever be lowered — and 0 is the floor."""
     from pathlib import Path
     from dbops.p8_readiness import scan_legacy_refs
     src_root = Path(__file__).resolve().parent.parent / "src"
-    assert len(scan_legacy_refs(src_root)) <= 9
+    assert len(scan_legacy_refs(src_root)) == 0
