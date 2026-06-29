@@ -14,3 +14,9 @@ test:
 # used by integrate/CI: that would subset the always-full-suite gate.
 test-fast:
 	uv run pytest -n auto -m "not slow and not watchdog_proc"
+
+# P8 legacy-table-drop per-node acceptance gates (run the committed verify scripts)
+p8-verify-%: FORCE
+	@bash scripts/p8_verify/$*.sh
+
+FORCE:
