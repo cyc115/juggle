@@ -48,14 +48,14 @@ def summarize_project(
         prompt = (
             "Summarize this conversation thread in 2-3 sentences. "
             "Cover: what was discussed, what was decided, current state.\n\n"
-            f"Topic: {thread.get('title') or thread['topic']}\n"
+            f"Topic: {thread['title']}\n"
             f"Messages:\n{msg_text or '(no messages)'}"
         )
         thread_summaries[tid] = llm_fn(prompt)
 
     if threads:
         thread_lines = "\n".join(
-            f"- {t.get('title') or t['topic']}: {thread_summaries[t['id']]}"
+            f"- {t['title']}: {thread_summaries[t['id']]}"
             for t in threads
             if t["id"] in thread_summaries
         )

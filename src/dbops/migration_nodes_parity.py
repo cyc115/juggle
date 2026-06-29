@@ -59,6 +59,7 @@ def backfill_nodes_parity(conn: sqlite3.Connection) -> None:
             UPDATE nodes SET
               user_label    = (SELECT t.user_label FROM threads t WHERE t.id=nodes.id),
               assigned_by   = COALESCE((SELECT t.assigned_by FROM threads t WHERE t.id=nodes.id), 'auto'),
+              project_id    = COALESCE((SELECT t.project_id FROM threads t WHERE t.id=nodes.id), nodes.project_id),
               last_active_at= (SELECT {la} FROM threads t WHERE t.id=nodes.id),
               updated_at    = COALESCE((SELECT {la} FROM threads t WHERE t.id=nodes.id), updated_at)
             WHERE kind='conversation' AND EXISTS (SELECT 1 FROM threads t WHERE t.id=nodes.id)

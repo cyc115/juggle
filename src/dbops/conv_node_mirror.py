@@ -23,10 +23,13 @@ def mirror_conv_insert(
     try:
         conn.execute(
             "INSERT OR IGNORE INTO nodes "
-            "(id, kind, title, objective, state, session_id, user_label, "
+            "(id, kind, title, objective, state, project_id, session_id, user_label, "
             " show_in_list, summarized_msg_count, open_questions, key_decisions, "
             " last_active_at, created_at, updated_at) "
-            "VALUES (?, 'conversation', ?, '', 'open', ?, ?, 1, 0, '[]', '[]', ?, ?, ?)",
+            # project_id mirrors the threads column DEFAULT 'INBOX' (create_thread
+            # never sets it explicitly) so project-keyed node reads (resweep_inbox)
+            # resolve the conversation — without this the node's project_id was NULL.
+            "VALUES (?, 'conversation', ?, '', 'open', 'INBOX', ?, ?, 1, 0, '[]', '[]', ?, ?, ?)",
             (thread_id, topic, session_id, user_label, now, now, now),
         )
     except sqlite3.OperationalError:

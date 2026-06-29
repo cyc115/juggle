@@ -220,9 +220,11 @@ def synth_project(db, project_id: str, force: bool = False) -> str | None:
         return None
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT topic, assigned_by FROM threads "
-            "WHERE project_id=? AND show_in_list=1 "
-            "ORDER BY CASE assigned_by WHEN 'human' THEN 0 ELSE 1 END, last_active DESC",
+            # P8 T-c3-reads: conversation titles read from nodes (title AS topic
+            # keeps build_match_profile_prompt's 'topic' contract).
+            "SELECT title AS topic, assigned_by FROM nodes "
+            "WHERE kind='conversation' AND project_id=? AND show_in_list=1 "
+            "ORDER BY CASE assigned_by WHEN 'human' THEN 0 ELSE 1 END, last_active_at DESC",
             (project_id,),
         ).fetchall()
     threads = [dict(r) for r in rows]
@@ -296,8 +298,9 @@ def check_and_resynth_if_drifted(
         return
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT topic FROM threads WHERE project_id=? AND show_in_list=1 "
-            "ORDER BY last_active DESC LIMIT 50",
+            "SELECT title AS topic FROM nodes "
+            "WHERE kind='conversation' AND project_id=? AND show_in_list=1 "
+            "ORDER BY last_active_at DESC LIMIT 50",
             (project_id,),
         ).fetchall()
     topics = [r["topic"] for r in rows]
@@ -334,9 +337,12 @@ def resweep_inbox(db, limit: int = _RESWEEP_DEFAULT_LIMIT) -> int:
         return 0
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT id, topic FROM threads "
-            "WHERE project_id='INBOX' AND show_in_list=1 "
-            "ORDER BY COALESCE(assigned_confidence, 0.0) ASC, last_active DESC "
+            # P8 T-c3-reads: INBOX conversations read from nodes. assigned_confidence
+            # has no nodes column, so the low-confidence-first ordering term is dropped
+            # (re-sweep falls back to recency); the reclassify WRITE still uses threads.
+            "SELECT id, title AS topic FROM nodes "
+            "WHERE kind='conversation' AND project_id='INBOX' AND show_in_list=1 "
+            "ORDER BY last_active_at DESC "
             "LIMIT ?",
             (limit,),
         ).fetchall()
@@ -500,7 +506,7 @@ def cmd_project_open(args):
     if threads:
         print(f"\nRestored topics ({len(threads)}):")
         for t in threads:
-            print(f"  [{t['user_label']}] {t.get('title') or t['topic']}")
+            print(f"  [{t['user_label']}] {t['title']}")
 
 
 def cmd_project_show(args):
@@ -534,7 +540,7 @@ def cmd_project_show(args):
     if threads:
         print(f"\nThreads ({len(threads)}):")
         for t in threads:
-            print(f"  [{t['user_label']}] {t['status']}  {t.get('title') or t['topic']}")
+            print(f"  [{t['user_label']}] {t['state']}  {t['title']}")
 
 
 def cmd_project_assign(args):

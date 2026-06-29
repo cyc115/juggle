@@ -182,7 +182,8 @@ class ProjectsMixin:
     def get_threads_by_project(self, project_id: str) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM threads WHERE project_id = ? AND show_in_list = 1 ORDER BY last_active DESC",
+                "SELECT * FROM nodes WHERE kind = 'conversation' AND project_id = ? "
+                "AND show_in_list = 1 ORDER BY last_active_at DESC",
                 (project_id,),
             ).fetchall()
             return [dict(r) for r in rows]
