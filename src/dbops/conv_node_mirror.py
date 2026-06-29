@@ -32,8 +32,12 @@ def mirror_conv_insert(
             "VALUES (?, 'conversation', ?, '', 'open', 'INBOX', ?, ?, 1, 0, '[]', '[]', ?, ?, ?)",
             (thread_id, topic, session_id, user_label, now, now, now),
         )
-    except sqlite3.OperationalError:
-        pass  # nodes table absent (pre-Migration-44)
+    except sqlite3.OperationalError as e:
+        # A missing nodes TABLE (pre-Migration-44) is tolerated; a missing COLUMN
+        # is a real schema gap and must FAIL LOUD (H4 — the DDL is now complete).
+        if "no such table" in str(e).lower():
+            return
+        raise
 
 
 def mirror_conv_update(conn, thread_id: str, **cols) -> None:

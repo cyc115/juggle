@@ -129,6 +129,35 @@ def test_cleanup_orphaned_threads_reads_running_nodes(tmp_path):
                for it in items)
 
 
+def test_conv_create_writes_exactly_one_authoritative_node(tmp_path):
+    """2026-06-27 P8 c3-write-cut: a conversation create writes exactly ONE
+    authoritative row in `nodes` (kind='conversation')."""
+    db = _fresh(tmp_path)
+    tid = db.create_thread("alpha", session_id="s")
+    with db._connect() as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE id=? AND kind='conversation'", (tid,)
+        ).fetchone()[0]
+    assert n == 1
+
+
+def test_conv_mirror_fails_loud_on_missing_column():
+    """2026-06-27 P8 c3-write-cut/H4: a missing nodes COLUMN must FAIL LOUD (a real
+    schema gap), not be swallowed by a blanket except. A missing nodes TABLE
+    (pre-Migration-44) is still tolerated (returns without writing)."""
+    import sqlite3
+    from dbops.conv_node_mirror import mirror_conv_insert
+    # (a) nodes table ABSENT -> tolerated, no raise.
+    conn = sqlite3.connect(":memory:")
+    mirror_conv_insert(conn, "t1", topic="x", session_id="s",
+                       user_label="AA", now="2026-06-27 00:00")
+    # (b) nodes table present but missing columns the mirror writes -> RAISES.
+    conn.execute("CREATE TABLE nodes (id TEXT, kind TEXT, title TEXT)")
+    with pytest.raises(sqlite3.OperationalError):
+        mirror_conv_insert(conn, "t2", topic="x", session_id="s",
+                           user_label="AA", now="2026-06-27 00:00")
+
+
 def test_static_legacy_ref_floor_ratchet():
     """Ratchet: live legacy-table refs in shipped src must not climb back above
     the current floor (103). Lowered from the 2026-06-23 floor (123) → 107 (Task 3.1

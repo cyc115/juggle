@@ -74,8 +74,11 @@ class MessagesMixin:
                     "UPDATE nodes SET last_active_at = ? WHERE id = ? AND kind='conversation'",
                     (now, thread_id),
                 )
-            except sqlite3.OperationalError:
-                pass  # nodes table absent (pre-Migration-44)
+            except sqlite3.OperationalError as e:
+                # Missing nodes TABLE (pre-Migration-44) tolerated; a missing
+                # COLUMN is a real schema gap and must FAIL LOUD (H4).
+                if "no such table" not in str(e).lower():
+                    raise
             conn.commit()
 
     def get_message_count(self, thread_id: str, exclude_junk: bool = True) -> int:
