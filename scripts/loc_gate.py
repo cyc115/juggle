@@ -54,7 +54,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cmd_integrate.py": 450,
     "src/juggle_cockpit_view.py": 461,
     "src/juggle_cockpit_model.py": 439,
-    "src/dbops/migrations_recent.py": 398,  # +2 P8 Migration 53 kind-topic wiring (import+call) — irreducible plan-mandated growth, cannot extract a migration call out of apply_recent_migrations (2026-06-29)
+    "src/dbops/migrations_recent.py": 390,  # 398->390 P8 c4: extracted the Migration-50.. P8 block to dbops/migrations_p8.py (apply_p8_migrations) so the collapse chain grows there, not here (2026-06-29)
     "scripts/talkback": 415,
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
