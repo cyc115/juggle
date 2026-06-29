@@ -1,5 +1,5 @@
-"""dbops.db_graph_reconcile — repair drift between the legacy graph_tasks table
-and the authoritative task nodes (DEFECT #4907, 2026-06-21).
+"""dbops.migration_parent_relink — repair drift between the legacy graph_tasks
+table and the authoritative task nodes (DEFECT #4907, 2026-06-21).
 
 Incident: a graph (re)load wrote task nodes but left ``nodes.parent_id`` NULL
 while ``graph_tasks.topic_id`` was correct — the parent_id dual-write
@@ -11,15 +11,14 @@ never re-links them). ``find_unmerged_completed_topics`` reads
 re-dispatched the already-completed step in a loop. Task-node state could drift
 the same way (nodes 'ready' vs legacy 'verified').
 
-This module re-links ``nodes.parent_id`` from ``graph_tasks.topic_id`` and
-resyncs task-node state from the legacy authoritative ``graph_tasks.state``.
-graph_tasks is the trustworthy snapshot for repair: going forward
-``db_graph.task_transition`` lockstep-writes both stores, so no new drift is
-introduced; this only heals rows stranded before lockstep existed. Idempotent —
-re-running on a consistent DB is a no-op (both counts 0).
-
-Pure repair: owns no state-machine semantics (db_graph) and no topic-tier
-reconcile (db_topics_reconcile).
+This re-links ``nodes.parent_id`` from ``graph_tasks.topic_id`` and resyncs
+task-node state from the legacy authoritative ``graph_tasks.state``. graph_tasks
+is the trustworthy snapshot for repair: going forward ``db_graph.task_transition``
+lockstep-writes both stores, so no new drift is introduced; this only heals rows
+stranded before lockstep existed. Idempotent (re-running on a consistent DB
+yields zeros) and drop-safe (no-op once graph_tasks is gone) — hence it lives in
+the migration namespace alongside the other legacy-reading backfills, NOT as a
+steady-state graph_tasks reader (Gate A excludes ``dbops/migration*.py``).
 """
 
 from __future__ import annotations
@@ -27,10 +26,6 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 from dbops.schema import _now
-
-# Legacy task-entry vocab unified to 'open' (Migration 51). Normalise here too so
-# a not-yet-migrated graph_tasks 'pending' never strands a node on a dead state.
-_STATE_NORM = "CASE WHEN g.state='pending' THEN 'open' ELSE g.state END"
 
 
 @contextmanager
@@ -63,6 +58,11 @@ def reconcile_node_parentage(db, *, project_id=None, conn=None) -> dict:
     Idempotent. Returns ``{'parent_relinked': int, 'state_resynced': int}`` — the
     number of task nodes actually changed (the WHERE filters to divergent rows, so
     a consistent DB yields zeros). No-op when graph_tasks is absent (post-drop).
+
+    State is synced verbatim: the legacy task-entry vocab is already unified to
+    the node vocab in BOTH stores by Migration 51 (the dead pending state is
+    rewritten to open), which always runs before any caller here (doctor/loader
+    init_db, watchdog on a migrated DB), so no value translation is needed.
     """
     now = _now()
     scope = "" if project_id is None else " AND project_id=?"
@@ -83,12 +83,23 @@ def reconcile_node_parentage(db, *, project_id=None, conn=None) -> dict:
         ).rowcount
         resynced = c.execute(
             "UPDATE nodes SET "
-            f"  state=(SELECT {_STATE_NORM} FROM graph_tasks g WHERE g.id=nodes.id), "
+            "  state=(SELECT g.state FROM graph_tasks g WHERE g.id=nodes.id), "
             "  updated_at=? "
             "WHERE kind='task' "
             "  AND EXISTS (SELECT 1 FROM graph_tasks g WHERE g.id=nodes.id) "
-            f"  AND state != (SELECT {_STATE_NORM} FROM graph_tasks g WHERE g.id=nodes.id)"
+            "  AND state != (SELECT g.state FROM graph_tasks g WHERE g.id=nodes.id)"
             + scope,
             (now, *pargs),
         ).rowcount
     return {"parent_relinked": relinked, "state_resynced": resynced}
+
+
+def parent_reconcile_summary(db) -> str:
+    """Run the reconcile and return a one-line summary (doctor pass)."""
+    pc = reconcile_node_parentage(db)
+    if pc["parent_relinked"] or pc["state_resynced"]:
+        return (
+            f"graph parentage: {pc['parent_relinked']} parent link(s) re-linked, "
+            f"{pc['state_resynced']} state(s) resynced from graph_tasks"
+        )
+    return "graph parentage: all task nodes consistent"

@@ -152,7 +152,7 @@ def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
     detecting, so a stranded-but-completed topic is found and stamped.
     """
     from dbops import db_topics
-    from dbops.db_graph_reconcile import reconcile_node_parentage
+    from dbops.migration_parent_relink import reconcile_node_parentage
 
     reconcile_node_parentage(db)
 

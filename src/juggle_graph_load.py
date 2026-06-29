@@ -155,7 +155,7 @@ def cmd_project_graph_load(args):
     # carries a stale/NULL parent_id is never re-linked by the reload itself.
     # Re-link parent_id + resync state from the legacy authoritative graph_tasks
     # for the whole project so orphan detection never sees a childless topic.
-    from dbops.db_graph_reconcile import reconcile_node_parentage
+    from dbops.migration_parent_relink import reconcile_node_parentage
     reconcile_node_parentage(db, project_id=args.project)
 
     # Resume the blocked tail of any task the reload just fixed (BLOCKER-1b):

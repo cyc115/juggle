@@ -77,7 +77,8 @@ def test_reconcile_relinks_dropped_parent_id_and_resyncs_state(tmp_path):
     """RED before fix: childless topic invisible to the orphan detector. After
     reconcile: parent_id re-linked from graph_tasks.topic_id, state resynced from
     legacy, and the topic's children are found again."""
-    from dbops import db_graph_reconcile, orphan_guard
+    from dbops import orphan_guard
+    from dbops.migration_parent_relink import reconcile_node_parentage
 
     db = _make_db(tmp_path)
     _seed_topic(db, "T1", ["verified", "verified"], state="integrating")
@@ -86,7 +87,7 @@ def test_reconcile_relinks_dropped_parent_id_and_resyncs_state(tmp_path):
     # Defect symptom: topic looks childless → not detected.
     assert orphan_guard.find_unmerged_completed_topics(db) == []
 
-    counts = db_graph_reconcile.reconcile_node_parentage(db)
+    counts = reconcile_node_parentage(db)
     assert counts["parent_relinked"] == 2
     assert counts["state_resynced"] == 2
 
@@ -94,7 +95,7 @@ def test_reconcile_relinks_dropped_parent_id_and_resyncs_state(tmp_path):
     assert [t["id"] for t in orphan_guard.find_unmerged_completed_topics(db)] == ["T1"]
 
     # Idempotent: a second pass changes nothing.
-    again = db_graph_reconcile.reconcile_node_parentage(db)
+    again = reconcile_node_parentage(db)
     assert again == {"parent_relinked": 0, "state_resynced": 0}
 
 
