@@ -32,3 +32,5 @@ def apply_p8_migrations(conn: sqlite3.Connection) -> None:
     migrate_54_conv_state_parity(conn)  # nodes.state <- threads.status; live-label uniqueness on nodes
     from dbops.migration_55_drop_legacy import migrate_55_drop_legacy  # P8 TERMINAL drop
     migrate_55_drop_legacy(conn)  # reconcile conv state, repoint FKs, DROP threads/graph_* (irreversible)
+    from dbops.migration_56_notifications_fk import migrate_56_notifications_fk  # P8 tail
+    migrate_56_notifications_fk(conn)  # repoint the one missed FK: notifications.thread_id threads_old -> nodes

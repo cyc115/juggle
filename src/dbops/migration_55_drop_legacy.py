@@ -128,7 +128,9 @@ def _repoint_thread_fks(conn: sqlite3.Connection) -> None:
 def _rebuild_fk_to_nodes(conn: sqlite3.Connection, name: str) -> None:
     """SQLite table-rebuild: recreate ``name`` with its FK repointed threads→nodes,
     preserving rows, indexes and triggers. Runs with foreign_keys OFF (set by the
-    caller) so copying rows never re-validates the FK."""
+    caller) so copying rows never re-validates the FK. Reused verbatim by Migration
+    56 to repoint the one table (``notifications``) whose FK targeted the transient
+    ``threads_old`` rename artifact rather than ``threads``."""
     create_sql = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (name,)
     ).fetchone()[0]
@@ -141,7 +143,16 @@ def _rebuild_fk_to_nodes(conn: sqlite3.Connection, name: str) -> None:
             (name,),
         ).fetchall()
     ]
-    new_sql = re.sub(r"REFERENCES\s+threads\b", "REFERENCES nodes", create_sql, flags=re.IGNORECASE)
+    # Rewrite the FK clause to ``REFERENCES nodes(id)``. Matches both the live form
+    # ``REFERENCES threads(id)`` (messages/notifications_v2/action_items/agent_runs)
+    # and the quoted dangling artifact ``REFERENCES "threads_old"(thread_id)``
+    # (notifications, Migration 56); both target nodes' ``id`` primary key.
+    new_sql = re.sub(
+        r'REFERENCES\s+("threads_old"|threads)\s*\(\s*\w+\s*\)',
+        "REFERENCES nodes(id)",
+        create_sql,
+        flags=re.IGNORECASE,
+    )
 
     old = f"{name}__p8old"
     conn.execute(f'ALTER TABLE "{name}" RENAME TO "{old}"')
