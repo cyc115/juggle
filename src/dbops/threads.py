@@ -193,15 +193,16 @@ class ThreadsMixin:
         return next_wheel_slug(conn)
 
     def get_thread(self, thread_id: str) -> dict | None:
-        """Look up a conversation by its UUID `id`. Returns None if not found.
+        """Look up a thread by its UUID `id`. Returns None if not found.
 
-        P8 (Task 4.2): reads the authoritative kind='conversation' node. Callers
-        use the node vocab (state/title/last_active_at) — the legacy status/topic/
-        last_active aliases are gone (Q1, no shim)."""
+        P8: still a legacy `threads` reader (paired with get_all_threads) — the
+        conversation read-collapse (Task 4.2) is deferred to the c4-write-cut /
+        terminal drop, per the static_legacy_ref_floor_ratchet residual budget.
+        The c4-topic-dag step flips only the topic/DAG/orphan readers, NOT this
+        single-row conversation read."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM nodes WHERE id = ? AND kind='conversation'",
-                (thread_id,),
+                "SELECT * FROM threads WHERE id = ?", (thread_id,)
             ).fetchone()
             if row is None:
                 return None
