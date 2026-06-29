@@ -98,12 +98,12 @@ def _seed_topic(db, topic_id, task_states, *, state="integrating",
             "INSERT OR IGNORE INTO nodes "
             "(id, kind, title, objective, state, project_id, parent_id, "
             "dispatch_thread_id, merged_sha, created_at, updated_at) "
-            "VALUES (?, 'task', ?, '', ?, 'INBOX', NULL, ?, ?, ?, ?)",
+            "VALUES (?, 'topic', ?, '', ?, 'INBOX', NULL, ?, ?, ?, ?)",
             (topic_id, f"Topic {topic_id}", state, thread_id, merged_sha, now, now),
         )
         c.execute(
             "UPDATE nodes SET state=?, dispatch_thread_id=?, merged_sha=? "
-            "WHERE id=? AND kind='task'",
+            "WHERE id=? AND kind='topic'",
             (state, thread_id, merged_sha, topic_id),
         )
         c.commit()

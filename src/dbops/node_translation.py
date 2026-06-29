@@ -48,7 +48,9 @@ PROMPT_COL = "objective"     # graph_tasks.prompt -> nodes.objective
 LAST_ACTIVE_COL = "last_active_at"   # added to nodes in Migration 50 (Task 5)
 TOPIC_ID_COL = "parent_id"   # graph_tasks.topic_id -> nodes.parent_id
 
-# kind/parent_id discriminators (every read must add one of these)
+# kind discriminators (every read must add one of these). P8 M2 (Migration 53):
+# topics are their own kind='topic' node, so a topic is no longer a parent-less
+# kind='task' row — the discriminator is the kind alone.
 KIND_CONVERSATION = "kind='conversation'"
-KIND_TOPIC = "kind='task' AND parent_id IS NULL"
-KIND_TASK = "kind='task' AND parent_id IS NOT NULL"
+KIND_TOPIC = "kind='topic'"
+KIND_TASK = "kind='task'"

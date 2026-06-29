@@ -551,7 +551,7 @@ def _age_topic_claim(db, tid, secs):
         # The stale-claim sweep reads nodes.updated_at (P8 Task 4.2); age both.
         conn.execute("UPDATE graph_topics SET updated_at=? WHERE id=?", (old, tid))
         conn.execute(
-            "UPDATE nodes SET updated_at=? WHERE id=? AND kind='task'", (old, tid)
+            "UPDATE nodes SET updated_at=? WHERE id=? AND kind='topic'", (old, tid)
         )
         conn.commit()
 

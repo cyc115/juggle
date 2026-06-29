@@ -330,6 +330,8 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     migrate_51_state_vocab(conn)  # unify task vocab pending->open (FAIL-LOUD, before renamed engine)
     from dbops.migration_52_dispatch_edge import migrate_52_dispatch_edge  # P8 M1/Q2
     migrate_52_dispatch_edge(conn)  # type node_edges.kind; legacy binding -> kind='dispatch' edge
+    from dbops.migration_53_kind_topic import migrate_53_kind_topic  # P8 M2
+    migrate_53_kind_topic(conn)  # graph topics -> kind='topic' (FAIL-LOUD; runs after 44 backfill)
 
 
 # Migrations 41, 45 and 47-49 live in their own modules (loc_gate budget).

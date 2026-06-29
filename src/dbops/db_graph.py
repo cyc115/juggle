@@ -60,12 +60,10 @@ TICK_OWNED_STATES = frozenset(
     {"ready", "dispatching", "running", "integrating", "verified"}
 )
 
-# Topic/task discriminator (M2): the migration backfills BOTH topics and tasks
-# as kind='task' nodes (bare task and empty topic are both parent_id-NULL), so
-# nodes alone can't separate them — during dual-write graph_topics is the source
-# of truth, so the legacy graph_tasks set is kind='task' nodes NOT in graph_topics.
-# (Step 6 swaps this for a real kind discriminator and drops the legacy read.)
-_TASK_ONLY = "id NOT IN (SELECT id FROM graph_topics)"
+# Topic/task discriminator (P8 M2): topics are now their OWN kind='topic' nodes
+# (Migration 53), so the task set is simply kind='task' — bare tasks and a topic's
+# child tasks. The legacy graph_topics-membership anti-join is retired; topics can
+# never leak into the task set because they no longer carry kind='task'.
 
 # nodes projection reproducing the legacy graph_tasks row shape so task-execution
 # consumers keep their column names after the P8 read-flip (Task 4.1): objective→
@@ -73,7 +71,7 @@ _TASK_ONLY = "id NOT IN (SELECT id FROM graph_topics)"
 _TASK_SELECT = (
     "SELECT id, project_id, title, objective AS prompt, verify_cmd, state, "
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' LIMIT 1) AS thread_id, "
-    f"parent_id AS topic_id, handoff, diffstat, verified_at, created_at, updated_at FROM nodes WHERE kind='task' AND {_TASK_ONLY}"
+    "parent_id AS topic_id, handoff, diffstat, verified_at, created_at, updated_at FROM nodes WHERE kind='task'"
 )
 
 
@@ -250,7 +248,6 @@ def ready_eligible(db, project_id: str) -> list[str]:
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT n.id FROM nodes n WHERE n.kind='task' AND n.project_id=? "
-            "AND n.id NOT IN (SELECT id FROM graph_topics) "
             "AND n.state='open' AND NOT EXISTS ("
             "  SELECT 1 FROM node_edges e JOIN nodes d ON d.id=e.depends_on_id"
             "  WHERE e.node_id=n.id AND e.kind='dep' AND d.state != 'verified') "

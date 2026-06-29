@@ -25,14 +25,16 @@ def _make_db(tmp_path):
 
 
 def _insert_task_node(conn, *, node_id, project_id, state, parent_id=None,
-                      merged_sha=None, worktree_branch=None, main_repo_path=None):
-    """Insert directly into nodes (no legacy dual-write)."""
+                      kind="task", merged_sha=None, worktree_branch=None,
+                      main_repo_path=None):
+    """Insert directly into nodes (no legacy dual-write). ``kind='topic'`` seeds a
+    topic-tier root node (P8 M2 discriminator); default 'task' seeds a task."""
     conn.execute(
         "INSERT INTO nodes "
         "(id, kind, title, objective, state, project_id, parent_id, "
         "merged_sha, worktree_branch, main_repo_path, created_at, updated_at) "
-        "VALUES (?, 'task', ?, '', ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
-        (node_id, f"Task {node_id}", state, project_id, parent_id,
+        "VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
+        (node_id, kind, f"Task {node_id}", state, project_id, parent_id,
          merged_sha, worktree_branch, main_repo_path),
     )
 
@@ -100,14 +102,16 @@ def test_cockpit_snapshot_task_state_none(tmp_path):
 
 
 def test_graph_dag_reads_nodes_not_graph_topics(tmp_path):
-    """P8-pin: DAG built from nodes WHERE kind='task', not graph_topics.
+    """P8-pin: DAG built from nodes (topic nodes), not graph_topics.
 
     2026-06-20: cockpit_graph_dag migrated to nodes primary source.
+    2026-06-29 (P8 M2): topic roots are now kind='topic'.
     """
     db = _make_db(tmp_path)
     with db._connect() as conn:
         _ensure_project(conn, "P1")
-        _insert_task_node(conn, node_id="TASK1", project_id="P1", state="ready")
+        _insert_task_node(conn, node_id="TASK1", project_id="P1", state="ready",
+                          kind="topic")
         conn.commit()
     # graph_topics is EMPTY — DAG must find TASK1 from nodes
     from juggle_cockpit_graph_dag import load_graph_dags
@@ -127,7 +131,8 @@ def test_graph_dag_member_tasks_from_nodes_children(tmp_path):
     db = _make_db(tmp_path)
     with db._connect() as conn:
         _ensure_project(conn, "P1")
-        _insert_task_node(conn, node_id="PAR1", project_id="P1", state="running")
+        _insert_task_node(conn, node_id="PAR1", project_id="P1", state="running",
+                          kind="topic")
         _insert_task_node(conn, node_id="CHI1", project_id="P1", state="verified",
                           parent_id="PAR1")
         conn.commit()
@@ -150,11 +155,11 @@ def test_graph_dag_member_tasks_from_nodes_children(tmp_path):
 def _seed_node_topic(db, node_id, child_states, *, project_id="INBOX",
                      state="running", merged_sha=None, worktree_branch=None,
                      main_repo_path=None):
-    """Seed a task node + children directly into nodes (no graph_topics write)."""
+    """Seed a topic node + children directly into nodes (no graph_topics write)."""
     with db._connect() as conn:
         _insert_task_node(
             conn, node_id=node_id, project_id=project_id, state=state,
-            merged_sha=merged_sha, worktree_branch=worktree_branch,
+            kind="topic", merged_sha=merged_sha, worktree_branch=worktree_branch,
             main_repo_path=main_repo_path,
         )
         for i, st in enumerate(child_states):

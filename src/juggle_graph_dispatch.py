@@ -70,7 +70,6 @@ def sweep_stale_claims(db, project_id: str) -> list[str]:
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT id FROM nodes WHERE kind='task' AND project_id=? "
-            "AND id NOT IN (SELECT id FROM graph_topics) "
             "AND state='dispatching' AND updated_at < ? "
             "AND id NOT IN (SELECT node_id FROM node_edges WHERE kind='dispatch')",
             (project_id, cutoff),

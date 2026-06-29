@@ -1,10 +1,11 @@
 """dbops.db_topics — topic store over the unified nodes table (3-tier autopilot).
 
-P8 (Task 4.2): topic reads now resolve from ``nodes`` — a topic is a ROOT task
-node (kind='task', parent_id IS NULL); its child tasks carry parent_id=<topic id>,
-and topic deps are derived from node_edges crossing parent boundaries. Writes
-dual-write the legacy graph_topics row (the db_graph._TASK_ONLY discriminator)
-until the Step-6 kind discriminator lands.
+P8: topic reads resolve from ``nodes`` — a topic is a kind='topic' node
+(parent_id IS NULL, topic-tier); its child tasks are kind='task' carrying
+parent_id=<topic id>, and topic deps are derived from node_edges crossing parent
+boundaries. The kind='topic' discriminator (P8 M2, Migration 53) replaced the
+legacy graph_topics-membership anti-join; graph_topics is dual-written only until
+the terminal drop retires it.
 
 Owns: topic CRUD, topic state transitions (DELEGATES the decision to the unified
 db_node_machine.node_transition — one state machine, no second invention), DERIVED topic-level deps
@@ -22,14 +23,14 @@ from dbops.db_graph import _cx
 from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
 from dbops.state_write import cas_state, write_state
 
-# Topic/task discriminator (M2): a topic is a kind='task' node whose id IS in
-# graph_topics — the EXACT complement of db_graph._TASK_ONLY ("id NOT IN
-# graph_topics"). parent_id IS NULL alone is NOT sufficient: a bare task (no owning
-# topic) is also parent_id-NULL, and mis-classifying it as a topic routes
-# complete-agent through the topic G1-merge gate instead of the task path
-# (2026-06-29 incident). create_topic dual-writes graph_topics so the membership
-# discriminator is authoritative during dual-write (Step 6 swaps it for a real kind).
-_TOPIC_ONLY = "id IN (SELECT id FROM graph_topics)"
+# Topic/task discriminator (P8 M2): a topic is its OWN kind='topic' node
+# (Migration 53 promoted every graph_topics member; create_topic writes kind='topic'
+# directly). This replaces the graph_topics-membership anti-join so the distinction
+# survives the graph_topics drop. parent_id IS NULL alone was never sufficient — a
+# bare task (no owning topic) is also parent_id-NULL, and mis-classifying it as a
+# topic routes complete-agent through the topic G1-merge gate instead of the task
+# path (2026-06-29 incident) — the kind discriminator removes that ambiguity.
+_TOPIC_ONLY = "kind='topic'"
 
 # nodes projection reproducing the legacy graph_topics row shape so topic-tier
 # consumers keep their column names after the P8 read-flip (Task 4.2). Child tasks
@@ -39,7 +40,7 @@ _TOPIC_SELECT = (
     "SELECT id, project_id, title, objective, state, "
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' "
     "LIMIT 1) AS thread_id, merged_sha, handoff, diffstat, "
-    f"verified_at, created_at, updated_at FROM nodes WHERE kind='task' AND {_TOPIC_ONLY}"
+    f"verified_at, created_at, updated_at FROM nodes WHERE {_TOPIC_ONLY}"
 )
 
 
@@ -86,10 +87,10 @@ def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
 
 
 def create_topic(db, *, topic_id, project_id, title, objective="", conn=None) -> None:
-    """Insert a topic. Dual-writes the authoritative nodes row (kind='task',
-    parent_id NULL = topic-tier) AND legacy graph_topics — the latter stays the
-    discriminator db_graph._TASK_ONLY excludes, so the flipped task readers keep
-    separating tasks from topics until the Step-6 kind discriminator lands."""
+    """Insert a topic as an authoritative kind='topic' node (parent_id NULL =
+    topic-tier) AND a compat legacy graph_topics row. The kind discriminator
+    (P8 M2) is what separates topics from bare tasks; graph_topics is dual-written
+    only until the terminal drop retires it."""
     now = _now()
     with _cx(db, conn) as c:
         c.execute(
@@ -100,7 +101,7 @@ def create_topic(db, *, topic_id, project_id, title, objective="", conn=None) ->
         c.execute(
             "INSERT OR IGNORE INTO nodes (id, kind, title, objective, state, "
             "project_id, parent_id, created_at, updated_at) "
-            "VALUES (?, 'task', ?, ?, 'open', ?, NULL, ?, ?)",
+            "VALUES (?, 'topic', ?, ?, 'open', ?, NULL, ?, ?)",
             (topic_id, title, objective, project_id, now, now),
         )
 
@@ -124,7 +125,7 @@ def get_topic_by_thread(db, thread_id) -> dict | None:
 def list_topics(db, project_id) -> list[dict]:
     """Real graph topics for a project, in topological-ish (created_at,id) order.
 
-    Topics are the root task nodes (kind='task', parent_id IS NULL). Conversation
+    Topics are kind='topic' nodes (parent_id IS NULL). Conversation
     nodes (kind='conversation') — including a chat thread `project assign`-ed to a
     project — are excluded by the kind discriminator, so they never surface as a
     phantom graph node (the 2026-06-15 mirror-projection defect can no longer
@@ -150,7 +151,7 @@ def set_topic_thread(db, topic_id, thread_id) -> None:
             (thread_id, now, topic_id),
         )
         conn.execute(
-            "UPDATE nodes SET updated_at=? WHERE id=? AND kind='task'",
+            "UPDATE nodes SET updated_at=? WHERE id=? AND kind='topic'",
             (now, topic_id),
         )
         bind_dispatch_thread(conn, topic_id, thread_id)
@@ -171,7 +172,7 @@ def set_topic_merged_sha(db, topic_id, merged_sha, conn=None) -> None:
             (merged_sha, now, topic_id),
         )
         c.execute(
-            "UPDATE nodes SET merged_sha=?, updated_at=? WHERE id=? AND kind='task'",
+            "UPDATE nodes SET merged_sha=?, updated_at=? WHERE id=? AND kind='topic'",
             (merged_sha, now, topic_id),
         )
 
@@ -185,7 +186,7 @@ def set_topic_handoff(db, topic_id, handoff) -> None:
             (handoff, now, topic_id),
         )
         conn.execute(
-            "UPDATE nodes SET handoff=?, updated_at=? WHERE id=? AND kind='task'",
+            "UPDATE nodes SET handoff=?, updated_at=? WHERE id=? AND kind='topic'",
             (handoff, now, topic_id),
         )
         conn.commit()
@@ -266,7 +267,7 @@ def topic_ready_eligible(db, project_id) -> list[str]:
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT t.id FROM nodes t "
-            "WHERE t.kind='task' AND t.id IN (SELECT id FROM graph_topics) "
+            "WHERE t.kind='topic' "
             "AND t.project_id=? "
             "AND t.state='open' AND NOT EXISTS ("
             "  SELECT 1 FROM node_edges e"
@@ -317,8 +318,7 @@ def topic_counts(db, project_id) -> dict | None:
         with db._connect() as conn:
             rows = conn.execute(
                 "SELECT state FROM nodes "
-                "WHERE kind='task' AND id IN (SELECT id FROM graph_topics) "
-                "AND project_id=?",
+                "WHERE kind='topic' AND project_id=?",
                 (project_id,)
             ).fetchall()
     except Exception:

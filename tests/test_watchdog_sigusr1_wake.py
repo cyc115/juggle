@@ -309,7 +309,7 @@ def test_recompute_topic_ready_pokes_watchdog(tmp_path, monkeypatch):
         conn.execute(
             "INSERT INTO nodes (id, kind, title, objective, state, project_id, "
             "parent_id, created_at, updated_at) "
-            "VALUES ('TOP1', 'task', 'Topic 1', '', 'open', 'P', NULL, ?, ?)",
+            "VALUES ('TOP1', 'topic', 'Topic 1', '', 'open', 'P', NULL, ?, ?)",
             (_now(), _now()),
         )
         conn.commit()

@@ -43,7 +43,7 @@ def _all_project_ids(conn) -> list[str]:
         try:
             for r in conn.execute(
                 "SELECT DISTINCT project_id FROM nodes "
-                "WHERE kind IN ('task','research') AND parent_id IS NULL "
+                "WHERE kind IN ('topic','task','research') AND parent_id IS NULL "
                 "AND project_id IS NOT NULL"
             ).fetchall():
                 pid = r[0]
@@ -70,7 +70,8 @@ def _project_name(conn, pid: str) -> "str | None":
 def _load_one(conn, pid: str) -> "GraphDag | None":
     """Load topic-tier DAG for one project purely from the unified nodes table.
 
-    A topic is a root task node (kind='task', parent_id IS NULL). The bound
+    A DAG root is a kind='topic' node OR a parentless kind='task' node — a bare
+    task added to a project without an owning topic still renders (P8 M2). The bound
     dispatch thread is the typed kind='dispatch' node_edge (P8 M1/Q2); its
     user_label comes from the bound conversation node (JOIN through the edge). No
     legacy graph_* / threads tables are read (P8 Task 4.2). Returns None for a
@@ -87,7 +88,8 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
             "  ON de.node_id = n.id AND de.kind='dispatch' "
             "LEFT JOIN nodes c "
             "  ON c.id = de.depends_on_id AND c.kind='conversation' "
-            "WHERE n.kind='task' AND n.parent_id IS NULL AND n.project_id=? "
+            "WHERE (n.kind='topic' OR (n.kind='task' AND n.parent_id IS NULL)) "
+            "AND n.project_id=? "
             "ORDER BY n.created_at, n.id",
             (pid,),
         ).fetchall()

@@ -47,7 +47,7 @@ def sweep_stale_topic_claims(db, project_id: str) -> list[str]:
     ).isoformat()
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT id FROM nodes WHERE kind='task' AND parent_id IS NULL "
+            "SELECT id FROM nodes WHERE kind='topic' "
             "AND project_id=? AND state='dispatching' AND updated_at < ? "
             "AND id NOT IN (SELECT node_id FROM node_edges WHERE kind='dispatch')",
             (project_id, cutoff),

@@ -1,7 +1,7 @@
 """dbops.orphan_guard — detect & surface completed-but-unmerged topics (G5).
 
 P8 (Task 4.2): orphan detection reads exclusively from the unified nodes table —
-root task nodes (kind='task', parent_id IS NULL), their child states, and the
+topic nodes (kind='topic', P8 M2), their child states, and the
 bound dispatch thread (the typed kind='dispatch' node_edge, P8 M1/Q2).
 reconcile_out_of_band_merges stamps nodes.merged_sha (the lockstep
 set_topic_merged_sha keeps graph_topics in sync where it is still dual-written).
@@ -85,13 +85,13 @@ def find_unmerged_completed_topics(db) -> list[dict]:
     """Return non-mirror root task nodes whose children are ALL verified but whose
     work is NOT merged to main.
 
-    P8: reads from nodes WHERE kind='task' AND parent_id IS NULL.
+    P8 M2: reads from nodes WHERE kind='topic'.
     A node with zero children, any unfinished child, or proven-merged work is excluded.
     """
     with db._connect() as conn:
         parent_rows = conn.execute(
             "SELECT * FROM nodes "
-            "WHERE kind='task' AND parent_id IS NULL"
+            "WHERE kind='topic'"
         ).fetchall()
         parents = [dict(r) for r in parent_rows]
 

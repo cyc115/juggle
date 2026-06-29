@@ -76,7 +76,7 @@ def _mk_topic(db, topic_id, project_id, state="open"):
                 "UPDATE graph_topics SET state=? WHERE id=?", (state, topic_id)
             )
             conn.execute(
-                "UPDATE nodes SET state=? WHERE id=? AND kind='task'",
+                "UPDATE nodes SET state=? WHERE id=? AND kind='topic'",
                 (state, topic_id),
             )
             conn.commit()

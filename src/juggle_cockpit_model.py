@@ -209,15 +209,15 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
         projects_by_id = {}
 
     # Graph-task visibility: aggregate counts per project sourced from the unified
-    # nodes table (P8). kind IN ('task','research') with no parent (root nodes).
-    # Pre-migration DBs degrade gracefully.
+    # nodes table (P8). Root graph units: topics (kind='topic') plus parentless
+    # task/research nodes. Pre-migration DBs degrade gracefully.
     graph_by_project: dict | None = None
     try:
         from juggle_graph_status import counts_from_states
 
         n_rows = conn.execute(
             "SELECT project_id, state FROM nodes "
-            "WHERE kind IN ('task','research') AND parent_id IS NULL"
+            "WHERE kind IN ('topic','task','research') AND parent_id IS NULL"
         ).fetchall()
         states_by_proj: dict[str, list[str]] = {}
         for r in n_rows:
