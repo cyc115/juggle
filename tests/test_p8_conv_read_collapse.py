@@ -131,19 +131,20 @@ def test_cleanup_orphaned_threads_reads_running_nodes(tmp_path):
 
 def test_static_legacy_ref_floor_ratchet():
     """Ratchet: live legacy-table refs in shipped src must not climb back above
-    the current floor (107). Lowered from the 2026-06-23 floor (123) after the P8
-    Task 3.1 direct-read flips landed (cockpit panels, dogfood, cmd_threads
-    orphan-scan, watchdog reaper). The residual 107 are blocked on the conversation
-    WRITER-CUT (Task 3.2 / Step 4), NOT on more reads-only flips: the remaining
-    conversation reads are (a) funneled through the shared get_thread/
-    get_all_threads/get_threads_by_status helpers whose flip cascades into the
-    Step-4-reserved db_mirror/orphan_guard/graph_guards readers, (b) project-keyed
-    reads blocked by the nodes.project_id mirror gap (create_thread's DEFAULT
-    'INBOX' is never mirrored), (c) slug_alloc / threads write-path reads bound to
-    LIVE_SLUG_STATES + the partial unique index, or (d) reads of threads-only
-    columns absent from nodes (assigned_confidence). This pin may only ever be
-    lowered."""
+    the current floor (103). Lowered from the 2026-06-23 floor (123) → 107 (Task 3.1
+    direct-read flips: cockpit panels, dogfood, cmd_threads orphan-scan, watchdog
+    reaper) → 103 (2026-06-29 T-c3-reads: the project-keyed conversation reads
+    flipped — synth_project, check_and_resynth_if_drifted, resweep_inbox,
+    get_threads_by_project — which RESOLVED blocker (b) by populating nodes.project_id
+    (mirror_conv_insert DEFAULT 'INBOX' + Migration-50 backfill) and handled (d)'s
+    assigned_confidence by dropping the nodes-absent ordering term). The residual 103
+    are blocked on the conversation WRITER-CUT (Task 3.2 / Step 4), NOT on more
+    reads-only flips: the remaining conversation reads are (a) funneled through the
+    shared get_thread/get_all_threads/get_threads_by_status helpers whose flip
+    cascades into the Step-4-reserved db_mirror/orphan_guard/graph_guards readers, or
+    (c) slug_alloc / threads write-path reads bound to LIVE_SLUG_STATES + the partial
+    unique index. This pin may only ever be lowered."""
     from pathlib import Path
     from dbops.p8_readiness import scan_legacy_refs
     src_root = Path(__file__).resolve().parent.parent / "src"
-    assert len(scan_legacy_refs(src_root)) <= 107
+    assert len(scan_legacy_refs(src_root)) <= 103
