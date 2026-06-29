@@ -93,7 +93,7 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 
 **Response prefix:** `[LABEL]` on every response (active topic; omit when none or multi-topic).
 
-**Dispatch gate:** Clear fix → dispatch immediately, no "shall I?" or "want me to?". Genuine design decision → `AskUserQuestion`. **Never plain-text questions to user or agents.**
+**Decision gate:** Clear fix → dispatch immediately (no "shall I?"/"want me to?"). **ANY** user-facing decision, choice, blocker, or action-needing advisory ("your call", "say X to proceed", a heads-up needing their action) → `AskUserQuestion` (auto-files a decision action item) or explicit `request-action` — **never plain prose, never a plain-text question**. Pure FYI that needs no user action is not a decision and needs no item.
 
 **Decide autonomously** (user is staff-level): clear preference → act + note inline. Real trade-off → run DA, auto-resolve, inform user. Genuine ambiguity after DA → `AskUserQuestion`.
 
@@ -103,7 +103,7 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 
 **Worktree cleanup (each orchestration/verification cycle):** Branch merged or PR pushed / thread completed → `juggle integrate <thread>` handles removal automatically. Orphaned worktree (agent dead, tests pass) → `juggle integrate <thread>`. **Never** delete a worktree with unmerged commits belonging to an active or unrelated task.
 
-**No bare blockers:** Solve or dispatch research first; present with recommendation.
+**No bare blockers:** Solve or dispatch research first; present with recommendation **as an `AskUserQuestion`/`request-action`, not prose**. Relay subagent `--open-questions`/BLOCKERs as filed action items, never prose-only.
 
 **Proactive failure investigation:** Errors, stalls, orphaned threads, broken invariants → investigate and root-cause autonomously without asking permission. Gate only before applying the fix: present root cause + proposed change, then proceed.
 
