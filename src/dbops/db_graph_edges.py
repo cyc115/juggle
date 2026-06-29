@@ -1,18 +1,15 @@
 """dbops.db_graph_edges — task dependency-edge CRUD over node_edges (P8).
 
-Extracted from dbops.db_graph (architecture LOC gate). The task DAG edges now
-live in ``node_edges`` (authoritative); the legacy ``graph_edges`` mirror is
-dual-written by ``replace_edges`` until the Step-4 write-cut. Re-exported from
-dbops.db_graph so ``from dbops.db_graph import get_deps`` keeps working.
+Extracted from dbops.db_graph (architecture LOC gate). The task DAG edges live in
+``node_edges`` (authoritative); the legacy ``graph_edges`` mirror write was cut by
+the P8 terminal drop (Migration 55), which retires the table entirely.
+Re-exported from dbops.db_graph so ``from dbops.db_graph import get_deps`` works.
 """
 from __future__ import annotations
 
 
 def replace_edges(db, task_id: str, dep_ids: list[str], conn=None) -> None:
-    """Replace the full dependency list of ``task_id``.
-
-    Dual-writes node_edges (authoritative) and the legacy graph_edges mirror.
-    """
+    """Replace the full dependency list of ``task_id`` in ``node_edges``."""
     from dbops.db_graph import _cx
 
     with _cx(db, conn) as c:
@@ -21,11 +18,6 @@ def replace_edges(db, task_id: str, dep_ids: list[str], conn=None) -> None:
         c.executemany(
             "INSERT OR IGNORE INTO node_edges (node_id, depends_on_id, kind) "
             "VALUES (?,?,'dep')",
-            [(task_id, dep) for dep in dep_ids],
-        )
-        c.execute("DELETE FROM graph_edges WHERE task_id=?", (task_id,))
-        c.executemany(
-            "INSERT INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
             [(task_id, dep) for dep in dep_ids],
         )
 
