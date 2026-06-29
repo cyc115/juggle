@@ -114,7 +114,8 @@ def test_get_human_assigned_threads_by_project(tmp_path):
     db.update_thread(t2, project_id=pid, assigned_by="auto")
     human_threads = db.get_human_assigned_threads_by_project(pid, limit=3)
     assert len(human_threads) == 1
-    assert human_threads[0]["topic"] == "topic alpha"
+    # P8 Task 4.2: reads kind='conversation' nodes → node vocab (title, not topic).
+    assert human_threads[0]["title"] == "topic alpha"
 
 
 # --- Migration 30: match_profile columns ---

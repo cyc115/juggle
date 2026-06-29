@@ -75,7 +75,9 @@ class ProjectsMixin:
             result = []
             for p in projects:
                 count = conn.execute(
-                    "SELECT COUNT(*) FROM threads WHERE project_id=?", (p["id"],)
+                    "SELECT COUNT(*) FROM nodes WHERE kind='conversation' "
+                    "AND project_id=?",
+                    (p["id"],),
                 ).fetchone()[0]
                 result.append({**p, "thread_count": count})
         return result
@@ -89,7 +91,8 @@ class ProjectsMixin:
         now = _now()
         with self._connect() as conn:
             thread_rows = conn.execute(
-                "SELECT id FROM threads WHERE project_id=?", (project_id,)
+                "SELECT id FROM nodes WHERE kind='conversation' AND project_id=?",
+                (project_id,),
             ).fetchall()
             thread_ids = [r["id"] for r in thread_rows]
 
@@ -185,7 +188,8 @@ class ProjectsMixin:
     def count_threads_by_project(self, project_id: str) -> int:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) FROM threads WHERE project_id = ? AND show_in_list = 1",
+                "SELECT COUNT(*) FROM nodes WHERE kind='conversation' "
+                "AND project_id = ? AND show_in_list = 1",
                 (project_id,),
             ).fetchone()
             return row[0] if row else 0
@@ -221,9 +225,14 @@ class ProjectsMixin:
     def get_human_assigned_threads_by_project(
         self, project_id: str, limit: int = 3
     ) -> list[dict]:
+        """Human-assigned conversations for a project (node vocab: title/
+        last_active_at). P8 Task 4.2: reads kind='conversation' nodes."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, topic, last_active FROM threads WHERE project_id = ? AND assigned_by = 'human' AND show_in_list = 1 ORDER BY last_active DESC LIMIT ?",
+                "SELECT id, title, last_active_at FROM nodes "
+                "WHERE kind='conversation' AND project_id = ? "
+                "AND assigned_by = 'human' AND show_in_list = 1 "
+                "ORDER BY last_active_at DESC LIMIT ?",
                 (project_id, limit),
             ).fetchall()
         return [dict(r) for r in rows]

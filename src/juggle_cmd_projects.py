@@ -108,7 +108,7 @@ def _build_classifier_prompt(
         mp = (p.get("match_profile") or "").strip()
         if mp:
             part += f' | profile: {mp}'
-        examples = [t["topic"] for t in positives_by_project.get(p["id"], []) if t.get("topic")]
+        examples = [t["title"] for t in positives_by_project.get(p["id"], []) if t.get("title")]
         if examples:
             part += f' | confirmed: {"; ".join(examples)}'
         project_parts.append(part)

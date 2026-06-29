@@ -104,8 +104,8 @@ def _poll_once(
         """
         SELECT n.id, n.thread_id, t.user_label, t.title
         FROM notifications_v2 n
-        JOIN threads t ON n.thread_id = t.id
-        WHERE n.id > ? AND t.status = 'closed'
+        JOIN nodes t ON n.thread_id = t.id AND t.kind='conversation'
+        WHERE n.id > ? AND t.state = 'done'
         ORDER BY n.id
         """,
         (last_seen_id,),

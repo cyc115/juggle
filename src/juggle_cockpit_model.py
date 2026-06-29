@@ -382,7 +382,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
             """
             SELECT n.message, n.created_at, t.user_label
             FROM notifications_v2 n
-            LEFT JOIN threads t ON t.id = n.thread_id
+            LEFT JOIN nodes t ON t.id = n.thread_id AND t.kind='conversation'
             WHERE n.session_id = ? ORDER BY n.id DESC LIMIT 20
             """,
             (session_id,),

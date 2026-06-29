@@ -220,7 +220,8 @@ def test_build_classifier_prompt_contains_project_ids():
 def test_build_classifier_prompt_includes_human_positives():
     from juggle_cmd_projects import _build_classifier_prompt
     projects = [{"id": "P1", "name": "Investing", "objective": "Automate ideas"}]
-    positives = {"P1": [{"topic": "buy AAPL"}, {"topic": "sell TSLA"}]}
+    # P8 Task 4.2: human-positive examples carry node vocab (title, not topic).
+    positives = {"P1": [{"title": "buy AAPL"}, {"title": "sell TSLA"}]}
     prompt = _build_classifier_prompt("some topic", projects, positives, [])
     assert "buy AAPL" in prompt
     assert "sell TSLA" in prompt
