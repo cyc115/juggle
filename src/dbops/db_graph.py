@@ -18,6 +18,7 @@ from contextlib import contextmanager
 
 from dbops.schema import _now
 from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
+from dbops.dispatch_edge import bind_dispatch_thread
 from dbops.state_write import cas_state, write_state
 
 
@@ -67,12 +68,12 @@ TICK_OWNED_STATES = frozenset(
 _TASK_ONLY = "id NOT IN (SELECT id FROM graph_topics)"
 
 # nodes projection reproducing the legacy graph_tasks row shape so task-execution
-# consumers keep their column names after the P8 read-flip (Task 4.1):
-# objective→prompt, dispatch_thread_id→thread_id, parent_id→topic_id.
+# consumers keep their column names after the P8 read-flip (Task 4.1): objective→
+# prompt, parent_id→topic_id, thread_id from the kind='dispatch' node_edge (M1/Q2).
 _TASK_SELECT = (
     "SELECT id, project_id, title, objective AS prompt, verify_cmd, state, "
-    "dispatch_thread_id AS thread_id, parent_id AS topic_id, handoff, diffstat, "
-    f"verified_at, created_at, updated_at FROM nodes WHERE kind='task' AND {_TASK_ONLY}"
+    "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' LIMIT 1) AS thread_id, "
+    f"parent_id AS topic_id, handoff, diffstat, verified_at, created_at, updated_at FROM nodes WHERE kind='task' AND {_TASK_ONLY}"
 )
 
 
@@ -156,8 +157,8 @@ def update_task_content(
 
 
 def set_task_thread(db, task_id: str, thread_id) -> None:
-    """Bind the dispatch thread; dual-writes nodes.dispatch_thread_id for the
-    flipped sweep_stale_claims / get_task_by_thread readers."""
+    """Bind the dispatch thread as a typed kind='dispatch' node_edge (P8 M1/Q2;
+    thread_id=None unbinds). Compat graph_tasks.thread_id is no longer read."""
     now = _now()
     with db._connect() as conn:
         conn.execute(
@@ -165,10 +166,10 @@ def set_task_thread(db, task_id: str, thread_id) -> None:
             (thread_id, now, task_id),
         )
         conn.execute(
-            "UPDATE nodes SET dispatch_thread_id=?, updated_at=? "
-            "WHERE id=? AND kind='task'",
-            (thread_id, now, task_id),
+            "UPDATE nodes SET updated_at=? WHERE id=? AND kind='task'",
+            (now, task_id),
         )
+        bind_dispatch_thread(conn, task_id, thread_id)
         conn.commit()
 
 
@@ -223,7 +224,7 @@ def get_task(db, task_id: str, conn=None) -> dict | None:
 def get_task_by_thread(db, thread_id: str) -> dict | None:
     with db._connect() as conn:
         row = conn.execute(
-            f"{_TASK_SELECT} AND dispatch_thread_id=?", (thread_id,)
+            f"{_TASK_SELECT} AND id IN (SELECT node_id FROM node_edges WHERE kind='dispatch' AND depends_on_id=?)", (thread_id,)
         ).fetchone()
     return dict(row) if row else None
 
@@ -252,7 +253,7 @@ def ready_eligible(db, project_id: str) -> list[str]:
             "AND n.id NOT IN (SELECT id FROM graph_topics) "
             "AND n.state='open' AND NOT EXISTS ("
             "  SELECT 1 FROM node_edges e JOIN nodes d ON d.id=e.depends_on_id"
-            "  WHERE e.node_id=n.id AND d.state != 'verified') "
+            "  WHERE e.node_id=n.id AND e.kind='dep' AND d.state != 'verified') "
             "ORDER BY n.created_at, n.id",
             (project_id,),
         ).fetchall()

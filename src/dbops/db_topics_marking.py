@@ -85,7 +85,7 @@ def propagate_topic_failure(db, topic_id) -> list[str]:
                 "SELECT DISTINCT n.parent_id FROM node_edges e "
                 "JOIN nodes n ON n.id = e.node_id "
                 "JOIN nodes d ON d.id = e.depends_on_id "
-                "WHERE d.parent_id=? AND n.parent_id != ?",
+                "WHERE e.kind='dep' AND d.parent_id=? AND n.parent_id != ?",
                 (cur, cur),
             ).fetchall()
         for r in rows:

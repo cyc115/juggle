@@ -48,17 +48,20 @@ def reverse_backfill_nodes_to_graph(conn: sqlite3.Connection) -> None:
         "(id, project_id, title, prompt, verify_cmd, state, thread_id, "
         " handoff, diffstat, verified_at, created_at, updated_at) "
         "SELECT id, COALESCE(project_id, 'INBOX'), title, objective, verify_cmd, "
-        "       state, dispatch_thread_id, handoff, diffstat, verified_at, "
-        "       created_at, updated_at "
+        "       state, (SELECT depends_on_id FROM node_edges de "
+        "               WHERE de.node_id=nodes.id AND de.kind='dispatch' LIMIT 1), "
+        "       handoff, diffstat, verified_at, created_at, updated_at "
         "FROM nodes WHERE kind='task'"
     )
 
     if "graph_edges" in tables and "node_edges" in tables:
-        # Only edges between two task nodes — graph_edges FKs both ends to
-        # graph_tasks(id), which now holds exactly the kind='task' rows above.
+        # Only DEPENDENCY edges (kind='dep') between two task nodes — graph_edges
+        # FKs both ends to graph_tasks(id), which now holds exactly the kind='task'
+        # rows above. The kind='dispatch' binding is NOT a graph_edges row.
         conn.execute(
             "INSERT OR IGNORE INTO graph_edges (task_id, depends_on_id) "
             "SELECT e.node_id, e.depends_on_id FROM node_edges e "
-            "WHERE e.node_id IN (SELECT id FROM nodes WHERE kind='task') "
+            "WHERE e.kind='dep' "
+            "  AND e.node_id IN (SELECT id FROM nodes WHERE kind='task') "
             "  AND e.depends_on_id IN (SELECT id FROM nodes WHERE kind='task')"
         )

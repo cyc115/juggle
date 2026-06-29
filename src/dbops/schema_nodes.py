@@ -66,10 +66,20 @@ CREATE TABLE IF NOT EXISTS nodes (
 );
 """
 
+# node_edges carries TWO typed relations, discriminated by ``kind`` (P8 M1/Q2):
+#   kind='dep'      — task DAG dependency: node_id depends_on depends_on_id (both
+#                     kind='task' nodes). ALL dependency traversal filters kind='dep'.
+#   kind='dispatch' — the task→agent-thread binding: node_id (a task/topic node) is
+#                     dispatched to depends_on_id (a kind='conversation' node). This
+#                     replaces the legacy nodes.dispatch_thread_id column (retired in
+#                     Migration 53). The agent-thread lookups filter kind='dispatch'.
+# Migration 52 adds the column for already-migrated DBs (presence-guarded ALTER);
+# it is folded into the DDL here so a fresh table is complete on its own.
 CREATE_NODE_EDGES = """
 CREATE TABLE IF NOT EXISTS node_edges (
   node_id         TEXT NOT NULL REFERENCES nodes(id),
   depends_on_id   TEXT NOT NULL REFERENCES nodes(id),
+  kind            TEXT NOT NULL DEFAULT 'dep',
   PRIMARY KEY (node_id, depends_on_id)
 );
 """

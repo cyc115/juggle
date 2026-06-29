@@ -62,7 +62,7 @@ def sweep_stale_claims(db, project_id: str) -> list[str]:
 
     Crash-safe + idempotent: a dispatcher that died between claim and
     send-task never set the dispatch thread, so the task is reclaimable next
-    tick. Reads the stale set from ``nodes`` (dispatch_thread_id, P8 Task 4.1).
+    tick. Stale == no kind='dispatch' node_edge bound (P8 M1/Q2).
     """
     cutoff = (
         datetime.now(timezone.utc) - timedelta(seconds=STALE_CLAIM_SECS)
@@ -71,8 +71,8 @@ def sweep_stale_claims(db, project_id: str) -> list[str]:
         rows = conn.execute(
             "SELECT id FROM nodes WHERE kind='task' AND project_id=? "
             "AND id NOT IN (SELECT id FROM graph_topics) "
-            "AND state='dispatching' AND dispatch_thread_id IS NULL "
-            "AND updated_at < ?",
+            "AND state='dispatching' AND updated_at < ? "
+            "AND id NOT IN (SELECT node_id FROM node_edges WHERE kind='dispatch')",
             (project_id, cutoff),
         ).fetchall()
     stale = [r["id"] for r in rows]

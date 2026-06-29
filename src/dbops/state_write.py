@@ -16,18 +16,20 @@ from __future__ import annotations
 def write_state(conn, node_id, new_state, *, now, verified=False, clear_thread=False):
     """Unconditional state write to ``nodes`` AND the legacy row, in lockstep.
 
-    ``verified`` also stamps ``verified_at``; ``clear_thread`` nulls the dispatch
-    binding (``nodes.dispatch_thread_id`` / legacy ``thread_id``) — used by the
-    'reload' resurrection so a dead thread id is not carried forward.
+    ``verified`` also stamps ``verified_at``; ``clear_thread`` drops the dispatch
+    binding (the typed kind='dispatch' node_edge / legacy ``thread_id``) — used by
+    the 'reload' resurrection so a dead thread id is not carried forward.
     """
-    # nodes (authoritative) — the agent binding column is dispatch_thread_id.
+    # nodes (authoritative). The agent binding is a typed kind='dispatch' node_edge
+    # (P8 M1/Q2), cleared below.
     nsets, nparams = ["state=?", "updated_at=?"], [new_state, now]
     if verified:
         nsets.append("verified_at=?")
         nparams.append(now)
-    if clear_thread:
-        nsets.append("dispatch_thread_id=NULL")
     conn.execute(f"UPDATE nodes SET {', '.join(nsets)} WHERE id=?", (*nparams, node_id))
+    if clear_thread:
+        from dbops.dispatch_edge import clear_dispatch_thread
+        clear_dispatch_thread(conn, node_id)
     # legacy mirror (graph_tasks for task-tier, graph_topics for topic-tier).
     lsets, lparams = ["state=?", "updated_at=?"], [new_state, now]
     if verified:

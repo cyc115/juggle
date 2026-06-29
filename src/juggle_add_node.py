@@ -54,11 +54,14 @@ def _all_node_ids(conn) -> frozenset:
 
 
 def _node_edges_for(conn, project_id) -> list[tuple[str, str]]:
-    """All (node_id, depends_on_id) edges currently in node_edges."""
+    """All (node_id, depends_on_id) DEPENDENCY edges currently in node_edges.
+
+    kind='dispatch' (the agent-thread binding) is excluded — only dep edges
+    participate in cycle detection (P8 M1/Q2)."""
     return [
         (r[0], r[1])
         for r in conn.execute(
-            "SELECT node_id, depends_on_id FROM node_edges"
+            "SELECT node_id, depends_on_id FROM node_edges WHERE kind='dep'"
         ).fetchall()
     ]
 
@@ -221,7 +224,7 @@ def _add_task_node(
         # writer, so the new task is 'ready' iff every dep is 'verified'.
         unverified = conn.execute(
             "SELECT 1 FROM node_edges e JOIN nodes d ON d.id=e.depends_on_id "
-            "WHERE e.node_id=? AND d.state != 'verified' LIMIT 1",
+            "WHERE e.node_id=? AND e.kind='dep' AND d.state != 'verified' LIMIT 1",
             (node_id,),
         ).fetchone()
         new_state = "open" if unverified else "ready"

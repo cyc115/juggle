@@ -34,10 +34,11 @@ _TOPIC_ONLY = "id IN (SELECT id FROM graph_topics)"
 # nodes projection reproducing the legacy graph_topics row shape so topic-tier
 # consumers keep their column names after the P8 read-flip (Task 4.2). Child tasks
 # carry parent_id=<topic id>; topic deps derive from node_edges crossing parent
-# boundaries. dispatch_thread_id→thread_id keeps the bound-thread column name.
+# boundaries. thread_id comes from the typed kind='dispatch' node_edge (P8 M1/Q2).
 _TOPIC_SELECT = (
     "SELECT id, project_id, title, objective, state, "
-    "dispatch_thread_id AS thread_id, merged_sha, handoff, diffstat, "
+    "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' "
+    "LIMIT 1) AS thread_id, merged_sha, handoff, diffstat, "
     f"verified_at, created_at, updated_at FROM nodes WHERE kind='task' AND {_TOPIC_ONLY}"
 )
 
@@ -113,7 +114,9 @@ def get_topic(db, topic_id, conn=None) -> dict | None:
 def get_topic_by_thread(db, thread_id) -> dict | None:
     with db._connect() as conn:
         row = conn.execute(
-            f"{_TOPIC_SELECT} AND dispatch_thread_id=?", (thread_id,)
+            f"{_TOPIC_SELECT} AND id IN "
+            "(SELECT node_id FROM node_edges WHERE kind='dispatch' AND depends_on_id=?)",
+            (thread_id,),
         ).fetchone()
     return dict(row) if row else None
 
@@ -135,8 +138,11 @@ def list_topics(db, project_id) -> list[dict]:
 
 
 def set_topic_thread(db, topic_id, thread_id) -> None:
-    """Bind the dispatch thread; dual-writes nodes.dispatch_thread_id for the
-    flipped get_topic_by_thread / cockpit-DAG / orphan_guard readers."""
+    """Bind the dispatch thread as a typed kind='dispatch' node_edge (P8 M1/Q2;
+    thread_id=None unbinds), feeding the flipped get_topic_by_thread / cockpit-DAG
+    / orphan_guard readers. Touches nodes.updated_at and (compat) graph_topics."""
+    from dbops.dispatch_edge import bind_dispatch_thread
+
     now = _now()
     with db._connect() as conn:
         conn.execute(
@@ -144,10 +150,10 @@ def set_topic_thread(db, topic_id, thread_id) -> None:
             (thread_id, now, topic_id),
         )
         conn.execute(
-            "UPDATE nodes SET dispatch_thread_id=?, updated_at=? "
-            "WHERE id=? AND kind='task'",
-            (thread_id, now, topic_id),
+            "UPDATE nodes SET updated_at=? WHERE id=? AND kind='task'",
+            (now, topic_id),
         )
+        bind_dispatch_thread(conn, topic_id, thread_id)
         conn.commit()
 
 
@@ -192,7 +198,9 @@ def list_topic_tasks(db, topic_id) -> list[dict]:
     with db._connect() as conn:
         rows = conn.execute(
             "SELECT id, project_id, title, objective AS prompt, verify_cmd, state, "
-            "dispatch_thread_id AS thread_id, parent_id AS topic_id, handoff, "
+            "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id "
+            "AND kind='dispatch' LIMIT 1) AS thread_id, "
+            "parent_id AS topic_id, handoff, "
             "diffstat, verified_at, created_at, updated_at "
             "FROM nodes WHERE kind='task' AND parent_id=? ORDER BY created_at, id",
             (topic_id,),
@@ -204,7 +212,7 @@ def list_topic_tasks(db, topic_id) -> list[dict]:
     with db._connect() as conn:
         edges = conn.execute(
             "SELECT node_id AS task_id, depends_on_id FROM node_edges "
-            "WHERE node_id IN (%s)" % ",".join("?" * len(ids)),
+            "WHERE kind='dep' AND node_id IN (%s)" % ",".join("?" * len(ids)),
             tuple(ids),
         ).fetchall()
     deps = {n["id"]: set() for n in tasks}
@@ -234,7 +242,8 @@ def derived_topic_deps(db, topic_id) -> list[str]:
             "SELECT DISTINCT d.parent_id FROM node_edges e "
             "JOIN nodes n ON n.id = e.node_id "
             "JOIN nodes d ON d.id = e.depends_on_id "
-            "WHERE n.parent_id=? AND d.parent_id IS NOT NULL AND d.parent_id != ? "
+            "WHERE e.kind='dep' AND n.parent_id=? "
+            "AND d.parent_id IS NOT NULL AND d.parent_id != ? "
             "ORDER BY d.parent_id",
             (topic_id, topic_id),
         ).fetchall()
@@ -264,7 +273,7 @@ def topic_ready_eligible(db, project_id) -> list[str]:
             "  JOIN nodes n ON n.id = e.node_id"
             "  JOIN nodes d ON d.id = e.depends_on_id"
             "  JOIN nodes dt ON dt.id = d.parent_id"
-            "  WHERE n.parent_id = t.id AND d.parent_id != t.id"
+            "  WHERE e.kind='dep' AND n.parent_id = t.id AND d.parent_id != t.id"
             "  AND dt.state != 'verified') "
             "AND EXISTS ("
             "  SELECT 1 FROM nodes gt"

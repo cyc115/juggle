@@ -2,9 +2,9 @@
 
 P8 (Task 4.2): orphan detection reads exclusively from the unified nodes table —
 root task nodes (kind='task', parent_id IS NULL), their child states, and the
-bound dispatch thread (nodes.dispatch_thread_id). reconcile_out_of_band_merges
-stamps nodes.merged_sha (the lockstep set_topic_merged_sha keeps graph_topics in
-sync where it is still dual-written).
+bound dispatch thread (the typed kind='dispatch' node_edge, P8 M1/Q2).
+reconcile_out_of_band_merges stamps nodes.merged_sha (the lockstep
+set_topic_merged_sha keeps graph_topics in sync where it is still dual-written).
 
 Incident (2026-06-17): a false-negative in ``JuggleTmuxManager.send_task`` made
 the watchdog treat a successful dispatch as failed, so the topic was never
@@ -36,18 +36,27 @@ _ORPHAN_EVENT = "topic_unmerged_orphan"
 _GUARD_AGENT_ID = "orphan-guard"
 
 
+def _dispatch_thread(db, node_id: str) -> "str | None":
+    """The conversation id this node is dispatched to — the typed kind='dispatch'
+    node_edge (P8 M1/Q2), which replaced the legacy node binding column."""
+    from dbops.dispatch_edge import dispatch_thread_of
+
+    with db._connect() as conn:
+        return dispatch_thread_of(conn, node_id)
+
+
 def _node_repo(db, node: dict) -> str:
     """Resolve main-repo path for a nodes row (P8).
 
     Primary: node.main_repo_path (written by integrate/dispatch).
-    Compat: nodes.dispatch_thread_id → thread.main_repo_path (the bound agent).
+    Compat: the bound dispatch thread → thread.main_repo_path (the bound agent).
     Fallback: juggle's own repo (self-repo topics).
     """
     repo = (node.get("main_repo_path") or "").strip()
     if repo:
         return repo
-    # Bound-thread binding now lives on the node itself (dispatch_thread_id).
-    thread_id = node.get("dispatch_thread_id")
+    # Bound-thread binding lives in the typed kind='dispatch' node_edge.
+    thread_id = _dispatch_thread(db, node["id"])
     if thread_id:
         thread = db.get_thread(thread_id) or {}
         repo = (thread.get("main_repo_path") or "").strip()
@@ -113,8 +122,8 @@ def _topic_branch(db, node: dict) -> str:
     branch = (node.get("worktree_branch") or "").strip()
     if branch:
         return branch
-    # Fallback: the bound thread's branch (nodes.dispatch_thread_id → thread).
-    thread_id = node.get("dispatch_thread_id")
+    # Fallback: the bound thread's branch (kind='dispatch' node_edge → thread).
+    thread_id = _dispatch_thread(db, node["id"])
     if thread_id:
         thread = db.get_thread(thread_id) or {}
         return (thread.get("worktree_branch") or "").strip()
@@ -194,7 +203,7 @@ def flag_unmerged_completed_topics(db, *, dedup_window_hours: float = 24.0) -> l
             continue
         label = node.get("title") or node_id
         # thread_id for the action item: the node's bound dispatch thread.
-        thread_id = node.get("dispatch_thread_id")
+        thread_id = _dispatch_thread(db, node_id)
         db.add_action_item(
             thread_id=thread_id,
             message=(

@@ -108,6 +108,11 @@ def _seed_topic(db, topic_id, task_states, *, state="integrating",
         )
         c.commit()
 
+    # P8 M1/Q2: the dispatch binding orphan_guard resolves repo/branch through is
+    # the typed kind='dispatch' node_edge — seed it via the production writer.
+    if thread_id:
+        db_topics.set_topic_thread(db, topic_id, thread_id)
+
     for i, st in enumerate(task_states):
         tid = f"{topic_id}-t{i}"
         db_graph.create_task(db, task_id=tid, project_id="INBOX", title=tid, prompt="x")

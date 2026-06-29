@@ -328,6 +328,8 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     backfill_nodes_parity(conn)  # also runs backfill_graph_parity (P8 Q2/Q3)
     from dbops.migration_51_state_vocab import migrate_51_state_vocab  # P8 C3+R2-4
     migrate_51_state_vocab(conn)  # unify task vocab pending->open (FAIL-LOUD, before renamed engine)
+    from dbops.migration_52_dispatch_edge import migrate_52_dispatch_edge  # P8 M1/Q2
+    migrate_52_dispatch_edge(conn)  # type node_edges.kind; legacy binding -> kind='dispatch' edge
 
 
 # Migrations 41, 45 and 47-49 live in their own modules (loc_gate budget).

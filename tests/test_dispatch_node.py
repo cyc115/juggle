@@ -208,6 +208,62 @@ def test_dispatch_node_propagates_capacity_error(db, thread_id, monkeypatch):
         dispatch_node(db, thread_id, "prompt", {"id": "t1"})
 
 
+# ── dispatch binding as a typed node_edge (P8 M1/Q2) ───────────────────────────
+
+
+def test_dispatch_binding_roundtrips_through_typed_edge(db):
+    """2026-06-29 P8 M1/Q2: the task→dispatch-thread binding round-trips through a
+    typed kind='dispatch' node_edge (not the nodes.dispatch_thread_id column), and
+    dependency traversal (kind='dep') ignores the dispatch edge so a bound task
+    is still ready-eligible."""
+    from dbops import db_graph
+    from juggle_add_node import add_node
+
+    conv = db.create_thread("bound-conv", session_id="")
+    r = add_node(db, kind="task", title="x", project_id="INBOX")
+    tid = r["node_id"]
+
+    db_graph.set_task_thread(db, tid, conv)
+
+    # round-trips via both the by-thread reader and the projected thread_id field
+    assert db_graph.get_task_by_thread(db, conv)["id"] == tid
+    assert db_graph.get_task(db, tid)["thread_id"] == conv
+
+    # the binding physically lives in node_edges as a typed dispatch edge
+    with db._connect() as c:
+        row = c.execute(
+            "SELECT depends_on_id, kind FROM node_edges WHERE node_id=? AND kind='dispatch'",
+            (tid,),
+        ).fetchone()
+    assert row is not None and row["depends_on_id"] == conv
+
+    # the dispatch edge is NOT a dependency — dep traversal (kind='dep') ignores it
+    assert db_graph.get_deps(db, tid) == []
+    assert db_graph.unverified_deps(db, tid) == []
+
+
+def test_dispatch_binding_clears_through_typed_edge(db):
+    """2026-06-29 P8 M1/Q2: unbinding (set_task_thread(None)) deletes the typed
+    dispatch edge — the by-thread reader and projected thread_id go empty."""
+    from dbops import db_graph
+    from juggle_add_node import add_node
+
+    conv = db.create_thread("bound-conv-2", session_id="")
+    r = add_node(db, kind="task", title="y", project_id="INBOX")
+    tid = r["node_id"]
+    db_graph.set_task_thread(db, tid, conv)
+    db_graph.set_task_thread(db, tid, None)
+
+    assert db_graph.get_task_by_thread(db, conv) is None
+    assert db_graph.get_task(db, tid)["thread_id"] is None
+    with db._connect() as c:
+        n = c.execute(
+            "SELECT COUNT(*) FROM node_edges WHERE node_id=? AND kind='dispatch'",
+            (tid,),
+        ).fetchone()[0]
+    assert n == 0
+
+
 # ── cmd_get_agent / cmd_send_task routing proof ────────────────────────────────
 
 
