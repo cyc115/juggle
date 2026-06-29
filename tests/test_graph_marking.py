@@ -177,9 +177,8 @@ def _mk_task(db, task_id, topic="A", project="INBOX"):
     if tp.get_topic(db, topic) is None:
         tp.create_topic(db, topic_id=topic, project_id=project, title=topic)
     g.create_task(db, task_id=task_id, project_id=project, title=task_id, prompt="p")
-    with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic, task_id))
-        conn.commit()
+    # dual-writes nodes.parent_id so the nodes-sourced topic queries see the member.
+    g.set_task_topic(db, task_id, topic)
 
 
 def test_mark_task_verifies_and_stores_handoff(db, capsys):

@@ -177,11 +177,11 @@ def test_fail_agent_topic_thread_fails_topic_and_preserves_task_states(db):
     tp.create_topic(db, topic_id="B", project_id="INBOX", title="B")
     for n, topic in (("a1", "A"), ("a2", "A"), ("b1", "B")):
         g.create_task(db, task_id=n, project_id="INBOX", title=n, prompt="p")
-        with db._connect() as conn:
-            conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic, n))
-            conn.commit()
+        g.set_task_topic(db, n, topic)  # dual-writes nodes.parent_id (P8 Task 4.2)
     with db._connect() as conn:  # B derives on A (b1 → a1)
         conn.execute("INSERT INTO graph_edges (task_id, depends_on_id) "
+                     "VALUES ('b1','a1')")
+        conn.execute("INSERT OR IGNORE INTO node_edges (node_id, depends_on_id) "
                      "VALUES ('b1','a1')")
         conn.commit()
     g.mark_completion(db, "a1", integrate_ok=True, verify_ok=True, handoff="h")

@@ -30,9 +30,9 @@ def _topic(db, tid, project="INBOX", **kw):
 
 def _task(db, nid, topic_id, deps=()):
     g.create_task(db, task_id=nid, project_id="INBOX", title=nid, prompt=f"do {nid}")
-    with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (topic_id, nid))
-        conn.commit()
+    # set_task_topic dual-writes graph_tasks.topic_id + nodes.parent_id so the
+    # nodes-sourced topic queries (P8 Task 4.2) see the task as a member.
+    g.set_task_topic(db, nid, topic_id)
     if deps:
         g.replace_edges(db, nid, list(deps))
 

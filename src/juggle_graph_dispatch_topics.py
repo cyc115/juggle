@@ -27,15 +27,17 @@ _log = logging.getLogger("juggle-graph-dispatch")
 
 
 def claim_topic(db, topic_id: str) -> bool:
-    """Atomic ready→dispatching TOPIC claim (DA B4 pattern). True iff won."""
+    """Atomic ready→dispatching TOPIC claim (DA B4 pattern). True iff won.
+
+    P8 (Task 4.2): the CAS writes ``nodes`` (authoritative) in lockstep with the
+    legacy graph_topics row. A non-topic id (e.g. a conversation node) has no
+    'ready' topic row, so the claim simply loses (won=0)."""
+    from dbops.state_write import cas_state
+
     with db._connect() as conn:
-        cur = conn.execute(
-            "UPDATE graph_topics SET state='dispatching', updated_at=? "
-            "WHERE id=? AND state='ready' AND COALESCE(is_mirror,0)=0",
-            (_now(), topic_id),
-        )
+        won = cas_state(conn, topic_id, frm="ready", to="dispatching", now=_now())
         conn.commit()
-        return cur.rowcount == 1
+        return won == 1
 
 
 def sweep_stale_topic_claims(db, project_id: str) -> list[str]:
@@ -45,8 +47,9 @@ def sweep_stale_topic_claims(db, project_id: str) -> list[str]:
     ).isoformat()
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT id FROM graph_topics WHERE project_id=? AND "
-            "state='dispatching' AND thread_id IS NULL AND updated_at < ?",
+            "SELECT id FROM nodes WHERE kind='task' AND parent_id IS NULL "
+            "AND project_id=? AND state='dispatching' "
+            "AND dispatch_thread_id IS NULL AND updated_at < ?",
             (project_id, cutoff),
         ).fetchall()
     stale = [r["id"] for r in rows]

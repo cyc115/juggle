@@ -283,17 +283,8 @@ def cmd_doctor(args) -> int:
     else:
         print("merged-sha backfill: (dry-run — skipped)")
 
-    # 5. Backfill mirror topics (graph-mirrors-threads, 2026-06-14).
-    # Idempotent: safe to run on every doctor invocation. G2-safe: doctor runs
-    # as the orchestrator, never from an agent/worktree context.
-    if not dry:
-        try:
-            from dbops.db_mirror import backfill_mirror_topics
-            n_mirrors = backfill_mirror_topics(db_instance)
-            print(f"mirror backfill: {n_mirrors} thread(s) processed")
-        except Exception as e:
-            print(f"mirror backfill: skipped ({e})")
-    else:
-        print("mirror backfill: (dry-run — skipped)")
+    # P8 (Task 4.2): the graph-mirrors-threads backfill is RETIRED — a conversation
+    # is now a first-class kind='conversation' node, not a graph_topics projection,
+    # so there is no mirror to backfill.
 
     return 0

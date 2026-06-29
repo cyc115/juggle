@@ -89,14 +89,22 @@ def _seed_topic(db, topic_id, task_states, *, state="integrating",
         )
         c.commit()
 
-    # P8: also write the parent node so orphan_guard (which reads nodes) can find it.
+    # P8: create_topic already wrote the parent node (state='open'); force the
+    # seed's state/merged_sha/dispatch_thread_id onto it so orphan_guard (which
+    # reads nodes, incl. the dispatch_thread_id binding it resolves repo/branch
+    # through) sees the intended fixture.
     with db._connect() as c:
         c.execute(
             "INSERT OR IGNORE INTO nodes "
             "(id, kind, title, objective, state, project_id, parent_id, "
-            "merged_sha, created_at, updated_at) "
-            "VALUES (?, 'task', ?, '', ?, 'INBOX', NULL, ?, ?, ?)",
-            (topic_id, f"Topic {topic_id}", state, merged_sha, now, now),
+            "dispatch_thread_id, merged_sha, created_at, updated_at) "
+            "VALUES (?, 'task', ?, '', ?, 'INBOX', NULL, ?, ?, ?, ?)",
+            (topic_id, f"Topic {topic_id}", state, thread_id, merged_sha, now, now),
+        )
+        c.execute(
+            "UPDATE nodes SET state=?, dispatch_thread_id=?, merged_sha=? "
+            "WHERE id=? AND kind='task'",
+            (state, thread_id, merged_sha, topic_id),
         )
         c.commit()
 

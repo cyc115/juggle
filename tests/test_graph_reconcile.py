@@ -69,9 +69,15 @@ def _mk_project(db, pid="P1"):
 def _mk_topic(db, topic_id, project_id, state="open"):
     t.create_topic(db, topic_id=topic_id, project_id=project_id, title=topic_id)
     if state != "open":
+        # Topic state now reads from nodes (P8 Task 4.2) — force BOTH stores so
+        # the flipped reader and the legacy mirror agree.
         with db._connect() as conn:
             conn.execute(
                 "UPDATE graph_topics SET state=? WHERE id=?", (state, topic_id)
+            )
+            conn.execute(
+                "UPDATE nodes SET state=? WHERE id=? AND kind='task'",
+                (state, topic_id),
             )
             conn.commit()
 
@@ -307,22 +313,22 @@ def test_reconcile_verified_is_terminal_idempotent(db):
     assert t.get_topic(db, "T1")["state"] == "verified"
 
 
-def test_reconcile_mirror_integrating_not_advanced(db):
-    """Mirror guard (commit 50b105d defense-in-depth): an is_mirror=1 topic is a
-    reflection-only tracker — reconcile must NEVER advance it, even when it looks
-    like an orphaned integrating topic with all tasks verified."""
+def test_reconcile_skips_conversation_nodes(db):
+    """P8 Task 4.2 (replaces the deleted is_mirror-tracker guard): a conversation
+    node `project assign`-ed to a project is kind='conversation', so it is NEVER
+    in the topic set (kind='task' AND parent_id IS NULL) — reconcile_project_topics
+    must not touch it (the structural successor to 'mirror topics never advanced').
+    """
     pid = _mk_project(db)
-    _mk_topic(db, "M1", pid, state="integrating")
-    with db._connect() as conn:
-        conn.execute("UPDATE graph_topics SET is_mirror=1 WHERE id=?", ("M1",))
-        conn.commit()
-    _mk_task(db, "n1", pid, "M1", state="verified")
+    _mk_topic(db, "T1", pid, state="open")
+    _mk_task(db, "n1", pid, "T1", state="verified")
+    chat = db.create_thread(topic="improve dispatch", session_id="sessC")
+    db.update_thread(chat, project_id=pid)  # conversation node now in this project
 
-    result = t.reconcile_topic_state(db, "M1")
+    result = t.reconcile_project_topics(db, pid)
 
-    assert result == "integrating"
-    assert t.get_topic(db, "M1")["state"] == "integrating"
-    assert t.get_topic(db, "M1")["verified_at"] is None
+    assert chat not in result, "a conversation node must never be reconciled as a topic"
+    assert "T1" in result
 
 
 def test_reconcile_integrating_with_live_agent_not_advanced(db):
@@ -355,23 +361,21 @@ def test_reconcile_integrating_with_unverified_task_not_advanced(db):
     assert t.get_topic(db, "T1")["state"] != "verified"
 
 
-def test_list_topics_excludes_conversational_mirror(db):
-    """A conversational thread `project assign`-ed to a project gets a mirror
-    (is_mirror=1) topic. That phantom must NOT appear in the project's
-    graph-topic listing (it pollutes the cockpit graph pane)."""
-    from dbops.db_mirror import mirror_upsert_thread
-
+def test_list_topics_excludes_conversation_nodes(db):
+    """P8 Task 4.2 (replaces the deleted db_mirror phantom test): a conversational
+    thread `project assign`-ed to a project is a kind='conversation' node, NOT a
+    graph topic — it must NOT appear in the project's topic listing (which reads
+    kind='task' AND parent_id IS NULL), so it can never pollute the cockpit graph
+    pane the way the old ~<uuid> mirror projection did."""
     pid = _mk_project(db)
     _mk_topic(db, "T1", pid, state="open")  # a real graph topic
     chat = db.create_thread(topic="improve dispatch", session_id="sessC")
-    db.update_thread(chat, project_id=pid)
-    mirror_id = mirror_upsert_thread(db, chat, pid)  # ~<uuid> phantom
+    db.update_thread(chat, project_id=pid)  # conversation node assigned to pid
 
     listed = {top["id"] for top in t.list_topics(db, pid)}
 
     assert "T1" in listed
-    assert mirror_id not in listed
-    assert not any(tid.startswith("~") for tid in listed)
+    assert chat not in listed
 
 
 # ── B3: doctor runs reconcile ─────────────────────────────────────────────────

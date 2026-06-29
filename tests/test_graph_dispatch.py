@@ -534,9 +534,9 @@ def _mk_topic(db, tid, project="INBOX", n_tasks=1, ready=True):
     for i in range(n_tasks):
         nid = f"{tid}-k{i}"
         g.create_task(db, task_id=nid, project_id=project, title=nid, prompt="p")
-        with db._connect() as conn:
-            conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (tid, nid))
-            conn.commit()
+        # set_task_topic dual-writes graph_tasks.topic_id + nodes.parent_id, so the
+        # nodes-sourced topic ready-set (P8 Task 4.2) sees the child as a member.
+        g.set_task_topic(db, nid, tid)
     if ready:
         tp.recompute_topic_ready(db, project)
 
@@ -548,7 +548,11 @@ def _arm_many(db, *projects):
 def _age_topic_claim(db, tid, secs):
     old = (datetime.now(timezone.utc) - timedelta(seconds=secs)).isoformat()
     with db._connect() as conn:
+        # The stale-claim sweep reads nodes.updated_at (P8 Task 4.2); age both.
         conn.execute("UPDATE graph_topics SET updated_at=? WHERE id=?", (old, tid))
+        conn.execute(
+            "UPDATE nodes SET updated_at=? WHERE id=? AND kind='task'", (old, tid)
+        )
         conn.commit()
 
 
@@ -599,10 +603,17 @@ def _verify_topic(db, tid, handoff=None):
 
 
 def _dep_topic(db, child, parent, project="INBOX"):
-    """Make topic `child` derive-depend on `parent`: child's task → parent's."""
+    """Make topic `child` derive-depend on `parent`: child's task → parent's.
+
+    Writes node_edges (the flipped derived-dep source, P8 Task 4.2) alongside the
+    legacy graph_edges so both stores agree."""
     with db._connect() as conn:
         conn.execute(
             "INSERT INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
+            (f"{child}-k0", f"{parent}-k0"),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO node_edges (node_id, depends_on_id) VALUES (?,?)",
             (f"{child}-k0", f"{parent}-k0"),
         )
         conn.commit()

@@ -45,29 +45,8 @@ from dbops.thread_dedup import (  # noqa: E402,F401
 _OPEN_THREAD_STATES = LIVE_SLUG_STATES
 
 
-# Terminal thread statuses whose graph mirror must be pruned on transition.
-_TERMINAL_THREAD_STATUSES = ("closed", "archived")
-
-
 class ThreadsMixin:
     """Mixin for thread CRUD, state machine, archive ops, and stale detection."""
-
-    def _prune_thread_mirror(self, thread_id: str) -> None:
-        """Delete a thread's graph mirror topic on terminal transition.
-
-        Fail-soft: mirror pruning is cosmetic and must NEVER break the status
-        transition (graph_topics may be absent on a pre-autopilot DB).
-        """
-        try:
-            from dbops import db_mirror
-
-            db_mirror.mirror_delete_thread(self, thread_id)
-        except Exception:  # pragma: no cover - defensive
-            import logging
-
-            logging.getLogger(__name__).debug(
-                "mirror prune failed for %s", thread_id[:8], exc_info=True
-            )
 
     # ---------------------------------------------------------------
     # Thread CRUD
@@ -274,9 +253,6 @@ class ThreadsMixin:
             # P8 dual-write: mirror the same column edits onto the conversation node.
             mirror_conv_update(conn, thread_id, **kwargs)
             conn.commit()
-        # A status edit that takes the thread terminal must prune its mirror too.
-        if kwargs.get("status") in _TERMINAL_THREAD_STATUSES:
-            self._prune_thread_mirror(thread_id)
 
     # ---------------------------------------------------------------
     # Thread state machine
@@ -304,8 +280,6 @@ class ThreadsMixin:
             )
             mirror_conv_update(conn, thread_id, status=status, last_active_at=now)
             conn.commit()
-        if status in _TERMINAL_THREAD_STATUSES:
-            self._prune_thread_mirror(thread_id)
 
     def set_conversation_background(self, thread_id: str) -> None:
         """Mark a conversation node background (a dispatched agent owns it).
@@ -361,7 +335,6 @@ class ThreadsMixin:
                 conn, thread_id, status="archived", show_in_list=0, last_active_at=now
             )
             conn.commit()
-        self._prune_thread_mirror(thread_id)
 
     def unarchive_thread(self, thread_id: str) -> str:
         """Unarchive: status=active, show_in_list=1.

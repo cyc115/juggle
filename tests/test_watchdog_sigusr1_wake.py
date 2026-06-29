@@ -304,13 +304,19 @@ def test_recompute_topic_ready_pokes_watchdog(tmp_path, monkeypatch):
             "VALUES ('TOP1', 'P', 'Topic 1', 'open', ?, ?)",
             (_now(), _now()),
         )
+        # P8 Task 4.2: topic_ready_eligible reads the topic from nodes (root task
+        # node), so the topic must exist there too.
+        conn.execute(
+            "INSERT INTO nodes (id, kind, title, objective, state, project_id, "
+            "parent_id, created_at, updated_at) "
+            "VALUES ('TOP1', 'task', 'Topic 1', '', 'open', 'P', NULL, ?, ?)",
+            (_now(), _now()),
+        )
         conn.commit()
 
     # Topic needs at least one pending task (topic_ready_eligible G3 gate)
     db_graph.create_task(d, task_id="T1", project_id="P", title="T1", prompt="do it")
-    with d._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET topic_id='TOP1' WHERE id='T1'")
-        conn.commit()
+    db_graph.set_task_topic(d, "T1", "TOP1")  # dual-writes nodes.parent_id
 
     db_topics.recompute_topic_ready(d, "P")
 

@@ -1,4 +1,10 @@
-"""dbops.db_topics — graph_topics store (3-tier autopilot, R9 2026-06-11).
+"""dbops.db_topics — topic store over the unified nodes table (3-tier autopilot).
+
+P8 (Task 4.2): topic reads now resolve from ``nodes`` — a topic is a ROOT task
+node (kind='task', parent_id IS NULL); its child tasks carry parent_id=<topic id>,
+and topic deps are derived from node_edges crossing parent boundaries. Writes
+dual-write the legacy graph_topics row (the db_graph._TASK_ONLY discriminator)
+until the Step-6 kind discriminator lands.
 
 Owns: topic CRUD, topic state transitions (DELEGATES the decision to the unified
 db_node_machine.node_transition — one state machine, no second invention), DERIVED topic-level deps
@@ -14,7 +20,26 @@ from __future__ import annotations
 from dbops.schema import _now
 from dbops.db_graph import _cx
 from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
-from dbops.state_write import write_state
+from dbops.state_write import cas_state, write_state
+
+# Topic/task discriminator (M2): a topic is a kind='task' node whose id IS in
+# graph_topics — the EXACT complement of db_graph._TASK_ONLY ("id NOT IN
+# graph_topics"). parent_id IS NULL alone is NOT sufficient: a bare task (no owning
+# topic) is also parent_id-NULL, and mis-classifying it as a topic routes
+# complete-agent through the topic G1-merge gate instead of the task path
+# (2026-06-29 incident). create_topic dual-writes graph_topics so the membership
+# discriminator is authoritative during dual-write (Step 6 swaps it for a real kind).
+_TOPIC_ONLY = "id IN (SELECT id FROM graph_topics)"
+
+# nodes projection reproducing the legacy graph_topics row shape so topic-tier
+# consumers keep their column names after the P8 read-flip (Task 4.2). Child tasks
+# carry parent_id=<topic id>; topic deps derive from node_edges crossing parent
+# boundaries. dispatch_thread_id→thread_id keeps the bound-thread column name.
+_TOPIC_SELECT = (
+    "SELECT id, project_id, title, objective, state, "
+    "dispatch_thread_id AS thread_id, merged_sha, handoff, diffstat, "
+    f"verified_at, created_at, updated_at FROM nodes WHERE kind='task' AND {_TOPIC_ONLY}"
+)
 
 
 class UnmergedVerifyRefused(ValueError):
@@ -46,11 +71,6 @@ def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
             f"illegal graph transition: topic {topic_id!r} in state "
             f"{topic['state']!r} got event {event!r}"
         ) from e
-    if topic.get("is_mirror"):
-        raise ValueError(
-            f"mirror topic {topic_id!r} cannot be execution-transitioned "
-            f"(is_mirror=1); mirror state is managed by db_mirror reflection writes only"
-        )
     if new_state == "verified" and not _verified_allowed(db, topic_id):
         raise UnmergedVerifyRefused(
             f"refusing to verify topic {topic_id!r}: its work is not merged into "
@@ -65,6 +85,10 @@ def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
 
 
 def create_topic(db, *, topic_id, project_id, title, objective="", conn=None) -> None:
+    """Insert a topic. Dual-writes the authoritative nodes row (kind='task',
+    parent_id NULL = topic-tier) AND legacy graph_topics — the latter stays the
+    discriminator db_graph._TASK_ONLY excludes, so the flipped task readers keep
+    separating tasks from topics until the Step-6 kind discriminator lands."""
     now = _now()
     with _cx(db, conn) as c:
         c.execute(
@@ -72,18 +96,24 @@ def create_topic(db, *, topic_id, project_id, title, objective="", conn=None) ->
             "created_at, updated_at) VALUES (?,?,?,?, 'open', ?, ?)",
             (topic_id, project_id, title, objective, now, now),
         )
+        c.execute(
+            "INSERT OR IGNORE INTO nodes (id, kind, title, objective, state, "
+            "project_id, parent_id, created_at, updated_at) "
+            "VALUES (?, 'task', ?, ?, 'open', ?, NULL, ?, ?)",
+            (topic_id, title, objective, project_id, now, now),
+        )
 
 
 def get_topic(db, topic_id, conn=None) -> dict | None:
     with _cx(db, conn) as c:
-        row = c.execute("SELECT * FROM graph_topics WHERE id=?", (topic_id,)).fetchone()
+        row = c.execute(f"{_TOPIC_SELECT} AND id=?", (topic_id,)).fetchone()
         return dict(row) if row else None
 
 
 def get_topic_by_thread(db, thread_id) -> dict | None:
     with db._connect() as conn:
         row = conn.execute(
-            "SELECT * FROM graph_topics WHERE thread_id=?", (thread_id,)
+            f"{_TOPIC_SELECT} AND dispatch_thread_id=?", (thread_id,)
         ).fetchone()
     return dict(row) if row else None
 
@@ -91,25 +121,32 @@ def get_topic_by_thread(db, thread_id) -> dict | None:
 def list_topics(db, project_id) -> list[dict]:
     """Real graph topics for a project, in topological-ish (created_at,id) order.
 
-    Excludes mirror topics (COALESCE(is_mirror,0)=1): those are reflection-only
-    projections of assigned threads, not graph work. Listing them here made a
-    conversational chat thread `project assign`-ed to a project surface as a
-    phantom ``~<uuid>`` node in the cockpit graph pane and dragged reconcile/
-    dispatch over non-graph rows (2026-06-15 defect)."""
+    Topics are the root task nodes (kind='task', parent_id IS NULL). Conversation
+    nodes (kind='conversation') — including a chat thread `project assign`-ed to a
+    project — are excluded by the kind discriminator, so they never surface as a
+    phantom graph node (the 2026-06-15 mirror-projection defect can no longer
+    occur: the conversation IS a node, never a graph_topics projection)."""
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM graph_topics WHERE project_id=? "
-            "AND COALESCE(is_mirror, 0) = 0 ORDER BY created_at, id",
+            f"{_TOPIC_SELECT} AND project_id=? ORDER BY created_at, id",
             (project_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
 
 def set_topic_thread(db, topic_id, thread_id) -> None:
+    """Bind the dispatch thread; dual-writes nodes.dispatch_thread_id for the
+    flipped get_topic_by_thread / cockpit-DAG / orphan_guard readers."""
+    now = _now()
     with db._connect() as conn:
         conn.execute(
             "UPDATE graph_topics SET thread_id=?, updated_at=? WHERE id=?",
-            (thread_id, _now(), topic_id),
+            (thread_id, now, topic_id),
+        )
+        conn.execute(
+            "UPDATE nodes SET dispatch_thread_id=?, updated_at=? "
+            "WHERE id=? AND kind='task'",
+            (thread_id, now, topic_id),
         )
         conn.commit()
 
@@ -119,19 +156,31 @@ def set_topic_merged_sha(db, topic_id, merged_sha, conn=None) -> None:
 
     The single source of truth for the verified gate (T-verified-merged-sha):
     integrate writes this on a successful ff-merge/push so the topic can verify.
+    Dual-writes nodes.merged_sha (the flipped _verified_allowed / orphan reads).
     """
+    now = _now()
     with _cx(db, conn) as c:
         c.execute(
             "UPDATE graph_topics SET merged_sha=?, updated_at=? WHERE id=?",
-            (merged_sha, _now(), topic_id),
+            (merged_sha, now, topic_id),
+        )
+        c.execute(
+            "UPDATE nodes SET merged_sha=?, updated_at=? WHERE id=? AND kind='task'",
+            (merged_sha, now, topic_id),
         )
 
 
 def set_topic_handoff(db, topic_id, handoff) -> None:
+    """Record the topic handoff; dual-writes nodes.handoff for the flipped reads."""
+    now = _now()
     with db._connect() as conn:
         conn.execute(
             "UPDATE graph_topics SET handoff=?, updated_at=? WHERE id=?",
-            (handoff, _now(), topic_id),
+            (handoff, now, topic_id),
+        )
+        conn.execute(
+            "UPDATE nodes SET handoff=?, updated_at=? WHERE id=? AND kind='task'",
+            (handoff, now, topic_id),
         )
         conn.commit()
 
@@ -142,7 +191,10 @@ def list_topic_tasks(db, topic_id) -> list[dict]:
     The topic agent executes tasks SEQUENTIALLY in this order (R9 hybrid)."""
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM graph_tasks WHERE topic_id=? ORDER BY created_at, id",
+            "SELECT id, project_id, title, objective AS prompt, verify_cmd, state, "
+            "dispatch_thread_id AS thread_id, parent_id AS topic_id, handoff, "
+            "diffstat, verified_at, created_at, updated_at "
+            "FROM nodes WHERE kind='task' AND parent_id=? ORDER BY created_at, id",
             (topic_id,),
         ).fetchall()
     tasks = [dict(r) for r in rows]
@@ -151,8 +203,8 @@ def list_topic_tasks(db, topic_id) -> list[dict]:
         return []
     with db._connect() as conn:
         edges = conn.execute(
-            "SELECT task_id, depends_on_id FROM graph_edges "
-            "WHERE task_id IN (%s)" % ",".join("?" * len(ids)),
+            "SELECT node_id AS task_id, depends_on_id FROM node_edges "
+            "WHERE node_id IN (%s)" % ",".join("?" * len(ids)),
             tuple(ids),
         ).fetchall()
     deps = {n["id"]: set() for n in tasks}
@@ -179,11 +231,11 @@ def derived_topic_deps(db, topic_id) -> list[str]:
     """Topics this topic depends on: any task edge crossing the boundary."""
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT DISTINCT d.topic_id FROM graph_edges e "
-            "JOIN graph_tasks n ON n.id = e.task_id "
-            "JOIN graph_tasks d ON d.id = e.depends_on_id "
-            "WHERE n.topic_id=? AND d.topic_id IS NOT NULL AND d.topic_id != ? "
-            "ORDER BY d.topic_id",
+            "SELECT DISTINCT d.parent_id FROM node_edges e "
+            "JOIN nodes n ON n.id = e.node_id "
+            "JOIN nodes d ON d.id = e.depends_on_id "
+            "WHERE n.parent_id=? AND d.parent_id IS NOT NULL AND d.parent_id != ? "
+            "ORDER BY d.parent_id",
             (topic_id, topic_id),
         ).fetchall()
     return [r[0] for r in rows]
@@ -204,18 +256,19 @@ def topic_ready_eligible(db, project_id) -> list[str]:
     placeholders = ",".join("?" * len(_DISPATCHABLE_TASK_STATES))
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT t.id FROM graph_topics t WHERE t.project_id=? "
-            "AND COALESCE(t.is_mirror, 0) = 0 "
+            "SELECT t.id FROM nodes t "
+            "WHERE t.kind='task' AND t.id IN (SELECT id FROM graph_topics) "
+            "AND t.project_id=? "
             "AND t.state='open' AND NOT EXISTS ("
-            "  SELECT 1 FROM graph_edges e"
-            "  JOIN graph_tasks n ON n.id = e.task_id"
-            "  JOIN graph_tasks d ON d.id = e.depends_on_id"
-            "  JOIN graph_topics dt ON dt.id = d.topic_id"
-            "  WHERE n.topic_id = t.id AND d.topic_id != t.id"
+            "  SELECT 1 FROM node_edges e"
+            "  JOIN nodes n ON n.id = e.node_id"
+            "  JOIN nodes d ON d.id = e.depends_on_id"
+            "  JOIN nodes dt ON dt.id = d.parent_id"
+            "  WHERE n.parent_id = t.id AND d.parent_id != t.id"
             "  AND dt.state != 'verified') "
             "AND EXISTS ("
-            "  SELECT 1 FROM graph_tasks gt"
-            f"  WHERE gt.topic_id = t.id AND gt.state IN ({placeholders})) "
+            "  SELECT 1 FROM nodes gt"
+            f"  WHERE gt.parent_id = t.id AND gt.state IN ({placeholders})) "
             "ORDER BY t.created_at, t.id",
             (project_id, *_DISPATCHABLE_TASK_STATES),
         ).fetchall()
@@ -224,16 +277,13 @@ def topic_ready_eligible(db, project_id) -> list[str]:
 
 def recompute_topic_ready(db, project_id) -> list[str]:
     """CAS-promote eligible 'open' topics to 'ready' (same race discipline as
-    db_graph.recompute_ready — a lost race is a silent no-op)."""
+    db_graph.recompute_ready — a lost race is a silent no-op). The CAS writes
+    ``nodes`` (authoritative) in lockstep with the legacy graph_topics row."""
     newly = []
     for tid in topic_ready_eligible(db, project_id):
         with _cx(db) as conn:
-            cur = conn.execute(
-                "UPDATE graph_topics SET state='ready', updated_at=? "
-                "WHERE id=? AND state='open' AND COALESCE(is_mirror,0)=0",
-                (_now(), tid),
-            )
-        if cur.rowcount == 1:
+            won = cas_state(conn, tid, frm="open", to="ready", now=_now())
+        if won == 1:
             newly.append(tid)
     if newly:
         try:
@@ -244,90 +294,6 @@ def recompute_topic_ready(db, project_id) -> list[str]:
     return newly
 
 
-_ADVANCE_TO_INTEGRATING = {
-    "open": ("deps_ready", "claim", "dispatch", "integrate_start"),
-    "ready": ("claim", "dispatch", "integrate_start"),
-    "dispatching": ("dispatch", "integrate_start"),
-    "running": ("integrate_start",),
-    "integrating": (),
-}
-
-
-def mark_topic_completion(db, topic_id, *, integrate_ok, verify_ok=True,
-                          handoff=None) -> str:
-    """Topic twin of db_graph.mark_completion: walk legally to 'integrating',
-    apply the outcome. verified-means-MERGED holds at topic level (spec §2.3).
-
-    Idempotent for the success path: if the topic is already 'verified', return
-    'verified' without raising. Prevents a task stuck at 'running' when an
-    out-of-band integrate + a racing complete-agent both succeed (2026-06-11 bug I).
-    """
-    topic = get_topic(db, topic_id)
-    if topic is None:
-        raise ValueError(f"graph topic not found: {topic_id!r}")
-    if topic["state"] == "verified" and integrate_ok:
-        return "verified"
-    if topic["state"] not in _ADVANCE_TO_INTEGRATING:
-        raise ValueError(
-            f"cannot mark completion: topic {topic_id!r} in terminal state "
-            f"{topic['state']!r}"
-        )
-    if handoff is not None:
-        set_topic_handoff(db, topic_id, handoff)
-    for event in _ADVANCE_TO_INTEGRATING[topic["state"]]:
-        topic_transition(db, topic_id, event)
-    if not integrate_ok:
-        return topic_transition(db, topic_id, "integrate_fail")
-    if not verify_ok:
-        return topic_transition(db, topic_id, "verify_fail")
-    return topic_transition(db, topic_id, "integrate_ok")
-
-
-def mark_topic_exec_failed(db, topic_id) -> str:
-    """Agent death / give-up: walk the topic legally to 'failed-exec'
-    (mirror of db_graph.mark_exec_failed — read it and follow its walk)."""
-    topic = get_topic(db, topic_id)
-    if topic is None:
-        raise ValueError(f"graph topic not found: {topic_id!r}")
-    walk = {"open": ("deps_ready", "claim", "dispatch"),
-            "ready": ("claim", "dispatch"),
-            "dispatching": ("dispatch",),
-            "running": ()}
-    if topic["state"] not in walk:
-        raise ValueError(
-            f"cannot mark exec-failed: topic {topic_id!r} in state "
-            f"{topic['state']!r}"
-        )
-    for event in walk[topic["state"]]:
-        topic_transition(db, topic_id, event)
-    return topic_transition(db, topic_id, "exec_fail")
-
-
-def propagate_topic_failure(db, topic_id) -> list[str]:
-    """Block transitive DERIVED dependents of a failed topic (blocked-failed).
-    Mirror of db_graph.propagate_failure over derived topic deps."""
-    blocked: list[str] = []
-    frontier = [topic_id]
-    while frontier:
-        cur = frontier.pop()
-        with db._connect() as conn:
-            rows = conn.execute(
-                "SELECT DISTINCT n.topic_id FROM graph_edges e "
-                "JOIN graph_tasks n ON n.id = e.task_id "
-                "JOIN graph_tasks d ON d.id = e.depends_on_id "
-                "WHERE d.topic_id=? AND n.topic_id != ?",
-                (cur, cur),
-            ).fetchall()
-        for r in rows:
-            dep_tid = r[0]
-            t_ = get_topic(db, dep_tid)
-            if t_ and t_["state"] in ("open", "ready"):
-                topic_transition(db, dep_tid, "dep_fail")
-                blocked.append(dep_tid)
-                frontier.append(dep_tid)
-    return blocked
-
-
 # Reconcile (derive-and-sync) lives in db_topics_reconcile (LOC split,
 # 2026-06-13). Re-exported here so existing callers keep importing from
 # dbops.db_topics. Imported at module end to avoid a circular import
@@ -335,14 +301,15 @@ def propagate_topic_failure(db, topic_id) -> list[str]:
 
 
 def topic_counts(db, project_id) -> dict | None:
-    """Display counts over graph_topics (same shape as juggle_graph_status)."""
+    """Display counts over topic nodes (same shape as juggle_graph_status)."""
     from juggle_graph_status import counts_from_states
 
     try:
         with db._connect() as conn:
             rows = conn.execute(
-                "SELECT state FROM graph_topics "
-                "WHERE project_id=? AND COALESCE(is_mirror, 0) = 0",
+                "SELECT state FROM nodes "
+                "WHERE kind='task' AND id IN (SELECT id FROM graph_topics) "
+                "AND project_id=?",
                 (project_id,)
             ).fetchall()
     except Exception:
@@ -351,10 +318,15 @@ def topic_counts(db, project_id) -> dict | None:
     return counts_from_states(states) if states else None
 
 
-# Back-compat re-exports for the reconcile pass (LOC split, 2026-06-13). Placed
-# at module end so db_topics is fully defined before db_topics_reconcile imports
-# from it (avoids a circular-import failure at load time).
+# Back-compat re-exports (LOC split). Placed at module end so db_topics is fully
+# defined before these siblings import get_topic/topic_transition/etc. from it
+# (avoids a circular-import failure at load time).
 from dbops.db_topics_reconcile import (  # noqa: E402,F401
     reconcile_project_topics,
     reconcile_topic_state,
+)
+from dbops.db_topics_marking import (  # noqa: E402,F401
+    mark_topic_completion,
+    mark_topic_exec_failed,
+    propagate_topic_failure,
 )

@@ -202,6 +202,8 @@ def test_g3_all_terminal_topic_never_eligible(db):
     with db._connect() as conn:
         conn.execute("UPDATE graph_tasks SET topic_id='T-done', state='verified' "
                      "WHERE id='n1'")
+        conn.execute("UPDATE nodes SET parent_id='T-done', state='verified' "
+                     "WHERE id='n1'")
         conn.commit()
     assert "T-done" not in t.topic_ready_eligible(db, pid)
 
@@ -212,6 +214,7 @@ def test_g3_topic_with_pending_task_is_eligible(db):
     g.create_task(db, task_id="n1", project_id=pid, title="x", prompt="x")
     with db._connect() as conn:
         conn.execute("UPDATE graph_tasks SET topic_id='T-go' WHERE id='n1'")
+        conn.execute("UPDATE nodes SET parent_id='T-go' WHERE id='n1'")
         conn.commit()
     assert "T-go" in t.topic_ready_eligible(db, pid)
 
@@ -231,6 +234,7 @@ def test_g4a_reconcile_keeps_running_with_live_agent(db, monkeypatch):
     g.create_task(db, task_id="n1", project_id=pid, title="x", prompt="x")
     with db._connect() as conn:
         conn.execute("UPDATE graph_tasks SET topic_id='T-run' WHERE id='n1'")
+        conn.execute("UPDATE nodes SET parent_id='T-run' WHERE id='n1'")
         conn.commit()
     # Live, healthy (busy) agent bound to the thread.
     monkeypatch.setattr(db, "get_agent_by_thread",
@@ -248,6 +252,7 @@ def test_g4a_reconcile_demotes_when_no_agent(db, monkeypatch):
     g.create_task(db, task_id="n1", project_id=pid, title="x", prompt="x")
     with db._connect() as conn:
         conn.execute("UPDATE graph_tasks SET topic_id='T-run' WHERE id='n1'")
+        conn.execute("UPDATE nodes SET parent_id='T-run' WHERE id='n1'")
         conn.commit()
     monkeypatch.setattr(db, "get_agent_by_thread", lambda tid: None)
     assert t.reconcile_topic_state(db, "T-run") == "open"

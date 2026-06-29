@@ -322,6 +322,8 @@ def test_topic_with_failed_task_completes_as_failed_verify(db, monkeypatch):
     with db._connect() as conn:  # B derives on A (b1 → a1)
         conn.execute("INSERT INTO graph_edges (task_id, depends_on_id) "
                      "VALUES ('b1','a1')")
+        conn.execute("INSERT OR IGNORE INTO node_edges (node_id, depends_on_id) "
+                     "VALUES ('b1','a1')")
         conn.commit()
     _verify_task(db, "a1")
     _verify_task(db, "a2", fail=True)  # terminal, not verified
@@ -373,5 +375,6 @@ def test_guard_topic_bound_operator_state_allowed(db):
     tp_.set_topic_thread(db, "T1", tid)
     with db._connect() as conn:
         conn.execute("UPDATE graph_topics SET state='failed-exec' WHERE id='T1'")
+        conn.execute("UPDATE nodes SET state='failed-exec' WHERE id='T1'")
         conn.commit()
     assert check_task_guard(db, tid) is None

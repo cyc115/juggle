@@ -1,9 +1,10 @@
 """Lazy DAG loader for the cockpit graph panel.
 
-Loads ALL projects' topic graphs from graph_topics / graph_tasks /
-graph_edges — ONLY when graph mode is active (snapshot(load_graph_dag=True)).
-Extracted from juggle_cockpit_model to keep that module under its LOC budget.
-Read-only; degrades to None / [] on pre-migration DBs or projects with no tasks.
+Loads ALL projects' topic graphs from the unified ``nodes`` / ``node_edges``
+tables (P8 Task 4.2) — ONLY when graph mode is active
+(snapshot(load_graph_dag=True)). Extracted from juggle_cockpit_model to keep that
+module under its LOC budget. Read-only; degrades to None / [] on projects with no
+task nodes.
 
 Topic tier (R5/R9): DAG tasks are TOPICS, edges are derived topic deps, task
 counts per topic are attached as tasks_done/tasks_total on GraphTask. The flat
@@ -31,8 +32,7 @@ class GraphDag:
 
 def _all_project_ids(conn) -> list[str]:
     """All project ids that have graph work, ordered by last_active DESC then
-    alphabetically. Primary source is nodes (P8); legacy tables kept as fallback
-    for pre-migration DBs with graph_topics/graph_tasks but no nodes rows."""
+    alphabetically. Source is the unified ``nodes`` table (P8 Task 4.2)."""
     try:
         proj_rows = conn.execute(
             "SELECT id FROM projects WHERE status='active' "
@@ -40,7 +40,6 @@ def _all_project_ids(conn) -> list[str]:
         ).fetchall()
         listed = [r[0] for r in proj_rows]
         extra: set[str] = set()
-        # P8 primary: nodes table
         try:
             for r in conn.execute(
                 "SELECT DISTINCT project_id FROM nodes "
@@ -52,18 +51,6 @@ def _all_project_ids(conn) -> list[str]:
                     extra.add(pid)
         except Exception:
             pass
-        # Compat: legacy tables for pre-migration DBs
-        for tbl in ("graph_topics", "graph_tasks"):
-            try:
-                for r in conn.execute(
-                    f"SELECT DISTINCT project_id FROM {tbl} "
-                    f"WHERE project_id IS NOT NULL"
-                ).fetchall():
-                    pid = r[0]
-                    if pid and pid not in listed:
-                        extra.add(pid)
-            except Exception:
-                pass
         return listed + sorted(extra)
     except Exception:
         return []
@@ -80,62 +67,31 @@ def _project_name(conn, pid: str) -> "str | None":
     return (row[0] if row else None) or None
 
 
-def _load_one_legacy_tasks(conn, pid: str) -> "GraphDag | None":
-    """Fallback: load flat graph_tasks DAG (pre-topic DBs / task-only projects)."""
-    from juggle_cockpit_graph_layout import GraphTask
-
-    try:
-        task_rows = conn.execute(
-            "SELECT n.id, n.title, n.state, n.thread_id, t.user_label "
-            "FROM graph_tasks n LEFT JOIN threads t ON n.thread_id = t.id "
-            "WHERE n.project_id=? ORDER BY n.created_at, n.id",
-            (pid,),
-        ).fetchall()
-        if not task_rows:
-            return None
-        ids = tuple(r["id"] for r in task_rows)
-        ph = ",".join("?" * len(ids))
-        edge_rows = conn.execute(
-            f"SELECT task_id, depends_on_id FROM graph_edges WHERE task_id IN ({ph})",
-            ids,
-        ).fetchall()
-    except Exception:
-        return None
-    tasks = [
-        GraphTask(id=r["id"], title=r["title"] or r["id"], state=r["state"],
-                  thread_id=r["thread_id"], user_label=r["user_label"])
-        for r in task_rows
-    ]
-    edges = [(r["task_id"], r["depends_on_id"]) for r in edge_rows]
-    return GraphDag(project_id=pid, tasks=tasks, edges=edges, member_tasks=None,
-                    project_name=_project_name(conn, pid))
-
-
 def _load_one(conn, pid: str) -> "GraphDag | None":
-    """Load topic-tier DAG for one project from nodes (P8); falls back to task-tier.
+    """Load topic-tier DAG for one project purely from the unified nodes table.
 
-    nodes is the primary source. For display enrichment (user_label, is_mirror)
-    we LEFT JOIN graph_topics + threads — those legacy tables are kept in P8.
+    A topic is a root task node (kind='task', parent_id IS NULL). The bound
+    dispatch thread is nodes.dispatch_thread_id; its user_label comes from the
+    bound conversation node (self-JOIN). No legacy graph_* / threads tables are
+    read (P8 Task 4.2). Returns None for a project with no task nodes.
     """
     from juggle_cockpit_graph_layout import GraphTask
 
     try:
-        # P8: read root task nodes; enrich with legacy display data where available.
         topic_rows = conn.execute(
             "SELECT n.id, n.title, n.state, "
-            "gt.thread_id, t.user_label, "
-            "COALESCE(gt.is_mirror, 0) AS is_mirror "
+            "n.dispatch_thread_id AS thread_id, c.user_label "
             "FROM nodes n "
-            "LEFT JOIN graph_topics gt ON gt.id = n.id "
-            "LEFT JOIN threads t ON t.id = gt.thread_id "
+            "LEFT JOIN nodes c "
+            "  ON c.id = n.dispatch_thread_id AND c.kind='conversation' "
             "WHERE n.kind='task' AND n.parent_id IS NULL AND n.project_id=? "
             "ORDER BY n.created_at, n.id",
             (pid,),
         ).fetchall()
     except Exception:
-        return _load_one_legacy_tasks(conn, pid)
+        return None
     if not topic_rows:
-        return _load_one_legacy_tasks(conn, pid)
+        return None
 
     # Per-parent child counts from nodes.
     topic_ids = tuple(r["id"] for r in topic_rows)
@@ -215,7 +171,6 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
             user_label=r["user_label"],
             tasks_done=done or None,
             tasks_total=total or None,
-            is_mirror=bool(r["is_mirror"]),
         ))
 
     return GraphDag(project_id=pid, tasks=tasks, edges=edges, member_tasks=member_tasks,

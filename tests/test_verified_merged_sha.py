@@ -118,15 +118,21 @@ def test_verify_refused_when_merged_sha_not_on_main(db, tmp_path):
 
 def _mk_topic_all_verified(db, topic_id, repo: Path | None, *, bind=True):
     t.create_topic(db, topic_id=topic_id, project_id="INBOX", title=topic_id)
+    for i in range(2):
+        nid = f"{topic_id}-k{i}"
+        g.create_task(db, task_id=nid, project_id="INBOX", title=nid, prompt="p")
+        g.set_task_topic(db, nid, topic_id)  # dual-writes nodes.parent_id
+    # Topic state + member states now read from nodes (P8 Task 4.2); force both.
     with db._connect() as conn:
         conn.execute("UPDATE graph_topics SET state='integrating' WHERE id=?", (topic_id,))
+        conn.execute(
+            "UPDATE nodes SET state='integrating' WHERE id=? AND kind='task'",
+            (topic_id,),
+        )
         for i in range(2):
             nid = f"{topic_id}-k{i}"
-            conn.execute(
-                "INSERT INTO graph_tasks(id,project_id,title,prompt,state,topic_id,"
-                "created_at,updated_at) VALUES(?,?,?,?,?,?,datetime('now'),datetime('now'))",
-                (nid, "INBOX", nid, "p", "verified", topic_id),
-            )
+            conn.execute("UPDATE graph_tasks SET state='verified' WHERE id=?", (nid,))
+            conn.execute("UPDATE nodes SET state='verified' WHERE id=?", (nid,))
         conn.commit()
     if bind and repo is not None:
         tid = db.create_thread(topic="w", session_id="s")
@@ -173,9 +179,7 @@ def test_worktree_branch_recorded_at_dispatch(db):
     t.create_topic(db, topic_id="a", project_id="INBOX", title="Topic a")
     nid = "a-k0"
     g.create_task(db, task_id=nid, project_id="INBOX", title=nid, prompt="p")
-    with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET topic_id='a' WHERE id=?", (nid,))
-        conn.commit()
+    g.set_task_topic(db, nid, "a")  # dual-writes nodes.parent_id (P8 Task 4.2)
     t.recompute_topic_ready(db, "INBOX")
     db.set_setting(gd.ARMED_PROJECT_KEY, "INBOX")
 

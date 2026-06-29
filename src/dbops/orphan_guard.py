@@ -1,9 +1,10 @@
 """dbops.orphan_guard — detect & surface completed-but-unmerged topics (G5).
 
-P8: readers migrated to the unified nodes table. graph_topics/graph_tasks are
-kept (dual-write still active) but orphan detection now uses nodes as primary
-source. reconcile_out_of_band_merges stamps both nodes.merged_sha AND
-(compat) graph_topics.merged_sha.
+P8 (Task 4.2): orphan detection reads exclusively from the unified nodes table —
+root task nodes (kind='task', parent_id IS NULL), their child states, and the
+bound dispatch thread (nodes.dispatch_thread_id). reconcile_out_of_band_merges
+stamps nodes.merged_sha (the lockstep set_topic_merged_sha keeps graph_topics in
+sync where it is still dual-written).
 
 Incident (2026-06-17): a false-negative in ``JuggleTmuxManager.send_task`` made
 the watchdog treat a successful dispatch as failed, so the topic was never
@@ -39,25 +40,19 @@ def _node_repo(db, node: dict) -> str:
     """Resolve main-repo path for a nodes row (P8).
 
     Primary: node.main_repo_path (written by integrate/dispatch).
-    Compat: graph_topics.thread_id → threads.main_repo_path (legacy bind).
+    Compat: nodes.dispatch_thread_id → thread.main_repo_path (the bound agent).
     Fallback: juggle's own repo (self-repo topics).
     """
     repo = (node.get("main_repo_path") or "").strip()
     if repo:
         return repo
-    # Compat: look up thread binding via graph_topics (dual-write still active)
-    try:
-        with db._connect() as conn:
-            row = conn.execute(
-                "SELECT thread_id FROM graph_topics WHERE id=?", (node["id"],)
-            ).fetchone()
-        if row and row[0]:
-            thread = db.get_thread(row[0]) or {}
-            repo = (thread.get("main_repo_path") or "").strip()
-            if repo:
-                return repo
-    except Exception:
-        pass
+    # Bound-thread binding now lives on the node itself (dispatch_thread_id).
+    thread_id = node.get("dispatch_thread_id")
+    if thread_id:
+        thread = db.get_thread(thread_id) or {}
+        repo = (thread.get("main_repo_path") or "").strip()
+        if repo:
+            return repo
     try:
         from pathlib import Path
         from juggle_cli_common import SRC_DIR
@@ -118,17 +113,11 @@ def _topic_branch(db, node: dict) -> str:
     branch = (node.get("worktree_branch") or "").strip()
     if branch:
         return branch
-    # Compat fallback: check the bound thread (graph_topics.thread_id → threads)
-    try:
-        with db._connect() as conn:
-            row = conn.execute(
-                "SELECT thread_id FROM graph_topics WHERE id=?", (node["id"],)
-            ).fetchone()
-        if row and row[0]:
-            thread = db.get_thread(row[0]) or {}
-            return (thread.get("worktree_branch") or "").strip()
-    except Exception:
-        pass
+    # Fallback: the bound thread's branch (nodes.dispatch_thread_id → thread).
+    thread_id = node.get("dispatch_thread_id")
+    if thread_id:
+        thread = db.get_thread(thread_id) or {}
+        return (thread.get("worktree_branch") or "").strip()
     return ""
 
 
@@ -162,21 +151,14 @@ def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
             continue
         now = _now()
         with db._connect() as conn:
-            # P8 primary: stamp nodes
+            # nodes is authoritative; set_topic_merged_sha already lockstep-mirrors
+            # graph_topics, so stamp the node directly here (single store).
             conn.execute(
                 "UPDATE nodes SET merged_sha=?, state='verified', updated_at=? WHERE id=?",
                 (sha, now, node["id"]),
             )
-            # Compat: keep graph_topics in sync (dual-write still active in P8)
-            try:
-                conn.execute(
-                    "UPDATE graph_topics SET merged_sha=? WHERE id=?",
-                    (sha, node["id"]),
-                )
-            except Exception:
-                pass
             conn.commit()
-        # Compat: reconcile graph_topics.state via legacy path
+        # Re-derive the topic state from its member tasks (idempotent on verified).
         try:
             db_topics.reconcile_topic_state(db, node["id"])
         except Exception:
@@ -211,17 +193,8 @@ def flag_unmerged_completed_topics(db, *, dedup_window_hours: float = 24.0) -> l
         if recent:
             continue
         label = node.get("title") or node_id
-        # thread_id for action item: check graph_topics compat binding
-        thread_id = None
-        try:
-            with db._connect() as conn:
-                row = conn.execute(
-                    "SELECT thread_id FROM graph_topics WHERE id=?", (node_id,)
-                ).fetchone()
-            if row:
-                thread_id = row[0]
-        except Exception:
-            pass
+        # thread_id for the action item: the node's bound dispatch thread.
+        thread_id = node.get("dispatch_thread_id")
         db.add_action_item(
             thread_id=thread_id,
             message=(

@@ -227,3 +227,48 @@ def test_load_graph_dags_returns_all_despite_armed_key_absent(db):
     dag_pids = {d.project_id for d in dags}
     assert "P1" in dag_pids
     assert "P2" in dag_pids
+
+
+def test_dag_renders_purely_from_nodes_no_legacy_tables(db):
+    """P8 Task 4.2 TDD pin: the cockpit DAG renders topics + task progress + edges
+    PURELY from the unified nodes/node_edges tables — with NO graph_topics /
+    graph_tasks / graph_edges / threads table present at all. Proves the loader
+    has no residual legacy read (the db_mirror/graph_topics enrichment is gone)."""
+    from juggle_cockpit_graph_dag import load_graph_dags
+    from dbops import db_graph as g, db_topics as tp
+
+    with db._connect() as conn:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO projects(id,name,status,created_at,last_active) "
+            "VALUES('PN','Proj N','active',?,?)", (now, now),
+        )
+        conn.commit()
+    # Seed via the real CRUD (dual-writes nodes) — topic T with two child tasks,
+    # one verified; topic U depending on T via a cross-topic task edge.
+    tp.create_topic(db, topic_id="T", project_id="PN", title="topic-t")
+    tp.create_topic(db, topic_id="U", project_id="PN", title="topic-u")
+    g.create_task(db, task_id="t1", project_id="PN", title="t1", prompt="p")
+    g.create_task(db, task_id="t2", project_id="PN", title="t2", prompt="p")
+    g.create_task(db, task_id="u1", project_id="PN", title="u1", prompt="p")
+    for tk, top in (("t1", "T"), ("t2", "T"), ("u1", "U")):
+        g.set_task_topic(db, tk, top)
+    g.replace_edges(db, "u1", ["t1"])           # u1 → t1 ⇒ U depends on T
+    with db._connect() as conn:
+        conn.execute("UPDATE nodes SET state='verified' WHERE id='t1'")
+        conn.commit()
+
+    # DROP every legacy table the loader must NOT depend on.
+    with db._connect() as conn:
+        for tbl in ("graph_edges", "graph_tasks", "graph_topics", "threads"):
+            conn.execute(f"DROP TABLE IF EXISTS {tbl}")
+        conn.commit()
+
+    dags = load_graph_dags(db._connect())
+    dag = next(d for d in dags if d.project_id == "PN")
+    assert {n.id for n in dag.tasks} == {"T", "U"}           # topics are the vertices
+    assert ("U", "T") in dag.edges                            # derived topic dep
+    t_task = next(n for n in dag.tasks if n.id == "T")
+    assert (t_task.tasks_done, t_task.tasks_total) == (1, 2)  # child progress from nodes
+    assert any(m["id"] == "t1" for m in dag.member_tasks["T"])

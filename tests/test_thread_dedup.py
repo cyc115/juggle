@@ -183,9 +183,7 @@ def test_dispatch_reuses_existing_open_thread(db):
     )
     nid = f"{tid}-k0"
     g.create_task(db, task_id=nid, project_id="INBOX", title=nid, prompt="p")
-    with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET topic_id=? WHERE id=?", (tid, nid))
-        conn.commit()
+    g.set_task_topic(db, nid, tid)  # dual-writes nodes.parent_id (P8 Task 4.2)
     tp.recompute_topic_ready(db, "INBOX")
     db.set_setting(gd.ARMED_PROJECT_KEY, "INBOX")
 

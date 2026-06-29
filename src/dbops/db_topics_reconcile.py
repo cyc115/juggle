@@ -11,8 +11,9 @@ reconcile pass and its safety guards:
 
 Must not own: the topic state machine (db_topics.topic_transition stays the sole
 state writer for event-driven transitions), topic CRUD, or completion marking.
-``reconcile_topic_state`` writes graph_topics.state directly (a derive-and-sync,
-not an event) and is the only sanctioned writer for that derivation.
+``reconcile_topic_state`` writes the derived state via the lockstep state_write
+helper (nodes authoritative + legacy graph_topics mirror) — a derive-and-sync, not
+an event — and is the only sanctioned writer for that derivation.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from __future__ import annotations
 from dbops.schema import _now
 from dbops.db_graph import _cx
 from dbops.db_topics import get_topic, list_topics
+from dbops.state_write import write_state
 
 _FAILED_TASK_STATES = frozenset({
     "failed-exec", "failed-integration", "failed-verify", "blocked-failed"
@@ -58,11 +60,6 @@ def reconcile_topic_state(db, topic_id: str) -> str:
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
 
-    # Mirror topics are reflection-only trackers (db_mirror is their sole writer);
-    # reconcile must never advance them (commit 50b105d defense-in-depth).
-    if topic.get("is_mirror"):
-        return topic["state"]
-
     # 'verified' is TERMINAL: never auto-demote a proven-merged topic. This is
     # the idempotency guarantee that previously rode on _orphan_recoverable
     # (removed T-verified-merged-sha) — without it, a verified topic whose
@@ -72,7 +69,7 @@ def reconcile_topic_state(db, topic_id: str) -> str:
 
     with db._connect() as conn:
         rows = conn.execute(
-            "SELECT state FROM graph_tasks WHERE topic_id=?", (topic_id,)
+            "SELECT state FROM nodes WHERE kind='task' AND parent_id=?", (topic_id,)
         ).fetchall()
 
     if not rows:
@@ -114,16 +111,11 @@ def reconcile_topic_state(db, topic_id: str) -> str:
     if target == topic["state"]:
         return target
 
-    now = _now()
-    sets, params = ["state=?", "updated_at=?"], [target, now]
-    if target == "verified":
-        sets.append("verified_at=?")
-        params.append(now)
+    # Lockstep writer: nodes (authoritative) + legacy graph_topics together (M3),
+    # so the flipped get_topic read never drifts from the legacy mirror.
     with _cx(db) as conn:
-        conn.execute(
-            f"UPDATE graph_topics SET {', '.join(sets)} WHERE id=?",
-            (*params, topic_id),
-        )
+        write_state(conn, topic_id, target, now=_now(),
+                    verified=(target == "verified"))
     return target
 
 
