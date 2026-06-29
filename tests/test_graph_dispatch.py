@@ -128,12 +128,8 @@ def test_concurrent_claim_exactly_one_wins(db, tmp_path):
 def _age_claim(db, task_id, secs):
     old = (datetime.now(timezone.utc) - timedelta(seconds=secs)).isoformat()
     with db._connect() as conn:
-        # sweep_stale_claims reads nodes.updated_at (P8 Task 4.1) — age both the
-        # authoritative store and the legacy mirror.
+        # sweep_stale_claims reads nodes.updated_at (P8 Task 4.1; legacy dropped).
         conn.execute("UPDATE nodes SET updated_at=? WHERE id=?", (old, task_id))
-        conn.execute(
-            "UPDATE graph_tasks SET updated_at=? WHERE id=?", (old, task_id)
-        )
         conn.commit()
 
 
@@ -548,8 +544,7 @@ def _arm_many(db, *projects):
 def _age_topic_claim(db, tid, secs):
     old = (datetime.now(timezone.utc) - timedelta(seconds=secs)).isoformat()
     with db._connect() as conn:
-        # The stale-claim sweep reads nodes.updated_at (P8 Task 4.2); age both.
-        conn.execute("UPDATE graph_topics SET updated_at=? WHERE id=?", (old, tid))
+        # The stale-claim sweep reads nodes.updated_at (P8 Task 4.2; legacy dropped).
         conn.execute(
             "UPDATE nodes SET updated_at=? WHERE id=? AND kind='topic'", (old, tid)
         )
@@ -605,13 +600,9 @@ def _verify_topic(db, tid, handoff=None):
 def _dep_topic(db, child, parent, project="INBOX"):
     """Make topic `child` derive-depend on `parent`: child's task → parent's.
 
-    Writes node_edges (the flipped derived-dep source, P8 Task 4.2) alongside the
-    legacy graph_edges so both stores agree."""
+    Writes node_edges (the flipped derived-dep source, P8 Task 4.2; legacy
+    graph_edges dropped)."""
     with db._connect() as conn:
-        conn.execute(
-            "INSERT INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
-            (f"{child}-k0", f"{parent}-k0"),
-        )
         conn.execute(
             "INSERT OR IGNORE INTO node_edges (node_id, depends_on_id) VALUES (?,?)",
             (f"{child}-k0", f"{parent}-k0"),
@@ -717,9 +708,10 @@ def test_single_project_single_topic_behavior_unchanged(db):
     tp.create_topic(db, topic_id="T-b", project_id="INBOX", title="b")
     g.create_task(db, task_id="b", project_id="INBOX", title="b", prompt="p")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET topic_id='T-b' WHERE id='b'")
+        conn.execute("UPDATE nodes SET parent_id='T-b' WHERE id='b' AND kind='task'")
         conn.execute(
-            "INSERT INTO graph_edges (task_id, depends_on_id) VALUES ('b','T-a-k0')")
+            "INSERT OR IGNORE INTO node_edges (node_id, depends_on_id) "
+            "VALUES ('b','T-a-k0')")
         conn.commit()
     tp.recompute_topic_ready(db, "INBOX")
     _arm(db)  # legacy scalar arm helper

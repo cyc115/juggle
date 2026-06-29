@@ -104,7 +104,7 @@ def test_propagate_failure_blocks_ready_dependents_too(db):
     _fail_task(db, "p", "verify_fail")
     # force q to 'ready' (test-only direct write; deps_ready is illegal here)
     with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET state='ready' WHERE id='q'")
+        conn.execute("UPDATE nodes SET state='ready' WHERE id='q'")
         conn.commit()
 
     assert g.propagate_failure(db, "p") == ["q"]

@@ -158,20 +158,17 @@ def _seed_two_project_topics(db):
     g.set_task_topic(db, "b1", "B")
     g.set_task_topic(db, "c1", "C")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET state='verified' WHERE id='a1'")
         conn.execute("UPDATE nodes SET state='verified' WHERE id='a1'")
-        # task edge b1 → a1 → crosses B→A boundary (both stores)
-        conn.execute("INSERT INTO graph_edges(task_id,depends_on_id) VALUES('b1','a1')")
+        # task edge b1 → a1 → crosses B→A boundary (node_edges; legacy dropped)
         conn.execute(
             "INSERT OR IGNORE INTO node_edges(node_id,depends_on_id) VALUES('b1','a1')"
         )
-        # Topic parent nodes have no nodes row yet (created via graph_topics only).
-        for (nid, pid, title) in [("A","P1","auth"), ("B","P1","build"), ("C","P2","ci")]:
-            conn.execute(
-                "INSERT OR IGNORE INTO nodes (id,kind,title,objective,state,project_id,"
-                "parent_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (nid, "task", title, "", "running", pid, None, now, now),
-            )
+        # Topic parent nodes already exist as kind='topic' (create_topic writes
+        # nodes now); mark them running for the loader render.
+        conn.execute(
+            "UPDATE nodes SET state='running' WHERE id IN ('A','B','C') "
+            "AND kind='topic'"
+        )
         conn.commit()
 
 

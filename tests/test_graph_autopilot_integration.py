@@ -49,9 +49,7 @@ def _topic(db, tid, project="INBOX"):
 
 def _task_edge(db, child_task, parent_task):
     with db._connect() as conn:
-        # task readers now read node_edges (P8 Task 4.1) — write both stores.
-        conn.execute("INSERT INTO graph_edges (task_id, depends_on_id) VALUES (?,?)",
-                     (child_task, parent_task))
+        # task readers read node_edges (P8 Task 4.1; legacy graph_edges dropped).
         conn.execute(
             "INSERT OR IGNORE INTO node_edges (node_id, depends_on_id) VALUES (?,?)",
             (child_task, parent_task))

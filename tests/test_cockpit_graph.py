@@ -55,14 +55,11 @@ def _topic(label="T", status="running", task_state=None, project_id="INBOX"):
 
 
 def test_snapshot_exposes_graph_by_project(db):
-    # P8: snapshot reads graph_by_project from nodes; seed both nodes and
-    # legacy graph_tasks (dual-write kept in P8).
+    # P8: snapshot reads graph_by_project from nodes (legacy graph_tasks dropped).
     g.create_task(db, task_id="a", project_id="INBOX", title="A", prompt="p")
     g.create_task(db, task_id="b", project_id="INBOX", title="B", prompt="p")
     with db._connect() as conn:
-        # create_task dual-writes the nodes rows (state 'open'); force 'a' to
-        # verified in BOTH stores (snapshot reads graph_by_project from nodes).
-        conn.execute("UPDATE graph_tasks SET state='verified' WHERE id='a'")
+        # create_task writes the nodes rows (state 'open'); force 'a' to verified.
         conn.execute("UPDATE nodes SET state='verified' WHERE id='a'")
         conn.commit()
     state = snapshot(db)
@@ -86,9 +83,9 @@ def test_snapshot_topic_task_state_none_always(db):
     tid = db.create_thread("[a] task thread", session_id="s")
     g.create_task(db, task_id="a", project_id="INBOX", title="A", prompt="p")
     with db._connect() as conn:
-        conn.execute(
-            "UPDATE graph_tasks SET state='verified', thread_id=? WHERE id='a'", (tid,)
-        )
+        # nodes has no thread_id column (the task_state-by-thread join was deleted
+        # in P8); just force the task verified — the binding is irrelevant here.
+        conn.execute("UPDATE nodes SET state='verified' WHERE id='a'")
         conn.commit()
     state = snapshot(db)
     topic = next(t for t in state.topics if t.id == tid)

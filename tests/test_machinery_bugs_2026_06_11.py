@@ -216,7 +216,7 @@ def test_mark_topic_completion_idempotent_on_verified(db, tmp_path):
     t.create_topic(db, topic_id="ta", project_id="INBOX", title="A", objective="")
     g.create_task(db, task_id="n1", project_id="INBOX", title="n1", prompt="do n1")
     with db._connect() as conn:
-        conn.execute("UPDATE graph_tasks SET topic_id='ta' WHERE id='n1'")
+        conn.execute("UPDATE nodes SET parent_id='ta' WHERE id='n1' AND kind='task'")
         conn.commit()
     _bind_merged_topic(db, "ta", tmp_path)  # G1: merged → verify allowed
 

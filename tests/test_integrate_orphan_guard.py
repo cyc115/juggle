@@ -80,12 +80,6 @@ def _seed_topic(db, topic_id, task_states, *, state="integrating",
 
     db_topics.create_topic(db, topic_id=topic_id, project_id="INBOX",
                            title=f"Topic {topic_id}")
-    with db._connect() as c:
-        c.execute(
-            "UPDATE graph_topics SET state=?, thread_id=?, merged_sha=? WHERE id=?",
-            (state, thread_id, merged_sha, topic_id),
-        )
-        c.commit()
 
     # P8: create_topic already wrote the parent node (state='open'); force the
     # seed's state/merged_sha/dispatch_thread_id onto it so orphan_guard (which
@@ -119,7 +113,6 @@ def _seed_topic(db, topic_id, task_states, *, state="integrating",
         # (which reads nodes.parent_id/state) sees it (P8 Task 4.1).
         db_graph.set_task_topic(db, tid, topic_id)
         with db._connect() as c:
-            c.execute("UPDATE graph_tasks SET state=? WHERE id=?", (st, tid))
             c.execute("UPDATE nodes SET state=? WHERE id=?", (st, tid))
             c.commit()
 

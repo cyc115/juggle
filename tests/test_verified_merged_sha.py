@@ -122,16 +122,14 @@ def _mk_topic_all_verified(db, topic_id, repo: Path | None, *, bind=True):
         nid = f"{topic_id}-k{i}"
         g.create_task(db, task_id=nid, project_id="INBOX", title=nid, prompt="p")
         g.set_task_topic(db, nid, topic_id)  # dual-writes nodes.parent_id
-    # Topic state + member states now read from nodes (P8 Task 4.2); force both.
+    # Topic state + member states read from nodes (P8 Task 4.2; legacy dropped).
     with db._connect() as conn:
-        conn.execute("UPDATE graph_topics SET state='integrating' WHERE id=?", (topic_id,))
         conn.execute(
-            "UPDATE nodes SET state='integrating' WHERE id=? AND kind='task'",
+            "UPDATE nodes SET state='integrating' WHERE id=? AND kind='topic'",
             (topic_id,),
         )
         for i in range(2):
             nid = f"{topic_id}-k{i}"
-            conn.execute("UPDATE graph_tasks SET state='verified' WHERE id=?", (nid,))
             conn.execute("UPDATE nodes SET state='verified' WHERE id=?", (nid,))
         conn.commit()
     if bind and repo is not None:

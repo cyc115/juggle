@@ -53,41 +53,38 @@ def test_add_node_task_no_deps_state_ready(db):
     assert row["kind"] == "task"
 
 
+def _graph_tasks_dropped(db) -> bool:
+    with db._connect() as conn:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='graph_tasks'"
+        ).fetchone() is None
+
+
 def test_add_node_task_writes_no_graph_tasks_row(db):
-    """2026-06-29 P8 C1 (c4-write-cut): add_node kind=task writes ONLY nodes — the
-    legacy graph_tasks INSERT is cut, so zero graph_tasks rows exist for the id.
-    The task stays resolvable through db_graph.get_task (which reads nodes)."""
+    """2026-06-29 P8 C1 (c4-write-cut) / terminal drop: add_node kind=task writes
+    ONLY nodes. The legacy graph_tasks table is now DROPPED entirely (Migration 55)
+    — the strongest proof nodes is the sole store — and the task stays resolvable
+    through db_graph.get_task (which reads nodes)."""
     from juggle_add_node import add_node
     result = add_node(db, kind="task", title="T", objective="do T")
     node_id = result["node_id"]
 
-    with db._connect() as conn:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM graph_tasks WHERE id=?", (node_id,)
-        ).fetchone()[0]
-    assert n == 0, "add_node must NOT write graph_tasks (nodes is the sole store)"
+    assert _graph_tasks_dropped(db), "graph_tasks must be dropped (nodes is sole store)"
     task = g.get_task(db, node_id)
     assert task is not None and task["state"] in ("ready", "open")
 
 
 def test_task_lifecycle_never_writes_graph_tasks(db):
-    """2026-06-29 P8 C1 capstone: a task driven open->ready->...->done via the
-    unified node_transition must NEVER write a graph_tasks row (single store =
-    nodes). RED before the c4-write-cut (add_node dual-wrote graph_tasks)."""
+    """2026-06-29 P8 C1 capstone / terminal drop: a task driven open->ready->...->
+    done via the unified node_transition has no legacy store to write — graph_tasks
+    is DROPPED (Migration 55) — and the lifecycle completes against nodes alone."""
     from juggle_add_node import add_node
     r = add_node(db, kind="task", title="x", project_id="INBOX")  # no deps -> ready
     node_id = r["node_id"]
 
-    def graph_tasks_rows() -> int:
-        with db._connect() as conn:
-            return conn.execute(
-                "SELECT COUNT(*) FROM graph_tasks WHERE id=?", (node_id,)
-            ).fetchone()[0]
-
-    assert graph_tasks_rows() == 0
+    assert _graph_tasks_dropped(db), "graph_tasks must be dropped (nodes is sole store)"
     for event in ("claim", "dispatch", "integrate_start", "integrate_ok", "g1_pass"):
         g.task_transition(db, node_id, event)
-        assert graph_tasks_rows() == 0, f"graph_tasks written after {event!r}"
     assert g.get_task(db, node_id)["state"] == "done"
 
 
