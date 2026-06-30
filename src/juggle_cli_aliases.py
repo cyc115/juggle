@@ -1,67 +1,36 @@
-"""juggle_cli_aliases — legacy-flat-name → resource-verb argv shim (P9 G1).
+"""juggle_cli_aliases — legacy-flat-name alias layer (P9; REMOVED in X2).
 
-Pre-parse argv rewrite (spec §4): the G1 grammar rename moved every legacy flat
-command (``complete-agent``, ``create-thread``, …) to a ``<resource> <verb>`` form.
-To keep zero-breakage (spec §5 stage a — "all legacy names still work"), main()
-rewrites ``argv`` through ``rewrite_argv`` BEFORE argparse runs, mapping each legacy
-name to its canonical ``[resource, verb]`` tokens (positionals + flags ride along).
+History (spec §5): the G1 grammar rename moved every legacy flat command
+(``complete-agent``, ``create-thread``, …) to a ``<resource> <verb>`` form. A1-D1
+kept a backward-compat shim — ``main()`` rewrote ``argv`` through ``rewrite_argv``
+BEFORE argparse ran (silent in stage a, deprecation-warning in stage b/D1).
 
-The alias map is DERIVED from ``COMMANDS.aliases`` plus the entry-module verb
-aliases (vault-path / vault-name / open-in-editor, which are registered
-imperatively, not in COMMANDS).
-
-A1 formalized this: the materialized ``ALIASES`` constant + a ``warn`` flag on
-``rewrite_argv`` (default False = silent — spec §5 stage a). A2 adds the
-``aliases --json`` command + the ⊇-coverage test; D1 flips the call site to
-``warn=True`` (stderr-only deprecation notices).
+P9 X2 (2026-06-30, user-approved IRREVERSIBLE removal — spec §5 stage d): the alias
+layer is GONE. ``ALIASES`` is now an empty map, so NO legacy flat name is rewritten —
+invoking one is an unknown argparse choice and exits 2. Only the NEW resource-verb
+grammar resolves. ``rewrite_argv`` is retained as an inert pass-through (ALIASES is
+empty → it returns argv unchanged) so the D1 ``main()`` call site keeps a stable
+signature; the deprecation-warn branch is now dead. ``aliases --json`` emits ``{}``.
 """
 
 from __future__ import annotations
 
 import sys
 
-# Legacy flat names for the entry-module verbs (registered imperatively in
-# juggle_cli.build_cli_parser, so NOT present in COMMANDS.aliases).
-_ENTRY_VERB_ALIASES: dict[str, list[str]] = {
-    "vault-path": ["vault", "path"],
-    "vault-name": ["vault", "name"],
-    "open-in-editor": ["file", "open"],
-    # P9 G2: `project-graph load …` → `graph load …` (single-token rewrite; the
-    # `load`/flags ride along). project-graph was a top-level group, now folded.
-    "project-graph": ["graph"],
-}
-
-
-def legacy_alias_map() -> dict[str, list[str]]:
-    """{legacy-flat-name: [resource, verb]} from COMMANDS.aliases + entry verbs."""
-    from juggle_cli_commands import COMMANDS
-
-    mapping: dict[str, list[str]] = {}
-    for c in COMMANDS:
-        target = [c.verb] if c.resource is None else [c.resource, c.verb]
-        for alias in c.aliases:
-            mapping[alias] = target
-    for alias, target in _ENTRY_VERB_ALIASES.items():
-        mapping.setdefault(alias, target)
-    return mapping
-
-
-# Materialized once at import (the canonical alias→[resource, verb] table). A2's
-# coverage test asserts set(ALIASES) ⊇ every legacy name; D1/X2 read it too.
-ALIASES: dict[str, list[str]] = legacy_alias_map()
+# P9 X2 (2026-06-30): the legacy alias→[resource, verb] table is now EMPTY. The
+# entries were previously DERIVED from COMMANDS.aliases + the entry-module verb
+# aliases; that derivation is deleted. ``aliases --json`` reads this and emits {}.
+ALIASES: dict[str, list[str]] = {}
 
 
 def rewrite_argv(argv: list[str], *, warn: bool = False) -> list[str]:
-    """Splice a legacy flat command name into its canonical [resource, verb] form.
+    """Inert since X2 — returns ``argv`` unchanged.
 
-    Only argv[1] (the command token) is considered; positionals/flags ride along.
-    Skips when argv is ALREADY canonical — guards the one legacy name that collides
-    with its resource group (``research`` is both the ``research run`` alias AND the
-    resource), so ``research run …`` is left intact.
-
-    ``warn`` (default False = silent, spec §5 stage a) emits a one-line deprecation
-    notice to STDERR only (never stdout — agents parse stdout/JSON). D1 flips the
-    main() call site to ``warn=True``.
+    Formerly spliced a legacy flat command name into its canonical
+    ``[resource, verb]`` form. With ``ALIASES`` now empty (X2 removal) the lookup
+    never matches, so this is a pass-through. Kept so the ``main()`` call site
+    (``_rewrite_legacy_argv(..., warn=True)``) needs no change; the ``warn`` branch
+    is now unreachable (no legacy name resolves to deprecate).
     """
     if len(argv) >= 2 and not argv[1].startswith("-"):
         target = ALIASES.get(argv[1])
@@ -77,10 +46,10 @@ def rewrite_argv(argv: list[str], *, warn: bool = False) -> list[str]:
 
 
 def cmd_aliases(args) -> None:
-    """`juggle aliases [--json]` (P9 A2) — dump the legacy→canonical alias map.
+    """`juggle aliases [--json]` — dump the legacy→canonical alias map.
 
-    The agent-verifiable primitive for the staged alias removal (§5): with --json,
-    emits the full {legacy: [resource, verb]} map as a JSON object to stdout.
+    Post-X2 the map is empty: ``--json`` emits ``{}`` and the human form prints
+    nothing. Retained as the agent-verifiable primitive that pins the removal.
     """
     import json
 

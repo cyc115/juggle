@@ -46,10 +46,12 @@ def test_graph_load_folded_into_graph_group():
     assert ns.file == "spec.md" and ns.project == "P9"
 
 
-def test_project_graph_legacy_rewrites_to_graph_via_shim():
+def test_project_graph_legacy_no_longer_rewritten_after_x2():
+    # X2 removed the alias layer: the legacy token rides through unchanged and is
+    # then an unknown choice (the new form is `graph load …`).
     assert _rewrite_legacy_argv(
         ["j", "project-graph", "load", "spec.md", "--project", "P9"]
-    ) == ["j", "graph", "load", "spec.md", "--project", "P9"]
+    ) == ["j", "project-graph", "load", "spec.md", "--project", "P9"]
 
 
 def test_resource_verb_parses_and_binds_handler():
@@ -87,20 +89,16 @@ def test_unknown_command_errors():
         build_cli_parser().parse_args(["no-such-command"])
 
 
-# ── legacy alias shim (G1 transitional; A1 formalizes) ────────────────────────
+# ── legacy alias shim REMOVED in X2 (spec §5 stage d) ─────────────────────────
 
 
-def test_rewrite_legacy_argv_maps_flat_names_to_resource_verb():
+def test_rewrite_legacy_argv_no_longer_maps_flat_names():
+    # X2: the shim is inert — legacy tokens ride through unchanged (no alias map).
     assert _rewrite_legacy_argv(["j", "complete-agent", "T", "s"]) == [
-        "j", "agent", "complete", "T", "s"]
-    assert _rewrite_legacy_argv(["j", "create-thread", "x"]) == [
-        "j", "thread", "create", "x"]
+        "j", "complete-agent", "T", "s"]
     assert _rewrite_legacy_argv(["j", "db-flush", "--status"]) == [
-        "j", "db", "flush", "--status"]
-    # entry-verb aliases
-    assert _rewrite_legacy_argv(["j", "vault-path"]) == ["j", "vault", "path"]
-    assert _rewrite_legacy_argv(["j", "open-in-editor", "/f"]) == [
-        "j", "file", "open", "/f"]
+        "j", "db-flush", "--status"]
+    assert _rewrite_legacy_argv(["j", "vault-path"]) == ["j", "vault-path"]
 
 
 def test_rewrite_legacy_argv_leaves_new_and_flat_verbs_untouched():
@@ -109,9 +107,12 @@ def test_rewrite_legacy_argv_leaves_new_and_flat_verbs_untouched():
     assert _rewrite_legacy_argv(["j"]) == ["j"]
 
 
-def test_legacy_name_resolves_through_the_shim_end_to_end():
-    # The shim output parses cleanly against the live parser to the right handler.
+def test_legacy_flat_name_is_now_rejected_by_the_parser():
+    # The (inert) shim leaves `complete-agent` intact; the parser rejects it (exit 2).
+    import pytest
+
     parser = build_cli_parser()
     rewritten = _rewrite_legacy_argv(["j", "complete-agent", "T", "summary"])[1:]
-    ns = parser.parse_args(rewritten)
-    assert ns.thread_id == "T" and ns.result_summary == "summary"
+    with pytest.raises(SystemExit) as exc:
+        parser.parse_args(rewritten)
+    assert exc.value.code == 2
