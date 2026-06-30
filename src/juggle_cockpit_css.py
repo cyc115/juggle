@@ -22,6 +22,7 @@ COCKPIT_CSS = """
         layers: base overlay;
     }
     #version-banner {
+        display: none;
         height: auto;
         width: 100%;
         background: $warning;

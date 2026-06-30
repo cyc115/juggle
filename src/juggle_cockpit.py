@@ -340,7 +340,12 @@ class CockpitApp(GraphModeMixin, App):
         cockpit never auto-restarts — it only surfaces the drift (TODO L15)."""
         try:
             banner = _drift_banner(self._boot_version, _get_version())
-            self.query_one("#version-banner", Static).update(banner or "")
+            w = self.query_one("#version-banner", Static)
+            w.update(banner or "")
+            # Collapse the widget when there is no drift — an empty Static with
+            # background:$warning would otherwise render a permanent 1-row amber
+            # bar. Only reveal it on an actual version upgrade.
+            w.display = bool(banner)
         except Exception:
             pass
 

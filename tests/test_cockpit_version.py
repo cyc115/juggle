@@ -113,3 +113,53 @@ async def test_cockpit_shows_banner_when_disk_version_advances(tmp_path, monkeyp
         banner = str(app.query_one("#version-banner", Static).render())
     assert "v1.0.0" in banner and "v1.0.1" in banner
     assert "restart" in banner.lower()
+
+
+# ---------------------------------------------------------------------------
+# Banner WIDGET visibility (bug 2026-06-29): an empty Static with
+# background:$warning still renders a 1-row amber bar. The row must COLLAPSE
+# (widget.display False) when there is no drift, and only appear on an upgrade.
+# These pin the widget's `display`, not just its text (the existing render-text
+# pins above pass even while the amber bar is permanently visible).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cockpit_banner_widget_hidden_when_version_unchanged(tmp_path):
+    """boot == on-disk version → #version-banner widget is NOT displayed (no
+    amber bar). RED on pre-fix code: the empty widget stays display=True."""
+    from juggle_db import JuggleDB
+    from textual.widgets import Static
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+
+    app = juggle_cockpit.CockpitApp(db_path=db_path)  # boot version == on-disk
+    async with app.run_test(size=(160, 40)) as pilot:
+        app._refresh()
+        await pilot.pause(0.05)
+        displayed = app.query_one("#version-banner", Static).display
+    assert displayed is False, "empty banner must collapse (no amber bar)"
+
+
+@pytest.mark.asyncio
+async def test_cockpit_banner_widget_shown_on_drift(tmp_path, monkeypatch):
+    """boot vOLD, on-disk vNEW → #version-banner widget IS displayed."""
+    from juggle_db import JuggleDB
+    from textual.widgets import Static
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+
+    monkeypatch.setattr(juggle_cockpit, "_get_version", lambda: "1.0.0")
+    app = juggle_cockpit.CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        monkeypatch.setattr(juggle_cockpit, "_get_version", lambda: "1.0.1")
+        app._refresh()
+        await pilot.pause(0.05)
+        displayed = app.query_one("#version-banner", Static).display
+    assert displayed is True, "drift banner must be visible"
