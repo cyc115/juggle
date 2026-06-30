@@ -19,4 +19,12 @@ test-fast:
 p8-verify-%: FORCE
 	@bash scripts/p8_verify/$*.sh
 
+# P9 CLI-grammar-migration per-node acceptance gates (run the committed verify scripts).
+# The add-task verify_cmd lint forbids shell operators (& ; | > < ` $() and only
+# allowlists {make,uv,pytest,python,python3,npm,cargo,go} as the exe — `bash` is
+# NOT allowlisted. So each P9 node's verify_cmd is the single operator-free token
+# `make p9-verify-<id>`; the compound command lives in scripts/p9_verify/<id>.sh.
+p9-verify-%: FORCE
+	@bash scripts/p9_verify/$*.sh
+
 FORCE:
