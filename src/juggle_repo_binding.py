@@ -20,28 +20,86 @@ import subprocess
 from pathlib import Path
 
 
-def spawn_repo_path() -> str:
-    """The canonical SOURCE repo an agent binds to at spawn time.
-
-    DETERMINISTIC and cwd-INDEPENDENT. Resolves via ``canonical_repo_path()``;
-    falls back to the cwd git toplevel only if canonical resolution yields
-    nothing (a non-juggle checkout).
-    """
-    try:
-        from juggle_watchdog_singleton import canonical_repo_path
-
-        repo = (canonical_repo_path() or "").strip()
-        if repo:
-            return repo
-    except Exception:
-        pass
+def _git_toplevel(path: str) -> str:
+    """``git -C <path> rev-parse --show-toplevel``; '' if not inside a git repo."""
+    if not path:
+        return ""
     try:
         return subprocess.check_output(
-            ["git", "-C", os.getcwd(), "rev-parse", "--show-toplevel"],
+            ["git", "-C", path, "rev-parse", "--show-toplevel"],
             text=True, stderr=subprocess.DEVNULL,
         ).strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         return ""
+
+
+def _is_bad_base(repo: str) -> bool:
+    """A base repo we must NEVER bind an agent/worktree to: empty, the ~/.claude
+    plugin install dir (or under it), or any toplevel whose basename is '.claude'
+    (cheap secondary tripwire for the 2026-06-29 send-task wrong-base incident —
+    ``juggle-.claude-*`` worktrees cut from the ~/.claude config repo)."""
+    repo = (repo or "").strip()
+    if not repo:
+        return True
+    if is_plugin_install_dir(repo):
+        return True
+    try:
+        return Path(repo).name == ".claude"
+    except Exception:
+        return False
+
+
+def _pane_cwd(pane_id: str) -> str:
+    """The tmux pane's current working directory — where the dispatched coder
+    actually runs. '' when pane_id is falsy or tmux cannot report it. Factored
+    as a seam so the pane-cwd anchor is unit-testable without a live tmux."""
+    if not pane_id:
+        return ""
+    try:
+        return subprocess.check_output(
+            ["tmux", "display-message", "-p", "-t", pane_id, "#{pane_current_path}"],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return ""
+
+
+def pane_repo_path(pane_id: str | None) -> str:
+    """Git toplevel of the agent PANE's cwd — the PRIMARY base-repo anchor for a
+    dispatched coder (it reflects where the agent will run, NOT where the
+    orchestrator's ``__file__`` lives, so a CLI invoked from the installed plugin
+    copy never binds to the enclosing ~/.claude repo). Returns '' when the pane
+    has no cwd, the cwd is not a git repo, or the result is a bad base."""
+    top = _git_toplevel(_pane_cwd(pane_id or ""))
+    return "" if _is_bad_base(top) else top
+
+
+def spawn_repo_path(pane_id: str | None = None) -> str:
+    """The canonical SOURCE repo an agent binds to at spawn/dispatch time.
+
+    Resolution order (2026-06-29 fix):
+      1. the agent PANE's cwd git toplevel (``pane_repo_path``) when a pane is
+         known — the principled anchor for where the coder actually runs;
+      2. ``canonical_repo_path()`` (cwd-independent, ``__file__``-anchored) — the
+         watchdog path, correct when launched from the dev checkout;
+      3. the orchestrator cwd git toplevel.
+    Every candidate is rejected if it is a bad base (~/.claude / plugin dir /
+    basename '.claude'), so neither the installed-plugin ``__file__`` anchor nor a
+    cwd==~/.claude launch can mis-bind the agent (2026-06-16 + 2026-06-29).
+    """
+    pane = pane_repo_path(pane_id)
+    if pane:
+        return pane
+    try:
+        from juggle_watchdog_singleton import canonical_repo_path
+
+        repo = (canonical_repo_path() or "").strip()
+        if repo and not _is_bad_base(repo):
+            return repo
+    except Exception:
+        pass
+    top = _git_toplevel(os.getcwd())
+    return top if top and not _is_bad_base(top) else ""
 
 
 def canonical_main_ref(repo: str) -> str | None:
