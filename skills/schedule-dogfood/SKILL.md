@@ -32,7 +32,7 @@ python3 src/juggle_cli.py schedule-dogfood --dry-run
 ```
 
 The script automatically chooses:
-- **Path A** (preferred): Juggle tmux session exists → spawns researcher via `create-thread` + `get-agent` + `send-task`
+- **Path A** (preferred): Juggle tmux session exists → spawns researcher via `thread create` + `agent get` + `agent send-task`
 - **Path B** (fallback): No tmux session → runs `claude -p` headlessly
 
 ## Pre-flight checks (automatic)
@@ -61,8 +61,8 @@ The script automatically chooses:
 
 Autofix (Sunday 03:00, ~24h later) reads the dogfood report at startup and embeds the top 2 suggestions in the PR body. This is read-only — autofix does not reorder its commits based on dogfood.
 
-## complete-agent format
+## agent complete format
 
 ```
-python3 src/juggle_cli.py complete-agent <THREAD_ID> "Dogfood complete: reports/dogfood-YYYY-MM-DD.md written. Cost=$X.XX. Action item filed." --retain "Dogfood ran YYYY-MM-DD. Top finding: <summary>."
+python3 src/juggle_cli.py agent complete <THREAD_ID> "Dogfood complete: reports/dogfood-YYYY-MM-DD.md written. Cost=$X.XX. Action item filed." --retain "Dogfood ran YYYY-MM-DD. Top finding: <summary>."
 ```

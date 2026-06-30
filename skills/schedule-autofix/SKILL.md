@@ -70,8 +70,8 @@ python3 src/juggle_cli.py schedule-autofix --dry-run
 | Smoke test fails | Revert offending commit, mark `[REVERTED: <section>]` in PR body |
 | Tool unavailable (ruff/bandit) | Mark section "tool unavailable", continue |
 
-## complete-agent format
+## agent complete format
 
 ```
-python3 src/juggle_cli.py complete-agent <THREAD_ID> "Autofix complete: PR cyc_schedule-autofix-YYYY-MM-DD created. N sections committed. Cost=$X.XX." --retain "Autofix ran YYYY-MM-DD. PR: <URL>."
+python3 src/juggle_cli.py agent complete <THREAD_ID> "Autofix complete: PR cyc_schedule-autofix-YYYY-MM-DD created. N sections committed. Cost=$X.XX." --retain "Autofix ran YYYY-MM-DD. PR: <URL>."
 ```

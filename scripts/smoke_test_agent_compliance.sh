@@ -61,18 +61,18 @@ dispatch_task() {
     local role="$1" label="$2" task_body="$3"
 
     local create_out thread_label agent_info agent_id thread_uuid tmp_task
-    create_out=$(python3 "${CLI}" create-thread "smoke-${label}" 2>/dev/null)
+    create_out=$(python3 "${CLI}" thread create "smoke-${label}" 2>/dev/null)
     thread_label=$(echo "${create_out}" | grep -oP '(?<=Created Topic )\w+' || true)
     if [ -z "${thread_label}" ]; then
         log "ERROR: failed to create thread for ${role}"
         return 1
     fi
 
-    agent_info=$(python3 "${CLI}" get-agent "${thread_label}" --role "${role}" 2>/dev/null)
+    agent_info=$(python3 "${CLI}" agent get "${thread_label}" --role "${role}" 2>/dev/null)
     agent_id=$(echo "${agent_info}" | awk '{print $1}')
     if [ -z "${agent_id}" ]; then
         log "ERROR: no agent available for ${role}"
-        python3 "${CLI}" close-thread "${thread_label}" 2>/dev/null || true
+        python3 "${CLI}" thread close "${thread_label}" 2>/dev/null || true
         return 1
     fi
 
@@ -80,7 +80,7 @@ dispatch_task() {
 
     tmp_task=$(mktemp /tmp/juggle_smoke_XXXXXX.txt)
     printf '%s' "${task_body}" > "${tmp_task}"
-    python3 "${CLI}" send-task "${agent_id}" "${tmp_task}" 2>/dev/null
+    python3 "${CLI}" agent send-task "${agent_id}" "${tmp_task}" 2>/dev/null
     rm -f "${tmp_task}"
 
     echo "${thread_uuid}:${thread_label}"
@@ -203,7 +203,7 @@ Intent: build
 Focus areas: implementation, cost optimisation
 
 On completion:
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "Research complete: ~/Documents/personal/research/'"${SMOKE_DATE}"'-smoke-prompt-caching.md" --retain "<one-line finding>"'
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <THREAD> "Research complete: ~/Documents/personal/research/'"${SMOKE_DATE}"'-smoke-prompt-caching.md" --retain "<one-line finding>"'
 
 CODER_TASK='[JUGGLE_THREAD:<REPLACE>]
 Create the file /tmp/juggle_smoke_coder_'"${SMOKE_TS}"'.txt with the single line: smoke-test-ok
@@ -212,7 +212,7 @@ Create the file /tmp/juggle_smoke_coder_'"${SMOKE_TS}"'.txt with the single line
 
 SCOPE: Only create the one file above. No other changes.
 
-QUALITY GATE (run before complete-agent):
+QUALITY GATE (run before agent complete):
 1. Verify the file exists and contains "smoke-test-ok"
 2. Verify no other files were modified
 3. Invoke mike:pre-pr skill if available; otherwise note "quality gate: file verified"
@@ -220,7 +220,7 @@ QUALITY GATE (run before complete-agent):
 VERSION BUMP: n/a (no code change)
 
 On completion:
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "Created smoke file. Quality gate: file verified, content correct." --retain "smoke test"'
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <THREAD> "Created smoke file. Quality gate: file verified, content correct." --retain "smoke test"'
 
 PLANNER_TASK='[JUGGLE_THREAD:<REPLACE>]
 Plan adding a --dry-run flag to a hypothetical CLI command. Design exercise only — do not modify any real files except the plan output.
@@ -241,7 +241,7 @@ DONE when: a coder with no prior context could execute every subtask without ask
 Save the plan to: /Users/mikechen/Documents/personal/projects/juggle/plan/'"${SMOKE_DATE}"'-smoke-dry-run-plan.md
 
 On completion:
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "Plan saved: /Users/mikechen/Documents/personal/projects/juggle/plan/'"${SMOKE_DATE}"'-smoke-dry-run-plan.md" --retain "dry-run flag plan"'
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <THREAD> "Plan saved: /Users/mikechen/Documents/personal/projects/juggle/plan/'"${SMOKE_DATE}"'-smoke-dry-run-plan.md" --retain "dry-run flag plan"'
 
 # ---------------------------------------------------------------------------
 # Main

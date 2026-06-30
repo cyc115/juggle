@@ -73,8 +73,8 @@ All sections attempted regardless of failures — partial digest beats no digest
 | Cost cap ($2.00) | Write partial digest with note, stop additional LLM calls |
 | GitHub rate limit | Log remaining issues in digest, retry at next run |
 
-## complete-agent format
+## agent complete format
 
 ```
-python3 src/juggle_cli.py complete-agent <THREAD_ID> "Reflect complete: reports/reflect-YYYY-MM-DD.md committed. N issues filed. Cost=$X.XX." --retain "Reflect ran YYYY-MM-DD. Key finding: <summary>."
+python3 src/juggle_cli.py agent complete <THREAD_ID> "Reflect complete: reports/reflect-YYYY-MM-DD.md committed. N issues filed. Cost=$X.XX." --retain "Reflect ran YYYY-MM-DD. Key finding: <summary>."
 ```
