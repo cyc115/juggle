@@ -74,3 +74,14 @@ FALLBACK_TOPIC = "•"
 FALLBACK_TASK = "⬢"
 FALLBACK_SCHED = "⏰"
 FALLBACK_NOTIF = "ℹ️"
+
+
+def graph_inline_legend() -> str:
+    """One-line Graph-panel legend, derived from TASK_STATE_GLYPHS + markers.
+    Byte-equal to the legacy hardcoded string so the panel render is unchanged."""
+    g = TASK_STATE_GLYPHS
+    return (
+        f"{g['running']} running  {g['ready']} ready  {g['open']} blocked  "
+        f"{g['verified']} done  {g['failed-exec']} failed   "
+        f"{GRAPH_DEP_SUFFIX}n=waits on #n"
+    )

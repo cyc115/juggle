@@ -29,6 +29,7 @@ from juggle_cockpit_legend import (
     MIRROR_PREFIX,
     UNREAD_BADGE,
     FALLBACK_TASK,
+    graph_inline_legend,
 )
 from juggle_graph_status import counts_from_states, format_progress
 
@@ -288,10 +289,7 @@ def build_graph_panel(
         parts.append(
             Text(f"  … +{len(flat) - shown} more", style=Style(dim=True, italic=True))
         )
-    legend = Text(
-        "🏃 running  ◇ ready  ⬡ blocked  ✅ done  ❌ failed   ⊣n=waits on #n",
-        style=Style(dim=True),
-    )
+    legend = Text(graph_inline_legend(), style=Style(dim=True))
     parts.append(legend)
 
     return Panel(_Group(*parts), title=title, border_style="cyan")
