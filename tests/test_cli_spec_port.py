@@ -21,7 +21,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import juggle_cli_parsers_agents as wa  # noqa: E402
 import juggle_cli_parsers_misc as wm  # noqa: E402
 import juggle_cli_parsers_threads as wt  # noqa: E402
-from juggle_cli_spec import COMMANDS, build_parser  # noqa: E402
+from juggle_cli_commands import COMMANDS  # noqa: E402
+from juggle_cli_spec import build_parser  # noqa: E402
 
 # The authoritative set of flat subcommands the 4 walls register (§1.1-§1.4).
 # project/graph/project-graph/runs/autopilot are already grouped (NOT walls) and

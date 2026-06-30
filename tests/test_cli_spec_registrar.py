@@ -15,7 +15,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from juggle_cli_spec import COMMANDS, Arg, Cmd, build_parser  # noqa: E402
+from juggle_cli_commands import COMMANDS  # noqa: E402
+from juggle_cli_spec import Arg, Cmd, build_parser  # noqa: E402
 
 
 # Distinct sentinel handlers so set_defaults(func=...) wiring is verifiable.
