@@ -3,8 +3,9 @@ juggle_hooks_autopilot — autopilot directive injection for UserPromptSubmit.
 
 Owns: the autopilot directive text and the flag-gated context builder
 (``autopilot_context``). The ``~/.juggle/autopilot`` flag file is an
-existence-only cache for the global toggle; the armed-project authority is
-the ``autopilot_armed_project`` settings key (DA M6).
+existence-only cache for the global toggle; the armed set is DERIVED
+(default-armed): active projects minus the ``autopilot_disarmed_project``
+exclusion set, via ``juggle_autopilot_state.get_armed_projects`` (2026-06-30).
 Must not own: prompt-handler plumbing (juggle_hooks_prompt) or flag-file
 path constants (juggle_hooks_config).
 """
@@ -56,9 +57,10 @@ _ARMED_CARVEOUT = (
 def _armed_graph_context() -> str:
     """Carve-out + budgeted topic status for EVERY armed project, else \'\'.
 
-    Authority is the armed-set settings key (DA M6). The per-project injection
-    budget is the 500-char discipline split across the set (floor 160) so
-    total stays bounded for any N. Degrades to \'\' on any DB error.
+    The armed set is DERIVED (default-armed): active projects minus the
+    disarmed exclusion set. The per-project injection budget is the 500-char
+    discipline split across the set (floor 160) so total stays bounded for any
+    N. Degrades to \'\' on any DB error.
     """
     try:
         from juggle_autopilot_state import get_armed_projects
