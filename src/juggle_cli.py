@@ -259,7 +259,9 @@ def main():
     # (incl. leading-flag forms) through to pytest. For every OTHER command,
     # unknown args are still a hard error (strict re-parse preserves typo
     # rejection) — the leniency is scoped to verify only.
-    rewritten = _rewrite_legacy_argv(sys.argv)[1:]
+    # P9 D1: warn=True — a legacy flat name still resolves (zero-breakage) but emits
+    # a one-line deprecation notice to STDERR (never stdout). spec §5 stage (b).
+    rewritten = _rewrite_legacy_argv(sys.argv, warn=True)[1:]
     args, _extras = parser.parse_known_args(rewritten)
     if _extras:
         if getattr(args, "command", None) == "verify":
