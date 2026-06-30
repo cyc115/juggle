@@ -181,8 +181,10 @@ def render_legend_lines(width: int = 76) -> list[str]:
         cells = [f"{e['glyph']}  {e['meaning']}" for e in sec["entries"]]
         for i in range(0, len(cells), cols):
             row = cells[i:i + cols]
+            # ljust each cell except the last; an over-long cell still keeps a
+            # 2-space gap before the next column so cells never run together.
             packed = "".join(
-                c.ljust(cell_w) if j < len(row) - 1 else c
+                (c.ljust(cell_w) if len(c) < cell_w else c + "  ") if j < len(row) - 1 else c
                 for j, c in enumerate(row)
             )
             lines.append("  " + packed.rstrip())

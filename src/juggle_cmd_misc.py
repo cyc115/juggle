@@ -67,7 +67,9 @@ def cmd_cockpit(args):
     cmd = ["uv", "run", str(script)]
     if getattr(args, "db_path", None):
         cmd += ["--db", args.db_path]
-    if getattr(args, "out", False):
+    if getattr(args, "legend", False):
+        cmd += ["--legend"]
+    elif getattr(args, "out", False):
         cmd += ["--out"]
     elif getattr(args, "screenshot", None):
         cmd += ["--screenshot", args.screenshot]

@@ -1008,7 +1008,16 @@ if __name__ == "__main__":
     )
     parser.add_argument("--screenshot", metavar="PATH", default=None, help="Save PNG/JPG/SVG screenshot to PATH")
     parser.add_argument("--graph", action="store_true", help="Render the lower-right panel in graph mode (screenshot)")
+    parser.add_argument(
+        "--legend",
+        action="store_true",
+        help="Print the ? help overlay (keys + glyph legend) to stdout then exit",
+    )
     args = parser.parse_args()
+    if args.legend:
+        from juggle_cockpit_modals import render_help_lines
+        sys.stdout.write("\n".join(render_help_lines()) + "\n")
+        sys.exit(0)
     if args.screenshot:
         from juggle_cockpit_screenshot import save_screenshot
         out = save_screenshot(

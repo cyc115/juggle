@@ -173,6 +173,11 @@ def register(subparsers, *, vault_path_default: str) -> None:
     )
     p_cockpit.add_argument("--screenshot", metavar="PATH", help="Save PNG/JPG/SVG screenshot to PATH")
     p_cockpit.add_argument(
+        "--legend",
+        action="store_true",
+        help="Print the ? help overlay (keys + glyph legend) to stdout then exit (no TUI)",
+    )
+    p_cockpit.add_argument(
         "--smoke",
         action="store_true",
         help="Run viewport smoke test matrix (renders all profiles via pty+pyte)",

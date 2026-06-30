@@ -108,3 +108,23 @@ def test_render_legend_lines_contains_every_meaning():
     for sec in L.build_legend_content():
         for e in sec["entries"]:
             assert e["meaning"] in text, f"meaning dropped: {e['meaning']!r}"
+
+
+# ── Task 5: headless `cockpit --legend` stdout gate ───────────────────────────
+
+def test_cockpit_legend_cli_prints_full_legend(tmp_path):
+    """`cockpit --legend` renders keybindings + every panel glyph to stdout (headless gate)."""
+    import subprocess
+    from pathlib import Path
+    import juggle_cockpit_legend as L
+    src = Path(__file__).resolve().parent.parent / "src" / "juggle_cockpit.py"
+    env = {**os.environ,
+           "CLAUDE_PLUGIN_DATA": str(tmp_path / "cpd"),
+           "JUGGLE_MAX_BACKGROUND_AGENTS": "5", "JUGGLE_MAX_THREADS": "10"}
+    r = subprocess.run([sys.executable, str(src), "--legend"],
+                       capture_output=True, text=True, env=env, timeout=60)
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "Status Legend" in out and "Keyboard Shortcuts" in out
+    for g in L.all_rendered_glyphs():
+        assert g in out, f"--legend stdout missing glyph {g}"
