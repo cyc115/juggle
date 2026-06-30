@@ -66,16 +66,16 @@ This context is injected into the task file (step 4) so the researcher agent sta
 ### 4. Create thread and get agent
 
 ```bash
-CREATE_OUT=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "research-<SLUG>")
+CREATE_OUT=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py thread create "research-<SLUG>")
 THREAD_LABEL=$(echo "$CREATE_OUT" | grep -oP '(?<=Created Topic )\w+')
 echo "Thread: $THREAD_LABEL"
 
-AGENT_INFO=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent "$THREAD_LABEL" --role researcher)
+AGENT_INFO=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent get "$THREAD_LABEL" --role researcher)
 AGENT_ID=$(echo "$AGENT_INFO" | awk '{print $1}')
 echo "Agent: $AGENT_ID"
 ```
 
-If `get-agent` exits non-zero or prints "Agent pool full", tell the user and stop.
+If `agent get` exits non-zero or prints "Agent pool full", tell the user and stop.
 
 ---
 
@@ -93,7 +93,7 @@ Research topic: "<TOPIC>"
 
 ## Always finalize — never wait at the prompt
 
-Your task ENDS with a `complete-agent` Bash call. Do NOT emit a final summary
+Your task ENDS with a `agent complete` Bash call. Do NOT emit a final summary
 and stop at the input prompt. If your investigation hits an unrelated dead-end
 or you have questions, document them in --retain and complete — don't deliberate.
 
@@ -159,8 +159,8 @@ echo '<JSON_ARRAY_OF_{title,url,snippet}>' > "$WEB_FILE"
 ### Step 3 — Optional directional loopback
 
 After Round 1, if you found a surprising or high-value angle that the user may not have anticipated,
-surface it immediately via request-action before proceeding to Round 2:
-  uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <THREAD_LABEL> \
+surface it immediately via action create before proceeding to Round 2:
+  uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py action create <THREAD_LABEL> \
     "Research direction check: found [interesting angle]. Worth exploring? Reply to steer." \
     --type manual_step
 
@@ -172,7 +172,7 @@ REPORT=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cmd_research.py "<TOPIC>" <NO_W
 rm -f "$WEB_FILE"
 
 ### Step 5 — Save report to vault
-VAULT_PATH=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py vault-path)
+VAULT_PATH=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py vault path)
 REPORT_FILE="${VAULT_PATH}/research/$(date +%Y-%m-%d)-<SLUG>.md"
 {
   printf "# Research: <TOPIC>\nDate: $(date +%Y-%m-%d)\n\n"
@@ -188,11 +188,11 @@ echo "Saved: $REPORT_FILE"
 ### Step 6 — Print report and notify orchestrator
 echo "$REPORT"
 ONE_LINE=$(echo "$REPORT" | head -5 | tr '\n' ' ' | cut -c1-200)
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <THREAD_LABEL> "Research complete: <TOPIC> — report at $REPORT_FILE" --type manual_step
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD_LABEL> "Research complete: $REPORT_FILE" --retain "$ONE_LINE"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py action create <THREAD_LABEL> "Research complete: <TOPIC> — report at $REPORT_FILE" --type manual_step
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <THREAD_LABEL> "Research complete: $REPORT_FILE" --retain "$ONE_LINE"
 TASKEOF
 
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FILE"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent send-task "$AGENT_ID" "$TASK_FILE"
 ```
 
 ---

@@ -16,13 +16,13 @@ allowed-tools: Bash, Agent, Edit, Write
    ```
    Save decisions/questions as they arise:
    ```bash
-   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-meta <current_id> --add-decision "<text>"
-   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-meta <current_id> --add-question "<text>"
+   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py thread update <current_id> --add-decision "<text>"
+   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py thread update <current_id> --add-question "<text>"
    ```
 
 2. Load target topic:
    ```bash
-   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py switch-thread <id>
+   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py thread switch <id>
    uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall-bg <id> "<topic label or summary as query>"
    ```
    On "Thread not found":

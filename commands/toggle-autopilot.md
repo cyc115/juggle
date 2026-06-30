@@ -42,7 +42,7 @@ juggle autopilot off
 3. **One approval gate:** surface the spec in chat (task list, deps,
    verify_cmds rendered prominently) and wait for an explicit user reply.
    ONLY skip this gate when the user passed `--auto-approve`.
-4. **Load:** `juggle project-graph load <data_dir>/graphs/<project>-graph.md --project <project>`
+4. **Load:** `juggle graph load <data_dir>/graphs/<project>-graph.md --project <project>`
    — validation (cycles, unknown/dup ids, empty prompts, verify_cmd lint) runs
    at load; fix the spec and re-load on errors. Re-load is a guarded upsert:
    nodes already dispatching/running/integrating/verified refuse changes.
@@ -52,7 +52,7 @@ juggle autopilot off
 ### Armed-project carve-out (tick-owned nodes)
 
 **Nodes of the armed project are tick-owned — NEVER dispatch them manually;
-report status only.** Do not `send-task` to a node-bound thread (the CLI
+report status only.** Do not `agent send-task` to a node-bound thread (the CLI
 refuses without `--force-task`, and you should not use `--force-task` unless
 the user explicitly asks). Your job for armed-project nodes is: monitor
 (`juggle autopilot status`), report progress, triage failures
@@ -70,18 +70,18 @@ re-load to resume), and handle everything OUTSIDE the graph normally.
 ## Status loop (auto-scheduled while work is pending)
 
 While autopilot is ON and ANY task is still incomplete (a running/queued agent, an unverified feature, a non-terminal graph node, or pending backlog), maintain a self-paced status loop via `ScheduleWakeup`. Each tick:
-1. Check status: `list-agents`, open threads, action items, `juggle autopilot status` for the armed graph, and any background jobs (backfill, etc.).
-2. Recover stalls — the loop is the safety net for SILENT stalls (jammed panes do not self-notify). For any stuck/jammed/dead agent apply the send-task recovery rules above (capture the pane; if a paste sits unsubmitted send `Enter`; if wedged reset with `Escape`/`C-c`/`C-u` and re-dispatch; reuse a warm agent or spawn fresh and verify boot+submission). Armed-project nodes: recovery means unjamming the agent's pane, NEVER re-dispatching the node yourself — the tick owns claims and redispatch.
+1. Check status: `agent list`, open threads, action items, `juggle autopilot status` for the armed graph, and any background jobs (backfill, etc.).
+2. Recover stalls — the loop is the safety net for SILENT stalls (jammed panes do not self-notify). For any stuck/jammed/dead agent apply the agent send-task recovery rules above (capture the pane; if a paste sits unsubmitted send `Enter`; if wedged reset with `Escape`/`C-c`/`C-u` and re-dispatch; reuse a warm agent or spawn fresh and verify boot+submission). Armed-project nodes: recovery means unjamming the agent's pane, NEVER re-dispatching the node yourself — the tick owns claims and redispatch.
 3. Push execution: dispatch any queued or now-unblocked NON-graph work (idempotently — check a thread isn't already running before dispatching); verify newly-completed work. Graph nodes dispatch themselves via the tick.
 4. If any task remains: call `ScheduleWakeup` again (~270s during active work to stay cache-warm; ~1200s when merely waiting on a long job). If EVERYTHING is implemented AND verified (or a true escalation hits): STOP — do not reschedule — and report.
 
 ## Learned rules
 <!-- Claude appends concise, durable rules here as it hits and fixes issues. -->
-- **send-task can silently fail to submit:** if the target pane's editor is in `-- VISUAL --` (or any non-insert) mode, the pasted prompt sits in the input and Enter is swallowed — the agent shows "busy"/stalled but never runs. After every send-task, capture the pane; if it didn't enter a running state, send `Escape` + `C-c` + `C-u` to reset to insert mode, then re-send. Prefer reusing a warm idle agent over a cold spawn (cold spawns get reaped mid-boot).
-- **send-task may paste-without-submit even outside VISUAL mode:** symptom is a collapsed "paste again to expand" block in the input with the agent idle ("nap"/"yawn", not "Beaming/Thinking"). Recovery: `tmux send-keys -t <pane> Enter` to submit the already-queued task — only do the full Escape/C-c/C-u reset if Enter doesn't start it running. ALWAYS capture the pane ~4s after send-task and confirm a running state ("Beaming/Thinking… Ns") before moving on.
-- **Never dispatch a second agent to a thread that already has one:** before dispatching a recovery coder for a stalled thread, check `list-agents` — if the thread already has a busy agent, the watchdog may have auto-re-dispatched; reuse/verify that agent instead. Never add a second agent to the same thread/checkout.
-- **Abort redundant agents with release-agent, not complete-agent:** to abort a redundant agent, call `release-agent <id>` — do NOT call `complete-agent` (completing closes the shared thread out from under the other agent still working on it).
-- **Ack resolved action items each autopilot cycle:** read open action items each cycle (`list-actions`) and ack the ones your autonomous actions resolve (`ack-action <id>`). Triage like a human — don't leave clutter for the user.
+- **agent send-task can silently fail to submit:** if the target pane's editor is in `-- VISUAL --` (or any non-insert) mode, the pasted prompt sits in the input and Enter is swallowed — the agent shows "busy"/stalled but never runs. After every agent send-task, capture the pane; if it didn't enter a running state, send `Escape` + `C-c` + `C-u` to reset to insert mode, then re-send. Prefer reusing a warm idle agent over a cold spawn (cold spawns get reaped mid-boot).
+- **agent send-task may paste-without-submit even outside VISUAL mode:** symptom is a collapsed "paste again to expand" block in the input with the agent idle ("nap"/"yawn", not "Beaming/Thinking"). Recovery: `tmux send-keys -t <pane> Enter` to submit the already-queued task — only do the full Escape/C-c/C-u reset if Enter doesn't start it running. ALWAYS capture the pane ~4s after agent send-task and confirm a running state ("Beaming/Thinking… Ns") before moving on.
+- **Never dispatch a second agent to a thread that already has one:** before dispatching a recovery coder for a stalled thread, check `agent list` — if the thread already has a busy agent, the watchdog may have auto-re-dispatched; reuse/verify that agent instead. Never add a second agent to the same thread/checkout.
+- **Abort redundant agents with agent release, not agent complete:** to abort a redundant agent, call `agent release <id>` — do NOT call `agent complete` (completing closes the shared thread out from under the other agent still working on it).
+- **Ack resolved action items each autopilot cycle:** read open action items each cycle (`action list`) and ack the ones your autonomous actions resolve (`action ack <id>`). Triage like a human — don't leave clutter for the user.
 - **Check current branch before orchestrator commits:** an agent working in the main tree may have a feature branch checked out — `git branch --show-current` first; if not on main, either wait or let the commit ride the agent's branch (never switch branches under a working agent).
 - **Cold-spawned agents jam on Claude Code's "trust this folder" prompt:** a freshly spawned agent in a NEW worktree dir boots into a `1. Yes, I trust this folder / 2. No, exit` prompt that swallows the task submission — pane shows the menu, agent never runs. Recovery: `tmux send-keys -t <pane> Enter` (option 1 is the safe default = the worktree). Always capture a cold-spawn pane ~4s after dispatch and clear this prompt before assuming it's running.
-- **Never `release-agent` an agent with a non-default `--model`; decommission it:** a released agent returns to the idle pool carrying its model. If that model was an invalid/typo'd value (e.g. `claude/sonnet` instead of `sonnet`), the next tick REUSES it and the harness rejects the model — the agent shows "busy" at 0 tokens, stuck on a model-error screen, never running. Decommission (not release) any agent spawned with an explicit model, so the pool only holds default-model agents.
+- **Never `agent release` an agent with a non-default `--model`; decommission it:** a released agent returns to the idle pool carrying its model. If that model was an invalid/typo'd value (e.g. `claude/sonnet` instead of `sonnet`), the next tick REUSES it and the harness rejects the model — the agent shows "busy" at 0 tokens, stuck on a model-error screen, never running. Decommission (not release) any agent spawned with an explicit model, so the pool only holds default-model agents.

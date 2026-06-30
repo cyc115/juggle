@@ -27,7 +27,7 @@ a good task and call it; never hand-write graph state.
    proceeding.
 
 2. **Derive** the node fields, reading the live graph first
-   (`juggle autopilot status <project>` and/or `juggle project-graph` state):
+   (`juggle autopilot status <project>` and/or `juggle graph` state):
    - **id** — a stable, unique node id (kebab/snake, e.g. `rate-limit`). If it
      collides with an existing node, that node must be in a mutable state to be
      re-added (see guard); otherwise pick a new id.
@@ -75,7 +75,7 @@ a good task and call it; never hand-write graph state.
 
 The new node is part of the armed project's graph, so it is **tick-owned**: the
 watchdog claims it, dispatches a hydrated coder agent, integrates, verifies, and
-marks it — exactly like every other graph node. Do **not** `send-task` to it and
+marks it — exactly like every other graph node. Do **not** `agent send-task` to it and
 do **not** otherwise dispatch it yourself. After `add-task` succeeds, your job is
 to report the resulting state and let the tick run. Triage only failures
 (`failed-*`/`blocked-failed` are operator territory).

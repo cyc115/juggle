@@ -105,14 +105,14 @@ Run the following Bash commands:
 
 ```bash
 # 1. Create thread — capture label from output
-CREATE_OUT=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py create-thread "<label>")
+CREATE_OUT=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py thread create "<label>")
 THREAD_LABEL=$(echo "$CREATE_OUT" | grep -oP '(?<=Created Topic )\w+')
 echo "Thread: $THREAD_LABEL"
 ```
 
 ```bash
 # 2. Get agent — first token is agent_id
-AGENT_INFO=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent "$THREAD_LABEL" --role <role>)
+AGENT_INFO=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent get "$THREAD_LABEL" --role <role>)
 AGENT_ID=$(echo "$AGENT_INFO" | awk '{print $1}')
 echo "Agent: $AGENT_ID"
 ```
@@ -134,10 +134,10 @@ Use this context to avoid re-exploring known ground. Trust it as the state at di
 Constraints: <Q2 answer>
 
 On completion:
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD_LABEL> "<1-line result>" --retain "<key decisions or findings>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <THREAD_LABEL> "<1-line result>" --retain "<key decisions or findings>"
 TASKEOF
 
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task "$AGENT_ID" "$TASK_FILE"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent send-task "$AGENT_ID" "$TASK_FILE"
 ```
 
 Fill in the placeholders (`<label>`, `<role>`, `<THREAD_LABEL>`, task description, constraints, `<BEHAVIORAL_SPEC>`) from the answers collected in Steps 1–2 before running. Substitute `<BEHAVIORAL_SPEC>` with the role-appropriate block from the templates below.
@@ -174,19 +174,19 @@ changes must follow the cycle.
 
 ## Always finalize — never wait at the prompt
 
-Your task ENDS with a `complete-agent` or `fail-agent` Bash call. You must
+Your task ENDS with a `agent complete` or `agent fail` Bash call. You must
 NOT emit a final recap and wait at the input prompt. Use the juggle_cli
 path from your AGENT ROLE block's COMPLETION line (written `<juggle-cli>`
 below) — do not hardcode an absolute path. Examples of correct final actions:
 
 - Work done cleanly:
-  <juggle-cli> complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
+  <juggle-cli> agent complete <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
 
 - Hit a wall:
-  <juggle-cli> complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
+  <juggle-cli> agent complete <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
 
 - Have unresolved questions:
-  <juggle-cli> complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
+  <juggle-cli> agent complete <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
 
 Do NOT ask the user "want me to commit?" or "shall I proceed?" — decide
 autonomously from the task spec. The orchestrator already approved scope
@@ -205,10 +205,10 @@ Do NOT deliberate for minutes on whether to fix unrelated failures. The
 DA gate is for unrelated failures.
 
 SCOPE: Only change what the task requires. Do not refactor, add comments, or improve
-surrounding code. If requirements are ambiguous, STOP and signal via complete-agent
+surrounding code. If requirements are ambiguous, STOP and signal via agent complete
 with "BLOCKED: <question>" before making assumptions.
 
-QUALITY GATE (run before complete-agent):
+QUALITY GATE (run before agent complete):
 1. Run tests for changed files (if tests exist)
 2. Fix linting errors
 3. Fix type errors
@@ -230,7 +230,7 @@ to verify is not done — expose its state programmatically.
 
 If you are working inside `/tmp/juggle-<basename>-<thread>/` (a dedicated worktree):
 - Do ALL work there — never edit the main working tree.
-- Before `complete-agent`: run `juggle integrate <thread>` — handles rebase, merge, push, and cleanup automatically. No manual ff-merge or worktree remove needed.
+- Before `agent complete`: run `juggle integrate <thread>` — handles rebase, merge, push, and cleanup automatically. No manual ff-merge or worktree remove needed.
 ```
 
 **Planner** (role = `planner`):
@@ -239,19 +239,19 @@ If you are working inside `/tmp/juggle-<basename>-<thread>/` (a dedicated worktr
 
 ## Always finalize — never wait at the prompt
 
-Your task ENDS with a `complete-agent` or `fail-agent` Bash call. You must
+Your task ENDS with a `agent complete` or `agent fail` Bash call. You must
 NOT emit a final recap and wait at the input prompt. Use the juggle_cli
 path from your AGENT ROLE block's COMPLETION line (written `<juggle-cli>`
 below) — do not hardcode an absolute path. Examples of correct final actions:
 
 - Work done cleanly:
-  <juggle-cli> complete-agent <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
+  <juggle-cli> agent complete <THREAD> "Done. <summary>" --retain "<notes>" --role <role>
 
 - Hit a wall:
-  <juggle-cli> complete-agent <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
+  <juggle-cli> agent complete <THREAD> "⚠️ BLOCKER: <description>" --retain "<context>" --role <role>
 
 - Have unresolved questions:
-  <juggle-cli> complete-agent <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
+  <juggle-cli> agent complete <THREAD> "Done with caveats. See open questions." --open-questions '[{"q": "...", "context": "..."}]' --role <role>
 
 Do NOT ask the user "want me to commit?" or "shall I proceed?" — decide
 autonomously from the task spec. The orchestrator already approved scope
@@ -293,17 +293,17 @@ does an agent verify this?" an explicit acceptance criterion on each subtask.
 
 ### Parallel dispatch (Q3 = researcher then coder)
 
-Run get-agent + send-task twice — once for researcher, once for coder — in the same response. Researcher task file is the research question. Coder task file says: "Researcher is running in parallel on [THREAD_LABEL]. Implement once you have context; check `get-messages` for researcher output."
+Run agent get + agent send-task twice — once for researcher, once for coder — in the same response. Researcher task file is the research question. Coder task file says: "Researcher is running in parallel on [THREAD_LABEL]. Implement once you have context; check `thread messages` for researcher output."
 
 ### Parallel dispatch (Q3 = multiple coders)
 
-Run get-agent + send-task for each coder. Split the scope from Q2 across the two coders (e.g., frontend vs backend, service A vs service B). Each task file contains its scoped subtask only.
+Run agent get + agent send-task for each coder. Split the scope from Q2 across the two coders (e.g., frontend vs backend, service A vs service B). Each task file contains its scoped subtask only.
 
-**Worktree isolation (auto for parallel coders):** `send-task` auto-creates `/tmp/juggle-<basename>-<thread>/` on branch `cyc_<thread>` for role∈{coder,planner} with a repo. No manual `git worktree add` step. The worktree path and branch are injected into the agent's prompt automatically. Coders finalize with `juggle integrate <thread>` — no manual merge/remove.
+**Worktree isolation (auto for parallel coders):** `agent send-task` auto-creates `/tmp/juggle-<basename>-<thread>/` on branch `cyc_<thread>` for role∈{coder,planner} with a repo. No manual `git worktree add` step. The worktree path and branch are injected into the agent's prompt automatically. Coders finalize with `juggle integrate <thread>` — no manual merge/remove.
 
 ### Pool exhausted
 
-If `get-agent` exits non-zero or prints "Agent pool full": print `"Agent pool full — try again after an existing agent completes."` and stop. Do not retry.
+If `agent get` exits non-zero or prints "Agent pool full": print `"Agent pool full — try again after an existing agent completes."` and stop. Do not retry.
 
 ---
 

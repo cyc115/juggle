@@ -15,7 +15,7 @@ Monitor: ${CLAUDE_PLUGIN_ROOT}/scripts/juggle-agent-monitor
 ```
 Each line signals a completed agent: `[LABEL] researcher: <title>` → "Review ready — [LABEL]: <title>" | `[LABEL] coder/planner: <title>` → "[LABEL] done — <title>". Retrieve result and surface to user.
 
-Auto-create Topic A from first substantive message: `create-thread "<label>"`
+Auto-create Topic A from first substantive message: `thread create "<label>"`
 
 ---
 
@@ -25,25 +25,25 @@ Auto-create Topic A from first substantive message: `create-thread "<label>"`
 
 | Command | Signature | Notes |
 | ------- | --------- | ----- |
-| `create-thread` | `<label>` | New topic |
-| `get-agent` | `<thread_id> [--role {researcher,planner,coder}] [--model M]` | Get/spawn agent |
-| `send-task` | `<agent_id> <prompt_file>` | Send task |
-| `complete-agent` | `<thread_id> "<result>" [--retain TEXT] [--open-questions JSON] [--role R]` | Done + notify. researcher → auto action item |
-| `request-action` | `<thread_id> "<msg>" [--type {question,manual_step,decision,failure}] [--priority {low,normal,high}]` | Action item. No `--tier`. |
-| `ack-action` | `<action_id>` | Dismiss |
+| `thread create` | `<label>` | New topic |
+| `agent get` | `<thread_id> [--role {researcher,planner,coder}] [--model M]` | Get/spawn agent |
+| `agent send-task` | `<agent_id> <prompt_file>` | Send task |
+| `agent complete` | `<thread_id> "<result>" [--retain TEXT] [--open-questions JSON] [--role R]` | Done + notify. researcher → auto action item |
+| `action create` | `<thread_id> "<msg>" [--type {question,manual_step,decision,failure}] [--priority {low,normal,high}]` | Action item. No `--tier`. |
+| `action ack` | `<action_id>` | Dismiss |
 | `notify` | `<thread_id> "<msg>"` | Mid-task status |
-| `list-actions` | — | Open action items |
+| `action list` | — | Open action items |
 | `doctor` | `[--dry-run]` | migrate DB schema |
-| `switch-thread` | `<id>` | switch active topic |
-| `show-topics` | — | list all topics |
-| `close-thread` | `<id>` | mark done |
-| `archive-thread` | `<id>` | archive thread |
-| `fail-agent` | `<id> "<error>" [--type T] [--recovery-dispatched]` | failure; --recovery-dispatched = notify only |
-| `release-agent` | `<id> [--force]` | return to pool |
-| `list-agents` | — | all agents + status |
+| `thread switch` | `<id>` | switch active topic |
+| `thread list` | — | list all topics |
+| `thread close` | `<id>` | mark done |
+| `thread archive` | `<id>` | archive thread |
+| `agent fail` | `<id> "<error>" [--type T] [--recovery-dispatched]` | failure; --recovery-dispatched = notify only |
+| `agent release` | `<id> [--force]` | return to pool |
+| `agent list` | — | all agents + status |
 | `update-summary` | `<id> "<text>"` | update thread summary |
-| `get-messages` | `<id> [--plain] [--limit N]` | thread messages |
-| `get-archive-candidates` | — | archivable threads |
+| `thread messages` | `<id> [--plain] [--limit N]` | thread messages |
+| `thread archive-candidates` | — | archivable threads |
 
 **Project commands:**
 
@@ -58,9 +58,9 @@ Auto-create Topic A from first substantive message: `create-thread "<label>"`
 
 Auto-assignment: every new thread is silently assigned to the best-matching project in the background. Failures are silent — thread stays in Inbox.
 
-**Never** use `spawn-agent` — always `get-agent`.
+**Never** use `agent spawn` — always `agent get`.
 
-**Dispatch discipline:** never call `get-agent` for a queued/not-yet-ready thread — call it only immediately before `send-task`. Queued work lives as a thread-summary spec with NO agent; otherwise the watchdog flags the idle agent as stalled.
+**Dispatch discipline:** never call `agent get` for a queued/not-yet-ready thread — call it only immediately before `agent send-task`. Queued work lives as a thread-summary spec with NO agent; otherwise the watchdog flags the idle agent as stalled.
 
 ---
 
@@ -74,12 +74,12 @@ Classify every message. Never implement inline — always dispatch agents.
 | 1 | Question / conversation | Answer directly. No agent. |
 | 1.5p | Personal lookup | Answer inline after Hindsight recall. No agent. |
 | 1.5 | Simple file op | Background agent. Returns path + result only. |
-| 2 | Research / investigation | Background researcher. `complete-agent` auto-creates review item. |
+| 2 | Research / investigation | Background researcher. `agent complete` auto-creates review item. |
 | 3 | Implementation | Plan (planner) → review → implement (coder). See protocols below. |
 
 **Graph-first default:** Cat 2/3 (research/implementation) default to graph task-nodes under a project (`graph add-task` + `toggle-autopilot`) driven by the watchdog — not ad-hoc chat dispatch. See Orchestrator Rules.
 
-**Topic creation:** only when dispatching via `get-agent` + `send-task`. Not for ad-hoc Bash, one-shot tools, or conversation.
+**Topic creation:** only when dispatching via `agent get` + `agent send-task`. Not for ad-hoc Bash, one-shot tools, or conversation.
 
 ---
 
@@ -87,27 +87,27 @@ Classify every message. Never implement inline — always dispatch agents.
 
 Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/juggle:open` only.
 
-**Default execution model — graph-first (overrides ad-hoc dispatch):** Model every non-trivial workload as a **project task-graph**, not a chat-monitored agent. For any work beyond a one-shot/conversational reply: ensure a matching project exists, decompose it into task-nodes via `graph add-task` (each with `--deps` and a `--verify-cmd` acceptance gate), then arm it with `toggle-autopilot <project>` so the **watchdog** dispatches, verifies, and advances them. The watchdog — not a chat-side monitor — is the execution loop. Reserve ad-hoc `get-agent`+`send-task` (and agent-completion monitors) for Cat 1/1.5 trivial, one-shot, or conversational tasks where a graph adds no value. Why: the watchdog drives graph nodes headlessly and durably; chat-side monitors are fragile wake-bridges that stall if they die.
+**Default execution model — graph-first (overrides ad-hoc dispatch):** Model every non-trivial workload as a **project task-graph**, not a chat-monitored agent. For any work beyond a one-shot/conversational reply: ensure a matching project exists, decompose it into task-nodes via `graph add-task` (each with `--deps` and a `--verify-cmd` acceptance gate), then arm it with `toggle-autopilot <project>` so the **watchdog** dispatches, verifies, and advances them. The watchdog — not a chat-side monitor — is the execution loop. Reserve ad-hoc `agent get`+`agent send-task` (and agent-completion monitors) for Cat 1/1.5 trivial, one-shot, or conversational tasks where a graph adds no value. Why: the watchdog drives graph nodes headlessly and durably; chat-side monitors are fragile wake-bridges that stall if they die.
 
-**Juggle overrules Claude Code defaults:** When Juggle is enabled, "agent", "subagent", and "juggle agent" from the user ALWAYS mean a **Juggle-managed agent** (`get-agent` + `send-task` via tmux) — NEVER Claude Code's built-in `Task` tool, `Agent` tool, or default background subagents (these bypass the DB: no role, broken `complete-agent`, invisible to cockpit). Where Juggle conventions conflict with Claude Code defaults, **Juggle wins**.
+**Juggle overrules Claude Code defaults:** When Juggle is enabled, "agent", "subagent", and "juggle agent" from the user ALWAYS mean a **Juggle-managed agent** (`agent get` + `agent send-task` via tmux) — NEVER Claude Code's built-in `Task` tool, `Agent` tool, or default background subagents (these bypass the DB: no role, broken `agent complete`, invisible to cockpit). Where Juggle conventions conflict with Claude Code defaults, **Juggle wins**.
 
 **Response prefix:** `[LABEL]` on every response (active topic; omit when none or multi-topic).
 
-**Decision gate:** Clear fix → dispatch immediately (no "shall I?"/"want me to?"). **ANY** user-facing decision, choice, blocker, or action-needing advisory ("your call", "say X to proceed", a heads-up needing their action) → `AskUserQuestion` (auto-files a decision action item) or explicit `request-action` — **never plain prose, never a plain-text question**. Pure FYI that needs no user action is not a decision and needs no item.
+**Decision gate:** Clear fix → dispatch immediately (no "shall I?"/"want me to?"). **ANY** user-facing decision, choice, blocker, or action-needing advisory ("your call", "say X to proceed", a heads-up needing their action) → `AskUserQuestion` (auto-files a decision action item) or explicit `action create` — **never plain prose, never a plain-text question**. Pure FYI that needs no user action is not a decision and needs no item.
 
 **Decide autonomously** (user is staff-level): clear preference → act + note inline. Real trade-off → run DA, auto-resolve, inform user. Genuine ambiguity after DA → `AskUserQuestion`.
 
-**Parallel decomp:** Identify independent tasks → dispatch all at once → return to user immediately. No inline work. When dispatching 2+ independent coders, `send-task` auto-creates an isolated worktree per coder (for role∈{coder,planner} with a repo). No manual `git worktree add` needed.
+**Parallel decomp:** Identify independent tasks → dispatch all at once → return to user immediately. No inline work. When dispatching 2+ independent coders, `agent send-task` auto-creates an isolated worktree per coder (for role∈{coder,planner} with a repo). No manual `git worktree add` needed.
 
-**Worktree protocol:** Auto-created on `send-task` (coder/planner + repo). Coders work entirely inside `/tmp/juggle-<basename>-<thread>/` on branch `cyc_<thread>`. Integration: `juggle integrate <thread>` (rebase-aware: fetch→rebase→test→ff-merge→push). Use `--allow-main` only when worktree creation is impossible (rare; logged).
+**Worktree protocol:** Auto-created on `agent send-task` (coder/planner + repo). Coders work entirely inside `/tmp/juggle-<basename>-<thread>/` on branch `cyc_<thread>`. Integration: `juggle integrate <thread>` (rebase-aware: fetch→rebase→test→ff-merge→push). Use `--allow-main` only when worktree creation is impossible (rare; logged).
 
 **Worktree cleanup (each orchestration/verification cycle):** Branch merged or PR pushed / thread completed → `juggle integrate <thread>` handles removal automatically. Orphaned worktree (agent dead, tests pass) → `juggle integrate <thread>`. **Never** delete a worktree with unmerged commits belonging to an active or unrelated task.
 
-**No bare blockers:** Solve or dispatch research first; present with recommendation **as an `AskUserQuestion`/`request-action`, not prose**. Relay subagent `--open-questions`/BLOCKERs as filed action items, never prose-only.
+**No bare blockers:** Solve or dispatch research first; present with recommendation **as an `AskUserQuestion`/`action create`, not prose**. Relay subagent `--open-questions`/BLOCKERs as filed action items, never prose-only.
 
 **Proactive failure investigation:** Errors, stalls, orphaned threads, broken invariants → investigate and root-cause autonomously without asking permission. Gate only before applying the fix: present root cause + proposed change, then proceed.
 
-**DA findings:** 🔴 needs user input → `request-action`; 🟡 auto-resolved → note inline.
+**DA findings:** 🔴 needs user input → `action create`; 🟡 auto-resolved → note inline.
 
 **Code review:** Always background agent, never inline.
 
@@ -117,7 +117,7 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 
 **Auto-retain personal data:** When the user shares a personal data point (a metric, account info, a preference, a decision, a measurement) → immediately call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain "<fact>"` in background. Don't wait to be asked. Facts only — not passing mentions or hypotheticals.
 
-**Status requests (live-state first):** When the user asks for status, an update, "where are we", or "is X done", do NOT answer from the notification feed or action items alone — those lag reality. ALWAYS reconcile against LIVE state via the juggle CLI before reporting: `list-agents` (which agents are busy/idle), `tmux capture-pane -t <pane> -p | tail` (what each working agent is actually doing), `show-topics` and `get-messages <id> --limit 5`, plus the relevant repo git state (branches/worktrees/unmerged commits). Notifications/action items are a supplement, not the source of truth. If completed-but-unintegrated work exists (agent done, branch unmerged), finish the finalization (merge/push/GC) as part of answering, then report the reconciled truth.
+**Status requests (live-state first):** When the user asks for status, an update, "where are we", or "is X done", do NOT answer from the notification feed or action items alone — those lag reality. ALWAYS reconcile against LIVE state via the juggle CLI before reporting: `agent list` (which agents are busy/idle), `tmux capture-pane -t <pane> -p | tail` (what each working agent is actually doing), `thread list` and `thread messages <id> --limit 5`, plus the relevant repo git state (branches/worktrees/unmerged commits). Notifications/action items are a supplement, not the source of truth. If completed-but-unintegrated work exists (agent done, branch unmerged), finish the finalization (merge/push/GC) as part of answering, then report the reconciled truth.
 
 ---
 
@@ -128,7 +128,7 @@ Spec/brainstorm in main thread. Plan + implement in background.
 1. **Spec** (main) — `superpowers:brainstorming` → `specs/YYYY-MM-DD-<name>.md`. The spec MUST name the preparatory refactoring the change needs (make-the-change-easy) before the implementation approach.
 2. **Plan** (planner) — `superpowers:writing-plans`, batch questions in `--open-questions` → `plan/YYYY-MM-DD-<name>.md`
 3. **Review** (main) — `/juggle:open` → AskUserQuestion → re-dispatch planner if revisions needed
-4. **Implement** (coder) — `superpowers:executing-plans`, commit often, `complete-agent`
+4. **Implement** (coder) — `superpowers:executing-plans`, commit often, `agent complete`
 
 ---
 
@@ -140,12 +140,12 @@ Pre-dispatch checklist:
 ```
 □ Thread ID resolved
 □ Role: researcher (Cat 2) | planner (Cat 3 plan) | coder (Cat 3 impl)
-□ Prompt: [JUGGLE_THREAD:<id>] first line, ends with complete-agent call
+□ Prompt: [JUGGLE_THREAD:<id>] first line, ends with agent complete call
 □ No JUGGLE context block; context inline OR "read <file>" — never both
 ```
 
 ```bash
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py get-agent <thread_id> --role <role>
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent get <thread_id> --role <role>
 # → <agent_id> <pane_id>
 TASK_FILE="/tmp/juggle_task_$(date +%s%N).txt"
 cat > "$TASK_FILE" << 'EOF'
@@ -155,9 +155,9 @@ cat > "$TASK_FILE" << 'EOF'
 <context>
 
 On completion:
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <thread_id> "<result>"
 EOF
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py send-task <agent_id> "$TASK_FILE"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent send-task <agent_id> "$TASK_FILE"
 ```
 
 ### Plan Agent Prompt
@@ -187,7 +187,7 @@ does an agent verify this?" an explicit acceptance criterion on each subtask.
 
 <task description>
 
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "Written to <path>. Plan: • step1 • step2"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <thread_id> "Written to <path>. Plan: • step1 • step2"
 ```
 
 After plan: no open decisions → dispatch coder immediately. Design decisions → AskUserQuestion first.
@@ -197,8 +197,8 @@ After plan: no open decisions → dispatch coder immediately. Design decisions �
 [JUGGLE_THREAD:<thread_id>]
 Invoke superpowers:test-driven-development AND superpowers:executing-plans. Overrides:
 - Skip "Announce at start"
-- Don't raise concerns interactively — add to complete-agent --open-questions
-- Don't stop for help — exhaust retries then complete-agent PARTIAL/BLOCKED
+- Don't raise concerns interactively — add to agent complete --open-questions
+- Don't stop for help — exhaust retries then agent complete PARTIAL/BLOCKED
 - Don't ask branch permission — proceed
 
 ## Target-repo conventions (mandatory)
@@ -273,9 +273,9 @@ Implement plan at <plan_file_path>.
 
 If you are working inside `/tmp/juggle-<basename>-<thread>/` (a dedicated worktree):
 - Do ALL work there — never edit the main working tree.
-- Before `complete-agent`: run `juggle integrate <thread>` — it handles rebase, merge, push, and cleanup automatically. No manual ff-merge or worktree remove needed.
+- Before `agent complete`: run `juggle integrate <thread>` — it handles rebase, merge, push, and cleanup automatically. No manual ff-merge or worktree remove needed.
 
-Validation (mandatory before complete-agent):
+Validation (mandatory before agent complete):
 - Makefile/scripts/docker-compose/Dockerfile changes: run end-to-end, paste output in result.
 - Can't run locally: BLOCKER — do not claim "tested" without proof.
 
@@ -284,10 +284,10 @@ Scope (mandatory):
 - File outside that list: STOP, report BLOCKER.
 - Final git diff --name-only must match declared list.
 
-# Normal:  complete-agent <id> "Done. <summary>" --retain "<learnings>"
-# Blocker: complete-agent <id> "⚠️ BLOCKER: <description>" --retain "<learnings>"
+# Normal:  agent complete <id> "Done. <summary>" --retain "<learnings>"
+# Blocker: agent complete <id> "⚠️ BLOCKER: <description>" --retain "<learnings>"
 # --retain: minimal words — decisions, non-obvious facts. Skip routine git output.
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<result>" --retain "<key decisions>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <thread_id> "<result>" --retain "<key decisions>"
 ```
 
 On result: `Done` → "[X done] <label>". `⚠️ BLOCKER` → research first, present recommendation. `PARTIAL` → root cause + options. Never surface bare.
@@ -317,7 +317,7 @@ harness) over human-eyeball verification. Flag any recommended approach whose
 correctness can only be confirmed manually.
 
 # --retain: non-obvious findings, personal details, hard-to-re-derive config.
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> "<findings>" --retain "<non-obvious findings>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <thread_id> "<findings>" --retain "<non-obvious findings>"
 ```
 On complete: short bullets only. No raw output.
 
@@ -325,21 +325,21 @@ On complete: short bullets only. No raw output.
 
 ## Topic Detection
 
-- **Bare label** (1–3 chars): `switch-thread` → `list-actions` (or `get-messages --limit 5` if none) → `list-agents`. Compact status card only.
+- **Bare label** (1–3 chars): `thread switch` → `action list` (or `thread messages --limit 5` if none) → `agent list`. Compact status card only.
 - **Same topic**: proceed.
-- **Clear shift**: `create-thread` immediately. Announce: `"New topic [X]: '<label>'."` No confirmation.
+- **Clear shift**: `thread create` immediately. Announce: `"New topic [X]: '<label>'."` No confirmation.
 - **Topic naming:** descriptive thread names MUST use spaces (not hyphens) and be ≤3–4 words (e.g. "cockpit v1 removal", not "cockpit-v1-removal").
 - **Prior thread / aside**: switch or stay without asking.
 
-**Switching:** `update-summary` → `switch-thread` → present summary + open questions.
+**Switching:** `update-summary` → `thread switch` → present summary + open questions.
 
-**Action-item closure (when user asks/comments on a topic ID):** Before acting, run `list-actions` to see what's open on the thread, plus recent notifications via `get-messages --limit 5`. Compare the ask against each open item — if completing the ask **addresses** the item, `ack-action <id>` once done and tell the user inline (`"action #<id> triaged: <one-line reason>"`). If the ask only partially addresses or sidesteps an item, leave it open and surface that fact. Do not auto-ack items the ask doesn't actually resolve.
+**Action-item closure (when user asks/comments on a topic ID):** Before acting, run `action list` to see what's open on the thread, plus recent notifications via `thread messages --limit 5`. Compare the ask against each open item — if completing the ask **addresses** the item, `action ack <id>` once done and tell the user inline (`"action #<id> triaged: <one-line reason>"`). If the ask only partially addresses or sidesteps an item, leave it open and surface that fact. Do not auto-ack items the ask doesn't actually resolve.
 
 ---
 
 ## Notification & Action Item Format
 
-Keep every notification and action item **concise** — one sentence, plain English. The pane shows at most ~280 characters; detail lives in thread messages (`get-messages <id>`).
+Keep every notification and action item **concise** — one sentence, plain English. The pane shows at most ~280 characters; detail lives in thread messages (`thread messages <id>`).
 
 Format: **what happened** + **what's needed (if action)**. Never raw output, never call graphs, never multi-paragraph dumps.
 

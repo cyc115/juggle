@@ -24,8 +24,8 @@ allowed-tools: Read, Edit, Write, Bash, mcp__personal-mcp__extract_text_from_fil
 At the start of each mode, resolve VAULT_PATH, VAULT_NAME, and INBOX via:
 
 ```bash
-VAULT_PATH=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py vault-path)
-VAULT_NAME=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py vault-name)
+VAULT_PATH=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py vault path)
+VAULT_NAME=$(uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py vault name)
 INBOX="${VAULT_PATH}/inbox.md"
 ```
 

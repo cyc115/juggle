@@ -266,7 +266,7 @@ PYEOF
 Then install the flush supervisor:
 
 ```bash
-python3 '${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py' db-flush --install-supervisor
+python3 '${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py' db flush --install-supervisor
 ```
 
 Tell the user to start the supervisor with the printed command.
