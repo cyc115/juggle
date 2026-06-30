@@ -207,7 +207,13 @@ def test_autopilot_context_includes_graph_status_when_armed(armed_hook_env):
 
 
 def test_autopilot_context_no_carveout_when_disarmed(db, tmp_path, monkeypatch):
+    """Default-armed (2026-06-30): disarming EVERY active project yields an empty
+    derived armed set, so the directive injects with no per-project carve-out."""
     import juggle_hooks_config
+    import juggle_autopilot_state as st
+
+    # init_db seeds INBOX; disarm the whole active set to empty the armed set.
+    st.disarm_all(db, [p["id"] for p in db.list_projects()])
 
     flag = tmp_path / "autopilot"
     flag.touch()

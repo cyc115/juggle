@@ -336,14 +336,13 @@ def test_cockpit_graph_panel_no_armed_message_single(db):
 # ---------------------------------------------------------------------------
 
 
-def test_autopilot_arm_subcommand_neutralized():
-    """'juggle autopilot arm' must either error or print deprecation — must not
-    actually set the autopilot_armed_project key going forward.
-
-    After P7, arming is gone. The command should exit non-zero or be removed.
-    """
+def test_autopilot_arm_subcommand_restored(tmp_path):
+    """REGRESSION PIN (rewritten 2026-06-30, was P7 'arm neutralized'):
+    per-project arm/disarm is RESTORED (user-approved, default-armed exclusion
+    set). `juggle autopilot arm <pid>` exits 0 and re-arms the project."""
     import subprocess
 
+    test_db = str(tmp_path / "p7restore.db")
     r = subprocess.run(
         [
             sys.executable,
@@ -354,19 +353,22 @@ def test_autopilot_arm_subcommand_neutralized():
         ],
         capture_output=True,
         text=True,
-        env={**os.environ, "_JUGGLE_TEST_DB": "/tmp/does-not-exist.db"},
+        env={**os.environ, "_JUGGLE_TEST_DB": test_db},
     )
-    # Command must exit non-zero — arming is no longer supported
-    assert r.returncode != 0, (
-        f"'juggle autopilot arm' must exit non-zero after P7 (arming removed), "
-        f"got returncode={r.returncode}"
+    assert r.returncode == 0, (
+        f"'juggle autopilot arm' must exit 0 after the 2026-06-30 restore, "
+        f"got returncode={r.returncode}, stderr={r.stderr}"
     )
+    assert "ARMED" in r.stdout
 
 
-def test_autopilot_disarm_subcommand_neutralized():
-    """'juggle autopilot disarm' must exit non-zero — arming concept gone."""
+def test_autopilot_disarm_subcommand_restored(tmp_path):
+    """REGRESSION PIN (rewritten 2026-06-30, was P7 'disarm neutralized'):
+    `juggle autopilot disarm <pid>` exits 0 and records the project in the
+    disarmed exclusion set."""
     import subprocess
 
+    test_db = str(tmp_path / "p7restore.db")
     r = subprocess.run(
         [
             sys.executable,
@@ -377,9 +379,10 @@ def test_autopilot_disarm_subcommand_neutralized():
         ],
         capture_output=True,
         text=True,
-        env={**os.environ, "_JUGGLE_TEST_DB": "/tmp/does-not-exist.db"},
+        env={**os.environ, "_JUGGLE_TEST_DB": test_db},
     )
-    assert r.returncode != 0, (
-        f"'juggle autopilot disarm' must exit non-zero after P7, "
-        f"got returncode={r.returncode}"
+    assert r.returncode == 0, (
+        f"'juggle autopilot disarm' must exit 0 after the 2026-06-30 restore, "
+        f"got returncode={r.returncode}, stderr={r.stderr}"
     )
+    assert "DISARMED INBOX" in r.stdout
