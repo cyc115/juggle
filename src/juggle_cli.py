@@ -116,6 +116,7 @@ from juggle_cli_spec import build_parser
 from juggle_cmd_graph import register_graph_parsers
 from juggle_cmd_runs import register_runs_parsers
 from juggle_cli_parsers_project import register_project_parsers
+from juggle_cli_aliases import rewrite_argv as _rewrite_legacy_argv
 
 
 def _obsidian_fallback(abs_file: str) -> None:
@@ -180,49 +181,6 @@ def _group_subparsers(subparsers, resource):
         if isinstance(action, argparse._SubParsersAction):
             return action
     return None
-
-
-# Legacy flat names for the entry-module verbs (registered imperatively below,
-# so they are NOT in COMMANDS.aliases). G1 maps them to their resource-verb form;
-# the alias shim (_rewrite_legacy_argv) keeps the flat names resolving.
-_ENTRY_VERB_ALIASES = {
-    "vault-path": ["vault", "path"],
-    "vault-name": ["vault", "name"],
-    "open-in-editor": ["file", "open"],
-}
-
-
-def _legacy_alias_map():
-    """{legacy-flat-name: [resource, verb]} derived from COMMANDS.aliases plus the
-    entry-verb aliases. G1 TRANSITIONAL — A1 formalizes this into a dedicated
-    juggle_cli_aliases module (+ `aliases --json` + coverage test + deprecation)."""
-    from juggle_cli_commands import COMMANDS
-
-    mapping: dict[str, list[str]] = {}
-    for c in COMMANDS:
-        target = [c.verb] if c.resource is None else [c.resource, c.verb]
-        for alias in c.aliases:
-            mapping[alias] = target
-    for alias, target in _ENTRY_VERB_ALIASES.items():
-        mapping.setdefault(alias, target)
-    return mapping
-
-
-def _rewrite_legacy_argv(argv):
-    """Splice a legacy flat command name into its canonical [resource, verb] form.
-
-    Pre-parse argv rewrite (spec §4) so legacy names keep working after the G1
-    grammar rename — silent, zero-breakage (spec §5 stage a). Positional args and
-    flags ride along untouched. Only argv[1] (the command token) is considered.
-    """
-    if len(argv) >= 2 and not argv[1].startswith("-"):
-        target = _legacy_alias_map().get(argv[1])
-        # Skip when argv is ALREADY canonical — guards the one legacy name that
-        # collides with its resource group (`research` is both the alias for
-        # `research run` AND the resource), so `research run …` is left intact.
-        if target is not None and argv[1:1 + len(target)] != target:
-            return [argv[0], *target, *argv[2:]]
-    return argv
 
 
 def build_cli_parser(vault_path_default: str | None = None):
