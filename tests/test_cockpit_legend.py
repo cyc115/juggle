@@ -55,3 +55,56 @@ def test_graph_panel_uses_registry_legend():
     assert L.graph_inline_legend() in out or all(
         tok in buf.getvalue() for tok in ("running", "ready", "done")
     )
+
+
+# ── Task 3: STATUS_LEGEND registry + coverage pin ─────────────────────────────
+
+def test_status_legend_structure():
+    import juggle_cockpit_legend as L
+    secs = L.build_legend_content()
+    assert {s["section"] for s in secs} >= {"Topics", "Agents", "Graph (task DAG)"}
+    for s in secs:
+        assert s["entries"]
+        for e in s["entries"]:
+            assert e["glyph"].strip() and e["meaning"].strip()
+
+
+def test_every_rendered_glyph_is_in_the_legend():
+    """COVERAGE PIN (2026-06-29): every glyph a cockpit panel can render must
+    appear in STATUS_LEGEND, so the ? help can never under-document the UI."""
+    import juggle_cockpit_legend as L
+    legend_glyphs = {e["glyph"] for s in L.build_legend_content() for e in s["entries"]}
+    missing = L.all_rendered_glyphs() - legend_glyphs
+    assert not missing, (
+        f"Glyphs rendered by panels but absent from STATUS_LEGEND: {sorted(missing)}. "
+        "Add an entry to STATUS_LEGEND in juggle_cockpit_legend.py."
+    )
+
+
+def test_render_legend_lines_smoke():
+    import juggle_cockpit_legend as L
+    text = "\n".join(L.render_legend_lines())
+    for g in ("👉", "🏃", "🟢", "⚡", "◇", "⊣"):
+        assert g in text, f"legend render missing {g}"
+
+
+def test_render_legend_lines_is_multicolumn():
+    """AMENDMENT 1: the legend renders DENSE multi-column (≥2 '<glyph> <meaning>'
+    cells per row) so it mostly fits one screen — not one entry per line."""
+    import juggle_cockpit_legend as L
+    lines = L.render_legend_lines(width=110)
+    # At least one section body row must pack two distinct dict-glyphs together.
+    busy_glyph = L.AGENT_STATUS_GLYPHS["busy"]   # 🟢
+    idle_glyph = L.AGENT_STATUS_GLYPHS["idle"]   # ⚫
+    assert any(busy_glyph in ln and idle_glyph in ln for ln in lines), (
+        "expected busy+idle on one row (multi-column legend)"
+    )
+
+
+def test_render_legend_lines_contains_every_meaning():
+    """Compact layout must not drop any meaning (cockpit --legend completeness)."""
+    import juggle_cockpit_legend as L
+    text = "\n".join(L.render_legend_lines(width=110))
+    for sec in L.build_legend_content():
+        for e in sec["entries"]:
+            assert e["meaning"] in text, f"meaning dropped: {e['meaning']!r}"
