@@ -163,9 +163,10 @@ def test_coder_template_mandates_full_suite_once_no_subset():
         "guidance must forbid backgrounding the suite and polling it"
     )
 
-    # (3) Must terminate via complete-agent / fail-agent.
-    assert "complete-agent" in low and "fail-agent" in low, (
-        "Verification guidance must require ending on complete-agent/fail-agent"
+    # (3) Must terminate via the completion verbs (P9 G1: 'agent complete' /
+    #     'agent fail' — the legacy complete-agent/fail-agent forms were migrated).
+    assert "agent complete" in low and "agent fail" in low, (
+        "Verification guidance must require ending on agent complete/agent fail"
     )
 
     # (I2) The fix-and-re-run cycle must be HARD-bounded (one attempt, then

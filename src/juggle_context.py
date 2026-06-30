@@ -164,7 +164,7 @@ def render_agent_role_anchor_for(role: str) -> str:
     return (
         "--- AGENT ROLE ---\n"
         f"ROLE: {role}. {identity}\n"
-        f'COMPLETION: python3 {plugin_root}/src/juggle_cli.py complete-agent <THREAD> "<summary>" --retain "<key finding>"'
+        f'COMPLETION: python3 {plugin_root}/src/juggle_cli.py agent complete <THREAD> "<summary>" --retain "<key finding>"'
     )
 
 
