@@ -102,6 +102,35 @@ def spawn_repo_path(pane_id: str | None = None) -> str:
     return top if top and not _is_bad_base(top) else ""
 
 
+def resolve_worktree_base(
+    main_repo_override: str | None,
+    agent_repo: str | None,
+    thread_main_repo: str | None,
+    pane_id: str | None,
+) -> str:
+    """Pick the SOURCE repo to cut a dispatched coder's worktree from.
+
+    Priority: explicit --main-repo-path → the stored agent.repo_path → the agent
+    PANE's cwd (``pane_repo_path``) → thread.main_repo_path. The pane-cwd anchor
+    is the RESCUE that recovers a good base when the stored binding is empty or
+    bad — a pre-fix ~/.claude agent, or a cwd==~/.claude launch. Every candidate
+    that is a bad base (~/.claude / plugin dir / basename '.claude') is rejected,
+    so a dispatch from the installed plugin copy never roots the worktree in
+    ~/.claude (2026-06-29 send-task wrong-base incident). '' when none qualify.
+    """
+    override = (main_repo_override or "").strip()
+    if override:
+        return override
+    for cand in (
+        (agent_repo or "").strip(),
+        pane_repo_path(pane_id),
+        (thread_main_repo or "").strip(),
+    ):
+        if cand and not _is_bad_base(cand):
+            return cand
+    return ""
+
+
 def canonical_main_ref(repo: str) -> str | None:
     """Return the best canonical main ref for ``repo``.
 

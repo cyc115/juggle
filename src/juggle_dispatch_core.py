@@ -165,25 +165,11 @@ def send_task_to_agent(
             )
             thread_wt = db.get_thread(thread_id)
 
-        # Base-repo resolution for the auto-created worktree. An explicit
-        # --main-repo-path wins; otherwise PRIMARY-anchor on the agent PANE's cwd
-        # (where the coder actually runs) so a dispatch from the installed plugin
-        # copy never roots the worktree in ~/.claude (2026-06-29 wrong-base
-        # incident). The stored agent.repo_path / thread.main_repo_path are used
-        # only as fallbacks, and a bad base (~/.claude / plugin dir) is rejected.
-        from juggle_repo_binding import is_plugin_install_dir, pane_repo_path
-
-        repo_path_wt = (main_repo_override or "").strip()
-        if not repo_path_wt:
-            repo_path_wt = pane_repo_path(pane_id)
-        if not repo_path_wt:
-            cand = (agent.get("repo_path") or "").strip()
-            if cand and not is_plugin_install_dir(cand):
-                repo_path_wt = cand
-        if not repo_path_wt:
-            cand = (thread_wt.get("main_repo_path") or "").strip()
-            if cand and not is_plugin_install_dir(cand):
-                repo_path_wt = cand
+        # Worktree base resolution (reject-filtered ~/.claude / plugin dir).
+        from juggle_repo_binding import resolve_worktree_base
+        repo_path_wt = resolve_worktree_base(
+            main_repo_override, agent.get("repo_path"),
+            thread_wt.get("main_repo_path"), pane_id)
 
         existing_wt = (thread_wt.get("worktree_path") or "").strip()
 
