@@ -533,11 +533,15 @@ class _TailModal(ModalScreen):
 
 
 class _ProjectArmModal(ModalScreen):
-    """Project arm/disarm overlay (p key).
+    """Project arm/disarm overlay (p key) — default-armed exclusion model.
 
-    Multi-arm: armed is a SET. j/k navigate, Space/Enter toggle, A arm-all,
-    Esc/q close. Row display: ● armed / ○ disarmed, X/Y progress, running count,
-    (complete) / — no graph hint.
+    Every active project is armed unless explicitly DISARMED; the stored
+    authority is the disarmed exclusion set. j/k navigate, Space/Enter toggle the
+    cursor row (armed→disarm, disarmed→arm — NOT the global flag), A arm-all
+    (clear the set), D disarm-all (exclude every project), Esc/q close. Row
+    display: ● armed / ○ disarmed, X/Y progress, running count, (complete) /
+    — no graph hint. The header shows the GLOBAL ON/OFF flag for context;
+    disarm choices only take effect while global autopilot is ON.
     """
 
     from textual.binding import Binding
@@ -567,7 +571,7 @@ class _ProjectArmModal(ModalScreen):
             yield Static("", id="proj-header", markup=True)
             yield Static("", id="proj-list", markup=False)
             yield Static(
-                "[dim]j/k navigate  Space/Enter toggle  A arm-all  Esc close[/dim]",
+                "[dim]j/k navigate  Space/Enter arm·disarm  A arm-all  D disarm-all  Esc close[/dim]",
                 markup=True,
             )
 
@@ -577,11 +581,12 @@ class _ProjectArmModal(ModalScreen):
     def _refresh(self) -> None:
         from juggle_cmd_autopilot import AUTOPILOT_FLAG
         from juggle_graph_status import graph_counts
+        from juggle_autopilot_state import get_disarmed_projects
 
         projects = self._db.list_projects()
         counts = {p["id"]: graph_counts(self._db, p["id"]) for p in projects}
-        # P7: per-project arming removed — all projects are always active
-        armed = {p["id"] for p in projects}
+        disarmed = set(get_disarmed_projects(self._db))
+        armed = {p["id"] for p in projects if p["id"] not in disarmed}
         self._rows = build_project_arm_rows(projects, armed, counts)
         self._cursor = min(self._cursor, max(0, len(self._rows) - 1))
 
@@ -602,18 +607,33 @@ class _ProjectArmModal(ModalScreen):
             "\n".join(lines) if lines else "(no projects)"
         )
 
-    def _toggle_current(self) -> None:
-        # P7: per-project arming removed — toggle is now the global on/off flag
-        from juggle_cmd_autopilot import AUTOPILOT_FLAG, _flag_set
+    def _apply_toggle(self) -> None:
+        """Pure backend mutation for the cursor row (no widget access — testable):
+        armed → disarm, disarmed → arm."""
+        from juggle_autopilot_state import arm_project, disarm_project
 
-        _flag_set(not AUTOPILOT_FLAG.exists())
+        if not self._rows:
+            return
+        row = self._rows[self._cursor]
+        if row.armed:
+            disarm_project(self._db, row.pid)
+        else:
+            arm_project(self._db, row.pid)
+
+    def _toggle_current(self) -> None:
+        self._apply_toggle()
         self._refresh()
 
     def _arm_all(self) -> None:
-        # P7: per-project arming removed — "arm all" enables the global flag
-        from juggle_cmd_autopilot import _flag_set
+        from juggle_autopilot_state import arm_all
 
-        _flag_set(True)
+        arm_all(self._db)  # clear the disarmed set — every project armed
+        self._refresh()
+
+    def _disarm_all(self) -> None:
+        from juggle_autopilot_state import disarm_all
+
+        disarm_all(self._db, [r.pid for r in self._rows])
         self._refresh()
 
     def on_key(self, event: events.Key) -> None:
@@ -630,4 +650,7 @@ class _ProjectArmModal(ModalScreen):
             event.stop()
         elif event.key == "A":
             self._arm_all()
+            event.stop()
+        elif event.key == "D":
+            self._disarm_all()
             event.stop()

@@ -102,8 +102,7 @@ def test_build_rows_missing_counts_treated_as_no_graph():
 # ---------------------------------------------------------------------------
 
 def test_global_flag_on_via_autopilot_on(tmp_path, monkeypatch):
-    """REGRESSION PIN (P7): global flag set via _flag_set(True) — arming replaced
-    by global toggle. arm_project is removed so this uses the global mechanism."""
+    """Global flag set via _flag_set(True) (master kill switch — unchanged 2026-06-30)."""
     from juggle_cmd_autopilot import _flag_set
 
     fake_flag = tmp_path / "autopilot"
@@ -114,7 +113,7 @@ def test_global_flag_on_via_autopilot_on(tmp_path, monkeypatch):
 
 
 def test_global_flag_off_via_autopilot_off(tmp_path, monkeypatch):
-    """REGRESSION PIN (P7): global flag cleared via _flag_set(False)."""
+    """Global flag cleared via _flag_set(False) (master kill switch — unchanged 2026-06-30)."""
     from juggle_cmd_autopilot import _flag_set
 
     fake_flag = tmp_path / "autopilot"
@@ -126,16 +125,53 @@ def test_global_flag_off_via_autopilot_off(tmp_path, monkeypatch):
     assert not fake_flag.exists()
 
 
-def test_arm_project_raises_p7(tmp_path):
-    """REGRESSION PIN (P7): arm_project must raise RuntimeError — removed."""
+def test_arm_project_clears_disarm(tmp_path):
+    """REGRESSION PIN (2026-06-30, replaces P7 'arm raises'): arm_project removes
+    a project from the disarmed set."""
     from juggle_db import JuggleDB
-    from juggle_autopilot_state import arm_project
-    import pytest
+    import juggle_autopilot_state as st
 
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db.init_db()
-    with pytest.raises(RuntimeError, match="P7"):
-        arm_project(db, "proj-a")
+    st.disarm_project(db, "proj-a")
+    assert st.arm_project(db, "proj-a") == []
+
+
+def test_modal_armed_set_excludes_disarmed():
+    """REGRESSION PIN (2026-06-30): the overlay marks disarmed projects as
+    armed=False (default-armed = every project armed unless excluded)."""
+    from juggle_cockpit_modals import build_project_arm_rows
+
+    projects = [{"id": "p1", "name": "A"}, {"id": "p2", "name": "B"}]
+    disarmed = {"p2"}
+    armed_set = {p["id"] for p in projects if p["id"] not in disarmed}
+    rows = build_project_arm_rows(projects, armed_set, {"p1": None, "p2": None})
+    assert rows[0].armed is True   # p1 armed
+    assert rows[1].armed is False  # p2 disarmed
+
+
+def test_modal_toggle_calls_disarm_then_arm(tmp_path, monkeypatch):
+    """REGRESSION PIN (2026-06-30): _apply_toggle disarms an armed project and
+    re-arms a disarmed one via the backend (no global-flag flip)."""
+    pytest.importorskip("textual")
+    from juggle_db import JuggleDB
+    from juggle_cockpit_modals import _ProjectArmModal, ProjectArmRow
+    import juggle_autopilot_state as st
+
+    db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
+    db.init_db()
+    pid = db.create_project(name="Solo", objective="s")
+
+    modal = _ProjectArmModal(db)
+    # Simulate the row state the modal would compute for an armed project.
+    modal._rows = [ProjectArmRow(pid=pid, name="Solo", armed=True, verified=0,
+                                 total=0, running=0, hint="— no graph")]
+    modal._cursor = 0
+    modal._apply_toggle()        # armed → disarm
+    assert st.get_disarmed_projects(db) == [pid]
+    modal._rows[0].armed = False
+    modal._apply_toggle()        # disarmed → arm
+    assert st.get_disarmed_projects(db) == []
 
 
 def test_arm_all_arms_non_complete_projects():
