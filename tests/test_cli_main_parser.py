@@ -33,7 +33,23 @@ def test_exposes_resource_groups_and_kept_top_level_verbs():
     # top-level global verbs kept flat (§2.1)
     assert {"start", "stop", "doctor", "cockpit", "integrate"} <= names
     # out-of-scope groups still registered + verify entry verb
-    assert {"project", "graph", "project-graph", "runs", "autopilot", "verify"} <= names
+    assert {"project", "graph", "runs", "autopilot", "verify"} <= names
+    # G2: project-graph folded into the graph group — no longer top-level
+    assert "project-graph" not in names
+
+
+def test_graph_load_folded_into_graph_group():
+    # G2: `project-graph load` is now `graph load` (same handler + args).
+    parser = build_cli_parser()
+    ns = parser.parse_args(["graph", "load", "spec.md", "--project", "P9"])
+    assert callable(ns.func)
+    assert ns.file == "spec.md" and ns.project == "P9"
+
+
+def test_project_graph_legacy_rewrites_to_graph_via_shim():
+    assert _rewrite_legacy_argv(
+        ["j", "project-graph", "load", "spec.md", "--project", "P9"]
+    ) == ["j", "graph", "load", "spec.md", "--project", "P9"]
 
 
 def test_resource_verb_parses_and_binds_handler():

@@ -89,22 +89,22 @@ def pr_mode_refusal(repo_path: str | None = None) -> str | None:
 
 
 def register_graph_parsers(subparsers) -> None:
-    """Register the `project-graph` (plan store) and `graph` (live edits) groups.
+    """Register the `graph` group: load (plan store) + live edits (add-task/
+    reconcile/mark-task).
 
-    Kept here (next to the handlers) so juggle_cli_parsers_misc stays under the
-    architecture line budget and the graph CLI surface lives in one place.
+    P9 G2 folded the former `project-graph load` into `graph load`; legacy
+    `project-graph …` resolves via the alias shim. Kept here (next to the handlers)
+    so the graph CLI surface lives in one place.
     """
-    p_graph = subparsers.add_parser(
-        "project-graph", help="Project task-graph (autopilot plan store)"
-    )
-    _gs = p_graph.add_subparsers(dest="graph_command", required=True)
-    _g = _gs.add_parser("load", help="Load/upsert a graph spec markdown file")
+    # P9 G2: `project-graph load` is folded into the `graph` group as `graph load`
+    # (legacy `project-graph load …` resolves via the alias shim, which maps
+    # project-graph → graph). The standalone `project-graph` group is removed.
+    p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
+    _g2s = p_g2.add_subparsers(dest="graph2_command", required=True)
+    _g = _g2s.add_parser("load", help="Load/upsert a graph spec markdown file")
     _g.add_argument("file", help="Path to graph spec markdown")
     _g.add_argument("--project", required=True, help="Project id the graph belongs to")
     _g.set_defaults(func=cmd_project_graph_load)
-
-    p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
-    _g2s = p_g2.add_subparsers(dest="graph2_command", required=True)
     # 'add-node': deprecated hidden alias (baked into autopilot hook + CLAUDE.md).
     _an = _g2s.add_parser("add-task", aliases=["add-node"],
                           help="Inject one new task into an existing project graph")

@@ -23,6 +23,9 @@ _ENTRY_VERB_ALIASES: dict[str, list[str]] = {
     "vault-path": ["vault", "path"],
     "vault-name": ["vault", "name"],
     "open-in-editor": ["file", "open"],
+    # P9 G2: `project-graph load …` → `graph load …` (single-token rewrite; the
+    # `load`/flags ride along). project-graph was a top-level group, now folded.
+    "project-graph": ["graph"],
 }
 
 
