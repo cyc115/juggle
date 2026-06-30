@@ -95,7 +95,7 @@ The DAG tick is **not a background daemon**. It runs synchronously inside `cmd_c
 ```python
 # juggle_cmd_agents.py — append to cmd_complete_agent after agent release
 def _dag_tick(db: JuggleDB, session_id: str) -> None:
-    """Fire once per complete-agent: find newly-unblocked threads, notify."""
+    """Fire once per agent complete: find newly-unblocked threads, notify."""
     ready = db.get_ready_blocked_threads()
     for thread in ready:
         tid  = thread["id"]
@@ -176,9 +176,9 @@ if unmet and not args.force:
 
 ## 4. Integration Collisions (Critical)
 
-### 4a. `complete-agent` is the only trigger — watchdog restarts bypass it
+### 4a. `agent complete` is the only trigger — watchdog restarts bypass it
 
-`cmd_complete_agent` (`juggle_cmd_agents.py:86`) is the happy-path transition. But the watchdog can kill and restart agents without calling `complete-agent`. A thread restarted by the watchdog does NOT fire `_dag_tick`. **Fix:** add a separate `cmd_mark_closed` subcommand (or call `_dag_tick` from watchdog too) so the tick always fires on thread→closed regardless of path.
+`cmd_complete_agent` (`juggle_cmd_agents.py:86`) is the happy-path transition. But the watchdog can kill and restart agents without calling `agent complete`. A thread restarted by the watchdog does NOT fire `_dag_tick`. **Fix:** add a separate `cmd_mark_closed` subcommand (or call `_dag_tick` from watchdog too) so the tick always fires on thread→closed regardless of path.
 
 Found in `juggle_watchdog_health.py`: `write_heartbeat()` is called on every poll, `is_watchdog_alive()` checks mtime. There is no `set_thread_status('closed')` call in the watchdog path — so the collision is real.
 

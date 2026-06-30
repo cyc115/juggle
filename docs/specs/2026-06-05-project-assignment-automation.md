@@ -874,7 +874,7 @@ The CLI equivalent: `uv run src/juggle_cli.py project synth [--all|--dirty|<id>]
 export _JUGGLE_TEST_DB="$(mktemp /tmp/juggle_test_XXXXXX.db)"
 export CLAUDE_PLUGIN_DATA=/tmp
 export JUGGLE_MAX_BACKGROUND_AGENTS=5 JUGGLE_MAX_THREADS=10
-uv run src/juggle_cli.py init-db
+uv run src/juggle_cli.py db init
 uv run src/juggle_cli.py project synth --dirty 2>&1
 ```
 Expected: `No projects to synthesize.`

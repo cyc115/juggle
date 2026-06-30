@@ -51,7 +51,7 @@ When `JUGGLE_IS_AGENT=1`, read `JUGGLE_AGENT_ROLE` env var (set at spawn time by
 ```
 --- AGENT ROLE ---
 ROLE: {role}. {role_identity_sentence}
-COMPLETION: python3 {PLUGIN_ROOT}/src/juggle_cli.py complete-agent <THREAD> "<summary>" --retain "<key finding>"
+COMPLETION: python3 {PLUGIN_ROOT}/src/juggle_cli.py agent complete <THREAD> "<summary>" --retain "<key finding>"
 ```
 
 Role identity sentences (stored in `juggle_settings.py` under `agent.role_context`):
@@ -112,10 +112,10 @@ OUTPUT FORMAT:
 ## Coder behavioral spec
 
 SCOPE: Only change what the task requires. Do not refactor, add comments, or improve
-surrounding code. If requirements are ambiguous, STOP and signal via complete-agent
+surrounding code. If requirements are ambiguous, STOP and signal via agent complete
 with "BLOCKED: <question>" before making assumptions.
 
-QUALITY GATE (run before complete-agent):
+QUALITY GATE (run before agent complete):
 1. Run tests for changed files (if tests exist)
 2. Fix linting errors
 3. Fix type errors
@@ -154,7 +154,7 @@ DONE when: a coder with no prior context could execute every subtask without ask
         "coder":      "Implement exactly what is specified — no more. Minimal diff.",
         "planner":    "Produce plans a coder can execute without clarification.",
     },
-    "quality_gate_skill": "mike:pre-pr",  # invoked by coder before complete-agent
+    "quality_gate_skill": "mike:pre-pr",  # invoked by coder before agent complete
 },
 ```
 
@@ -195,6 +195,6 @@ DONE when: a coder with no prior context could execute every subtask without ask
 
 1. Researcher tasks produce output with `[HIGH CONFIDENCE]` / `[CONFLICTING]` markers
 2. Researcher output consistently has `## Gaps / open questions` section
-3. Coder tasks include quality gate invocation before `complete-agent`
+3. Coder tasks include quality gate invocation before `agent complete`
 4. Planner tasks include `## Devil's Advocate` section in every plan
 5. Context injection adds `--- AGENT ROLE ---` block in agent panes (verify via `get-context`)

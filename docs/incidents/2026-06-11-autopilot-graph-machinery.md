@@ -94,13 +94,13 @@ orchestrator had to mark it verified manually.
 **Root cause:**  
 - `cmd_integrate` / `_run_integrate` (`src/juggle_cmd_integrate.py`) does NOT advance the
   topic/node state machine — it only does the git operations. The graph state transition
-  (`running` → `integrating` → `verified`) is done only by `complete-agent` via
+  (`running` → `integrating` → `verified`) is done only by `agent complete` via
   `mark_graph_topic`.  
-- When two integrates raced (out-of-band + agent's complete-agent), the second call to
+- When two integrates raced (out-of-band + agent's agent complete), the second call to
   `mark_topic_completion` (`src/dbops/db_topics.py:201`) raised `ValueError` ("cannot mark
   completion: topic in terminal state 'verified'"), which `mark_graph_topic` caught as a
   silent warning. In the opposite ordering, the topic stayed `running` until the agent's
-  `complete-agent` fired.  
+  `agent complete` fired.  
 **Fix:** Made `mark_topic_completion` idempotent for the success path: if the topic is already
 `verified` and `integrate_ok=True`, return `"verified"` without raising. This prevents the
 `ValueError → warning → silent no-op` path that left nodes stuck on retried calls.  
@@ -157,4 +157,4 @@ git operations, not state transitions.
 **Recommendation:** After a successful ff-merge in `_run_integrate`, call `mark_graph_topic`
 (imported from `juggle_cmd_agents_graph_topics`) to advance the state machine. Guard with a
 try/except so git-only integrate callers (non-graph threads) are unaffected. The idempotency
-fix in I means a subsequent `complete-agent` call is safe.
+fix in I means a subsequent `agent complete` call is safe.

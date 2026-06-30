@@ -150,12 +150,12 @@ Per dispatched topic (user decision 2026-06-10):
    `graph_topics.state='verified'` implies code in main. (Task-level hydration
    across topics is therefore forbidden; cross-topic hydration uses topic
    handoffs, written at integrate time.)
-4. The agent finishes with the normal `complete-agent <topic-thread>` →
+4. The agent finishes with the normal `agent complete <topic-thread>` →
    the existing per-thread `juggle integrate` runs **once for the whole topic**
    (free: integrate is already per-thread, and the topic owns the thread) →
    `mark_graph_topic` (the topic twin of today's `mark_graph_node`) maps
    (integrate_ok, verify_ok) onto the topic machine. **Completion gate:**
-   complete-agent on a topic thread REFUSES (fail loud, nothing marked) unless
+   agent complete on a topic thread REFUSES (fail loud, nothing marked) unless
    every task of the topic is terminal (`verified` or `failed-*`); topic
    verify_ok = all tasks `verified`.
 5. Topic failure semantics: any task left `failed-*` → topic `failed-verify`
@@ -183,7 +183,7 @@ single-task topic per node (same shape migration 37 produces). Existing spec
 files keep working unmodified. Mixing both forms in one file is rejected
 (fail loud).
 
-`juggle graph add-node` gains `--topic <topic-id>` (required when the project
+`juggle graph add-task` gains `--topic <topic-id>` (required when the project
 has any real topic; defaults to a fresh synthetic topic otherwise — preserving
 today's call signature for flat projects). Guarded upsert / PROTECTED_STATES /
 cycle validation apply at both tiers (topic cycle = cycle in derived topic deps).
@@ -220,7 +220,7 @@ never-raises contract. Shape:
    `graph_topics`) + `recompute_topic_ready` + collect ready TOPICS. A
    per-project exception logs and skips THAT project only.
 3. ONE cross-project dispatch order via the scheduler (2.7) over topics.
-4. Existing claim → create-thread → bind → hydrate → dispatch → running body,
+4. Existing claim → thread create → bind → hydrate → dispatch → running body,
    transplanted from nodes to topics:
    - CAS claim on `graph_topics` (same single conditional UPDATE pattern).
    - `db.update_thread(thread_id, project_id=pid)` uses the topic's project
@@ -280,7 +280,7 @@ budget model and resurrects integrate-per-task lock storms).
 
 - `_ARMED_CARVEOUT` names the comma-joined set and the 3-tier rule: topics are
   tick-owned; NEW work for an armed project enters as a task via
-  `juggle graph add-node … --topic <t>`, never ad-hoc send-task.
+  `juggle graph add-task … --topic <t>`, never ad-hoc send-task.
 - Graph injection: one `build_graph_injection(db, pid, budget=per)` line per
   armed project, `per = max(160, 500 // len(armed))`; the injection now counts
   topics ("topics 2/5, tasks 7/23; running: T-auth (task 3/6)") — topic-level
@@ -323,7 +323,7 @@ Extends `juggle_cmd_agents_graph.check_node_guard`:
   it); operator-territory states (`failed-*`, `pending`) stay manually
   redispatchable — DA B5 semantics, lifted from node to topic.
 - Thread **unbound** but `thread.project_id` in the armed set → refuse, pointing
-  to `juggle graph add-node … --topic <t> --project <pid>`; `--force-node`
+  to `juggle graph add-task … --topic <t> --project <pid>`; `--force-node`
   remains the single override (the tick passes it). R8's narrow exceptions
   (graph-machinery fixes; planning whose output IS the nodes) are operator
   judgment via the flag, never content heuristics.
@@ -344,7 +344,7 @@ Extends `juggle_cmd_agents_graph.check_node_guard`:
 | A7 | Old binary + new DB (rollback) degrades safely | Old code ignores `graph_topics`, reads flat nodes whose states migration 37 left INTACT on the node rows | Reads degrade to the flat view; synthetic topics go stale but never corrupt. We do not engineer beyond this for binary rollback |
 | A8 | `--force-node` suffices for R8 exceptions | Legit machinery-fix dispatch gets an annoying refusal | Refusal names the flag + exceptions; heuristics would create silent bypasses |
 | A9 | One agent reliably finishes a multi-task topic | Agent dies at task 3/6: topic worktree holds 3 commits, 3 tasks unmarked | Existing agent-death path (`test_graph_agent_death` machinery) maps to topic `failed-exec`; tasks keep their per-task states, so the RESUME story is a spec reload → topic `pending` with verified tasks skipped by the agent prompt ("tasks already verified: skip"). Pinned in plan |
-| A10 | Completion gate (all tasks terminal) is enforceable | Agent calls complete-agent early → half-done topic integrates | Gate is CODE in cmd_complete_agent (refuse + exit 1, nothing marked), not prompt; pinned test |
+| A10 | Completion gate (all tasks terminal) is enforceable | Agent calls agent complete early → half-done topic integrates | Gate is CODE in cmd_complete_agent (refuse + exit 1, nothing marked), not prompt; pinned test |
 
 ### Weakest item: the schema migration (37) — challenged hard
 
@@ -404,7 +404,7 @@ not a scheduler defect.
 
 Migration 37 adopts their exact state + thread binding into synthetic topics
 (including `updated_at`, see weakest-item #1). Running agents complete via
-complete-agent → topic-by-thread lookup finds the synthetic topic → existing
+agent complete → topic-by-thread lookup finds the synthetic topic → existing
 integrate-once + `mark_completion` semantics apply (a 1-task topic's gate is
 trivially satisfied: its single task adopted `verified`-or-terminal state — for
 a synthetic topic the task row mirrors the topic, and the completion gate
@@ -415,7 +415,7 @@ Nothing is drained, cancelled, or re-dispatched.
 
 - **Agent dies mid-topic (A9):** topic `failed-exec`, per-task states preserved,
   reload-resume pinned.
-- **Premature complete-agent (A10):** code-refused, nothing marked.
+- **Premature agent complete (A10):** code-refused, nothing marked.
 - **Empty topic (0 tasks) in a spec:** rejected at load (fail loud) — a topic
   with no tasks can never satisfy its completion gate.
 - **Cross-topic dep on an unverified task:** impossible to hydrate — hydration
@@ -446,7 +446,7 @@ with rationale; all are cheap to revisit post-implementation.
 - `uv run pytest -q` green (incl. new pins; pre-existing failures documented
   with proof they exist on base).
 - Migration: scripted flat DB (3 nodes, one `running` with thread) →
-  `init-db`/doctor path applies 37 → `sqlite3` asserts synthetic topics adopt
+  `db init`/doctor path applies 37 → `sqlite3` asserts synthetic topics adopt
   state/thread/updated_at and `topic_id` backfilled.
 - `uv run src/juggle_cli.py autopilot status --json` over a scripted 2-project
   arm/disarm sequence yields deterministic JSON (exact assertions in plan).

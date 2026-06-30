@@ -47,7 +47,7 @@ The spec's `_do_class_b_scan` assumed flat top-level events (`type:"tool_use"` a
 - Output (stdout): `error_event <id> status → <status>` or `error: row <id> not found`
 - Exit 1 if row not found or invalid status
 
-**`list-selfheal`**
+**`selfheal list`**
 - No args
 - Output: one line per non-resolved row:
   `<id>  [A]  open     count=3  last=2026-05-30 11:00  sig=a3f1b2c9  KeyError in juggle_cli.main`
@@ -81,7 +81,7 @@ The spec's `_do_class_b_scan` assumed flat top-level events (`type:"tool_use"` a
 |------|--------|----------------|
 | `src/juggle_selfheal.py` | **Create** | Core module: `record_error`, `record_orchestration_error`, sig hashing, allowlist, self-protection, `_try_claim_diagnosis_slot`, `_get_pending_selfheal_count` |
 | `src/juggle_db.py` | **Modify** | Add `CREATE_ERROR_EVENTS` constant, Migration 24, `JuggleDB` methods: `add_error_event`, `dedup_or_insert_error`, `set_error_event_status`, `get_open_error_events`, `get_pending_selfheal_count` |
-| `src/juggle_cli.py` | **Modify** | Register `selfheal-set-status`, `list-selfheal`, `selfheal-reset-diagnosing` subcommands |
+| `src/juggle_cli.py` | **Modify** | Register `selfheal-set-status`, `selfheal list`, `selfheal-reset-diagnosing` subcommands |
 | `src/juggle_hooks.py` | **Modify** | Class A wiring in 5 handlers + `main()` wrapper; Class B scan in `handle_stop()`; pending count in `handle_session_start()` |
 | `src/juggle_cli.py` (main) | **Modify** | Class A wiring in `main()` |
 | `src/juggle_cockpit.py` | **Modify** | Class A wiring in `run()` |
@@ -540,7 +540,7 @@ git commit -m "feat(selfheal): add error_events table + Migration 24 + DB helper
 
 ---
 
-## Task 3: CLI Helpers — selfheal-set-status, list-selfheal, selfheal-reset-diagnosing
+## Task 3: CLI Helpers — selfheal-set-status, selfheal list, selfheal-reset-diagnosing
 
 **Files:**
 - Modify: `src/juggle_cli.py`
@@ -556,7 +556,7 @@ Append to `tests/test_juggle_selfheal.py`:
 # ---------------------------------------------------------------------------
 
 def test_list_selfheal_prints_open_rows(tmp_path, capsys):
-    """list-selfheal prints one line per non-resolved error_events row."""
+    """selfheal list prints one line per non-resolved error_events row."""
     from juggle_db import JuggleDB
     from juggle_cli import _cmd_list_selfheal
 
@@ -700,7 +700,7 @@ Also add `from pathlib import Path` if not already at the top of `juggle_cli.py`
 After the existing `p_recall = subparsers.add_parser("recall", ...)` line (~537), add:
 
 ```python
-    p_list_selfheal = subparsers.add_parser("list-selfheal", help="List pending self-heal errors")
+    p_list_selfheal = subparsers.add_parser("selfheal list", help="List pending self-heal errors")
     p_list_selfheal.set_defaults(func=_cmd_list_selfheal)
 
     p_sh_set = subparsers.add_parser("selfheal-set-status", help="Update error_event status")
@@ -724,7 +724,7 @@ uv run pytest tests/test_juggle_selfheal.py -k "list_selfheal or set_status or r
 
 ```bash
 git add src/juggle_cli.py tests/test_juggle_selfheal.py
-git commit -m "feat(selfheal): add selfheal-set-status, list-selfheal, selfheal-reset-diagnosing CLI commands"
+git commit -m "feat(selfheal): add selfheal-set-status, selfheal list, selfheal-reset-diagnosing CLI commands"
 ```
 
 ---
@@ -1690,7 +1690,7 @@ Find the section in `handle_session_start()` that builds `additional_context` an
                 if pending > 0:
                     additional_context += (
                         f"\n⚠️ {pending} pending self-heal error(s) — "
-                        "run `list-selfheal` to review."
+                        "run `selfheal list` to review."
                     )
             except Exception:
                 pass
@@ -1771,7 +1771,7 @@ After diagnosis:
 2. Note the returned action_item_id.
 3. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py selfheal-set-status <error_event_id> \
      awaiting_approval --action-item-id <action_item_id>
-4. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> \
+4. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <thread_id> \
      "Diagnosis complete for error_event <id>. Action item #<action_item_id> filed." \
      --retain "Self-heal A sig=<sig8>: <root cause in 10 words>"
 
@@ -1832,7 +1832,7 @@ After diagnosis:
 2. Note the returned action_item_id.
 3. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py selfheal-set-status <error_event_id> \
      awaiting_approval --action-item-id <action_item_id>
-4. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> \
+4. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <thread_id> \
      "Diagnosis complete for error_event <id>. Action item #<action_item_id> filed." \
      --retain "Self-heal B sig=<sig8>: <root cause in 10 words>"
 
@@ -1843,12 +1843,12 @@ NEVER auto-apply the patch.
 
 When the orchestrator sees `[SELFHEAL-A]` or `[SELFHEAL-B]` from juggle-selfheal-monitor:
 
-1. Call `uv run juggle_cli.py list-selfheal` to get the `error_event_id` and details.
+1. Call `uv run juggle_cli.py selfheal list` to get the `error_event_id` and details.
 2. Call `uv run juggle_cli.py selfheal-reset-diagnosing <id>` if the row is stuck in `diagnosing`.
 3. Attempt cap check: if another row is already `diagnosing`, note "queued" inline and wait.
 4. Call the CLI to claim the slot (handled automatically when the diagnosis agent calls `selfheal-set-status <id> diagnosing`).
 5. Dispatch a researcher agent using the appropriate Class A or Class B prompt above.
-   - Fill in `<id>`, `<signature_hash>`, `<entrypoint>`, etc. from `list-selfheal` output.
+   - Fill in `<id>`, `<signature_hash>`, `<entrypoint>`, etc. from `selfheal list` output.
    - Fill in `<thread_id>` with the current active thread.
 ```
 

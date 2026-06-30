@@ -84,7 +84,7 @@ Every new thread is assigned a project automatically. This **never blocks** thre
 ### Flow
 
 ```
-create-thread inserts thread with project_id = 'INBOX'   ← instant, never blocks
+thread create inserts thread with project_id = 'INBOX'   ← instant, never blocks
      ↓
 threading.Thread(target=_assign_project_bg, args=(db, thread_uuid, topic))
 fires immediately after insert

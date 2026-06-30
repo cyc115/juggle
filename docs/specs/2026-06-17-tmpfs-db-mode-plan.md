@@ -47,7 +47,7 @@ durable_path = ~/.claude/juggle/juggle.db          (disk, flushed every N s)
 |------|---------------|
 | `src/juggle_db_path.py` | Pure resolver: (mode, tmpfs_dir) → {live_path, durable_path} |
 | `src/juggle_db_bootstrap.py` | On first connect in tmpfs mode: copy durable→tmpfs, run migrations |
-| `src/juggle_cmd_db_flush.py` | `juggle db-flush`: --once, --status, loop daemon, --install-supervisor |
+| `src/juggle_cmd_db_flush.py` | `juggle db flush`: --once, --status, loop daemon, --install-supervisor |
 | `src/juggle_settings.py` | Add `db` section to DEFAULTS |
 | `src/juggle_db.py` | Wire bootstrap into `__init__` |
 | `src/juggle_cmd_doctor.py` | Fix hardcoded DB_PATH → resolver |
@@ -63,7 +63,7 @@ durable_path = ~/.claude/juggle/juggle.db          (disk, flushed every N s)
 6. **`juggle_cmd_db_flush.py`**: `--once` flush, `--status`, daemon loop, `--install-supervisor`.
 7. **Split-brain guard**: hard-fail at startup if tmpfs_dir missing/unwritable.
 8. **`juggle:init` integration**: configure db.mode, install flusher, bootstrap.
-9. **Cockpit indicator**: "last flush: Ns ago" from `db-flush --status`; alert if stale.
+9. **Cockpit indicator**: "last flush: Ns ago" from `db flush --status`; alert if stale.
 10. **Version bump** to 1.71.0.
 
 ## Contracts

@@ -466,7 +466,7 @@ cd ~/github/juggle && git add src/juggle_cmd_projects.py tests/test_projects.py 
 
 ---
 
-## Task 4: `assign_project_background` + wire into `create-thread`
+## Task 4: `assign_project_background` + wire into `thread create`
 
 **Files:**
 - Modify: `src/juggle_cmd_projects.py`
@@ -559,7 +559,7 @@ Expected: all tests PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/github/juggle && git add src/juggle_cmd_projects.py src/juggle_cmd_threads.py tests/test_projects.py && git commit -m "feat(projects): async background assignment wired into create-thread, fail-silent"
+cd ~/github/juggle && git add src/juggle_cmd_projects.py src/juggle_cmd_threads.py tests/test_projects.py && git commit -m "feat(projects): async background assignment wired into thread create, fail-silent"
 ```
 
 ---
@@ -909,7 +909,7 @@ cd ~/github/juggle && git add src/juggle_cockpit_model.py src/juggle_cockpit_vie
 - [ ] **Step 1: Find the skill file**
 
 ```bash
-find ~/.claude/skills ~/.claude/plugins -name "*.md" 2>/dev/null | xargs grep -l "juggle.*start\|start.*juggle\|create-thread" 2>/dev/null | head -5
+find ~/.claude/skills ~/.claude/plugins -name "*.md" 2>/dev/null | xargs grep -l "juggle.*start\|start.*juggle\|thread create" 2>/dev/null | head -5
 ```
 
 - [ ] **Step 2: Add project commands block**

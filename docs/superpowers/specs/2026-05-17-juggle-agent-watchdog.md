@@ -16,7 +16,7 @@
 
 ## Motivation
 
-Agents stall silently when network interruptions break Claude's mid-stream output. The Monitor tool sees nothing because nothing is emitted — no `complete-agent`, no heartbeat. In the incident that prompted this spec, agents IF and IH burned 108k and 30k tokens respectively and never completed; the user had to diagnose via DB inspection and recover manually.
+Agents stall silently when network interruptions break Claude's mid-stream output. The Monitor tool sees nothing because nothing is emitted — no `agent complete`, no heartbeat. In the incident that prompted this spec, agents IF and IH burned 108k and 30k tokens respectively and never completed; the user had to diagnose via DB inspection and recover manually.
 
 A second failure mode: Claude Code permission prompts block agents until manually answered. These are recoverable without re-dispatch but currently require user intervention.
 
@@ -72,7 +72,7 @@ After the per-agent loop, iterate every thread with `status='background'`:
 |---|---|---|
 | **Orphaned** | Thread `status='background'` AND no agent with `assigned_thread = thread.id` AND `now - threads.last_active_at > orphan_threshold` (configurable, default 5 min) | File high-priority action item (structured format); insert `watchdog_events` row `event_type='orphaned'`. **Auto-recovery is out of scope for v1** — action item only. |
 
-`threads.last_active_at` is already updated by `complete-agent`, `touch_last_active`, and `set_thread_status` (migration 14 added this column — verify it exists before relying on it).
+`threads.last_active_at` is already updated by `agent complete`, `touch_last_active`, and `set_thread_status` (migration 14 added this column — verify it exists before relying on it).
 
 ### Allowlist of safe auto-responses
 
@@ -239,7 +239,7 @@ Retention: watchdog cleans `watchdog_events` older than 30 days on startup. Reco
 |---|---|
 | `get-agent` | Set `agents.busy_since = now`, `agents.model = args.model` (if provided) |
 | `send-task` | 1. Paste task content. 2. Capture post-paste-pre-Enter pane tail (last 10 lines) → SHA-256 (16 hex chars) → store in `agents.last_send_task_pane_hash`. 3. Set `agents.last_send_task_at = now`. 4. Send Enter key. 5. Write prompt content to `agents.last_task`. |
-| `complete-agent` | Insert row into `agent_completions` with `duration_secs = now - agent.busy_since` |
+| `agent complete` | Insert row into `agent_completions` with `duration_secs = now - agent.busy_since` |
 
 ### New commands
 
@@ -278,7 +278,7 @@ Retention: watchdog cleans `watchdog_events` older than 30 days on startup. Reco
     juggle-agent-watchdog        # new daemon script
   src/
     juggle_db.py                 # schema migration + agent_completions + watchdog_events
-    juggle_cmd_agents.py         # get-agent / send-task / complete-agent modifications
+    juggle_cmd_agents.py         # get-agent / send-task / agent complete modifications
                                  # + cmd_set_watchdog + cmd_stop_watchdog
     juggle_cmd_threads.py        # cmd_start / cmd_stop: PID file lifecycle
     juggle_cli.py                # wire new subcommands
@@ -351,11 +351,11 @@ Snapshots and logs:
 
 **Behavior:** If `agent.last_task` is NULL, recovery flow stops at step 9 (after kill and action item). File a high-priority action item: `"🚨 [LABEL] agent stalled — no task content to replay; re-dispatch manually"`. This is the safe fallback.
 
-### 7. `complete-agent` modifies `agents.status` before computing `busy_since` duration
+### 7. `agent complete` modifies `agents.status` before computing `busy_since` duration
 
-**Problem:** `complete-agent` calls `update_agent(status='idle', last_active=now)`, which overwrites `last_active`. Then when we try to compute `now - agent.busy_since`, `busy_since` is the right field but we need to read it before the update happens.
+**Problem:** `agent complete` calls `update_agent(status='idle', last_active=now)`, which overwrites `last_active`. Then when we try to compute `now - agent.busy_since`, `busy_since` is the right field but we need to read it before the update happens.
 
-**Mitigation:** `complete-agent` reads `agent.busy_since` FIRST, inserts into `agent_completions`, THEN calls `update_agent`. The new schema adds `busy_since` as a separate column — it is not updated by `complete-agent`, only by `get-agent`.
+**Mitigation:** `agent complete` reads `agent.busy_since` FIRST, inserts into `agent_completions`, THEN calls `update_agent`. The new schema adds `busy_since` as a separate column — it is not updated by `agent complete`, only by `get-agent`.
 
 ### 8. Stuck-at-prompt false positive from slow UI render
 

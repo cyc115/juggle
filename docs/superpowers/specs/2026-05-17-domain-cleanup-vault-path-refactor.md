@@ -35,9 +35,9 @@ Two coordinated changes plus a migration helper:
 | `src/juggle_cmd_agents.py`        | Remove `thread_domain` inference block in `cmd_get_agent`; remove `domain=thread_domain` from `update_agent` call                                                                                                                                                                                                                                                                                                                 | Low                                               |
 | `src/juggle_cmd_doctor.py`        | **New file** — `cmd_doctor(args)` implements config + DB migration check                                                                                                                                                                                                                                                                                                                                                          | Low                                               |
 | `commands/doctor.md`              | **New file** — `/juggle:doctor` Claude slash command, dispatches `juggle doctor` and reports results                                                                                                                                                                                                                                                                                                                              | Low                                               |
-| `commands/start.md`               | Remove `[--domain D]` from `create-thread` row in CLI reference table; add `doctor` row                                                                                                                                                                                                                                                                                                                                           | Low                                               |
+| `commands/start.md`               | Remove `[--domain D]` from `thread create` row in CLI reference table; add `doctor` row                                                                                                                                                                                                                                                                                                                                           | Low                                               |
 | `commands/capture.md`             | Replace both inline Python vault-resolution snippets                                                                                                                                                                                                                                                                                                                                                                              | Low                                               |
-| `commands/research.md`            | Replace inline Python vault-path snippet                                                                                                                                                                                                                                                                                                                                                                                          | Low                                               |
+| `commands/research.md`            | Replace inline Python vault path snippet                                                                                                                                                                                                                                                                                                                                                                                          | Low                                               |
 | `tests/test_juggle_domain.py`     | **Delete entire file** — all tests become invalid after domain removal                                                                                                                                                                                                                                                                                                                                                            | Low                                               |
 | `tests/test_juggle_db_agents.py`  | Verify no `domain=` kwargs remain; add a `get_best_agent`-signature test                                                                                                                                                                                                                                                                                                                                                          | Low                                               |
 | `tests/test_vault_path_config.py` | **New file** — tests for `paths.vault` / `paths.vault_name` config reading                                                                                                                                                                                                                                                                                                                                                        | Low                                               |
@@ -132,7 +132,7 @@ Remove both subparser registrations from `juggle_cli.py` (lines ~222–231) and 
 
 ### Removed flag
 
-Remove `--domain` argument from the `create-thread` subparser in `juggle_cli.py` (line ~217–218). In `juggle_cmd_threads.py:cmd_create_thread`, remove the `getattr(args, "domain", None)` read, the `is_known_domain` validation, and the `domain_str` display suffix (lines ~104–113).
+Remove `--domain` argument from the `thread create` subparser in `juggle_cli.py` (line ~217–218). In `juggle_cmd_threads.py:cmd_create_thread`, remove the `getattr(args, "domain", None)` read, the `is_known_domain` validation, and the `domain_str` display suffix (lines ~104–113).
 
 ### New command: `juggle doctor`
 
@@ -477,18 +477,18 @@ Report the output. If the user wants to revert: restore `~/.juggle/config.json.b
 
 ### `commands/start.md`
 
-In the CLI reference table, change the `create-thread` row and add a `doctor` row:
+In the CLI reference table, change the `thread create` row and add a `doctor` row:
 
 **Before:**
 
 ```
-| `create-thread` | `<label> [--domain D]` | New topic |
+| `thread create` | `<label> [--domain D]` | New topic |
 ```
 
 **After:**
 
 ```
-| `create-thread` | `<label>` | New topic |
+| `thread create` | `<label>` | New topic |
 | `doctor`        | `[--dry-run]` | Migrate config + DB to current schema |
 ```
 

@@ -380,7 +380,7 @@ def _try_claim_diagnosis_slot(db, error_event_id: int) -> bool:
 1. `juggle-selfheal-monitor` emits a line for each new `status=open` row.
 2. The orchestrator receives the Monitor line and calls the dispatch helper.
 3. The dispatch helper calls `_try_claim_diagnosis_slot()`. If it returns `False`, the orchestrator is notified "Diagnosis already in flight; [sig] queued." and does not dispatch.
-4. Only when the current diagnosis reaches `awaiting_approval` or `resolved` does the next `status=open` row become eligible (the next Monitor poll will emit it again only if it remains `open` — but since the monitor deduplicates by ID, the orchestrator must re-query `list-selfheal` after each resolution to pick up queued `open` rows).
+4. Only when the current diagnosis reaches `awaiting_approval` or `resolved` does the next `status=open` row become eligible (the next Monitor poll will emit it again only if it remains `open` — but since the monitor deduplicates by ID, the orchestrator must re-query `selfheal list` after each resolution to pick up queued `open` rows).
 
 **Starvation mitigation:** The `juggle-selfheal-monitor` script always re-emits any `status=open` row that has not been claimed within 60 seconds of first emission (re-poll at each tick, emit if not in emitted set AND a diagnosis slot is free). See §7.
 
@@ -428,11 +428,11 @@ Format:
 **Orchestrator reaction (specify in dispatch prompt / start.md section):**
 
 > When you see a `[SELFHEAL-A]` or `[SELFHEAL-B]` line from the self-heal monitor:
-> 1. Call `juggle selfheal-status` (or query `list-selfheal`) to see the full error detail.
+> 1. Call `juggle selfheal-status` (or query `selfheal list`) to see the full error detail.
 > 2. Attempt `_try_claim_diagnosis_slot`. If cap is occupied, note "queued" inline.
 > 3. If claimed: dispatch a diagnosis researcher agent using the Class A or Class B prompt (§8) for that `error_event_id`.
 
-*(A `selfheal-status` / `list-selfheal` CLI sub-command should be added as a thin wrapper over `SELECT * FROM error_events WHERE status != 'resolved'`.)*
+*(A `selfheal-status` / `selfheal list` CLI sub-command should be added as a thin wrapper over `SELECT * FROM error_events WHERE status != 'resolved'`.)*
 
 ---
 
@@ -486,7 +486,7 @@ After diagnosis:
 2. Note the returned action_item_id.
 3. Call the selfheal DB helper to set status=awaiting_approval and store action_item_id:
    `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py selfheal-set-status <error_event_id> awaiting_approval --action-item-id <action_item_id>`
-4. `complete-agent <thread_id> "Diagnosis complete for error_event <id>. Action item #<action_item_id> filed." --retain "Self-heal A sig=<sig8>: <root cause in 10 words>"`
+4. `agent complete <thread_id> "Diagnosis complete for error_event <id>. Action item #<action_item_id> filed." --retain "Self-heal A sig=<sig8>: <root cause in 10 words>"`
 
 NEVER auto-apply the patch. The user must approve the action item first.
 ```
@@ -548,7 +548,7 @@ After diagnosis:
 1. Call `request-action <thread_id> "Self-heal B: <tool> error via <juggle_ref_basename> — <one-line root cause>" --type decision --priority high`
 2. Note the returned action_item_id.
 3. `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py selfheal-set-status <error_event_id> awaiting_approval --action-item-id <action_item_id>`
-4. `complete-agent <thread_id> "Diagnosis complete for error_event <id>. Action item #<action_item_id> filed." --retain "Self-heal B sig=<sig8>: <root cause in 10 words>"`
+4. `agent complete <thread_id> "Diagnosis complete for error_event <id>. Action item #<action_item_id> filed." --retain "Self-heal B sig=<sig8>: <root cause in 10 words>"`
 
 NEVER auto-apply the patch.
 ```
@@ -575,7 +575,7 @@ NEVER auto-apply the patch.
            ▼
    [coder dispatched on branch cyc_juggle-selfheal-<sig8>]
            │
-           │  coder: apply patch, run tests, complete-agent
+           │  coder: apply patch, run tests, agent complete
            ▼
    [user verifies + approves merge]
            │
@@ -615,7 +615,7 @@ In `juggle_hooks.py` `handle_session_start()`, after the existing `build_startup
 # Self-heal pending errors
 pending = _get_pending_selfheal_count(db)
 if pending > 0:
-    additional_context += f"\n⚠️ {pending} pending self-heal error(s) — run `list-selfheal` to review."
+    additional_context += f"\n⚠️ {pending} pending self-heal error(s) — run `selfheal list` to review."
 ```
 
 ```python

@@ -8,7 +8,7 @@
 
 ## Problem
 
-The orchestrator relies on the user to request verification after implementation. Coder agents are trusted blindly — they call `complete-agent` without running tests or checking quality. High-level tasks require multiple user nudges to reach a correct result.
+The orchestrator relies on the user to request verification after implementation. Coder agents are trusted blindly — they call `agent complete` without running tests or checking quality. High-level tasks require multiple user nudges to reach a correct result.
 
 ## Goal
 
@@ -65,7 +65,7 @@ success_criteria: <one sentence — what passing looks like>
 
 ### Change 2: Coder prompt template
 
-After implementing, coder must execute the verify+fix loop before calling `complete-agent`.
+After implementing, coder must execute the verify+fix loop before calling `agent complete`.
 
 **Verification protocol (append to every coder task prompt):**
 
@@ -73,13 +73,13 @@ After implementing, coder must execute the verify+fix loop before calling `compl
 After implementing:
 1. Read the ## Verification section from the plan file.
 2. Run each command. Capture output.
-3. If all pass: call complete-agent with "Done. All checks pass."
+3. If all pass: call agent complete with "Done. All checks pass."
 4. If any fail: fix the failures and re-run. Repeat up to max_retries times.
 5. If still failing after max_retries:
-   call complete-agent with "PARTIAL: <what passed> | FAILED: <what failed and why>"
+   call agent complete with "PARTIAL: <what passed> | FAILED: <what failed and why>"
 ```
 
-The orchestrator reads the `complete-agent` result at next user message and surfaces failures:
+The orchestrator reads the `agent complete` result at next user message and surfaces failures:
 ```
 [Topic X] ⚠️ Incomplete — <what failed>. /juggle:resume-topic X to review.
 ```
@@ -109,7 +109,7 @@ No other files change.
 ## Success Criteria
 
 - Planner always includes `## Verification` section with runnable commands
-- Coder runs all verification commands before calling `complete-agent`
+- Coder runs all verification commands before calling `agent complete`
 - Coder self-corrects up to `max_retries` without user input
 - On failure, orchestrator surfaces structured pass/fail at next natural pause
 - No new DB schema, CLI subcommands, or agent roles introduced

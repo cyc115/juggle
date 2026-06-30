@@ -71,7 +71,7 @@ R7. Hooks (`juggle_hooks_autopilot.py`) that re-inject the armed-project directi
    sized for a Sonnet coder to execute via TDD.
 
 ## R8 (added 2026-06-10) — Armed graph routes ALL project work through the graph
-When a project's graph is armed, any NEW work related to that project must be added as a graph node (tick-owned), never dispatched ad-hoc via send-task. Provide a CODE-ENFORCED guard: `send-task` (or get-agent dispatch) to a thread auto-assigned to an armed project should refuse/warn and point to `juggle graph add-node`, unless `--force-node`/explicit override. Narrow exceptions: (a) fixes to the graph/dispatch machinery itself; (b) pure planning/spec/research whose output IS the nodes. Include this guard in the spec + plan.
+When a project's graph is armed, any NEW work related to that project must be added as a graph node (tick-owned), never dispatched ad-hoc via send-task. Provide a CODE-ENFORCED guard: `send-task` (or get-agent dispatch) to a thread auto-assigned to an armed project should refuse/warn and point to `juggle graph add-task`, unless `--force-node`/explicit override. Narrow exceptions: (a) fixes to the graph/dispatch machinery itself; (b) pure planning/spec/research whose output IS the nodes. Include this guard in the spec + plan.
 
 ## R9 (added 2026-06-10) — Canonical 3-tier hierarchy: Project → Topic → Task
 Model: a Project owns multiple Topics; a Topic owns multiple Tasks. Today it is flat (a graph node/task creates its OWN top-level topic via create_thread → task≡topic). Introduce a Topic grouping tier above tasks.

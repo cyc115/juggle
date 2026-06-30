@@ -250,10 +250,10 @@ python3 juggle_cli.py fail-agent B "API timeout"
 ## CLI Commands
 
 Commands use a uniform **resource verb** grammar (e.g. `thread create`,
-`agent complete`). Entry verbs (`start`, `stop`, `doctor`) stay flat. Legacy
-flat forms (`create-thread`, `complete-agent`, …) still resolve through the
-backward-compat alias shim but emit a stderr deprecation notice; see
-`juggle aliases --json` for the full legacy→canonical map.
+`agent complete`). Entry verbs (`start`, `stop`, `doctor`) stay flat. The old
+flat hyphenated forms still resolve through the backward-compat alias shim but
+emit a stderr deprecation notice; run `juggle aliases --json` for the full
+legacy→canonical map.
 
 ### Thread Management
 | Command | Description |

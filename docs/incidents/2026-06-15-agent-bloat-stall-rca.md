@@ -83,15 +83,15 @@ The coder template gives no instruction to background `integrate`.
 
 ---
 
-### Mechanism D: Post-Commit Idle — No `complete-agent` (agents deafb983, 1e6e2455)
+### Mechanism D: Post-Commit Idle — No `agent complete` (agents deafb983, 1e6e2455)
 
 **Evidence — snapshot `deafb983`:** Pane ends with:
 ```
 ❯ go ahead
 ```
-The orchestrator had to type "go ahead" manually to unstick the agent. The agent had finished implementation and committed but did not call `complete-agent` — it sat waiting at the input prompt.
+The orchestrator had to type "go ahead" manually to unstick the agent. The agent had finished implementation and committed but did not call `agent complete` — it sat waiting at the input prompt.
 
-The `UNIVERSAL_PREAMBLE` says `"NEVER stop at the input prompt"` but agents drift here after committing, treating the commit as the final step. The template says "when finished, call: juggle complete-agent" but doesn't explicitly model `commit → complete-agent` as a required sequence.
+The `UNIVERSAL_PREAMBLE` says `"NEVER stop at the input prompt"` but agents drift here after committing, treating the commit as the final step. The template says "when finished, call: juggle agent complete" but doesn't explicitly model `commit → agent complete` as a required sequence.
 
 ---
 
@@ -202,7 +202,7 @@ if _THINKING_RE.search(tail) or stalled_for < 60:
 If your context token count exceeds 150k (visible in the status bar as
 `Sonnet X.X(NNNk/200.0k)`), IMMEDIATELY:
 1. `git add -A && git commit -m "partial: <describe what's done>"`
-2. `juggle complete-agent <thread> "PARTIAL: committed through <step>; context limit hit" --retain "<current state + next step"`
+2. `juggle agent complete <thread> "PARTIAL: committed through <step>; context limit hit" --retain "<current state + next step"`
 Do NOT continue working. A fresh agent will pick up from your commit.
 ```
 
@@ -252,7 +252,7 @@ block your pane for 5-10 minutes and trigger false-stall recovery.
 
 | # | Agent | Mechanism | Root Cause |
 |---|-------|-----------|-----------|
-| deafb983 | ZO coder | Post-commit idle (D) | No explicit `commit → complete-agent` sequence in template |
+| deafb983 | ZO coder | Post-commit idle (D) | No explicit `commit → agent complete` sequence in template |
 | 0a64d892 | ZK recovery | Cold-spawn sit-at-prompt (E) | send_task failure or cold-start trust prompt unhandled |
 | 7494e7b9 | ZC coder | alive_slow loop at 164k (A) | execute_recovery never decommissions alive agents |
 | 3306493b | YY coder | Thinking-synonym + alive_slow at 164k (A+B) | "Befuddling" not in _EXECUTION_MARKERS; nudge at auto-compact |

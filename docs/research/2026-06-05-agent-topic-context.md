@@ -34,7 +34,7 @@ Comment at `juggle_context.py:154–160` (existing, written by a prior implement
 ```
 --- AGENT ROLE ---
 ROLE: {role}. {identity string from settings}
-COMPLETION: python3 {plugin_root}/src/juggle_cli.py complete-agent <THREAD> "<summary>" --retain "<key finding>"
+COMPLETION: python3 {plugin_root}/src/juggle_cli.py agent complete <THREAD> "<summary>" --retain "<key finding>"
 ```
 Approximately 150–250 chars (~40–65 tokens). Contains zero topics, threads, summaries, or Q&A history.
 
@@ -76,13 +76,13 @@ The early-return at `juggle_context.py:161` and the hook exit at `juggle_hooks.p
 Agents get zero topics. Project-scoping would be a no-op on nothing.
 
 **H3: Agents get all topics AND it's load-bearing** → ❌ **DOES NOT APPLY**  
-No agent code reads the dashboard block. The `complete-agent` command is self-contained; agents need only their task prompt + role anchor.
+No agent code reads the dashboard block. The `agent complete` command is self-contained; agents need only their task prompt + role anchor.
 
 ---
 
 ## Is There Any Dependency to Preserve?
 
-No. The role anchor is the only per-turn injection agents receive, and they actively use it: the `COMPLETION:` line tells agents exactly how to call `complete-agent` at the end of their task. This is load-bearing and must not be stripped.
+No. The role anchor is the only per-turn injection agents receive, and they actively use it: the `COMPLETION:` line tells agents exactly how to call `agent complete` at the end of their task. This is load-bearing and must not be stripped.
 
 The thread `project_id` column exists (`juggle_db.py:697` — migration 26 added it), so project-scoping of a topic list would be *technically possible* — but there is no topic list to scope. The question is already solved at a lower layer.
 

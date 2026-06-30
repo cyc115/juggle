@@ -21,7 +21,7 @@ The ledger feature (`T-agent-runs-ledger`, commit `957aed5`, v1.62.0) landed cle
 | 6 | **Cockpit graph panel shows raw UUID prefix, not the human label** | The graph-panel node's `user_label` is not populated from its bound thread, so `juggle_cockpit_graph_panel.py:84` falls back to `thread_id[:4]`. Compounded by `juggle_cockpit_model.py:219` still selecting from `graph_nodes` (renamed → `graph_tasks` in prod), which graceful-degrades to empty state. | task 13 rendered `[dc2e]` instead of `[XW]` (thread `dc2e7617…` has `user_label='XW'`) |
 
 **Contributing factors:**
-- No atomic "create topic + first node" path — `juggle graph add-node` requires a pre-existing topic, forcing the racy two-step (feeds #1).
+- No atomic "create topic + first node" path — `juggle graph add-task` requires a pre-existing topic, forcing the racy two-step (feeds #1).
 - Parallel out-of-order dispatch — vcs-checkpoint (depends on rename) was built *before* rename despite the edge (the race let both run in parallel).
 - Cross-cutting theme: **topic state, node state, agent reality, and merge state are allowed to diverge.** A single invariant — *a topic/node is `verified` iff its commit is an ancestor of `main`, and is only `running` iff a live agent is bound* — would prevent #2/#3/#4.
 
@@ -39,7 +39,7 @@ The ledger feature (`T-agent-runs-ledger`, commit `957aed5`, v1.62.0) landed cle
 - **G2 (no shared-DB migration from agents):** the migration runner refuses to mutate `~/.claude/juggle/juggle.db` when invoked from a worktree/agent context; agents get an isolated DB or migrations run only on the orchestrator/merge.
 - **G3 (claimable invariant):** a topic with zero nodes in a dispatchable state is never `ready`/claimable.
 - **G4 (reconcile/decommission safety):** `reconcile` must not demote a topic with a live healthy agent (or must clean the agent); `decommission-agent` must never trigger topic verification.
-- **G5 (atomic add-node):** `add-node` auto-creates its topic in one transaction — no empty-topic window.
+- **G5 (atomic add-task):** `add-task` auto-creates its topic in one transaction — no empty-topic window.
 - **G6 (cockpit label render):** populate the graph-panel node's `user_label` from its bound thread (fix `juggle_cockpit_model.py`), so the panel shows `XW` not `dc2e`; and converge `graph_nodes`/`graph_tasks` table references with the rename so `juggle_cockpit_model.py:219` doesn't silently degrade.
 
 ## Process change (codified 2026-06-13)

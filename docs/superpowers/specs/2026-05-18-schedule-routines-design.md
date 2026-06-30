@@ -207,7 +207,7 @@ If autofix PR is open and has `[REVERTED]` sections, RF-1 should note which auto
 The routine invokes a headless Juggle research agent via the CLI in cockpit-less mode (no tmux UI required):
 
 ```
-juggle_cli.py create-thread --topic "dogfood-YYYY-MM-DD" --domain juggle
+juggle_cli.py thread create --topic "dogfood-YYYY-MM-DD" --domain juggle
 juggle_cli.py get-agent --thread <id> --role researcher
 # task injected via send-task:
 juggle_cli.py send-task <agent_id> <task_file>
