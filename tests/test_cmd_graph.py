@@ -132,19 +132,24 @@ def test_validate_task_count_sanity():
 @pytest.mark.parametrize(
     "cmd",
     [
-        "sh -c 'rm -rf /'",
         "bash test.sh",
-        "pytest -q && rm x",
+        "pytest -q && uv run foo",
         "pytest -q > out.txt",
         "pytest -q | tee log",
-        "pytest; rm x",
-        "rm -rf build",
+        "pytest -q ; uv run bar",
         "pytest `cmd`",
         "pytest $(cmd)",
+        "make a && make b || make c",
     ],
 )
-def test_lint_verify_cmd_rejects(cmd):
-    assert cg.lint_verify_cmd(cmd) is not None
+def test_lint_verify_cmd_now_accepts_operators(cmd):
+    """REWRITTEN pin (2026-06-30, user decision 'full relax'): the verify_cmd
+    lint previously REJECTED shell operators (& ; | > < ` $()) and non-allowlisted
+    executables. The user was shown the command-injection rationale and explicitly
+    chose to allow shell operators (compound commands, pipes, redirects, subshells)
+    AND drop the executable allowlist. The lint now accepts them; the compensating
+    control is the verify_cmd audit log (see test_integrate_verify)."""
+    assert cg.lint_verify_cmd(cmd) is None
 
 
 @pytest.mark.parametrize(
@@ -153,6 +158,12 @@ def test_lint_verify_cmd_rejects(cmd):
 )
 def test_lint_verify_cmd_accepts(cmd):
     assert cg.lint_verify_cmd(cmd) is None
+
+
+@pytest.mark.parametrize("cmd", ["", "   ", "\t"])
+def test_lint_verify_cmd_still_rejects_empty(cmd):
+    """Full relax keeps ONE guard: an empty/blank verify_cmd is meaningless."""
+    assert cg.lint_verify_cmd(cmd) is not None
 
 
 # ── load command ───────────────────────────────────────────────────────────────

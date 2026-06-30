@@ -121,13 +121,29 @@ def test_empty_prompt_rejected(db):
         )
 
 
-def test_verify_cmd_lint_rejected(db):
+def test_verify_cmd_with_operators_now_accepted(db):
+    """REWRITTEN pin (2026-06-30, user decision 'full relax'): add-task used to
+    REFUSE a verify_cmd that contained shell operators or a non-allowlisted exe
+    (e.g. `rm -rf /`). The user explicitly chose to allow shell operators and
+    drop the allowlist, so a compound verify_cmd is now stored verbatim — the
+    compensating control is the executed-verify_cmd audit log."""
     _diamond(db)
-    with pytest.raises(up.AddTaskError, match="verify_cmd"):
-        up.validate_add_task(
-            db, "INBOX", task_id="x", title="X", prompt="do x",
-            deps=["a"], required_by=[], verify_cmd="rm -rf /",
-        )
+    # Previously rejected (non-allowlisted exe AND operators); now accepted.
+    res = up.add_task(
+        db, "INBOX", task_id="x", title="X", prompt="do x",
+        deps=["a"], required_by=[], verify_cmd="uv run pytest -q && make smoke",
+    )
+    assert res["task_id"] == "x"
+    assert g.get_task(db, "x")["verify_cmd"] == "uv run pytest -q && make smoke"
+
+
+def test_verify_cmd_empty_still_no_lint_error(db):
+    """A blank verify_cmd is normalized to None by the caller and never refused."""
+    _diamond(db)
+    up.validate_add_task(
+        db, "INBOX", task_id="x", title="X", prompt="do x",
+        deps=["a"], required_by=[], verify_cmd=None,
+    )
 
 
 def test_cycle_via_required_by_rejected(db):

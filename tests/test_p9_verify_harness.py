@@ -5,10 +5,15 @@ every node's `verify_cmd` is the single operator-free token `make p9-verify-<id>
 backed by an executable wrapper in `scripts/p9_verify/<id>.sh` and the
 `p9-verify-%` Makefile pattern rule.
 
-Incident this guards (2026-06-29): `juggle graph add-task --verify-cmd` lint
-FORBIDS shell operators and only allowlists {make,uv,pytest,python,...} as the
-exe — `bash` is NOT allowlisted — so the §6 compound verify_cmds cannot load
-verbatim. The `make p9-verify-<id>` indirection is the fix.
+Origin (2026-06-29): the `graph add-task` lint then FORBADE shell operators and
+only allowlisted {make,uv,pytest,python,...} as the exe (`bash` not allowlisted),
+so the §6 compound verify_cmds could not load verbatim — the `make p9-verify-<id>`
+indirection was the fix and the harness it produced is still valid.
+
+UPDATE (2026-06-30, user decision "full relax"): the lint now ACCEPTS shell
+operators and any executable, so compound verify_cmds also load directly. The
+make-indirection harness is no longer REQUIRED, but it remains correct and these
+pins still hold (see test_bash_and_compound_forms_now_accepted_by_lint).
 """
 from __future__ import annotations
 
@@ -54,19 +59,22 @@ def test_wrappers_are_fail_loud_bash():
 
 
 def test_verify_cmd_token_passes_the_add_task_lint():
-    """The core invariant: `make p9-verify-<id>` is the form that survives the
-    lint which rejected the raw `&&` verify_cmds. If this regresses, the DAG
-    cannot load."""
+    """The `make p9-verify-<id>` form still passes the lint (it always did, and
+    still does after the relax). The make-indirection harness remains valid even
+    though raw compound verify_cmds are now also accepted (see below)."""
     for nid in NODE_IDS:
         cmd = f"make p9-verify-{nid}"
         assert lint_verify_cmd(cmd) is None, f"{cmd!r} rejected: {lint_verify_cmd(cmd)}"
 
 
-def test_bash_form_is_rejected_by_lint():
-    """Documents WHY the make-indirection exists: a direct `bash …` verify_cmd
-    (and the raw compound form) fail the lint."""
-    assert lint_verify_cmd("bash scripts/p9_verify/r1.sh") is not None
-    assert lint_verify_cmd("uv run pytest -q && uv run src/juggle_cli.py --help") is not None
+def test_bash_and_compound_forms_now_accepted_by_lint():
+    """REWRITTEN pin (2026-06-30, user decision 'full relax'): this previously
+    asserted the lint REJECTED `bash …` and raw `&&` verify_cmds — the reason the
+    p9 make-indirection harness exists. The user chose to allow shell operators,
+    so those forms now PASS the lint. The make harness still works (above); it is
+    no longer the ONLY loadable form."""
+    assert lint_verify_cmd("bash scripts/p9_verify/r1.sh") is None
+    assert lint_verify_cmd("uv run pytest -q && uv run src/juggle_cli.py --help") is None
 
 
 def test_makefile_has_p9_pattern_rule():

@@ -13,7 +13,6 @@ transitions (dbops.db_graph — complete-agent maps the outcome via
 
 from __future__ import annotations
 
-import shlex
 import subprocess
 
 # Failure-reason prefix: the single deterministic channel telling
@@ -25,29 +24,34 @@ VERIFY_TIMEOUT_SECS = 600
 VERIFY_RETRIES = 1  # exactly one retry on failure
 DIFFSTAT_MAX_CHARS = 2000
 
+# Compensating control for the verify_cmd operator relax (2026-06-30, user
+# decision "full relax"): every verify_cmd actually executed is appended here,
+# next to the DB, as one JSON object per line.
+AUDIT_LOG_NAME = "verify_audit.log"
+
 
 def run_verify_cmd(
     verify_cmd: str, cwd: str, *, timeout_secs: int | None = None
 ) -> tuple[bool, str]:
-    """Run ``verify_cmd`` in ``cwd``. Returns (ok, failure_detail).
+    """Run ``verify_cmd`` in ``cwd`` through a shell. Returns (ok, failure_detail).
 
-    shlex-split, shell=False — the command is lint-gated at graph load
-    (allowlisted executable, no shell metacharacters), and never goes
-    through a shell here regardless. Timeout per attempt; one retry.
+    shell=True (2026-06-30, user decision "full relax"): verify_cmds may contain
+    shell operators (`&& ; | > <` subshells), so the raw string is handed to the
+    shell and compound commands / pipes / redirects execute as written. The
+    command is NO LONGER lint-restricted to an allowlist; the compensating
+    control is the audit log written by ``verify_task_premerge``. Timeout per
+    attempt; one retry.
     """
     timeout = VERIFY_TIMEOUT_SECS if timeout_secs is None else timeout_secs
-    try:
-        argv = shlex.split(verify_cmd)
-    except ValueError as e:
-        return False, f"unparseable command: {e}"
-    if not argv:
+    if not verify_cmd or not verify_cmd.strip():
         return False, "empty command"
 
     detail = ""
     for _attempt in range(VERIFY_RETRIES + 1):
         try:
             result = subprocess.run(
-                argv, capture_output=True, text=True, cwd=cwd, timeout=timeout
+                verify_cmd, shell=True, capture_output=True, text=True,
+                cwd=cwd, timeout=timeout,
             )
         except subprocess.TimeoutExpired:
             detail = f"timed out after {timeout}s"
@@ -63,6 +67,27 @@ def run_verify_cmd(
             f"stderr tail: {(result.stderr or '')[-200:].strip()}"
         ).strip()
     return False, detail
+
+
+def append_verify_audit(db, task: dict | None, cmd: str) -> None:
+    """Append one JSONL record (ts, project id, task id, raw command) to the
+    verify_cmd audit trail next to the DB. Best-effort: an audit-write failure
+    must never block the verification gate."""
+    import json
+    from datetime import datetime, timezone
+
+    try:
+        path = db.db_path.parent / AUDIT_LOG_NAME
+        rec = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "project_id": (task or {}).get("project_id"),
+            "task_id": (task or {}).get("id"),
+            "command": cmd,
+        }
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+    except Exception:
+        pass
 
 
 def capture_diffstat(worktree_path: str, rebase_onto: str) -> str:
@@ -97,6 +122,9 @@ def verify_task_premerge(
     cmd = (task.get("verify_cmd") or "").strip()
     if not cmd:
         return True, ""
+    # Compensating control for the operator relax: record the exact command we
+    # are about to execute BEFORE running it (so a hang/timeout is still audited).
+    append_verify_audit(db, task, cmd)
     ok, detail = run_verify_cmd(cmd, worktree_path)
     if ok:
         return True, ""

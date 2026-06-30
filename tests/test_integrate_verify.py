@@ -104,13 +104,47 @@ def test_run_verify_cmd_times_out(tmp_path, monkeypatch):
     assert calls["timeout"] == 1  # timeout forwarded to subprocess.run (not dropped)
 
 
-def test_run_verify_cmd_never_uses_a_shell(tmp_path):
-    """Shell metacharacters are data, not operators (lint-gated at load AND
-    shlex/exec here — defense in depth against the shell=True DA M3 hole)."""
+def test_run_verify_cmd_executes_shell_operators(tmp_path):
+    """REWRITTEN pin (2026-06-30, user decision 'full relax'): run_verify_cmd
+    used to exec shell=False so metacharacters were inert data. The user was
+    shown the command-injection rationale and explicitly chose to ALLOW shell
+    operators, so verify_cmd now runs through a shell — `;`, `&&`, `|`, `>`
+    are real operators. The compensating control is the audit log (below)."""
     from juggle_integrate_verify import run_verify_cmd
-    evil = tmp_path / "pwned"
-    ok, _ = run_verify_cmd(f"{PY} -c pass ; touch {evil}", str(tmp_path))
-    assert not evil.exists()
+    marker = tmp_path / "ran"
+    ok, _ = run_verify_cmd(f"true ; touch {marker}", str(tmp_path))
+    assert ok
+    assert marker.exists(), "shell operator did not execute — relax not applied"
+
+
+def test_run_verify_cmd_compound_failure_propagates(tmp_path):
+    """A compound command's overall exit status gates the merge: `false && true`
+    short-circuits to nonzero → verify fails."""
+    from juggle_integrate_verify import run_verify_cmd
+    ok, _ = run_verify_cmd("false && true", str(tmp_path))
+    assert not ok
+
+
+def test_verify_exec_is_audit_logged(db, git_repo, tmp_path):
+    """Compensating control for the operator relax (2026-06-30): every verify_cmd
+    the integrate/watchdog path actually executes is appended to a JSONL audit
+    trail (timestamp + project id + task id + the exact raw command string)."""
+    import json
+    from juggle_integrate_verify import verify_task_premerge
+
+    audit = db.db_path.parent / "verify_audit.log"
+    assert not audit.exists()
+    cmd = "true ; echo gate"
+    task = {"id": "nAUD", "project_id": "INBOX", "verify_cmd": cmd}
+    ok, _ = verify_task_premerge(db, task, str(tmp_path), "HEAD")
+    assert ok
+    lines = audit.read_text().splitlines()
+    assert len(lines) == 1
+    rec = json.loads(lines[0])
+    assert rec["command"] == cmd
+    assert rec["task_id"] == "nAUD"
+    assert rec["project_id"] == "INBOX"
+    assert rec["ts"]  # timestamp present
 
 
 # ── pre-merge pipeline (pin) ──────────────────────────────────────────────────

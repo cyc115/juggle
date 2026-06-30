@@ -14,8 +14,6 @@ Must not own: task state semantics (dbops.db_graph), CLI parsing (juggle_cmd_*).
 from __future__ import annotations
 
 import re
-import shlex
-from pathlib import Path
 
 from dbops import db_graph
 
@@ -26,12 +24,21 @@ _FIELD_RE = re.compile(r"^[-*\s]*\b(deps|verify_cmd)\s*:\s*(.*)$")
 _TOPIC_HEADING_RE = re.compile(r"^##\s+topic\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
 _TASK_HEADING_RE = re.compile(r"^###\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
 
-# verify_cmd lint: allowlisted executables only; shells are forbidden because
-# the column is LLM-populated and later executed (design DA M3).
+# verify_cmd lint — FULL RELAX (2026-06-30, user decision): shell operators
+# (`&& ; | > < ` `` ` `` `$()` backticks) and any executable are now permitted.
+# verify_cmds run through a shell in juggle_integrate_verify.run_verify_cmd, so
+# compound commands / pipes / redirects / subshells all execute. The prior
+# character blacklist + executable allowlist were removed because an allowlist is
+# trivially bypassable once operators are allowed (chaining), making it moot. The
+# compensating control is the executed-verify_cmd AUDIT LOG (verify_audit.log,
+# written next to the DB by juggle_integrate_verify). Only an empty/blank
+# verify_cmd is still rejected (it is meaningless as a gate).
+#
+# Kept for backward-compatible imports / documentation of the commonly-used
+# executables — NO LONGER ENFORCED.
 VERIFY_CMD_ALLOWLIST = frozenset(
     {"pytest", "uv", "make", "python", "python3", "npm", "cargo", "go"}
 )
-_FORBIDDEN_CHARS = ("&", ";", "|", ">", "<", "`", "$(")
 
 
 def parse_graph_spec(text: str) -> list[dict]:
@@ -98,22 +105,14 @@ def find_cycle(task_ids, edges) -> list[str] | None:
 
 
 def lint_verify_cmd(cmd: str) -> str | None:
-    """Return an error string if ``cmd`` fails the lint, else None."""
-    for ch in _FORBIDDEN_CHARS:
-        if ch in cmd:
-            return f"forbidden character/operator {ch!r} in verify_cmd: {cmd!r}"
-    try:
-        tokens = shlex.split(cmd)
-    except ValueError as e:
-        return f"unparseable verify_cmd {cmd!r}: {e}"
-    if not tokens:
+    """Return an error string if ``cmd`` fails the lint, else None.
+
+    FULL RELAX (2026-06-30): shell operators and any executable are allowed (the
+    command runs through a shell at execution time, audit-logged). The only
+    remaining guard is that the command must be non-blank.
+    """
+    if not cmd or not cmd.strip():
         return "empty verify_cmd"
-    exe = Path(tokens[0]).name
-    if exe not in VERIFY_CMD_ALLOWLIST:
-        return (
-            f"executable {exe!r} not allowlisted for verify_cmd "
-            f"(allowed: {sorted(VERIFY_CMD_ALLOWLIST)})"
-        )
     return None
 
 
