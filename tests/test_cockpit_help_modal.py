@@ -218,3 +218,30 @@ def test_render_help_lines_close_hint():
     assert any("close" in l.lower() or "esc" in l.lower() for l in lines), (
         "Missing Esc/q close hint in rendered help lines"
     )
+
+
+# ── Task 4 (2026-06-29 redesign): ? help now documents panel glyphs too ───────
+
+def test_render_help_lines_includes_legend_sections():
+    """? help now documents panel glyphs, not just keybindings (2026-06-29 redesign)."""
+    from juggle_cockpit_modals import render_help_lines
+    text = "\n".join(render_help_lines())
+    assert "Status Legend" in text
+    for header in ("Topics", "Agents", "Graph"):
+        assert header in text, f"legend section '{header}' missing from ? help"
+
+
+def test_render_help_lines_documents_every_panel_glyph():
+    """Coverage pin (2026-06-29): every dict-driven glyph appears in the rendered ? help."""
+    from juggle_cockpit_modals import render_help_lines
+    import juggle_cockpit_legend as L
+    text = "\n".join(render_help_lines())
+    missing = [g for g in L.all_rendered_glyphs() if g not in text]
+    assert not missing, f"? help render missing glyphs: {missing}"
+
+
+def test_render_help_lines_keeps_keybindings():
+    """Keybindings are still present alongside the new legend."""
+    from juggle_cockpit_modals import render_help_lines
+    text = "\n".join(render_help_lines())
+    assert "Switch active thread" in text and "Navigation" in text

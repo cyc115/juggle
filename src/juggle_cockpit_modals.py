@@ -320,7 +320,9 @@ def render_help_lines() -> list[str]:
             short = entry["short"]
             desc = entry["desc"]
             lines.append(f"  {key:<{KEY_W}}  {short:<{SHORT_W}}  {desc}")
-    lines += ["", "Esc / q — close"]
+    from juggle_cockpit_legend import render_legend_lines
+    lines += render_legend_lines()
+    lines += ["", "Esc / q — close   ·   ↑ ↓ / j k — scroll"]
     return lines
 
 
@@ -338,15 +340,26 @@ class _HelpModal(ModalScreen):
     _HelpModal {
         align: center middle;
     }
-    _HelpModal > Static {
-        width: 72;
+    _HelpModal > VerticalScroll {
+        width: 76;
+        max-width: 90%;
+        height: 90%;
         border: round $accent;
         padding: 1 2;
     }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static("\n".join(render_help_lines()))
+        with VerticalScroll():
+            yield Static("\n".join(render_help_lines()))
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key in ("j", "down"):
+            self.query_one(VerticalScroll).scroll_down()
+            event.stop()
+        elif event.key in ("k", "up"):
+            self.query_one(VerticalScroll).scroll_up()
+            event.stop()
 
 
 def resolve_task_detail(
