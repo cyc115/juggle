@@ -26,10 +26,10 @@ schedule:
 cd ~/github/juggle
 
 # Live run (creates branch, commits fixes, opens PR)
-python3 src/juggle_cli.py schedule-autofix
+python3 src/juggle_cli.py schedule autofix
 
 # Dry run (runs analysis, writes would-be PR to /tmp/schedule-autofix-sample-PR.md)
-python3 src/juggle_cli.py schedule-autofix --dry-run
+python3 src/juggle_cli.py schedule autofix --dry-run
 ```
 
 ## Fix sections (each = one commit on branch)

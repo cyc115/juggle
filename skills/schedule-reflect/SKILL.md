@@ -26,10 +26,10 @@ schedule:
 cd ~/github/juggle
 
 # Live run (commits digest, files issues)
-python3 src/juggle_cli.py schedule-reflect
+python3 src/juggle_cli.py schedule reflect
 
 # Dry run (writes digest to /tmp/schedule-reflect-sample-digest.md, no Git/GitHub)
-python3 src/juggle_cli.py schedule-reflect --dry-run
+python3 src/juggle_cli.py schedule reflect --dry-run
 ```
 
 ## Digest sections

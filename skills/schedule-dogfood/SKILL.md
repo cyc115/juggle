@@ -25,10 +25,10 @@ schedule:
 cd ~/github/juggle
 
 # Live run
-python3 src/juggle_cli.py schedule-dogfood
+python3 src/juggle_cli.py schedule dogfood
 
 # Dry run (no Git/GitHub side effects; report written to /tmp/)
-python3 src/juggle_cli.py schedule-dogfood --dry-run
+python3 src/juggle_cli.py schedule dogfood --dry-run
 ```
 
 The script automatically chooses:

@@ -115,7 +115,7 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 
 **Personal questions — recall first:** Any question about personal info (finances, accounts, health, preferences, past decisions, measurements, personal history) → call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<question>"` before answering. Never answer from training data alone. If Hindsight returns nothing, say so explicitly.
 
-**Auto-retain personal data:** When the user shares a personal data point (a metric, account info, a preference, a decision, a measurement) → immediately call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py retain "<fact>"` in background. Don't wait to be asked. Facts only — not passing mentions or hypotheticals.
+**Auto-retain personal data:** When the user shares a personal data point (a metric, account info, a preference, a decision, a measurement) → immediately call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py memory retain "<fact>"` in background. Don't wait to be asked. Facts only — not passing mentions or hypotheticals.
 
 **Status requests (live-state first):** When the user asks for status, an update, "where are we", or "is X done", do NOT answer from the notification feed or action items alone — those lag reality. ALWAYS reconcile against LIVE state via the juggle CLI before reporting: `agent list` (which agents are busy/idle), `tmux capture-pane -t <pane> -p | tail` (what each working agent is actually doing), `thread list` and `thread messages <id> --limit 5`, plus the relevant repo git state (branches/worktrees/unmerged commits). Notifications/action items are a supplement, not the source of truth. If completed-but-unintegrated work exists (agent done, branch unmerged), finish the finalization (merge/push/GC) as part of answering, then report the reconciled truth.
 
@@ -257,7 +257,7 @@ plan rigor was already done upstream.
 
 **If you were NOT handed a plan file** (a direct bug or feature task): do NOT
 skip to code. Front-load the rigor first, posting each step via
-`juggle notify <thread> "..."` so it is visible:
+`juggle action notify <thread> "..."` so it is visible:
 1. Reproduce — a failing test/command on the CURRENT code that confirms the
    exact bug/gap (for a feature: a failing test asserting the desired behavior).
 2. Spec — 2-3 lines: the real root cause (not the symptom) and the correct behavior.
@@ -297,7 +297,7 @@ On result: `Done` → "[X done] <label>". `⚠️ BLOCKER` → research first, p
 SEQUENTIAL-FIX MODE:
 - Run end-to-end. On failure: diagnose, fix, retry — do NOT stop and report.
 - Escalate only for: missing credentials, irreversible action, architectural decision.
-- notify at each milestone: uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py notify <thread_id> "<milestone>"
+- notify at each milestone: uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py action notify <thread_id> "<milestone>"
 - Keep going until done or genuine BLOCKER.
 ```
 
