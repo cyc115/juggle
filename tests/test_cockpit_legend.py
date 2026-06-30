@@ -128,3 +128,47 @@ def test_cockpit_legend_cli_prints_full_legend(tmp_path):
     assert "Status Legend" in out and "Keyboard Shortcuts" in out
     for g in L.all_rendered_glyphs():
         assert g in out, f"--legend stdout missing glyph {g}"
+
+
+# ── AMENDMENT 2: "no inline emoji in renderers" lint (DA Fix 3) ────────────────
+
+def _forbidden_glyph_chars():
+    """Every non-ASCII glyph CHARACTER the legend module owns (dict values +
+    emoji marker constants). Renderers must reference these via imported names,
+    never hardcode the literal — so the legend stays the single source of truth."""
+    import juggle_cockpit_legend as L
+    owned = set()
+    for d in (L.TOPIC_STATUS_GLYPHS, L.ACTION_TIER_GLYPHS, L.AGENT_STATUS_GLYPHS,
+              L.SCHED_STATUS_GLYPHS, L.TASK_STATE_GLYPHS, L.NOTIF_KIND_GLYPHS):
+        for v in d.values():
+            owned.update(v)
+    for const in (L.GRAPH_READY_SUFFIX, L.GRAPH_DEP_SUFFIX, L.GRAPH_FAIL_SUFFIX,
+                  L.UNREAD_BADGE, L.FALLBACK_TOPIC, L.FALLBACK_TASK,
+                  L.FALLBACK_SCHED, L.FALLBACK_NOTIF):
+        owned.update(const)
+    # Only non-ASCII chars are "emoji/glyph" literals; box-drawing/ASCII excluded.
+    return {ch for ch in owned if ord(ch) > 0x2014}
+
+
+def test_no_inline_emoji_in_renderers():
+    """LINT (2026-06-29 redesign, DA Fix 3): juggle_cockpit_view.py and
+    juggle_cockpit_graph_panel.py must NOT hardcode any glyph the legend owns —
+    they import the constants from juggle_cockpit_legend instead. A hardcoded
+    emoji here would reintroduce the drift the SoT module exists to prevent.
+    (Comment lines are exempt; box-drawing / progress-bar chars are not owned.)"""
+    from pathlib import Path
+    src = Path(__file__).resolve().parent.parent / "src"
+    forbidden = _forbidden_glyph_chars()
+    assert forbidden, "forbidden glyph set must be non-empty"
+    violations = []
+    for fname in ("juggle_cockpit_view.py", "juggle_cockpit_graph_panel.py"):
+        for lineno, raw in enumerate((src / fname).read_text().splitlines(), 1):
+            if raw.lstrip().startswith("#"):
+                continue  # comments may describe glyphs by example
+            hits = sorted({ch for ch in raw if ch in forbidden})
+            if hits:
+                violations.append(f"{fname}:{lineno}: {hits}  | {raw.strip()[:70]}")
+    assert not violations, (
+        "Inline glyph literals in renderers (import them from juggle_cockpit_legend "
+        "instead):\n" + "\n".join(violations)
+    )
