@@ -202,8 +202,8 @@ def test_send_task_force_task_flag_removed():
     from juggle_cli_spec import build_parser
 
     parser = build_parser(AGENT_COMMANDS)
-    # Valid invocation still works.
-    args = parser.parse_args(["send-task", "AGENT", "/tmp/p.md"])
+    # Valid invocation still works (G1: send-task is now `agent send-task`).
+    args = parser.parse_args(["agent", "send-task", "AGENT", "/tmp/p.md"])
     assert not hasattr(args, "force_task") or args.force_task is None  # not present
 
 

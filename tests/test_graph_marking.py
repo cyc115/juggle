@@ -130,8 +130,9 @@ def test_complete_agent_handoff_cli_flag_registered():
     from juggle_cli_spec import build_parser
 
     parser = build_parser(AGENT_COMMANDS)
+    # G1: complete-agent is now `agent complete`.
     args = parser.parse_args(
-        ["complete-agent", "T", "summary", "--handoff", '{"files":["x.py"]}']
+        ["agent", "complete", "T", "summary", "--handoff", '{"files":["x.py"]}']
     )
     assert args.handoff == '{"files":["x.py"]}'
 

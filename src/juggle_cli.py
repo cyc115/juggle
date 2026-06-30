@@ -171,6 +171,60 @@ def _subparsers_of(parser):
     raise RuntimeError("build_parser produced no subparsers")
 
 
+def _group_subparsers(subparsers, resource):
+    """The _SubParsersAction under an existing ``resource`` group, or None."""
+    group = subparsers.choices.get(resource)
+    if group is None:
+        return None
+    for action in group._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action
+    return None
+
+
+# Legacy flat names for the entry-module verbs (registered imperatively below,
+# so they are NOT in COMMANDS.aliases). G1 maps them to their resource-verb form;
+# the alias shim (_rewrite_legacy_argv) keeps the flat names resolving.
+_ENTRY_VERB_ALIASES = {
+    "vault-path": ["vault", "path"],
+    "vault-name": ["vault", "name"],
+    "open-in-editor": ["file", "open"],
+}
+
+
+def _legacy_alias_map():
+    """{legacy-flat-name: [resource, verb]} derived from COMMANDS.aliases plus the
+    entry-verb aliases. G1 TRANSITIONAL — A1 formalizes this into a dedicated
+    juggle_cli_aliases module (+ `aliases --json` + coverage test + deprecation)."""
+    from juggle_cli_commands import COMMANDS
+
+    mapping: dict[str, list[str]] = {}
+    for c in COMMANDS:
+        target = [c.verb] if c.resource is None else [c.resource, c.verb]
+        for alias in c.aliases:
+            mapping[alias] = target
+    for alias, target in _ENTRY_VERB_ALIASES.items():
+        mapping.setdefault(alias, target)
+    return mapping
+
+
+def _rewrite_legacy_argv(argv):
+    """Splice a legacy flat command name into its canonical [resource, verb] form.
+
+    Pre-parse argv rewrite (spec §4) so legacy names keep working after the G1
+    grammar rename — silent, zero-breakage (spec §5 stage a). Positional args and
+    flags ride along untouched. Only argv[1] (the command token) is considered.
+    """
+    if len(argv) >= 2 and not argv[1].startswith("-"):
+        target = _legacy_alias_map().get(argv[1])
+        # Skip when argv is ALREADY canonical — guards the one legacy name that
+        # collides with its resource group (`research` is both the alias for
+        # `research run` AND the resource), so `research run …` is left intact.
+        if target is not None and argv[1:1 + len(target)] != target:
+            return [argv[0], *target, *argv[2:]]
+    return argv
+
+
 def build_cli_parser(vault_path_default: str | None = None):
     """Build the full juggle CLI parser.
 
@@ -187,10 +241,11 @@ def build_cli_parser(vault_path_default: str | None = None):
     parser.description = "Juggle CLI - multi-topic conversation orchestrator"
     subparsers = _subparsers_of(parser)
 
-    # grep-vault --vault-path default is None in the static COMMANDS table; the
-    # entry point owns the runtime vault-root default (cmd_grep_vault hands it
-    # straight to grep), so re-inject it here.
-    grep_leaf = subparsers.choices.get("grep-vault")
+    # grep-vault is now `vault grep` (resource group); its --vault-path default is
+    # None in the static COMMANDS table. The entry point owns the runtime vault-root
+    # default (cmd_grep_vault hands it straight to grep), so re-inject it here.
+    vault_group = _group_subparsers(subparsers, "vault")
+    grep_leaf = vault_group.choices.get("grep") if vault_group else None
     if grep_leaf is not None:
         for action in grep_leaf._actions:
             if action.dest == "vault_path":
@@ -202,16 +257,21 @@ def build_cli_parser(vault_path_default: str | None = None):
     register_project_parsers(subparsers)
     juggle_cmd_autopilot.register(subparsers)
 
-    # open-in-editor (handler stays in this module — patch surface for tests)
-    p_open = subparsers.add_parser("open-in-editor", help="Open file in nvim server")
+    # vault path / vault name — entry-module verbs folded into the `vault` group
+    # (G1; legacy vault-path/vault-name resolve via the alias shim). The `vault`
+    # group already exists from `vault grep`.
+    if vault_group is not None:
+        p_vault_path = vault_group.add_parser("path", help="Print absolute vault root path")
+        p_vault_path.set_defaults(func=cmd_vault_path)
+        p_vault_name = vault_group.add_parser("name", help="Print vault name (for obsidian:// URIs)")
+        p_vault_name.set_defaults(func=cmd_vault_name)
+
+    # file open — open-in-editor folded into a `file` group (alias: open-in-editor)
+    p_file = subparsers.add_parser("file", help="File operations")
+    _file_sub = p_file.add_subparsers(dest="file_command", required=True)
+    p_open = _file_sub.add_parser("open", help="Open file in nvim server")
     p_open.add_argument("file", help="Path to file to open")
     p_open.set_defaults(func=cmd_open_in_editor)
-
-    # vault-path / vault-name (single source of truth for commands resolving the vault)
-    p_vault_path = subparsers.add_parser("vault-path", help="Print absolute vault root path")
-    p_vault_path.set_defaults(func=cmd_vault_path)
-    p_vault_name = subparsers.add_parser("vault-name", help="Print vault name (for obsidian:// URIs)")
-    p_vault_name.set_defaults(func=cmd_vault_name)
 
     # verify — run the FULL suite ONCE (agent helper). Extra args (incl.
     # leading-flag forms like `-k foo`) flow through via parse_known_args in
@@ -232,12 +292,13 @@ def main():
     # (incl. leading-flag forms) through to pytest. For every OTHER command,
     # unknown args are still a hard error (strict re-parse preserves typo
     # rejection) — the leniency is scoped to verify only.
-    args, _extras = parser.parse_known_args()
+    rewritten = _rewrite_legacy_argv(sys.argv)[1:]
+    args, _extras = parser.parse_known_args(rewritten)
     if _extras:
         if getattr(args, "command", None) == "verify":
             args.pytest_args = list(_extras)
         else:
-            parser.parse_args()  # re-raise SystemExit(2) with the usage message
+            parser.parse_args(rewritten)  # re-raise SystemExit(2) with the usage message
 
     # Warn when watchdog is not running — it owns periodic reaping
     if "_JUGGLE_TEST_DB" not in os.environ:
