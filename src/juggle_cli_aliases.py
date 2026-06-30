@@ -74,3 +74,18 @@ def rewrite_argv(argv: list[str], *, warn: bool = False) -> list[str]:
                 )
             return [argv[0], *target, *argv[2:]]
     return argv
+
+
+def cmd_aliases(args) -> None:
+    """`juggle aliases [--json]` (P9 A2) — dump the legacy→canonical alias map.
+
+    The agent-verifiable primitive for the staged alias removal (§5): with --json,
+    emits the full {legacy: [resource, verb]} map as a JSON object to stdout.
+    """
+    import json
+
+    if getattr(args, "json_out", False):
+        print(json.dumps(ALIASES, sort_keys=True))
+    else:
+        for name in sorted(ALIASES):
+            print(f"{name} -> juggle {' '.join(ALIASES[name])}")

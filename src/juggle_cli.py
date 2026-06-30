@@ -116,6 +116,7 @@ from juggle_cli_spec import build_parser
 from juggle_cmd_graph import register_graph_parsers
 from juggle_cmd_runs import register_runs_parsers
 from juggle_cli_parsers_project import register_project_parsers
+from juggle_cli_aliases import cmd_aliases
 from juggle_cli_aliases import rewrite_argv as _rewrite_legacy_argv
 
 
@@ -240,6 +241,14 @@ def build_cli_parser(vault_path_default: str | None = None):
         "(extra args pass through to pytest)",
     )
     p_verify.set_defaults(func=cmd_verify, pytest_args=[])
+
+    # aliases — dump the legacy→canonical alias map (A2; agent-verifiable §5 gate)
+    p_aliases = subparsers.add_parser(
+        "aliases", help="Show the legacy→canonical command alias map"
+    )
+    p_aliases.add_argument("--json", dest="json_out", action="store_true",
+                           help="Emit the full map as a JSON object")
+    p_aliases.set_defaults(func=cmd_aliases)
     return parser
 
 

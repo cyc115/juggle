@@ -6,13 +6,20 @@ gaining a ``warn`` flag (default False = silent; D1 flips the call site to True)
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from juggle_cli_aliases import ALIASES, legacy_alias_map, rewrite_argv  # noqa: E402
 from juggle_cli_commands import COMMANDS  # noqa: E402
+
+_LEGACY_NAMES = (
+    Path(__file__).parent / "data" / "legacy_names.txt"
+).read_text().split()
 
 
 # ── ALIASES is derived from COMMANDS.aliases ──────────────────────────────────
@@ -82,3 +89,33 @@ def test_rewrite_warns_to_stderr_when_warn_true(capsys):
 def test_rewrite_warn_true_silent_for_non_legacy(capsys):
     rewrite_argv(["j", "agent", "complete"], warn=True)
     assert capsys.readouterr().err == ""
+
+
+# ── A2: legacy-name coverage + `aliases --json` command ───────────────────────
+
+
+def test_legacy_names_file_is_covered_by_aliases():
+    # tests/data/legacy_names.txt is the authoritative legacy-name list; every
+    # entry MUST stay aliased (a dropped alias = broken back-compat → fails here).
+    assert _LEGACY_NAMES, "legacy_names.txt is empty"
+    missing = set(_LEGACY_NAMES) - set(ALIASES)
+    assert not missing, f"legacy names missing from ALIASES: {sorted(missing)}"
+
+
+def test_aliases_json_command_dumps_the_full_map(capsys):
+    from juggle_cli_aliases import cmd_aliases
+
+    cmd_aliases(SimpleNamespace(json_out=True))
+    out = capsys.readouterr().out
+    dumped = json.loads(out)  # valid JSON object on stdout
+    assert set(_LEGACY_NAMES) <= set(dumped)
+    assert dumped["complete-agent"] == ["agent", "complete"]
+    assert dumped["project-graph"] == ["graph"]
+
+
+def test_aliases_command_registered_in_live_cli():
+    from juggle_cli import build_cli_parser
+
+    ns = build_cli_parser().parse_args(["aliases", "--json"])
+    assert callable(ns.func)
+    assert ns.json_out is True
