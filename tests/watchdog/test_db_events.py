@@ -149,7 +149,7 @@ def test_get_agent_sets_busy_since(tmp_path):
         [
             sys.executable,
             "src/juggle_cli.py",
-            "get-agent",
+            "agent", "get",
             thread_id,
             "--role",
             "coder",
@@ -188,7 +188,7 @@ def test_send_task_stores_last_task_and_pane_hash(tmp_path):
     d.update_agent(agent_id, status="busy")
 
     subprocess.run(
-        [sys.executable, "src/juggle_cli.py", "send-task", agent_id, str(task_file)],
+        [sys.executable, "src/juggle_cli.py", "agent", "send-task", agent_id, str(task_file)],
         cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,
@@ -224,7 +224,7 @@ def test_complete_agent_inserts_completion(tmp_path):
         [
             sys.executable,
             "src/juggle_cli.py",
-            "complete-agent",
+            "agent", "complete",
             thread_id,
             "Done. All good.",
         ],
@@ -292,7 +292,7 @@ def test_set_watchdog_minutes(tmp_path):
     agent_id = d.create_agent(role="coder", pane_id="%5")
 
     result = subprocess.run(
-        [sys.executable, "src/juggle_cli.py", "set-watchdog", agent_id, "15"],
+        [sys.executable, "src/juggle_cli.py", "agent", "set-watchdog", agent_id, "15"],
         cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,
@@ -311,7 +311,7 @@ def test_set_watchdog_off(tmp_path):
     agent_id = d.create_agent(role="coder", pane_id="%5")
 
     subprocess.run(
-        [sys.executable, "src/juggle_cli.py", "set-watchdog", agent_id, "off"],
+        [sys.executable, "src/juggle_cli.py", "agent", "set-watchdog", agent_id, "off"],
         cwd=str(Path(__file__).parent.parent.parent),
         capture_output=True,
         text=True,

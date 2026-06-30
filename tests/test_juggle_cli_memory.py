@@ -108,7 +108,7 @@ def run_cli(args, env):
 def setup_thread(env):
     """Create a started DB with a thread, return thread label."""
     run_cli(["start"], env)
-    r = run_cli(["create-thread", "test topic"], env)
+    r = run_cli(["thread", "create", "test topic"], env)
     # Parse label from output like "Created Topic B: test topic. Now in Topic B."
     for word in r.stdout.split():
         if len(word) == 2 and word[:-1].isalpha() and word[-1] in ":.":
@@ -119,14 +119,14 @@ def setup_thread(env):
 
 def test_retain_success(env):
     label = setup_thread(env)
-    r = run_cli(["retain", label, "Task completed successfully"], env)
+    r = run_cli(["memory", "retain", label, "Task completed successfully"], env)
     assert r.returncode == 0
 
 
 def test_retain_with_context(env):
     label = setup_thread(env)
     r = run_cli(
-        ["retain", label, "User prefers explicit types", "--context", "preferences"],
+        ["memory", "retain", label, "User prefers explicit types", "--context", "preferences"],
         env,
     )
     assert r.returncode == 0
@@ -145,8 +145,8 @@ def test_retain_disabled(tmp_path):
         "_JUGGLE_CONFIG_PATH": str(config_path),
     }
     run_cli(["start"], e)
-    run_cli(["create-thread", "test"], e)
-    r = run_cli(["retain", "B", "anything"], e)
+    run_cli(["thread", "create", "test"], e)
+    r = run_cli(["memory", "retain", "B", "anything"], e)
     assert r.returncode == 0
 
 

@@ -168,7 +168,7 @@ def test_fail_agent(started_db):
 
 def test_set_summarized_count(started_db):
     db_path, general_tid = started_db
-    result = run_cli(["set-summarized-count", "AA", "5"], db_path)
+    result = run_cli(["thread", "set-summarized-count", "AA", "5"], db_path)
     assert result.returncode == 0
     assert "5" in result.stdout
 
@@ -183,7 +183,7 @@ def test_set_summarized_count(started_db):
 
 def test_get_stale_threads_empty(started_db):
     db_path, _ = started_db
-    result = run_cli(["get-stale-threads"], db_path)
+    result = run_cli(["thread", "list-stale"], db_path)
     assert result.returncode == 0
     assert "No stale" in result.stdout
 
@@ -197,7 +197,7 @@ def test_get_stale_threads_finds_stale(started_db):
     for i in range(3):
         db.add_message(general_tid, "user", f"real question {i}")
 
-    result = run_cli(["get-stale-threads"], db_path)
+    result = run_cli(["thread", "list-stale"], db_path)
     assert result.returncode == 0
     assert "A" in result.stdout
 
@@ -211,7 +211,7 @@ def test_get_messages_plain(started_db):
     db.add_message(general_tid, "user", "hello world")
     db.add_message(general_tid, "assistant", "hi there")
 
-    result = run_cli(["get-messages", "AA", "--plain"], db_path)
+    result = run_cli(["thread", "messages", "AA", "--plain"], db_path)
     assert result.returncode == 0
     assert "user: hello world" in result.stdout
     assert "assistant: hi there" in result.stdout
@@ -225,7 +225,7 @@ def test_get_messages_plain(started_db):
 def test_archive_thread_cli(started_db):
     """archive-thread sets status=archived and prints confirmation."""
     db_path, general_tid = started_db
-    result = run_cli(["archive-thread", "AA"], db_path)
+    result = run_cli(["thread", "archive", "AA"], db_path)
     assert result.returncode == 0
     assert "Thread AA archived" in result.stdout
 
@@ -248,7 +248,7 @@ def test_get_archive_candidates_none(started_db):
     """Prints 'No archive candidates.' when nothing qualifies."""
     db_path, _ = started_db
     # Thread A is current — should be excluded
-    result = run_cli(["get-archive-candidates"], db_path)
+    result = run_cli(["thread", "archive-candidates"], db_path)
     assert result.returncode == 0
     assert "No archive candidates." in result.stdout
 
@@ -264,7 +264,7 @@ def test_get_archive_candidates_finds_done(started_db):
     db.update_thread(second_tid, status="done")
     # Current is general_tid (slug AA), second_tid is done → candidate
 
-    result = run_cli(["get-archive-candidates"], db_path)
+    result = run_cli(["thread", "archive-candidates"], db_path)
     assert result.returncode == 0
     assert "[AB]" in result.stdout
     assert "done" in result.stdout
@@ -280,7 +280,7 @@ def test_get_archive_candidates_excludes_archived(started_db):
     second_tid = db.create_thread("Second topic", session_id="")
     db.archive_thread(second_tid)
 
-    result = run_cli(["get-archive-candidates"], db_path)
+    result = run_cli(["thread", "archive-candidates"], db_path)
     assert result.returncode == 0
     assert "[AB]" not in result.stdout
 
@@ -302,7 +302,7 @@ def test_unarchive_thread_cli(started_db):
     second_tid = db.create_thread("Second topic", session_id="")
     db.archive_thread(second_tid)
 
-    result = run_cli(["unarchive-thread", second_tid], db_path)
+    result = run_cli(["thread", "unarchive", second_tid], db_path)
     assert result.returncode == 0
     assert "unarchived" in result.stdout
 
@@ -324,7 +324,7 @@ def test_unarchive_thread_cli_by_uuid(started_db):
     tid = db.create_thread("Archived topic", session_id="")
     db.archive_thread(tid)
 
-    result = run_cli(["unarchive-thread", tid], db_path)
+    result = run_cli(["thread", "unarchive", tid], db_path)
     assert result.returncode == 0
     assert "unarchived" in result.stdout
 
@@ -349,7 +349,7 @@ def test_show_topics_hides_archived(started_db):
     second_tid = db.create_thread("Second topic", session_id="")
     db.archive_thread(second_tid)
 
-    result = run_cli(["show-topics"], db_path)
+    result = run_cli(["thread", "list"], db_path)
     assert result.returncode == 0
     assert "[AB]" not in result.stdout
     assert "[AA]" in result.stdout

@@ -55,6 +55,7 @@ def test_force_task_flag_removed():
         [
             sys.executable,
             os.path.join(os.path.dirname(__file__), "..", "src", "juggle_cli.py"),
+            "agent",
             "send-task",
             "--force-task",
             "dummy-agent",
@@ -77,6 +78,7 @@ def test_force_node_alias_also_removed():
         [
             sys.executable,
             os.path.join(os.path.dirname(__file__), "..", "src", "juggle_cli.py"),
+            "agent",
             "send-task",
             "--force-node",
             "dummy-agent",

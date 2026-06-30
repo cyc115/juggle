@@ -67,7 +67,7 @@ def test_spawn_agent_creates_agent(started_db):
     """spawn-agent should print agent_id and pane_id."""
     db_path, _ = started_db
     with patch_tmux_spawn(pane_id="%7"):
-        result = run_cli(["spawn-agent", "coder"], db_path)
+        result = run_cli(["agent", "spawn", "coder"], db_path)
     assert result.returncode == 0
     parts = result.stdout.strip().split()
     assert len(parts) == 2  # agent_id, pane_id
@@ -76,7 +76,7 @@ def test_spawn_agent_creates_agent(started_db):
 
 def test_list_agents_empty(started_db):
     db_path, _ = started_db
-    result = run_cli(["list-agents"], db_path)
+    result = run_cli(["agent", "list"], db_path)
     assert result.returncode == 0
     assert "No agents" in result.stdout
 
@@ -84,8 +84,8 @@ def test_list_agents_empty(started_db):
 def test_list_agents_shows_agents(started_db):
     db_path, _ = started_db
     with patch_tmux_spawn(pane_id="%2"):
-        run_cli(["spawn-agent", "researcher"], db_path)
-    result = run_cli(["list-agents"], db_path)
+        run_cli(["agent", "spawn", "researcher"], db_path)
+    result = run_cli(["agent", "list"], db_path)
     assert "researcher" in result.stdout
     assert "%2" in result.stdout
 
@@ -93,7 +93,7 @@ def test_list_agents_shows_agents(started_db):
 def test_get_agent_spawns_when_pool_empty(started_db):
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%5"}):
-        result = run_cli(["get-agent", thread_id], db_path)
+        result = run_cli(["agent", "get", thread_id], db_path)
     assert result.returncode == 0
     parts = result.stdout.strip().split()
     assert len(parts) == 3  # agent_id, pane_id, "new"
@@ -104,9 +104,9 @@ def test_get_agent_spawns_when_pool_empty(started_db):
 def test_get_agent_reuses_idle_agent(started_db):
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        run_cli(["spawn-agent", "coder"], db_path)
+        run_cli(["agent", "spawn", "coder"], db_path)
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_NOT_READY_PANES": ""}):
-        result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        result = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     assert result.returncode == 0
     parts = result.stdout.strip().split()
     assert len(parts) == 2  # agent_id, pane_id (no "new")
@@ -119,9 +119,9 @@ def test_get_agent_marks_busy(started_db):
 
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        run_cli(["spawn-agent", "coder"], db_path)
+        run_cli(["agent", "spawn", "coder"], db_path)
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_NOT_READY_PANES": ""}):
-        result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        result = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
 
     agent_id = result.stdout.strip().split()[0]
     db = JuggleDB(str(db_path))
@@ -135,13 +135,13 @@ def test_get_agent_skips_non_ready_idle_and_spawns(started_db):
     """An idle agent whose pane is NOT ready must be skipped — spawn new."""
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        run_cli(["spawn-agent", "coder"], db_path)
+        run_cli(["agent", "spawn", "coder"], db_path)
     # Mark %3 as NOT ready; new spawns get %5
     with patch.dict(os.environ, {
         "JUGGLE_TMUX_MOCK_NOT_READY_PANES": "%3",
         "JUGGLE_TMUX_MOCK_PANE": "%5",
     }):
-        result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        result = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     assert result.returncode == 0
     parts = result.stdout.strip().split()
     assert len(parts) == 3  # agent_id, pane_id, "new"
@@ -156,11 +156,11 @@ def test_get_agent_reuses_ready_idle_no_spawn(started_db):
 
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["spawn-agent", "coder"], db_path)
+        r = run_cli(["agent", "spawn", "coder"], db_path)
     first_agent_id = r.stdout.strip().split()[0]
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_NOT_READY_PANES": ""}):
-        result = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        result = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     assert result.returncode == 0
     parts = result.stdout.strip().split()
     assert len(parts) == 2  # agent_id, pane_id (no "new")
@@ -179,7 +179,7 @@ def test_get_agent_stdout_contract_preserved(started_db):
     db_path, thread_id = started_db
     # New agent path
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%9"}):
-        result = run_cli(["get-agent", thread_id], db_path)
+        result = run_cli(["agent", "get", thread_id], db_path)
     assert result.returncode == 0
     parts_new = result.stdout.strip().split()
     assert len(parts_new) == 3
@@ -197,7 +197,7 @@ def test_get_agent_stdout_contract_preserved(started_db):
     # Start a second thread so we can reuse
     tid2 = db.create_thread("Second", session_id="")
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_NOT_READY_PANES": ""}):
-        result2 = run_cli(["get-agent", tid2, "--role", "researcher"], db_path)
+        result2 = run_cli(["agent", "get", tid2, "--role", "researcher"], db_path)
     assert result2.returncode == 0
     parts_reuse = result2.stdout.strip().split()
     assert len(parts_reuse) == 2  # no "new"
@@ -214,9 +214,9 @@ def test_release_agent_marks_idle(started_db):
         "JUGGLE_TMUX_MOCK_PANE": "%3",
         "JUGGLE_TMUX_MOCK_NOT_READY_PANES": "",
     }):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
         agent_id = r.stdout.strip().split()[0]
-        result = run_cli(["release-agent", agent_id, "--force"], db_path)
+        result = run_cli(["agent", "release", agent_id, "--force"], db_path)
     assert result.returncode == 0
 
     db = JuggleDB(str(db_path))
@@ -235,9 +235,9 @@ def test_release_agent_adds_context_thread(started_db):
         "JUGGLE_TMUX_MOCK_PANE": "%3",
         "JUGGLE_TMUX_MOCK_NOT_READY_PANES": "",
     }):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
         agent_id = r.stdout.strip().split()[0]
-        run_cli(["release-agent", agent_id, "--force"], db_path)
+        run_cli(["agent", "release", agent_id, "--force"], db_path)
 
     db = JuggleDB(str(db_path))
     agent = db.get_agent(agent_id)
@@ -255,14 +255,14 @@ def test_release_agent_decommissions_pending(started_db):
         "JUGGLE_TMUX_MOCK_PANE": "%3",
         "JUGGLE_TMUX_MOCK_NOT_READY_PANES": "",
     }):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 
     db = JuggleDB(str(db_path))
     db.update_agent(agent_id, status="decommission_pending")
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_KILL": "1"}):
-        result = run_cli(["release-agent", agent_id], db_path)
+        result = run_cli(["agent", "release", agent_id], db_path)
     assert result.returncode == 0
     assert db.get_agent(agent_id) is None
 
@@ -273,11 +273,11 @@ def test_decommission_agent_removes_from_db(started_db):
 
     db_path, _ = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["spawn-agent", "coder"], db_path)
+        r = run_cli(["agent", "spawn", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_KILL": "1"}):
-        result = run_cli(["decommission-agent", agent_id], db_path)
+        result = run_cli(["agent", "decommission", agent_id], db_path)
     assert result.returncode == 0
     assert JuggleDB(str(db_path)).get_agent(agent_id) is None
 
@@ -286,7 +286,7 @@ def test_send_task_appends_release_and_sends(started_db, tmp_path):
     """send-task should append release-agent call and invoke send_task on manager."""
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 
     prompt_file = tmp_path / "task.txt"
@@ -295,7 +295,7 @@ def test_send_task_appends_release_and_sends(started_db, tmp_path):
     )
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        result = run_cli(["send-task", "--allow-main", agent_id, str(prompt_file)], db_path)
+        result = run_cli(["agent", "send-task", "--allow-main", agent_id, str(prompt_file)], db_path)
     assert result.returncode == 0
     assert "sent" in result.stdout.lower()
 
@@ -303,10 +303,10 @@ def test_send_task_appends_release_and_sends(started_db, tmp_path):
 def test_send_task_error_on_missing_prompt_file(started_db):
     db_path, _ = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["spawn-agent", "coder"], db_path)
+        r = run_cli(["agent", "spawn", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 
-    result = run_cli(["send-task", agent_id, "/nonexistent/task.txt"], db_path)
+    result = run_cli(["agent", "send-task", agent_id, "/nonexistent/task.txt"], db_path)
     assert result.returncode == 1
     assert "not found" in result.stdout.lower()
 
@@ -315,14 +315,14 @@ def test_send_task_prepends_universal_preamble(started_db, tmp_path):
     """UNIVERSAL_PREAMBLE must be prepended to the task body stored in last_task."""
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 
     prompt_file = tmp_path / "task.txt"
     prompt_file.write_text("Do the thing.\n")
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        result = run_cli(["send-task", "--allow-main", agent_id, str(prompt_file)], db_path)
+        result = run_cli(["agent", "send-task", "--allow-main", agent_id, str(prompt_file)], db_path)
     assert result.returncode == 0
 
     sys.path.insert(0, SRC_DIR)
@@ -342,17 +342,17 @@ def test_archive_thread_decommissions_idle_agents(started_db):
     db_path, thread_id = started_db
     # Spawn agent and assign to thread
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
     # Release so it's idle (still has assigned_thread in context_threads)
-    run_cli(["release-agent", agent_id], db_path)
+    run_cli(["agent", "release", agent_id], db_path)
 
     # Manually set assigned_thread back so archive-thread can find it
     db = JuggleDB(str(db_path))
     db.update_agent(agent_id, assigned_thread=thread_id, status="idle")
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_KILL": "1"}):
-        result = run_cli(["archive-thread", thread_id], db_path)
+        result = run_cli(["thread", "archive", thread_id], db_path)
     assert result.returncode == 0
     assert JuggleDB(str(db_path)).get_agent(agent_id) is None
 
@@ -363,10 +363,10 @@ def test_archive_thread_marks_busy_agents_pending(started_db):
 
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
         agent_id = r.stdout.strip().split()[0]
     # Agent is busy (still assigned); archive-thread doesn't need mock
-    result = run_cli(["archive-thread", thread_id], db_path)
+    result = run_cli(["thread", "archive", thread_id], db_path)
     assert result.returncode == 0
     agent = JuggleDB(str(db_path)).get_agent(agent_id)
     assert agent is not None
@@ -379,11 +379,11 @@ def test_archive_thread_marks_busy_agents_pending(started_db):
 def test_send_message_cli_success(started_db):
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        result = run_cli(["send-message", agent_id, "please handle the edge case"], db_path)
+        result = run_cli(["agent", "send-message", agent_id, "please handle the edge case"], db_path)
     assert result.returncode == 0
     assert "sent" in result.stdout.lower()
 
@@ -391,11 +391,11 @@ def test_send_message_cli_success(started_db):
 def test_send_message_cli_json_output(started_db):
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        result = run_cli(["send-message", "--json", agent_id, "steer this"], db_path)
+        result = run_cli(["agent", "send-message", "--json", agent_id, "steer this"], db_path)
     assert result.returncode == 0
     data = json.loads(result.stdout)
     assert data["ok"] is True
@@ -404,7 +404,7 @@ def test_send_message_cli_json_output(started_db):
 
 def test_send_message_cli_error_missing_agent(started_db):
     db_path, _ = started_db
-    result = run_cli(["send-message", "nonexistent-id", "hello"], db_path)
+    result = run_cli(["agent", "send-message", "nonexistent-id", "hello"], db_path)
     assert result.returncode == 1
 
 
@@ -414,14 +414,14 @@ def test_send_task_coder_template_includes_harness_gate(started_db, tmp_path):
     """send-task with coder role must inject HARNESS GATE into the prompt."""
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 
     prompt_file = tmp_path / "task.txt"
     prompt_file.write_text("Do the thing.\n")
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        run_cli(["send-task", "--allow-main", agent_id, str(prompt_file)], db_path)
+        run_cli(["agent", "send-task", "--allow-main", agent_id, str(prompt_file)], db_path)
 
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
@@ -433,14 +433,14 @@ def test_send_task_no_template_bypasses_harness_gate(started_db, tmp_path):
     """--no-template must skip harness gate injection."""
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["get-agent", thread_id, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
 
     prompt_file = tmp_path / "task.txt"
     prompt_file.write_text("Do the thing.\n")
 
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
-        run_cli(["send-task", "--no-template", "--allow-main", agent_id, str(prompt_file)], db_path)
+        run_cli(["agent", "send-task", "--no-template", "--allow-main", agent_id, str(prompt_file)], db_path)
 
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB

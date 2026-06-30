@@ -63,7 +63,7 @@ def test_open_in_editor_no_socket(tmp_path):
     from juggle_cli import main
 
     socket_path = str(tmp_path / "missing.sock")
-    with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.md"]):
+    with patch("sys.argv", ["juggle_cli.py", "file", "open", "/some/file.md"]):
         with patch("juggle_cli.NVIM_SOCKET", socket_path):
             with patch.dict(os.environ, {"_JUGGLE_TEST_DB": "1"}):
                 with patch("juggle_cli.subprocess.run") as mock_run:
@@ -78,7 +78,7 @@ def test_open_in_editor_no_socket_vault_file(tmp_path):
 
     socket_path = str(tmp_path / "missing.sock")
     vault_file = str(VAULT_ROOT / "projects/test.md")
-    with patch("sys.argv", ["juggle_cli.py", "open-in-editor", vault_file]):
+    with patch("sys.argv", ["juggle_cli.py", "file", "open", vault_file]):
         with patch("juggle_cli.NVIM_SOCKET", socket_path):
             with patch.dict(os.environ, {"_JUGGLE_TEST_DB": "1"}):
                 with patch("juggle_cli.subprocess.run") as mock_run:
@@ -94,7 +94,7 @@ def test_open_in_editor_calls_nvim(tmp_path):
 
     sock = tmp_path / "nvim.sock"
     sock.touch()
-    with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.md"]):
+    with patch("sys.argv", ["juggle_cli.py", "file", "open", "/some/file.md"]):
         with patch("juggle_cli.NVIM_SOCKET", str(sock)):
             with patch.dict(os.environ, {"_JUGGLE_TEST_DB": "1"}):
                 with patch("juggle_cli.subprocess.run") as mock_run:
@@ -112,7 +112,7 @@ def test_open_in_editor_with_line_number(tmp_path):
 
     sock = tmp_path / "nvim.sock"
     sock.touch()
-    with patch("sys.argv", ["juggle_cli.py", "open-in-editor", "/some/file.py:153"]):
+    with patch("sys.argv", ["juggle_cli.py", "file", "open", "/some/file.py:153"]):
         with patch("juggle_cli.NVIM_SOCKET", str(sock)):
             with patch.dict(os.environ, {"_JUGGLE_TEST_DB": "1"}):
                 with patch("juggle_cli.subprocess.run") as mock_run:

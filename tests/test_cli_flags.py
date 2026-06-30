@@ -74,14 +74,14 @@ def _run_no_db(args):
 
 def test_unknown_flag_rejected_request_action(tmp_path):
     """--tier is not a valid flag on request-action; argparse must reject it."""
-    result = _run_no_db(["request-action", "THREAD", "msg", "--tier", "2"])
+    result = _run_no_db(["action", "create", "THREAD", "msg", "--tier", "2"])
     assert result.returncode == 2
     assert "unrecognized arguments" in result.stderr or "error" in result.stderr
 
 
 def test_unknown_flag_rejected_complete_agent(tmp_path):
     """--badarg is not a valid flag on complete-agent; argparse must reject it."""
-    result = _run_no_db(["complete-agent", "AGENT", "msg", "--badarg"])
+    result = _run_no_db(["agent", "complete", "AGENT", "msg", "--badarg"])
     assert result.returncode == 2
     assert "unrecognized arguments" in result.stderr or "error" in result.stderr
 
@@ -95,7 +95,7 @@ def test_unknown_flag_rejected_start(tmp_path):
 
 def test_unknown_flag_rejected_notify(tmp_path):
     """--priority is not a valid flag on notify; argparse must reject it."""
-    result = _run_no_db(["notify", "THREAD", "msg", "--priority", "high"])
+    result = _run_no_db(["action", "notify", "THREAD", "msg", "--priority", "high"])
     assert result.returncode == 2
     assert "unrecognized arguments" in result.stderr or "error" in result.stderr
 
@@ -113,7 +113,7 @@ def test_known_flags_accepted_request_action(tmp_path):
     db.set_active(True)
     tid = db.create_thread("test", session_id="")
     result = run_cli(
-        ["request-action", tid, "test msg", "--type", "failure", "--priority", "high"],
+        ["action", "create", tid, "test msg", "--type", "failure", "--priority", "high"],
         db_path,
     )
     # Should not fail with "unrecognized arguments"

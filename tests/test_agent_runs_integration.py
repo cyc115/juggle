@@ -43,7 +43,7 @@ def started_db(tmp_path):
 
 def _dispatch(db_path, thread_id, prompt_file, role="coder", allow_main=False):
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
-        r = run_cli(["get-agent", thread_id, "--role", role], db_path)
+        r = run_cli(["agent", "get", thread_id, "--role", role], db_path)
     agent_id = r.stdout.strip().split()[0]
     # --allow-main keeps the dispatch hermetic: without it, coder/planner
     # send-task auto-creates a real worktree against the live repo and stamps
@@ -52,7 +52,7 @@ def _dispatch(db_path, thread_id, prompt_file, role="coder", allow_main=False):
     # not on 'main' (e.g. an integ-recovery worktree). --allow-main leaves the
     # thread with no worktree fields, so complete-agent takes the no-op
     # _finalize_worktree path and the run output is the clean summary.
-    send_args = ["send-task"]
+    send_args = ["agent", "send-task"]
     if allow_main:
         send_args.append("--allow-main")
     send_args += [agent_id, str(prompt_file)]
@@ -118,11 +118,11 @@ def test_dispatch_resolves_graph_node_thread(started_db, tmp_path):
     prompt_file.write_text("graph task.\n")
     # Task is in pending state — not tick-owned yet, no guard fires (P7: --force-task removed).
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%4"}):
-        r = run_cli(["get-agent", gthread, "--role", "coder"], db_path)
+        r = run_cli(["agent", "get", gthread, "--role", "coder"], db_path)
     agent_id = r.stdout.strip().split()[0]
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_SEND": "1"}):
         res = run_cli(
-            ["send-task", "--allow-main", agent_id, str(prompt_file)], db_path
+            ["agent", "send-task", "--allow-main", agent_id, str(prompt_file)], db_path
         )
     assert res.returncode == 0, res.stdout + res.stderr
 
@@ -147,7 +147,7 @@ def test_complete_agent_closes_run(started_db, tmp_path):
     _dispatch(db_path, thread_id, prompt_file, allow_main=True)
 
     res = run_cli(
-        ["complete-agent", thread_id, "All done — shipped it."], db_path
+        ["agent", "complete", thread_id, "All done — shipped it."], db_path
     )
     assert res.returncode == 0, res.stdout + res.stderr
 

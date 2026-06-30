@@ -96,7 +96,7 @@ def test_verify_leading_flag_passthrough():
 def test_unknown_flag_on_other_command_still_errors():
     """The parse_known_args leniency is scoped to `verify` ONLY — every other
     command must still hard-reject an unknown flag (typo protection)."""
-    with patch("sys.argv", ["juggle_cli.py", "vault-path", "--nonsense-typo"]):
+    with patch("sys.argv", ["juggle_cli.py", "vault", "path", "--nonsense-typo"]):
         with patch.dict(os.environ, {"_JUGGLE_TEST_DB": "1"}):
             with pytest.raises(SystemExit) as exc:
                 from juggle_cli import main
