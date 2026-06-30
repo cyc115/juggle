@@ -40,63 +40,23 @@ def strip_leading_tag(title: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Glyph tables
+# Glyph tables — single source of truth lives in juggle_cockpit_legend.
+# Re-exported here so existing `from juggle_cockpit_view import TASK_STATE_GLYPHS`
+# callers (graph_panel, modal_node) keep resolving.
 # ---------------------------------------------------------------------------
-TOPIC_STATUS_GLYPHS: dict[str, str] = {
-    "current": "👉",
-    "running": "🏃",
-    "paused": "⏸️",
-    "done": "✅",
-    "closed": "🔒",
-    "failed": "❌",
-    "archived": "🗄️",
-    "active": "🔵",
-    "background": "🏃",
-}
-
-ACTION_TIER_GLYPHS: dict[int, str] = {
-    0: "⚠️",  # blocker
-    1: "📬",  # review ready
-    2: "❓",  # open question
-    3: "📝",  # nudge/note
-}
-
-AGENT_STATUS_GLYPHS: dict[str, str] = {
-    "busy": "🟢",
-    "idle": "⚫",
-    "stale": "🟡",
-}
-
-SCHED_STATUS_GLYPHS: dict[str, str] = {
-    "running": "🔄",
-    "ok": "✅",
-    "failed": "❌",
-    "unknown": "⏸️",
-}
-
-# Task-bound topics get their glyph from graph_tasks.state (autopilot, DA m2)
-# — never from thread status/TTL, so done/failed tasks stay legible even after
-# their threads close or archive.
-TASK_STATE_GLYPHS: dict[str, str] = {
-    "open": "⬡",
-    "ready": "◇",
-    "dispatching": "◌",
-    "running": "🏃",
-    "integrating": "🔀",
-    "verified": "✅",
-    "failed-exec": "❌",
-    "failed-integration": "❌",
-    "failed-verify": "❌",
-    "blocked-failed": "🚫",
-}
-
-NOTIF_KIND_GLYPHS: dict[str, str] = {
-    "complete": "⚡",
-    "info": "ℹ️",
-    "warning": "⚠️",
-    "error": "✗",
-    "failed": "❌",
-}
+from juggle_cockpit_legend import (  # noqa: E402,F401  (re-export)
+    TOPIC_STATUS_GLYPHS,
+    ACTION_TIER_GLYPHS,
+    AGENT_STATUS_GLYPHS,
+    SCHED_STATUS_GLYPHS,
+    TASK_STATE_GLYPHS,
+    NOTIF_KIND_GLYPHS,
+    GRAPH_READY_SUFFIX,
+    FALLBACK_TOPIC,
+    FALLBACK_TASK,
+    FALLBACK_SCHED,
+    FALLBACK_NOTIF,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -122,9 +82,9 @@ def pick_breakpoint(size_or_width) -> str:
 def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
     task_state = getattr(t, "task_state", None)
     if task_state:
-        glyph = TASK_STATE_GLYPHS.get(task_state, "⬢")
+        glyph = TASK_STATE_GLYPHS.get(task_state, FALLBACK_TASK)
     else:
-        glyph = TOPIC_STATUS_GLYPHS.get(t.status, "•")
+        glyph = TOPIC_STATUS_GLYPHS.get(t.status, FALLBACK_TOPIC)
     label_str = f"[{t.label}]"
     if t.is_current:
         style = Style(bold=True, color="white")
@@ -205,13 +165,13 @@ def render_topics(
         if idx > 0:
             content_parts.append(Rule(style="dim"))
         hdr = Text()
-        hdr.append(f" ▸ {project_name.upper()} ", style=Style(color="bright_white", bgcolor="grey23", bold=True))
+        hdr.append(f" {GRAPH_READY_SUFFIX} {project_name.upper()} ", style=Style(color="bright_white", bgcolor="grey23", bold=True))
         hdr.append(f" {len(group_topics)} ", style=Style(color="bright_white", bgcolor="grey23", dim=True))
         counts = (graph_by_project or {}).get(project_id)
         if counts:
             from juggle_graph_status import format_progress
 
-            hdr.append(f" ⬢ {format_progress(counts)} ", style=Style(color="cyan", bgcolor="grey23"))
+            hdr.append(f" {FALLBACK_TASK} {format_progress(counts)} ", style=Style(color="cyan", bgcolor="grey23"))
         content_parts.append(hdr)
         section_table = _make_table()
         for t in group_topics:
@@ -258,7 +218,7 @@ def render_actions(
     table.add_column("text", no_wrap=False, overflow="fold")
 
     for action in visible:
-        glyph = ACTION_TIER_GLYPHS.get(action.tier, "•")
+        glyph = ACTION_TIER_GLYPHS.get(action.tier, FALLBACK_TOPIC)
         topic_str = f"[{action.topic_id}]"
 
         if action.tier == 0:  # blocker
@@ -332,7 +292,7 @@ def render_agents(
         t_active.add_column(no_wrap=True)  # harness
         for agent in active_agents:
             i = sorted_agents.index(agent) + 1
-            glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
+            glyph = AGENT_STATUS_GLYPHS.get(agent.status, FALLBACK_TOPIC)
             st = _row_style(agent.status)
             hmodel = agent.harness or ""
             if agent.model:
@@ -359,7 +319,7 @@ def render_agents(
             t_agents.add_column(no_wrap=True)  # age
             t_agents.add_column(no_wrap=True)  # harness
             for agent in pool_agents:
-                glyph = AGENT_STATUS_GLYPHS.get(agent.status, "•")
+                glyph = AGENT_STATUS_GLYPHS.get(agent.status, FALLBACK_TOPIC)
                 st = _row_style(agent.status)
                 hmodel = agent.harness or ""
                 if agent.model:
@@ -390,7 +350,7 @@ def render_agents(
             t_sched.add_column(no_wrap=True)  # label
             t_sched.add_column(no_wrap=True)  # schedule
             for task in scheduled:
-                glyph = SCHED_STATUS_GLYPHS.get(task.status, "⏰")
+                glyph = SCHED_STATUS_GLYPHS.get(task.status, FALLBACK_SCHED)
                 label_style = (
                     Style(bold=True, color="red")
                     if task.status == "failed"
@@ -436,7 +396,7 @@ def render_notifications(
     table.add_column("text", no_wrap=False, overflow="fold")
 
     for notif in visible:
-        glyph = NOTIF_KIND_GLYPHS.get(notif.kind, "ℹ️")
+        glyph = NOTIF_KIND_GLYPHS.get(notif.kind, FALLBACK_NOTIF)
 
         if notif.kind in ("error", "failed"):
             text_style = Style(color="red")

@@ -6,7 +6,7 @@ mode is active. Rich-only: no DB, no Textual app. Read-only.
 
 Layout is a multi-column NUMBERED LIST in topological (execution) order: one
 task per cell — index, state glyph, task id, and a state suffix (running agent
-label, or ⊣<dep#> for a blocked task). Cells flow column-major to fill a wide,
+label, or a dep-wait suffix for a blocked task). Cells flow column-major to fill a wide,
 short pane so all tasks stay readable without a horizontal scroll. A power-user
 view of a mostly-linear pipeline.
 """
@@ -21,10 +21,18 @@ from rich.text import Text
 from rich.style import Style
 
 from juggle_cockpit_graph_layout import GraphTask, build_ranks
-from juggle_cockpit_view import TASK_STATE_GLYPHS
+from juggle_cockpit_legend import (
+    TASK_STATE_GLYPHS,
+    GRAPH_READY_SUFFIX,
+    GRAPH_DEP_SUFFIX,
+    GRAPH_FAIL_SUFFIX,
+    MIRROR_PREFIX,
+    UNREAD_BADGE,
+    FALLBACK_TASK,
+)
 from juggle_graph_status import counts_from_states, format_progress
 
-# Roughly the width one list cell wants: "10 🏃 cli-hooks-r8-guard [WK]".
+# Roughly the width one list cell wants: "10 (running) cli-hooks-r8-guard [WK]".
 _CELL_WIDTH = 26
 _MAX_COLS = 4
 
@@ -45,7 +53,7 @@ _RUNNING_STATES = ("running", "dispatching", "integrating")
 
 
 def _badge_segment(unread: int) -> str:
-    return f" · ⚠{unread}" if unread > 0 else ""
+    return f" · {UNREAD_BADGE}{unread}" if unread > 0 else ""
 
 
 def _progress_bar(tasks: list[GraphTask], width: int = 10) -> str:
@@ -102,7 +110,7 @@ def _cell_text(
     cell_w. The [thread/topic id] badge sits BEFORE the name (2026-06-16 user
     feedback) so it survives name truncation instead of being ellipsized off the
     end."""
-    glyph = TASK_STATE_GLYPHS.get(task.state, "⬢")
+    glyph = TASK_STATE_GLYPHS.get(task.state, FALLBACK_TASK)
     # Thread/topic id badge — rendered in front of the name so a long, truncated
     # name never hides it.
     if task.state in _RUNNING_STATES and (task.user_label or task.thread_id):
@@ -110,11 +118,11 @@ def _cell_text(
     else:
         id_seg = ""
     if task.state == "open" and dep_num is not None:
-        suffix = f" ⊣{dep_num}"          # waiting on task #dep_num
+        suffix = f" {GRAPH_DEP_SUFFIX}{dep_num}"   # waiting on task #dep_num
     elif task.state == "ready":
-        suffix = " ▸"                     # next up
+        suffix = f" {GRAPH_READY_SUFFIX}"          # next up
     elif task.state.startswith("failed") or task.state == "blocked-failed":
-        suffix = " ✗"
+        suffix = f" {GRAPH_FAIL_SUFFIX}"
     else:
         suffix = ""
     if getattr(task, "tasks_total", None):
@@ -124,7 +132,7 @@ def _cell_text(
     prefix = f"{idx:>{idx_w}} {glyph} {id_seg}"
     budget = max(3, cell_w - len(prefix) - len(suffix))
     raw_name = task.id if len(task.id) <= budget else task.id[: max(1, budget - 1)] + "…"
-    name = f"~{raw_name}" if is_mirror else raw_name
+    name = f"{MIRROR_PREFIX}{raw_name}" if is_mirror else raw_name
     label = f"{prefix}{name}{suffix}"
     style = Style(
         color="grey50" if is_mirror else _STATE_COLORS.get(task.state, "white"),
