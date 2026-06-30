@@ -72,12 +72,17 @@ def test_set_setting_upsert_and_delete(db):
     assert db.get_setting("k") is None
 
 
-def test_get_armed_project_blank_means_disarmed(db):
-    assert gd.get_armed_project(db) is None
-    db.set_setting(gd.ARMED_PROJECT_KEY, "  ")
-    assert gd.get_armed_project(db) is None
-    _arm(db)
-    assert gd.get_armed_project(db) == "INBOX"
+def test_get_armed_project_derived_from_active_minus_disarmed(db):
+    """REGRESSION PIN (rewritten 2026-06-30, was P7 'blank means disarmed'):
+    get_armed_project is now DERIVED — first active project not in the disarmed
+    set, else None. (init_db always seeds INBOX, so we drive 'None' by disarming
+    the whole active set rather than via an empty DB.)"""
+    db.create_project(name="Solo", objective="s")
+    active = [p["id"] for p in db.list_projects()]
+    assert gd.get_armed_project(db) == active[0]  # first active, none disarmed
+    import juggle_autopilot_state as ap
+    ap.disarm_all(db, active)
+    assert gd.get_armed_project(db) is None  # every active project disarmed
 
 
 # ── atomic claim (DA B4) ───────────────────────────────────────────────────────
@@ -217,8 +222,8 @@ def test_hydration_uses_topic_handoff_not_junk(db):
 
 
 def test_tick_dispatches_without_arming(db):
-    """REGRESSION PIN (P7): tick dispatches all ready topics without any
-    armed-project setting — per-project arming is removed."""
+    """REGRESSION PIN (2026-06-30): default-armed — a ready topic dispatches with
+    NO disarm configured."""
     _mk_topic(db, "a")  # ready topic; no armed key needed after P7
     fake = FakeDispatch()
     stats = gd.graph_tick(db, dispatch_fn=fake)
@@ -357,20 +362,18 @@ def test_flat_dispatch_capacity_error_unbinds_and_defers(db):
     assert stats["deferred"] == ["a"]
 
 
-def test_tick_processes_all_topics_despite_settings_key_change(db):
-    """REGRESSION PIN (P7): clearing ARMED_PROJECT_KEY mid-dispatch must NOT
-    stop the tick — the armed key is dead data after P7. Both topics dispatch."""
+def test_tick_ignores_legacy_armed_key(db):
+    """REGRESSION PIN (rewritten 2026-06-30, was P7): the legacy
+    ARMED_PROJECT_KEY is dead data — writing it does NOT gate the tick. Default-
+    armed (empty DISARMED key) drives both topics."""
     _mk_topic(db, "a")
     _mk_topic(db, "b")
 
-    def key_clearing_dispatch(db_, thread_id, prompt, topic):
-        db_.set_setting(gd.ARMED_PROJECT_KEY, None)  # key change is ignored
+    def legacy_key_writer(db_, thread_id, prompt, topic):
+        db_.set_setting(gd.ARMED_PROJECT_KEY, "nonsense")  # ignored
 
-    stats = gd.graph_tick(db, dispatch_fn=key_clearing_dispatch)
-
+    stats = gd.graph_tick(db, dispatch_fn=legacy_key_writer)
     assert set(stats["dispatched"]) == {"a", "b"}
-    states = {tid_: tp.get_topic(db, tid_)["state"] for tid_ in ("a", "b")}
-    assert all(s == "running" for s in states.values())
 
 
 # ── DA round-2 (2026-06-10): dispatch window, retry cap, error hygiene ─────────
@@ -678,23 +681,15 @@ def test_each_thread_bound_to_its_topics_project(db):
         assert th and db.get_thread(th)["project_id"] == pid
 
 
-def test_all_projects_dispatched_regardless_of_settings_key(db):
-    """REGRESSION PIN (P7): ARMED_PROJECT_KEY changes mid-batch are ignored —
-    all projects dispatch regardless of what the settings key contains."""
+def test_all_projects_dispatched_when_none_disarmed(db):
+    """REGRESSION PIN (rewritten 2026-06-30, was P7): with no disarm, every
+    project dispatches regardless of the legacy armed key's contents."""
     for t_ in ("A1", "A2"):
         _mk_topic(db, t_, "P1")
     for t_ in ("B1", "B2"):
         _mk_topic(db, t_, "P2")
-
-    class SettingsKeyMutator(FakeDispatch):
-        def __call__(self, db_, thread_id, prompt, topic):
-            super().__call__(db_, thread_id, prompt, topic)
-            if topic["id"].startswith("A"):
-                db_.set_setting(gd.ARMED_PROJECT_KEY, "P2")  # ignored by tick
-
-    stats = gd.graph_tick(db, dispatch_fn=SettingsKeyMutator())
-    dispatched = set(stats["dispatched"])
-    assert {"A1", "A2", "B1", "B2"} <= dispatched
+    stats = gd.graph_tick(db, dispatch_fn=FakeDispatch())
+    assert {"A1", "A2", "B1", "B2"} <= set(stats["dispatched"])
 
 
 def test_poisoned_project_scan_does_not_block_others(db, monkeypatch):
@@ -801,3 +796,65 @@ def test_sweep_stale_claims_reads_nodes_only(db):
     row = db._connect().execute(
         "SELECT state FROM nodes WHERE id='s'").fetchone()
     assert row[0] == "ready"
+
+
+# ── per-project disarm gate (restored 2026-06-30, default-armed) ──────────────
+
+import juggle_autopilot_state as _ap  # noqa: E402
+
+
+def _disarm(db, *pids):
+    _ap.set_disarmed_projects(db, list(pids))
+
+
+def test_disarm_excludes_project_from_tick(db):
+    """REGRESSION PIN (2026-06-30, user-approved restore): disarming a project
+    removes it from the tick's dispatch selection — only the armed project's
+    topic dispatches."""
+    _mk_topic(db, "A1", "P1")
+    _mk_topic(db, "B1", "P2")
+    _disarm(db, "P2")
+    fd = FakeDispatch()
+    stats = gd.graph_tick(db, dispatch_fn=fd)
+    assert stats["dispatched"] == ["A1"]
+    assert tp.get_topic(db, "B1")["state"] in ("open", "ready")  # never claimed
+    assert {c[2] for c in fd.calls} == {"A1"}
+
+
+def test_arm_project_redispatches_in_tick(db):
+    """REGRESSION PIN (2026-06-30): re-arming a previously disarmed project
+    restores its dispatch on the next tick."""
+    _mk_topic(db, "A1", "P1")
+    _mk_topic(db, "B1", "P2")
+    _disarm(db, "P2")
+    gd.graph_tick(db, dispatch_fn=FakeDispatch())  # B1 skipped
+    assert tp.get_topic(db, "B1")["state"] in ("open", "ready")
+    _ap.arm_project(db, "P2")  # re-arm
+    stats = gd.graph_tick(db, dispatch_fn=FakeDispatch())
+    assert "B1" in stats["dispatched"]
+
+
+def test_empty_disarmed_drives_all_active(db):
+    """BACK-COMPAT PIN (2026-06-30): an empty disarmed set is behaviour-
+    identical to P7 'tick drives all active' — every ready topic dispatches."""
+    _mk_topic(db, "A1", "P1")
+    _mk_topic(db, "B1", "P2")
+    assert _ap.get_disarmed_projects(db) == []
+    stats = gd.graph_tick(db, dispatch_fn=FakeDispatch())
+    assert sorted(stats["dispatched"]) == ["A1", "B1"]
+
+
+def test_disarm_snapshot_at_tick_start(db):
+    """REGRESSION PIN (2026-06-30, rewrite of P7 'regardless of settings key'):
+    the disarmed set is read ONCE at tick start; a mid-tick disarm mutation does
+    not retroactively cancel work already selected this pass."""
+    _mk_topic(db, "A1", "P1")
+    _mk_topic(db, "B1", "P2")
+
+    class DisarmMidTick(FakeDispatch):
+        def __call__(self, db_, thread_id, prompt, topic):
+            super().__call__(db_, thread_id, prompt, topic)
+            _ap.set_disarmed_projects(db_, ["P1", "P2"])  # ignored for THIS tick
+
+    stats = gd.graph_tick(db, dispatch_fn=DisarmMidTick())
+    assert sorted(stats["dispatched"]) == ["A1", "B1"]
