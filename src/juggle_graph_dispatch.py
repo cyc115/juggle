@@ -329,13 +329,13 @@ def _dispatch_flat_task_fallback(
                     dispatch(db, thread_id, hydrate_for_task(db, pid, task), task)
                 except CapacityError:
                     db.archive_thread(thread_id)
-                    db_graph.bind_thread(db, task_id, None)
+                    db_graph.set_task_thread(db, task_id, None)
                     db_graph.task_transition(db, task_id, "stale_reset")
                     stats["deferred"].append(task_id)
                     break
                 except Exception as e:
                     db.archive_thread(thread_id)
-                    db_graph.bind_thread(db, task_id, None)
+                    db_graph.set_task_thread(db, task_id, None)
                     stats["errors"].append(task_id)
                     fails = _dispatch_fails.get(fail_key, 0) + 1
                     _dispatch_fails[fail_key] = fails

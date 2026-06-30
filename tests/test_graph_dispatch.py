@@ -318,6 +318,45 @@ def test_tick_capacity_error_defers_quietly(db):
     assert db.get_open_action_items() == []  # no spam for capacity defers
 
 
+# ── flat-project dispatch error-path recovery (regression pin) ────────────────
+
+
+def test_flat_dispatch_generic_error_unbinds_task_not_stuck_dispatching(db):
+    """Regression pin (2026-06-30): flat-project dispatch error handler crashed on
+    missing db_graph.bind_thread → task stuck 'dispatching', agent idle (P9 R1).
+    The `except Exception` handler in _dispatch_flat_task_fallback must cleanly
+    UNBIND the task (set_task_thread(..., None)) and stale_reset it instead of
+    AttributeError-ing on a non-existent db_graph.bind_thread."""
+    _mk(db, "a")  # flat task in INBOX (no topic) → flat fallback owns it
+    stats = {"dispatched": [], "swept": [], "deferred": [], "errors": []}
+
+    gd._dispatch_flat_task_fallback(
+        db, ["INBOX"], stats, FakeDispatch(exc=RuntimeError("send-task boom"))
+    )
+
+    task = g.get_task(db, "a")
+    assert task["state"] != "dispatching", "task left stuck mid-dispatch"
+    assert task["thread_id"] is None, "task not unbound from its thread"
+    assert stats["errors"] == ["a"]
+
+
+def test_flat_dispatch_capacity_error_unbinds_and_defers(db):
+    """Same incident (2026-06-30), CapacityError branch: it also called the
+    missing db_graph.bind_thread. The handler must unbind + stale_reset + defer
+    without raising AttributeError."""
+    _mk(db, "a")
+    stats = {"dispatched": [], "swept": [], "deferred": [], "errors": []}
+
+    gd._dispatch_flat_task_fallback(
+        db, ["INBOX"], stats, FakeDispatch(exc=gd.CapacityError("pool full"))
+    )
+
+    task = g.get_task(db, "a")
+    assert task["state"] != "dispatching", "task left stuck mid-dispatch"
+    assert task["thread_id"] is None, "task not unbound from its thread"
+    assert stats["deferred"] == ["a"]
+
+
 def test_tick_processes_all_topics_despite_settings_key_change(db):
     """REGRESSION PIN (P7): clearing ARMED_PROJECT_KEY mid-dispatch must NOT
     stop the tick — the armed key is dead data after P7. Both topics dispatch."""
