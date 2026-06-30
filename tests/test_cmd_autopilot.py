@@ -17,7 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from juggle_db import JuggleDB  # noqa: E402
 import juggle_cmd_autopilot as ap  # noqa: E402
-from juggle_graph_dispatch import ARMED_PROJECT_KEY  # noqa: E402
+from juggle_autopilot_state import DISARMED_PROJECT_KEY  # noqa: E402
+import juggle_autopilot_state as st  # noqa: E402
 
 
 @pytest.fixture
@@ -48,29 +49,43 @@ def _args(db_path: str, command: str, project: str | None = None, **kw) -> Names
     )
 
 
-# ── P7 pins — arm/disarm must exit non-zero ───────────────────────────────────
+# ── arm / disarm (restored 2026-06-30) ────────────────────────────────────────
 
 
-def test_arm_exits_nonzero_p7(db_path, flag, capsys):
-    """REGRESSION PIN (P7): `autopilot arm` must exit 1 — arming is removed."""
-    with pytest.raises(SystemExit) as ei:
-        ap.cmd_autopilot(_args(db_path, "arm", "INBOX"))
-    assert ei.value.code == 1
+def _mk_project(db, name="Alpha"):
+    return db.create_project(name=name, objective=name.lower())
 
 
-def test_disarm_exits_nonzero_p7(db_path, flag, capsys):
-    """REGRESSION PIN (P7): `autopilot disarm` must exit 1 — arming is removed."""
-    with pytest.raises(SystemExit) as ei:
-        ap.cmd_autopilot(_args(db_path, "disarm", "INBOX"))
-    assert ei.value.code == 1
+def test_disarm_adds_to_exclusion_set(db_path, db, flag, capsys):
+    """REGRESSION PIN (2026-06-30, replaces P7 'arm exits 1'): `autopilot disarm
+    <pid>` succeeds and records the project in the disarmed set."""
+    pid = _mk_project(db)
+    ap.cmd_autopilot(_args(db_path, "disarm", pid))
+    assert st.get_disarmed_projects(db) == [pid]
 
 
-def test_arm_prints_removal_message_p7(db_path, flag, capsys):
-    """REGRESSION PIN (P7): arm exit message mentions P7 removal."""
-    with pytest.raises(SystemExit):
-        ap.cmd_autopilot(_args(db_path, "arm", "INBOX"))
-    err = capsys.readouterr().err
-    assert "removed" in err.lower() or "P7" in err
+def test_arm_removes_from_exclusion_set(db_path, db, flag, capsys):
+    """REGRESSION PIN (2026-06-30, replaces P7 'disarm exits 1'): `autopilot arm
+    <pid>` re-arms a previously disarmed project."""
+    pid = _mk_project(db)
+    st.disarm_project(db, pid)
+    ap.cmd_autopilot(_args(db_path, "arm", pid))
+    assert st.get_disarmed_projects(db) == []
+
+
+def test_arm_all_clears_exclusion_set(db_path, db, flag, capsys):
+    p1, p2 = _mk_project(db, "A"), _mk_project(db, "B")
+    st.disarm_all(db, [p1, p2])
+    ap.cmd_autopilot(_args(db_path, "arm", None))  # no project = arm-all
+    assert st.get_disarmed_projects(db) == []
+
+
+def test_disarm_all_excludes_every_active(db_path, db, flag, capsys):
+    _mk_project(db, "A"), _mk_project(db, "B")
+    ap.cmd_autopilot(_args(db_path, "disarm", None))  # no project = disarm-all
+    # every active project is now disarmed
+    active = {p["id"] for p in db.list_projects()}
+    assert set(st.get_disarmed_projects(db)) == active
 
 
 # ── on / off ─────────────────────────────────────────────────────────────────
@@ -132,19 +147,32 @@ def test_cli_registers_autopilot_subcommand():
         env={**os.environ, "_JUGGLE_TEST_DB": os.environ.get("_JUGGLE_TEST_DB", "")},
     )
     assert r.returncode == 0
-    for sub in ("on", "off", "status"):
+    for sub in ("on", "off", "status", "arm", "disarm"):
         assert sub in r.stdout
 
 
-def test_cli_arm_exits_nonzero_via_subprocess():
-    """REGRESSION PIN (P7): `juggle autopilot arm` via CLI exits non-zero."""
+def test_cli_arm_help_succeeds_via_subprocess():
+    """REGRESSION PIN (2026-06-30, replaces P7 'arm exits non-zero'): the arm
+    subcommand is registered and its --help exits 0."""
     import subprocess
 
     r = subprocess.run(
         [sys.executable, os.path.join(os.path.dirname(__file__), "..", "src", "juggle_cli.py"),
-         "autopilot", "arm", "INBOX"],
-        capture_output=True,
-        text=True,
-        env={**os.environ, "_JUGGLE_TEST_DB": "/tmp/does-not-exist.db"},
+         "autopilot", "arm", "--help"],
+        capture_output=True, text=True,
+        env={**os.environ},
     )
-    assert r.returncode != 0
+    assert r.returncode == 0
+
+
+def test_status_json_reports_disarmed_set(db_path, db, flag, capsys):
+    """REGRESSION PIN (2026-06-30): status --json surfaces the disarmed set and
+    the derived armed set so the feature is agent-inspectable."""
+    import json
+
+    pid = _mk_project(db)
+    st.disarm_project(db, pid)
+    ap.cmd_autopilot(_args(db_path, "status", json_out=True))
+    data = json.loads(capsys.readouterr().out)
+    assert data["disarmed_projects"] == [pid]
+    assert pid not in data["armed_projects"]
