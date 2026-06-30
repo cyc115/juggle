@@ -24,8 +24,11 @@ from dbops import db_graph, db_topics
 from dbops.schema import _now
 from juggle_autopilot_state import (  # noqa: F401 — re-exported for compat
     ARMED_PROJECT_KEY,
+    DISARMED_PROJECT_KEY,
     get_armed_project,
     get_armed_projects,
+    get_disarmed_projects,
+    select_armed,
 )
 
 STALE_CLAIM_SECS = 600  # dispatching >10 min with no thread → back to ready
@@ -178,7 +181,9 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     from juggle_graph_status import IN_FLIGHT_STATES
 
     stats: dict = {"dispatched": [], "swept": [], "deferred": [], "errors": []}
-    all_projects = _all_project_ids(db)
+    # Default-armed filter: drop disarmed projects (snapshot once per tick).
+    # Empty disarmed set → unchanged list (behaviour-identical to drive-all).
+    all_projects = select_armed(_all_project_ids(db), get_disarmed_projects(db))
     dispatch = dispatch_fn or _dispatch_via_pool
 
     ready_by_project: dict[str, list[dict]] = {}

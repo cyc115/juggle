@@ -1,9 +1,10 @@
-"""Tests for juggle_autopilot_state — autopilot global toggle accessors.
+"""Tests for juggle_autopilot_state — default-armed exclusion-set accessors.
 
-P7: per-project arming is REMOVED. arm_project/disarm_project raise RuntimeError.
-The module retains get_armed_projects (returns []) and get_armed_project (returns
-None) as compat stubs so existing importers don't break on import. The
-autopilot_armed_project settings key is preserved as dead data — reads are safe.
+2026-06-30 (user-approved restore of per-project arm/disarm): per-project
+arming is BACK with a default-armed semantic. The stored authority is a
+DISARMED exclusion set (DISARMED_PROJECT_KEY); an empty set means every active
+project is armed. arm_project removes from the set, disarm_project adds to it.
+These pins replace the P7 pins that asserted arm/disarm raise RuntimeError.
 """
 from __future__ import annotations
 
@@ -26,44 +27,105 @@ def db(tmp_path: Path) -> JuggleDB:
     return d
 
 
-def test_empty_and_blank_mean_disarmed(db):
-    assert st.get_armed_projects(db) == []
-    db.set_setting(st.ARMED_PROJECT_KEY, "  ")
-    assert st.get_armed_projects(db) == []
+# ── disarmed-set CSV accessor (moved parse/validate, same logic, new key) ──────
 
-
-def test_legacy_scalar_reads_as_one_element_set(db):
-    """REGRESSION PIN (2026-06-10): scalar→set migration. A DB armed by the
-    OLD code path (plain scalar set_setting) must read back as a 1-element
-    armed set — backward compat is structural, not migratory."""
-    db.set_setting(st.ARMED_PROJECT_KEY, "juggle")
-    assert st.get_armed_projects(db) == ["juggle"]
-    assert st.get_armed_project(db) == "juggle"  # compat shim
+def test_empty_and_blank_mean_no_disarm(db):
+    assert st.get_disarmed_projects(db) == []
+    db.set_setting(st.DISARMED_PROJECT_KEY, "  ")
+    assert st.get_disarmed_projects(db) == []
 
 
 def test_csv_parse_strip_dedupe_order(db):
-    db.set_setting(st.ARMED_PROJECT_KEY, " a , b ,a,, c ")
-    assert st.get_armed_projects(db) == ["a", "b", "c"]
+    db.set_setting(st.DISARMED_PROJECT_KEY, " a , b ,a,, c ")
+    assert st.get_disarmed_projects(db) == ["a", "b", "c"]
 
 
 def test_pre_migration_db_degrades_to_empty(tmp_path):
     d = JuggleDB(db_path=str(tmp_path / "raw.db"))  # no init_db → no settings table
-    assert st.get_armed_projects(d) == []
+    assert st.get_disarmed_projects(d) == []
     assert st.get_armed_project(d) is None
 
 
-# ---------------------------------------------------------------------------
-# P7 pins — arm/disarm raise RuntimeError
-# ---------------------------------------------------------------------------
+def test_set_empty_clears_key(db):
+    st.set_disarmed_projects(db, ["x"])
+    assert db.get_setting(st.DISARMED_PROJECT_KEY) == "x"
+    st.set_disarmed_projects(db, [])
+    assert db.get_setting(st.DISARMED_PROJECT_KEY) is None
 
 
-def test_arm_project_raises_p7(db):
-    """REGRESSION PIN (P7): arm_project must raise RuntimeError — arming is gone."""
-    with pytest.raises(RuntimeError, match="P7"):
-        st.arm_project(db, "proj")
+# ── select_armed primitive (PURE — the single exclusion seam) ──────────────────
+
+def test_select_armed_empty_disarmed_returns_all():
+    assert st.select_armed(["a", "b", "c"], []) == ["a", "b", "c"]
 
 
-def test_disarm_project_raises_p7(db):
-    """REGRESSION PIN (P7): disarm_project must raise RuntimeError — arming is gone."""
-    with pytest.raises(RuntimeError, match="P7"):
-        st.disarm_project(db, "proj")
+def test_select_armed_excludes_and_preserves_order():
+    assert st.select_armed(["a", "b", "c", "d"], ["b", "d"]) == ["a", "c"]
+
+
+def test_select_armed_accepts_set_or_list():
+    assert st.select_armed(["a", "b"], {"a"}) == ["b"]
+
+
+# ── arm/disarm mutate the disarmed exclusion set ───────────────────────────────
+
+def test_disarm_project_adds_to_disarmed(db):
+    """REGRESSION PIN (2026-06-30, user-approved restore — replaces P7
+    'disarm raises RuntimeError'): disarm_project adds the id to the exclusion
+    set so the tick stops driving it."""
+    assert st.disarm_project(db, "proj") == ["proj"]
+    assert st.get_disarmed_projects(db) == ["proj"]
+    assert st.disarm_project(db, "proj") == ["proj"]  # idempotent
+
+
+def test_arm_project_removes_from_disarmed(db):
+    """REGRESSION PIN (2026-06-30, user-approved restore — replaces P7
+    'arm raises RuntimeError'): arm_project removes the id from the exclusion
+    set (re-arms it); a no-op when already armed."""
+    st.set_disarmed_projects(db, ["a", "b"])
+    assert st.arm_project(db, "a") == ["b"]
+    assert st.get_disarmed_projects(db) == ["b"]
+    assert st.arm_project(db, "never-disarmed") == ["b"]  # no-op, no error
+
+
+def test_arm_all_clears_set(db):
+    st.set_disarmed_projects(db, ["a", "b"])
+    st.arm_all(db)
+    assert st.get_disarmed_projects(db) == []
+
+
+def test_disarm_all_excludes_every_given_id(db):
+    st.disarm_all(db, ["a", "b", "c"])
+    assert st.get_disarmed_projects(db) == ["a", "b", "c"]
+
+
+def test_validate_rejects_bad_ids(db):
+    with pytest.raises(ValueError):
+        st.disarm_project(db, "has,comma")
+    with pytest.raises(ValueError):
+        st.disarm_project(db, "has space")
+
+
+# ── derived armed accessors (default-armed) ────────────────────────────────────
+
+def test_get_armed_projects_default_armed(db):
+    """No disarm → every active project is armed (default-armed)."""
+    db.create_project(name="Alpha", objective="a")
+    db.create_project(name="Beta", objective="b")
+    ids = {p["id"] for p in db.list_projects()}
+    assert set(st.get_armed_projects(db)) == ids
+
+
+def test_get_armed_projects_excludes_disarmed(db):
+    db.create_project(name="Alpha", objective="a")
+    db.create_project(name="Beta", objective="b")
+    projects = db.list_projects()
+    beta = next(p["id"] for p in projects if p["name"] == "Beta")
+    st.disarm_project(db, beta)
+    armed = st.get_armed_projects(db)
+    assert beta not in armed
+    assert len(armed) == len(projects) - 1
+
+
+def test_get_armed_project_first_or_none(db):
+    assert st.get_armed_project(db) in (None, *[p["id"] for p in db.list_projects()])
