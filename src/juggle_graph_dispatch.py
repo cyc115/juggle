@@ -180,7 +180,17 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     from juggle_graph_scheduler import interleave_ready
     from juggle_graph_status import IN_FLIGHT_STATES
 
-    stats: dict = {"dispatched": [], "swept": [], "deferred": [], "errors": []}
+    stats: dict = {"dispatched": [], "swept": [], "deferred": [], "errors": [],
+                   "reconciled": []}
+    # Reconcile orphaned in-flight task nodes BEFORE the ready-set scan (R1 wedge,
+    # 2026-06-30): a kind='task' node stuck in {dispatching, running, integrating}
+    # with a NULL/dead dispatch thread is healed off the wedge so it re-enters the
+    # ready set this same tick. A node bound to a LIVE (busy) agent is never reset.
+    try:
+        from juggle_graph_reconcile import reconcile_orphaned_inflight
+        stats["reconciled"] = reconcile_orphaned_inflight(db)
+    except Exception:
+        _log.exception("graph tick: orphan reconcile failed — continuing")
     # Default-armed filter: drop disarmed projects (snapshot once per tick).
     # Empty disarmed set → unchanged list (behaviour-identical to drive-all).
     all_projects = select_armed(_all_project_ids(db), get_disarmed_projects(db))
