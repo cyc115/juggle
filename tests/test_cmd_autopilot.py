@@ -17,7 +17,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from juggle_db import JuggleDB  # noqa: E402
 import juggle_cmd_autopilot as ap  # noqa: E402
-from juggle_autopilot_state import DISARMED_PROJECT_KEY  # noqa: E402
 import juggle_autopilot_state as st  # noqa: E402
 
 
