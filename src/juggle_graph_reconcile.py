@@ -11,7 +11,7 @@ Must not own: the state machine (dbops.db_node_machine), task CRUD / writes
 (dbops.db_graph — every write here goes through ``task_transition``), or the
 dispatcher claim loop (juggle_graph_dispatch).
 
-Incident (2026-06-30): node R1 stuck 'dispatching' with NULL dispatch_thread_id
+Incident (2026-06-30): node R1 stuck 'dispatching' with a NULL dispatch thread
 (residue of an earlier bind_thread crash). The watchdog skips tick-owned states
 and the existing orphan recovery operates on THREADS, not on a task NODE wedged
 in 'dispatching' — so it never self-healed and required a manual stale_reset.
