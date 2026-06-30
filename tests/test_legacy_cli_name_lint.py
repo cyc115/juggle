@@ -17,8 +17,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 _ROOT = Path(__file__).parent.parent
 _LEGACY = set((_ROOT / "tests" / "data" / "legacy_names.txt").read_text().split())
 _SCAN_DIRS = ("commands", "skills", "scripts")
