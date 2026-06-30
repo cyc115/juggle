@@ -82,7 +82,7 @@ PostToolUse HOOK
 [Agent completes]
   │
   ▼
-juggle_cli.py complete-agent X "<summary>"
+juggle_cli.py agent complete X "<summary>"
   ├─ threads.status = "done"
   └─ notifications row created (delivered=0)
   │
@@ -111,7 +111,7 @@ Stop HOOK (session end)
 | `open_questions` | TEXT | JSON array of pending questions |
 | `last_user_intent` | TEXT | Last inferred user intent |
 | `agent_task_id` | TEXT | Background agent task ID |
-| `agent_result` | TEXT | Result summary from complete-agent |
+| `agent_result` | TEXT | Result summary from agent complete |
 | `last_dispatched_task` | TEXT | UUID of last dispatched agent task |
 | `last_dispatched_role` | TEXT | Role of last agent (researcher/coder/planner) |
 | `last_dispatched_model` | TEXT | Model used by last agent |
@@ -235,7 +235,7 @@ The `[JUGGLE_THREAD:X]` tag is required — the PostToolUse hook uses it to link
 
 ### Completion (LLM calls CLI)
 ```bash
-python3 juggle_cli.py complete-agent B "3 findings from research"
+python3 juggle_cli.py agent complete B "3 findings from research"
 # Updates: threads.agent_result, threads.status = "done"
 # Creates: notification (delivered=0)
 ```
@@ -249,73 +249,89 @@ python3 juggle_cli.py fail-agent B "API timeout"
 
 ## CLI Commands
 
+Commands use a uniform **resource verb** grammar (e.g. `thread create`,
+`agent complete`). Entry verbs (`start`, `stop`, `doctor`) stay flat. Legacy
+flat forms (`create-thread`, `complete-agent`, …) still resolve through the
+backward-compat alias shim but emit a stderr deprecation notice; see
+`juggle aliases --json` for the full legacy→canonical map.
+
 ### Thread Management
 | Command | Description |
 |---|---|
-| `start [--session-id ID]` | Init DB, activate juggle mode |
-| `stop` | Deactivate juggle mode |
-| `create-thread <label>` | Create new thread |
-| `switch-thread <id>` | Switch to thread (archives previous) |
-| `update-summary <id> <text>` | Save thread summary |
-| `update-meta <id> [--add-decision TEXT] [--add-question TEXT] [--resolve-question TEXT]` | Update thread metadata |
-| `close-thread <id>` | Close/archive thread |
-| `show-topics` | List all threads with status |
-| `get-archive-candidates` | List threads eligible for archiving |
-| `archive-thread <id>` | Archive thread |
-| `unarchive-thread <id>` | Restore archived thread |
-| `get-stale-threads [--threshold N]` | List threads with stale summaries |
+| `start [--session-id ID]` | Init DB, activate juggle session |
+| `stop` | Deactivate juggle session |
+| `thread create <label>` | Create new thread |
+| `thread switch <id>` | Switch to thread (archives previous) |
+| `thread update <id> [--add-decision TEXT] [--add-question TEXT] [--resolve-question TEXT]` | Update thread metadata |
+| `thread close <id>` | Close/archive thread |
+| `thread list` | List all threads with status |
+| `thread archive-candidates` | List threads eligible for archiving |
+| `thread archive <id>` | Archive thread |
+| `thread unarchive <id>` | Restore archived thread |
+| `thread list-stale [--threshold N]` | List threads with stale summaries |
+| `thread set-summarized-count <id> <count>` | Update message summary count |
+| `thread messages <id> [--limit N] [--plain]` | Show messages for thread |
 
 ### Agent Management
 | Command | Description |
 |---|---|
-| `spawn-agent <role> [--model MODEL]` | Start tmux agent (researcher/coder/planner) |
-| `list-agents` | List all tmux agents |
-| `get-agent <id> [--role ROLE] [--model MODEL]` | Get idle agent or spawn new |
-| `release-agent <id> [--force]` | Return agent to idle pool |
-| `decommission-agent <id>` | Kill agent pane + remove from DB |
-| `check-agents` | List agents as JSON |
-| `send-task <agent_id> <prompt_file>` | Send prompt to agent |
-| `set-watchdog <agent_id> <minutes\|off>` | Configure watchdog threshold |
-| `stop-watchdog` | Kill watchdog daemon |
+| `agent spawn <role> [--model MODEL]` | Start tmux agent (researcher/coder/planner) |
+| `agent list` | List all tmux agents |
+| `agent get <id> [--role ROLE] [--model MODEL]` | Get idle agent or spawn new |
+| `agent release <id> [--force]` | Return agent to idle pool |
+| `agent decommission <id>` | Kill agent pane + remove from DB |
+| `agent check` | List agents as JSON |
+| `agent send-task <agent_id> <prompt_file>` | Send prompt to agent |
+| `agent set-watchdog <agent_id> <minutes\|off>` | Configure watchdog threshold |
+| `watchdog stop` | Kill watchdog daemon |
 
 ### Task Completion
 | Command | Description |
 |---|---|
-| `complete-agent <id> <summary> [--retain TEXT] [--open-questions JSON] [--role ROLE]` | Mark agent done, create notification |
-| `fail-agent <id> <error> [--type TYPE] [--max-retries N] [--recovery-dispatched]` | Mark agent failed |
-| `request-action <id> <message> [--type TYPE] [--priority LEVEL]` | Create action item |
-| `ack-action <action_id>` | Dismiss action item |
-| `list-actions` | List open action items |
-| `notify <id> <message>` | Surface notification in cockpit |
+| `agent complete <id> <summary> [--retain TEXT] [--open-questions JSON] [--role ROLE]` | Mark agent done, create notification |
+| `agent fail <id> <error> [--type TYPE] [--max-retries N] [--recovery-dispatched]` | Mark agent failed |
+| `action create <id> <message> [--type TYPE] [--priority LEVEL]` | Create action item |
+| `action ack <action_id>` | Dismiss action item |
+| `action list` | List open action items |
+| `action next` | Switch to highest-priority action item |
+| `action notify <id> <message>` | Surface notification in cockpit |
 
 ### Memory & Context
 | Command | Description |
 |---|---|
-| `get-context` | Print context string for current thread |
-| `recall <id> <query>` | Recall memories from Hindsight (blocking) |
-| `recall-bg <id> <query>` | Recall memories async, return immediately |
-| `recall-if-cold <id> <query>` | Recall only if thread is cold |
-| `retain <id> <content> [--context TYPE]` | Retain content as memory |
-| `grep-vault <terms...> [--vault-path PATH]` | Search vault for keywords |
-| `digest [--since WHEN] [--save]` | Summarize activity since cutoff |
+| `context show` | Print context string for current thread |
+| `context digest [--since WHEN] [--save]` | Summarize activity since cutoff |
+| `memory retain <id> <content> [--context TYPE]` | Retain content as memory |
+| `vault grep <terms...>` | Search vault for keywords |
+| `vault path` | Print absolute vault root path |
+| `vault name` | Print vault name |
 
 ### Research & Utilities
 | Command | Description |
 |---|---|
-| `research <topic> [--no-web] [--verbose] [--web-results N]` | Search research KB |
-| `get-messages <id> [--limit N] [--plain]` | Show messages for thread |
-| `init-db` | Initialize DB schema |
+| `research run <topic> [--no-web] [--verbose] [--web-results N]` | Search research KB |
+| `db init` | Initialize DB schema |
 | `doctor [--dry-run]` | Migrate config + DB to current schema |
-| `next-action` | Switch to highest-priority action item |
-| `set-summarized-count <id> <count>` | Update message summary count |
-| `open-in-editor <file>` | Open file in persistent nvim |
+| `file open <file>` | Open file in persistent nvim |
 
 ### Scheduled Routines
 | Command | Description |
 |---|---|
-| `schedule-dogfood [--dry-run]` | Run /schedule:dogfood (Sat 03:00) |
-| `schedule-autofix [--dry-run]` | Run /schedule:autofix (Sun 03:00) |
-| `schedule-reflect [--dry-run]` | Run /schedule:reflect (Mon 03:00) |
+| `schedule dogfood [--dry-run]` | Run /schedule:dogfood (Sat 03:00) |
+| `schedule autofix [--dry-run]` | Run /schedule:autofix (Sun 03:00) |
+| `schedule reflect [--dry-run]` | Run /schedule:reflect (Mon 03:00) |
+
+### Removed commands (no replacement)
+Flagged per the grammar-migration spec §7 — these had no resource-verb home and
+were dropped, not aliased:
+
+| Removed command | Notes |
+|---|---|
+| `update-summary <id> <text>` | Summaries are written by the summarizer; manual save removed. Use `thread set-summarized-count` for the message-count pointer only. |
+| `recall <id> <query>` | Hindsight blocking recall removed. |
+| `recall-bg <id> <query>` | Hindsight async recall removed. |
+| `recall-if-cold <id> <query>` | Hindsight cold-thread recall removed. |
+| `mode` | No-op selector removed. |
 
 ## Status Symbols
 

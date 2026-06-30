@@ -1,6 +1,6 @@
 # Self-Heal Diagnosis Agent Prompts
 
-Fill in `<…>` tokens from the relevant `error_events` row (use `juggle list-selfheal` to retrieve).
+Fill in `<…>` tokens from the relevant `error_events` row (use `juggle selfheal list` to retrieve).
 
 ---
 
@@ -44,13 +44,13 @@ CAVEATS: <if any>
 ### Completion
 
 After diagnosis:
-1. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <thread_id> \
+1. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py action create <thread_id> \
      "Self-heal A: <exc_type> in <entrypoint> — <one-line root cause>" \
      --type decision --priority high
 2. Note the returned action_item_id.
-3. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py selfheal-set-status <error_event_id> \
+3. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py selfheal set-status <error_event_id> \
      awaiting_approval --action-item-id <action_item_id>
-4. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> \
+4. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <thread_id> \
      "Diagnosis complete for error_event <id>. Action item #<action_item_id> filed." \
      --retain "Self-heal A sig=<sig8>: <root cause in 10 words>"
 
@@ -107,13 +107,13 @@ CAVEATS: <if any>
 ### Completion
 
 After diagnosis:
-1. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py request-action <thread_id> \
+1. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py action create <thread_id> \
      "Self-heal B: <tool> error via <juggle_ref_basename> — <one-line root cause>" \
      --type decision --priority high
 2. Note the returned action_item_id.
-3. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py selfheal-set-status <error_event_id> \
+3. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py selfheal set-status <error_event_id> \
      awaiting_approval --action-item-id <action_item_id>
-4. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py complete-agent <thread_id> \
+4. uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <thread_id> \
      "Diagnosis complete for error_event <id>. Action item #<action_item_id> filed." \
      --retain "Self-heal B sig=<sig8>: <root cause in 10 words>"
 
@@ -126,9 +126,9 @@ NEVER auto-apply the patch.
 
 When you see `[SELFHEAL-A]` or `[SELFHEAL-B]` from `juggle-selfheal-monitor`:
 
-1. `uv run juggle_cli.py list-selfheal` — get `error_event_id` and full details.
-2. If the row is stuck in `diagnosing`: `uv run juggle_cli.py selfheal-reset-diagnosing <id>`.
+1. `uv run juggle_cli.py selfheal list` — get `error_event_id` and full details.
+2. If the row is stuck in `diagnosing`: `uv run juggle_cli.py selfheal reset <id>`.
 3. Cap check: if another row is `diagnosing`, note "queued" inline; do not dispatch.
 4. Dispatch a researcher agent using the Class A or Class B prompt above.
-   Fill in `<id>`, `<signature_hash>`, `<entrypoint>`, etc. from `list-selfheal` output.
+   Fill in `<id>`, `<signature_hash>`, `<entrypoint>`, etc. from `selfheal list` output.
    Use the current active thread for `<thread_id>`.

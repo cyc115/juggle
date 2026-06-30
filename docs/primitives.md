@@ -25,7 +25,7 @@ to **task** so the name reflects its function. The rename is full, not cosmetic:
 | --- | --- |
 | `graph_nodes` table | `graph_tasks` |
 | `node_id` column (`graph_edges`, `agent_runs`) | `task_id` |
-| `add-node` CLI | `add-task` |
+| node-era graph add-verb CLI | `graph add-task` |
 | `--force-node` flag | `--force-task` |
 | `create_node`, `get_node`, `node_transition`, … | `create_task`, `get_task`, `task_transition`, … |
 | `GraphNode` | `GraphTask` |
@@ -43,6 +43,6 @@ the migration on existing installs.
 
 ### Deprecated aliases (DO NOT REMOVE)
 
-`add-node` and `--force-node` remain as hidden aliases of `add-task` /
-`--force-task`. They are baked into the autopilot `UserPromptSubmit` hook,
+The node-era graph add-verb and `--force-node` remain as hidden aliases of
+`graph add-task` / `--force-task`. They are baked into the autopilot `UserPromptSubmit` hook,
 `commands/*.md`, and the global `CLAUDE.md` — breaking them detonates autopilot.

@@ -107,9 +107,9 @@ Notes:
   This is the "bring your own harness" path — no Python required.
 - **`supports_hooks: false`** means the harness does **not** run juggle's
   Claude Code hooks. Juggle compensates: the role anchor (role identity +
-  `complete-agent` completion command) is **inlined into the task prompt**
+  `agent complete` completion command) is **inlined into the task prompt**
   instead of injected via the `UserPromptSubmit` hook. Per-role tool telemetry
-  (`juggle agent-tools`) only has data for hook-capable harnesses.
+  (`juggle agent tools`) only has data for hook-capable harnesses.
 - `JUGGLE_IS_AGENT=1`, `JUGGLE_AGENT_ROLE=<role>` and (in audit mode)
   `JUGGLE_AGENT_AUDIT=1` are exported for **every** harness so juggle can still
   identify the agent process; you don't need to list them in `env`.

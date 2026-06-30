@@ -16,7 +16,7 @@ fail-closed-guards the prod DB (`_connect` raises on any prod-DB open). This
 INCLUDES the hook tests (`test_juggle_hooks.py`): they build a `JuggleDB` under
 `tmp_path` and monkeypatch `juggle_hooks.DB_PATH` / `CLAUDE_PLUGIN_DATA` to it,
 so they do NOT touch the shared `~/.claude/juggle/juggle.db`. The full suite is
-green from a fresh checkout with no `init-db` / `start` (the env vars below are
+green from a fresh checkout with no `db init` / `start` (the env vars below are
 still required — they are read at import).
 
 ```bash
@@ -34,7 +34,7 @@ subsetting `test_cmd` is rejected fail-loud — B2, 2026-06-21).
 Note: `juggle:doctor` only **migrates** an existing/stale DB — it does NOT create
 a fresh one (it prints "will be created on first juggle command"). To stand up a
 real DB for driving the CLI/cockpit manually (NOT needed for tests), use
-`uv run python src/juggle_cli.py init-db`, then `doctor` for later migrations.
+`uv run python src/juggle_cli.py db init`, then `doctor` for later migrations.
 
 ## Cockpit Development
 
