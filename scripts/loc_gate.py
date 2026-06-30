@@ -67,7 +67,8 @@ GRANDFATHERED: dict[str, int] = {
     "src/dbops/schema.py": 342,  # selfheal-v2 P1: VALID_ERROR_STATUSES constant
     "src/juggle_cockpit_graph_panel.py": 334,
     "src/juggle_dispatch_core.py": 321,
-    "src/juggle_cli_parsers_misc.py": 328,  # selfheal-v2 P1: list flags + propose-nonissue parser
+    # juggle_cli_parsers_misc.py removed — P9 R4 deleted the 4 flat parser walls
+    # (ported to the COMMANDS table; main() now builds via build_parser()).
     "src/dbops/agents.py": 320,
 }
 

@@ -126,11 +126,10 @@ def test_complete_agent_twice_on_terminal_task_does_not_crash(db, capsys):
 
 def test_complete_agent_handoff_cli_flag_registered():
     """--handoff must be wired into the complete-agent parser."""
-    import juggle_cli_parsers_agents as parsers
+    from juggle_cli_commands_agents import AGENT_COMMANDS
+    from juggle_cli_spec import build_parser
 
-    parser = argparse.ArgumentParser()
-    sub = parser.add_subparsers(dest="command")
-    parsers.register(sub)
+    parser = build_parser(AGENT_COMMANDS)
     args = parser.parse_args(
         ["complete-agent", "T", "summary", "--handoff", '{"files":["x.py"]}']
     )

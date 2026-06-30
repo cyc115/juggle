@@ -24,7 +24,21 @@ from juggle_cmd_threads import (
     cmd_unarchive_thread,
     cmd_update_meta,
 )
-from juggle_cli_parsers_threads import _doctor_dispatch
+
+
+def _doctor_dispatch(a):
+    """Run doctor and PROPAGATE its return code as the process exit code.
+
+    The top-level CLI dispatch discards ``func``'s return value, so a bare
+    ``cmd_doctor`` -> 1 would still exit 0. ``--pre-p8-check`` MUST exit nonzero
+    until both gates clear, so forward the code here via ``sys.exit``. The normal
+    doctor path returns 0 -> ``sys.exit(0)`` (unchanged observable behavior).
+
+    Relocated here from juggle_cli_parsers_threads (P9 R4 deleted that wall).
+    """
+    import sys
+
+    sys.exit(__import__("juggle_cmd_doctor").cmd_doctor(a) or 0)
 
 THREAD_COMMANDS: tuple[Cmd, ...] = (
     Cmd(None, "start", cmd_start,

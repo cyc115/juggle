@@ -111,10 +111,11 @@ from juggle_cmd_misc import (  # noqa: F401 — re-export (handlers moved 2026-0
     cmd_cockpit,
 )
 
-import juggle_cli_parsers_agents
-import juggle_cli_parsers_misc
-import juggle_cli_parsers_threads
 import juggle_cmd_autopilot
+from juggle_cli_spec import build_parser
+from juggle_cmd_graph import register_graph_parsers
+from juggle_cmd_runs import register_runs_parsers
+from juggle_cli_parsers_project import register_project_parsers
 
 
 def _obsidian_fallback(abs_file: str) -> None:
@@ -162,17 +163,43 @@ def cmd_open_in_editor(args):
     _obsidian_fallback(abs_file)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Juggle CLI - multi-topic conversation orchestrator"
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+def _subparsers_of(parser):
+    """Return the root _SubParsersAction created by build_parser()."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action
+    raise RuntimeError("build_parser produced no subparsers")
 
-    juggle_cli_parsers_threads.register(subparsers)
-    juggle_cli_parsers_agents.register(subparsers)
-    juggle_cli_parsers_misc.register(
-        subparsers, vault_path_default=str(_get_vault_root())
-    )
+
+def build_cli_parser(vault_path_default: str | None = None):
+    """Build the full juggle CLI parser.
+
+    The 51 flat commands come from the declarative COMMANDS table via
+    build_parser() (P9 R4 — replaces the four hand-written register() walls). The
+    already-grouped/conformant families (project/graph/project-graph/runs/
+    autopilot) and the entry-module verbs (open-in-editor/vault-path/vault-name/
+    verify) keep imperative registration and are layered on here.
+    """
+    if vault_path_default is None:
+        vault_path_default = str(_get_vault_root())
+
+    parser = build_parser()  # 51 flat COMMANDS + subparsers(dest="command")
+    parser.description = "Juggle CLI - multi-topic conversation orchestrator"
+    subparsers = _subparsers_of(parser)
+
+    # grep-vault --vault-path default is None in the static COMMANDS table; the
+    # entry point owns the runtime vault-root default (cmd_grep_vault hands it
+    # straight to grep), so re-inject it here.
+    grep_leaf = subparsers.choices.get("grep-vault")
+    if grep_leaf is not None:
+        for action in grep_leaf._actions:
+            if action.dest == "vault_path":
+                action.default = vault_path_default
+
+    # Out-of-scope groups (already noun-verb; not ported into COMMANDS).
+    register_graph_parsers(subparsers)
+    register_runs_parsers(subparsers)
+    register_project_parsers(subparsers)
     juggle_cmd_autopilot.register(subparsers)
 
     # open-in-editor (handler stays in this module — patch surface for tests)
@@ -187,14 +214,19 @@ def main():
     p_vault_name.set_defaults(func=cmd_vault_name)
 
     # verify — run the FULL suite ONCE (agent helper). Extra args (incl.
-    # leading-flag forms like `-k foo`) flow through via parse_known_args below,
-    # so no REMAINDER positional (which mishandles a leading flag) is declared.
+    # leading-flag forms like `-k foo`) flow through via parse_known_args in
+    # main(), so no REMAINDER positional (which mishandles a leading flag) here.
     p_verify = subparsers.add_parser(
         "verify",
         help="Run the FULL test suite once "
         "(extra args pass through to pytest)",
     )
     p_verify.set_defaults(func=cmd_verify, pytest_args=[])
+    return parser
+
+
+def main():
+    parser = build_cli_parser()
 
     # parse_known_args so `juggle verify` can pass arbitrary trailing args
     # (incl. leading-flag forms) through to pytest. For every OTHER command,

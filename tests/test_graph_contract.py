@@ -198,11 +198,10 @@ def test_send_task_refuses_task_bound_thread_in_tick_owned_state(db, tmp_path, m
 def test_send_task_force_task_flag_removed():
     """REGRESSION PIN (P7): --force-task is removed from the send-task parser.
     The parser must exit 2 (unknown flag) when --force-task is passed."""
-    import juggle_cli_parsers_agents as parsers
+    from juggle_cli_commands_agents import AGENT_COMMANDS
+    from juggle_cli_spec import build_parser
 
-    parser = argparse.ArgumentParser()
-    sub = parser.add_subparsers(dest="command")
-    parsers.register(sub)
+    parser = build_parser(AGENT_COMMANDS)
     # Valid invocation still works.
     args = parser.parse_args(["send-task", "AGENT", "/tmp/p.md"])
     assert not hasattr(args, "force_task") or args.force_task is None  # not present

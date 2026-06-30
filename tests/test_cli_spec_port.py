@@ -1,14 +1,15 @@
-"""P9 R3-port-threads: COMMANDS faithfully mirrors the 4 hand-written walls.
+"""P9 R3/R4: the LIVE CLI's flat commands match the COMMANDS table exactly.
 
-The COMMANDS table (juggle_cli_spec) must reproduce EXACTLY the flat subcommands
-the four register() walls (threads/agents/misc/selfheal) expose today — same verb
-names (legacy flat, no rename yet), same per-leaf arg signature, same handler
-objects. build_parser(COMMANDS) is still parallel + unused (R4 wires it), so these
-tests are the only thing pinning the port's fidelity.
+Originally (R3) this compared the COMMANDS table against the four hand-written
+register() walls. R4 deleted those walls and wired main() to build_parser(COMMANDS)
+via juggle_cli.build_cli_parser(). The same fidelity invariant now reads through
+the new seam: every flat command the LIVE CLI parser exposes must match the
+COMMANDS table's leaf signature + handler, and the group/entry-verb registration
+must not shadow or alter any of the 51 ported commands.
 
-Strategy: build the REAL parser by calling the wall register() functions, build the
-COMMANDS parser via build_parser(), and compare leaf signatures (positionals +
-option-string→dest) for every ported command.
+Strategy: build the live CLI parser (build_cli_parser) and the COMMANDS-only parser
+(build_parser), and compare leaf signatures (positionals + option-string→dest) for
+every ported command.
 """
 from __future__ import annotations
 
@@ -18,9 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import juggle_cli_parsers_agents as wa  # noqa: E402
-import juggle_cli_parsers_misc as wm  # noqa: E402
-import juggle_cli_parsers_threads as wt  # noqa: E402
+from juggle_cli import build_cli_parser  # noqa: E402
 from juggle_cli_commands import COMMANDS  # noqa: E402
 from juggle_cli_spec import build_parser  # noqa: E402
 
@@ -47,18 +46,14 @@ PORTED = {
     "selfheal-reset-diagnosing", "selfheal-propose-nonissue",
 }
 
-# Wall handlers that are inline lambdas (no importable function), so the COMMANDS
-# entry uses an equivalent named wrapper — identity won't match (signature does).
-_WRAPPED = {"integrate", "schedule-dogfood", "schedule-autofix", "schedule-reflect"}
-
-
-def _real_choices():
-    parser = argparse.ArgumentParser(prog="juggle")
-    sub = parser.add_subparsers(dest="command")
-    wt.register(sub)
-    wa.register(sub)
-    wm.register(sub, vault_path_default="/tmp/vault")
-    return sub.choices
+def _live_choices():
+    """The live CLI parser's subcommand leaves (build_parser flat commands + the
+    out-of-scope groups + entry verbs, all wired by build_cli_parser)."""
+    parser = build_cli_parser(vault_path_default="/tmp/vault")
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action.choices
+    raise AssertionError("no subparsers on the live CLI parser")
 
 
 def _commands_choices():
@@ -103,25 +98,25 @@ def test_all_ported_are_flat_top_level_no_rename_yet():
 # ── per-leaf arg-signature fidelity (catches every transcription error) ────────
 
 
-def test_every_ported_leaf_signature_matches_the_real_wall():
-    real = _real_choices()
+def test_every_ported_leaf_matches_the_live_cli():
+    live = _live_choices()
     cmds = _commands_choices()
     for name in sorted(PORTED):
         assert name in cmds, f"{name} absent from build_parser(COMMANDS)"
-        assert name in real, f"{name} absent from real wall parser"
-        assert _sig(cmds[name]) == _sig(real[name]), (
+        assert name in live, f"{name} absent from the live CLI parser"
+        assert _sig(cmds[name]) == _sig(live[name]), (
             f"arg signature mismatch for {name!r}:\n"
-            f"  COMMANDS={_sig(cmds[name])}\n  real    ={_sig(real[name])}"
+            f"  COMMANDS={_sig(cmds[name])}\n  live    ={_sig(live[name])}"
         )
 
 
-# ── handler identity (named handlers must be the SAME object as the walls) ─────
+# ── handler identity (the live CLI binds the COMMANDS handler, not shadowed) ───
 
 
-def test_named_handlers_are_identical_to_the_walls():
-    real = _real_choices()
+def test_live_cli_handlers_are_the_commands_handlers():
+    live = _live_choices()
     cmds = _commands_choices()
-    for name in sorted(PORTED - _WRAPPED):
-        assert cmds[name].get_default("func") is real[name].get_default("func"), (
-            f"{name}: handler differs from the wall"
+    for name in sorted(PORTED):
+        assert live[name].get_default("func") is cmds[name].get_default("func"), (
+            f"{name}: live CLI handler differs from the COMMANDS table"
         )
