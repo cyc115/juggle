@@ -111,7 +111,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart={juggle_cli} db-flush --live {live} --durable {durable} --interval {int(interval)}
+ExecStart={juggle_cli} db flush --live {live} --durable {durable} --interval {int(interval)}
 Restart=always
 RestartSec=5
 
@@ -124,7 +124,7 @@ WantedBy=multi-user.target
         print(f"Wrote systemd unit: {unit_path}")
         print("Enable with: systemctl --user enable --now juggle-db-flush")
     else:
-        label = "com.juggle.db-flush"
+        label = "com.juggle.dbflush"
         plist = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -134,7 +134,8 @@ WantedBy=multi-user.target
   <key>ProgramArguments</key>
   <array>
     <string>{juggle_cli}</string>
-    <string>db-flush</string>
+    <string>db</string>
+    <string>flush</string>
     <string>--live</string><string>{live}</string>
     <string>--durable</string><string>{durable}</string>
     <string>--interval</string><string>{int(interval)}</string>
@@ -143,8 +144,11 @@ WantedBy=multi-user.target
   <key>KeepAlive</key><true/>
 </dict>
 </plist>"""
-        plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
-        plist_path.parent.mkdir(parents=True, exist_ok=True)
+        agents_dir = Path.home() / "Library" / "LaunchAgents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        # Remove the legacy-labelled unit so no on-disk plist references db-flush.
+        (agents_dir / "com.juggle.db-flush.plist").unlink(missing_ok=True)
+        plist_path = agents_dir / f"{label}.plist"
         plist_path.write_text(plist)
         print(f"Wrote launchd plist: {plist_path}")
         print(f"Load with: launchctl load {plist_path}")

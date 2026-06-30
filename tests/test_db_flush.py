@@ -102,3 +102,61 @@ def test_flush_status_age_increases_after_flush(tmp_path):
     flush_once(live, durable)
     status = flush_status(durable)
     assert status["age_s"] >= 0
+
+
+# ── _install_supervisor — units use the new `db flush` token (X1) ─────────────
+
+def test_install_supervisor_launchd_uses_db_flush_verb(tmp_path, monkeypatch):
+    """macOS launchd plist invokes `db flush` (two argv tokens), never `db-flush`."""
+    import platform
+    from juggle_cmd_db_flush import _install_supervisor
+
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    _install_supervisor(tmp_path / "live.db", tmp_path / "durable.db", 30.0)
+
+    agents = tmp_path / "Library" / "LaunchAgents"
+    plists = list(agents.glob("*.plist"))
+    assert len(plists) == 1, f"expected one plist, got {plists}"
+    content = plists[0].read_text()
+    assert "db-flush" not in content, "plist must not reference legacy db-flush token"
+    assert "<string>db</string>\n    <string>flush</string>" in content
+
+
+def test_install_supervisor_systemd_uses_db_flush_verb(tmp_path, monkeypatch):
+    """Linux systemd unit ExecStart calls `db flush`, never `db-flush`."""
+    import platform
+    from juggle_cmd_db_flush import _install_supervisor
+
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    _install_supervisor(tmp_path / "live.db", tmp_path / "durable.db", 30.0)
+
+    unit = tmp_path / ".config" / "systemd" / "user" / "juggle-db-flush.service"
+    content = unit.read_text()
+    assert "db-flush" not in content, "unit must not reference legacy db-flush token"
+    assert "db flush --live" in content
+
+
+def test_install_supervisor_removes_legacy_launchd_unit(tmp_path, monkeypatch):
+    """Re-install removes a stale legacy-labelled plist so the dir is db-flush-free."""
+    import platform
+    from juggle_cmd_db_flush import _install_supervisor
+
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    agents = tmp_path / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    legacy = agents / "com.juggle.db-flush.plist"
+    legacy.write_text("<plist><string>db-flush</string></plist>")
+
+    _install_supervisor(tmp_path / "live.db", tmp_path / "durable.db", 30.0)
+
+    assert not legacy.exists(), "legacy db-flush plist should be removed on reinstall"
+    leftover = [
+        p for p in agents.rglob("*") if p.is_file() and "db-flush" in p.read_text()
+    ]
+    assert not leftover, f"no installed unit may reference db-flush: {leftover}"
