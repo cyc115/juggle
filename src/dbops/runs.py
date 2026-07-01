@@ -103,6 +103,25 @@ class RunsMixin:
                 (output, diffstat, status, now, after_sha, row["id"]),
             )
             conn.commit()
+            # Token backfill (2026-06-30 orchestration-metrics): window-sum the
+            # child agent's transcript over [dispatched_at, completed_at]. The
+            # single choke point — all mark_graph_*/complete paths funnel here.
+            # Best-effort: read_run_tokens returns zeros on any failure and the
+            # UPDATE is guarded, so it NEVER breaks completion.
+            try:
+                import juggle_run_tokens as _rt
+                _full = dict(conn.execute(
+                    "SELECT * FROM agent_runs WHERE id=?", (row["id"],)).fetchone())
+                tok = _rt.read_run_tokens(_full)
+                conn.execute(
+                    "UPDATE agent_runs SET input_tokens=?, output_tokens=?, "
+                    "cache_read_tokens=?, cache_write_tokens=? WHERE id=?",
+                    (tok["input"], tok["output"], tok["cache_read"],
+                     tok["cache_write"], row["id"]),
+                )
+                conn.commit()
+            except Exception:
+                pass  # metrics backfill is best-effort — never break completion
 
     def supersede_open_runs(self, thread_id: str) -> None:
         """Mark any open ('dispatched') runs for thread_id as 'superseded'."""
