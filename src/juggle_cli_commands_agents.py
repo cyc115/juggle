@@ -154,6 +154,8 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
                 help="Main repo path for orchestrator-owned finalization"),
             Arg("--allow-main", action="store_true", dest="allow_main", default=False,
                 help="Bypass worktree guard and allow coder/planner to run in main worktree (logged)"),
+            Arg("--topic", dest="topic", default=None,
+                help="Owning feature topic (label/UUID) — child task is parented here for derived close"),
         ),
         aliases=("send-task",),
         help="Send prompt file to agent pane"),

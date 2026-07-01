@@ -78,6 +78,49 @@ def cmd_send_task(args):
     pane_id = updated["pane_id"] if updated else agent["pane_id"]
     print(f"Task sent to agent {args.agent_id[:8]} (pane {pane_id}).")
 
+    _forward_link_to_topic(db, args, thread_uuid, prompt)
+
+
+def _forward_link_to_topic(db, args, thread_uuid, prompt):
+    """Parent the dispatched work to its owning feature topic so the topic's
+    state can be DERIVED and auto-closed (2026-06-30 topic-graph-state-unify F2).
+
+    Owner resolution: explicit --topic (label/UUID) wins; else infer the current
+    thread iff it is a human-facing conversation. Never breaks a successful
+    dispatch — every failure path is swallowed and logged.
+    """
+    try:
+        from juggle_topic_lifecycle import ensure_topic_child
+
+        owner = None
+        explicit = getattr(args, "topic", None)
+        if explicit:
+            from juggle_cli_common import _resolve_thread
+
+            owner = _resolve_thread(db, explicit)
+        else:
+            cur = db.get_current_thread()
+            # Infer ONLY when the current thread is a human-facing conversation
+            # (get_thread returns non-None only for kind='conversation' nodes).
+            if cur and db.get_thread(cur) and db.has_human_user_message(cur):
+                owner = cur
+        if owner and owner != thread_uuid:
+            ensure_topic_child(
+                db,
+                topic_id=owner,
+                agent_thread_id=thread_uuid,
+                prompt=prompt,
+                verify_cmd=getattr(args, "verify_cmd", None),
+            )
+    except SystemExit:
+        pass  # bad --topic label; dispatch already succeeded
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "forward-link failed — dispatch already sent"
+        )
+
 
 def cmd_send_message(args):
     db = _com.get_db()
