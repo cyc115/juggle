@@ -20,10 +20,18 @@ from pathlib import Path
 # (DA M2: long test_cmd runs must look live to waiters/operators).
 HEARTBEAT_INTERVAL_SECS = 30.0
 
-# Autopilot-context integrations (thread bound to a graph task) wait longer
-# for the merge queue: fan-in completions legitimately queue behind a holder
-# running a full test suite (DA M2).
-AUTOPILOT_LOCK_TIMEOUT_SECS = 1800.0
+# Global serialized integrate lock (#5038, 2026-07-01 integrate storm): EVERY
+# integrate — autopilot or not — BLOCKS on the per-repo merge queue with this
+# generous safety valve. It is NOT a normal-path deadline: waiters queue behind
+# the holder (which is running the full suite inside the lock) and win as soon
+# as it releases. 1800s only trips on a genuine hang → fail LOUD, no partial
+# merge. Replaces the old 300s-timeout-and-FAIL that let N concurrent suites
+# thrash CPU and trip waiters' short deadline (tasks left verified-but-unmerged).
+INTEGRATE_LOCK_TIMEOUT_SECS = 1800.0
+
+# Back-compat alias: autopilot fan-in completions already used this generous
+# wait; it now applies uniformly to all integrates.
+AUTOPILOT_LOCK_TIMEOUT_SECS = INTEGRATE_LOCK_TIMEOUT_SECS
 
 # Live heartbeat threads for locks held by THIS process, keyed by lock path.
 _heartbeats: dict[str, tuple[threading.Event, threading.Thread]] = {}
