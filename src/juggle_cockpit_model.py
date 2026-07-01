@@ -28,6 +28,7 @@ class Topic:
     project_id: str = "INBOX"
     project_name: str = "Inbox"
     task_state: str | None = None  # bound graph task's state (autopilot), or None
+    children: tuple = ()  # child task-nodes (TreeChild) parented to this topic (F7)
 
 
 @dataclass(frozen=True)
@@ -249,6 +250,16 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
         age = _age_secs(_get("last_active_at"))
         pid = _get("project_id") or "INBOX"
         pname = projects_by_id.get(pid, "Inbox")
+        # F7 (2026-06-30 topic-graph-state-unify): load the topic's child task
+        # nodes so the Topics pane can nest them (expand in-progress / collapse done).
+        from juggle_cockpit_tree import TreeChild
+
+        child_rows = conn.execute(
+            "SELECT id, state FROM nodes WHERE kind='task' AND parent_id=? "
+            "ORDER BY created_at, id",
+            (tid,),
+        ).fetchall()
+        children = tuple(TreeChild(cr["id"], cr["state"]) for cr in child_rows)
         return Topic(
             id=tid,
             label=label,
@@ -259,6 +270,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
             project_id=pid,
             project_name=pname,
             task_state=None,
+            children=children,
         )
 
     # Conversation panels read nodes (kind='conversation'); status->state value-mapped (P8 Task 3.1).

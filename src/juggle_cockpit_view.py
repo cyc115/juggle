@@ -104,6 +104,24 @@ def _add_topic_row(table: Table, t: Topic, bp: str) -> None:
     combined.append(strip_leading_tag(t.title) or t.label, style=style)
     table.add_row(combined)
 
+    # F7 (2026-06-30 topic-graph-state-unify): nest child task-nodes. Expand an
+    # in-progress topic (one line per child); collapse a done/closed one to a
+    # single done/total rollup before idle-close drops it.
+    children = getattr(t, "children", ()) or ()
+    if children:
+        from juggle_cockpit_tree import tree_lines
+
+        expanded = t.status not in ("done", "closed", "archived")
+
+        def _glyph(s: str) -> str:
+            return TASK_STATE_GLYPHS.get(s, FALLBACK_TASK)
+
+        for line in tree_lines(
+            "", list(children), expanded=expanded, glyph_for=_glyph, width=40
+        )[1:]:
+            line.stylize(Style(dim=True))
+            table.add_row(line)
+
 
 def render_topics(
     topics: list[Topic],
