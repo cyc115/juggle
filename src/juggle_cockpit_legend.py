@@ -21,7 +21,7 @@ TOPIC_STATUS_GLYPHS: dict[str, str] = {
 }
 
 ACTION_TIER_GLYPHS: dict[int, str] = {
-    0: "⚠️",  # blocker
+    0: "🛑",  # blocker / needs-you (canonical vocab: ⚠️→🛑, ⚠️=warn only)
     1: "📬",  # review ready
     2: "❓",  # open question
     3: "📝",  # nudge/note
@@ -34,10 +34,10 @@ AGENT_STATUS_GLYPHS: dict[str, str] = {
 }
 
 SCHED_STATUS_GLYPHS: dict[str, str] = {
-    "running": "🔄",
+    "running": "🔄",  # documented alias of canonical running 🏃
     "ok": "✅",
     "failed": "❌",
-    "unknown": "⏸️",
+    "unknown": "❔",  # canonical vocab: ⏸️→❔ (⏸️=paused only)
 }
 
 # Task-bound topics get their glyph from graph_tasks.state (autopilot, DA m2)
@@ -63,7 +63,7 @@ RAILROAD_STATE_GLYPHS: dict[str, str] = {
     "open": "·", "ready": "○", "dispatching": "◐", "running": "◐",
     "integrating": "◐", "verified": "●",
     "failed-exec": "✗", "failed-integration": "✗", "failed-verify": "✗",
-    "blocked-failed": "◇",
+    "blocked-failed": "⊘",  # canonical vocab: ◇→⊘ (◇/○ = ready everywhere)
 }
 
 
@@ -75,7 +75,7 @@ NOTIF_KIND_GLYPHS: dict[str, str] = {
     "complete": "⚡",
     "info": "ℹ️",
     "warning": "⚠️",
-    "error": "✗",
+    "error": "❌",  # canonical vocab: ✗→❌ (error is a failure; ✗ = compact only)
     "failed": "❌",
 }
 
@@ -89,6 +89,72 @@ FALLBACK_TOPIC = "•"
 FALLBACK_TASK = "⬢"
 FALLBACK_SCHED = "⏰"
 FALLBACK_NOTIF = "ℹ️"
+
+
+# ---------------------------------------------------------------------------
+# Canonical lifecycle vocabulary (CANONICAL_VOCAB.md). One glyph per universal
+# lifecycle state — an emoji track (panels / legend, double-width) and a compact
+# track (single-cell inline spine / railroad). The six domain dicts above re-map
+# onto these; a coverage test (test_no_glyph_denotes_two_lifecycle_states)
+# asserts no glyph names two universal states, so the vocab can never re-drift.
+# ---------------------------------------------------------------------------
+CANONICAL_GLYPHS: dict[str, str] = {
+    "running": "🏃",
+    "ready": "◇",
+    "done": "✅",
+    "failed": "❌",
+    "blocked": "🚫",
+    "needs-you": "🛑",
+    "paused": "⏸️",
+    "unknown": "❔",
+    "info": "ℹ️",
+    "warn": "⚠️",
+}
+
+CANONICAL_COMPACT: dict[str, str] = {
+    "running": "◐",
+    "ready": "○",
+    "done": "●",
+    "failed": "✗",
+    "blocked": "⊘",
+}
+
+# Which universal state each concrete domain state rolls up to. Kind glyphs
+# (identity, not lifecycle) are intentionally excluded. This is the checked-
+# against-the-dicts single source that keeps the vocab drift-free.
+_LIFECYCLE_ROLLUP: list[tuple[dict, dict]] = [
+    (TOPIC_STATUS_GLYPHS, {
+        "running": "running", "background": "running", "active": "running",
+        "paused": "paused", "done": "done", "failed": "failed"}),
+    (ACTION_TIER_GLYPHS, {0: "needs-you"}),
+    (AGENT_STATUS_GLYPHS, {"busy": "running"}),
+    (SCHED_STATUS_GLYPHS, {
+        "running": "running", "ok": "done", "failed": "failed",
+        "unknown": "unknown"}),
+    (TASK_STATE_GLYPHS, {
+        "ready": "ready", "dispatching": "running", "running": "running",
+        "integrating": "running", "verified": "done",
+        "failed-exec": "failed", "failed-integration": "failed",
+        "failed-verify": "failed", "open": "blocked", "blocked-failed": "blocked"}),
+    (RAILROAD_STATE_GLYPHS, {
+        "ready": "ready", "dispatching": "running", "running": "running",
+        "integrating": "running", "verified": "done",
+        "failed-exec": "failed", "failed-integration": "failed",
+        "failed-verify": "failed", "open": "blocked", "blocked-failed": "blocked"}),
+    (NOTIF_KIND_GLYPHS, {
+        "info": "info", "warning": "warn", "error": "failed", "failed": "failed"}),
+]
+
+
+def glyph_to_universal_states() -> dict[str, set[str]]:
+    """Map every lifecycle glyph → the set of universal states it denotes.
+    A well-formed vocab yields exactly one universal per glyph (kind glyphs,
+    which carry identity not lifecycle, are excluded)."""
+    out: dict[str, set[str]] = {}
+    for domain, rollup in _LIFECYCLE_ROLLUP:
+        for state, universal in rollup.items():
+            out.setdefault(domain[state], set()).add(universal)
+    return out
 
 
 def graph_inline_legend() -> str:
@@ -129,7 +195,7 @@ STATUS_LEGEND: list[dict] = [
         {"glyph": ACTION_TIER_GLYPHS[3], "meaning": "nudge / note"},
     ]},
     {"section": "Agents", "entries": [
-        {"glyph": AGENT_STATUS_GLYPHS["busy"],  "meaning": "busy"},
+        {"glyph": AGENT_STATUS_GLYPHS["busy"],  "meaning": "busy — agent running"},
         {"glyph": AGENT_STATUS_GLYPHS["idle"],  "meaning": "idle"},
         {"glyph": AGENT_STATUS_GLYPHS["stale"], "meaning": "stale (no recent activity)"},
         {"glyph": "#N",  "meaning": "1-based agent index (f / d / t keys)"},
@@ -138,7 +204,8 @@ STATUS_LEGEND: list[dict] = [
         {"glyph": SCHED_STATUS_GLYPHS["running"], "meaning": "scheduled task running"},
         {"glyph": SCHED_STATUS_GLYPHS["ok"],      "meaning": "scheduled task last run ok"},
         {"glyph": SCHED_STATUS_GLYPHS["failed"],  "meaning": "scheduled task last run failed"},
-        {"glyph": FALLBACK_SCHED,                 "meaning": "scheduled task (status unknown)"},
+        {"glyph": SCHED_STATUS_GLYPHS["unknown"], "meaning": "scheduled task status unknown"},
+        {"glyph": FALLBACK_SCHED,                 "meaning": "scheduled task (unrecognized status)"},
     ]},
     {"section": "Notifications", "entries": [
         {"glyph": NOTIF_KIND_GLYPHS["complete"], "meaning": "complete"},
@@ -182,24 +249,25 @@ def all_rendered_glyphs() -> set[str]:
 
 
 def render_legend_lines(width: int = 76) -> list[str]:
-    """Dense multi-column legend text (AMENDMENT 1): pack 2–3 '<glyph> <meaning>'
-    cells per row so the legend mostly fits one screen; the ? modal scrolls as a
-    safety net. ``width`` drives the column count. Every glyph+meaning appears so
-    `cockpit --legend` stdout stays complete (mirrors render_help_lines' style)."""
-    cols = 3 if width >= 102 else (2 if width >= 56 else 1)
-    cell_w = max(24, width // cols)
-    lines: list[str] = ["", "Status Legend", "─" * 52]
+    """Status Legend v2 (approved redesign): regrouped, PER-SECTION 2-column
+    where the cells fit (e.g. Notifications) and 1-column where they don't
+    (e.g. Agents), so the legend mostly fits one screen; the ? modal scrolls as
+    a safety net. Every glyph+meaning still appears so `cockpit --legend` stdout
+    stays complete. ``width`` is the usable text width."""
+    rule = "─" * width
+    lines: list[str] = ["", "Status Legend", rule]
     for sec in STATUS_LEGEND:
+        cells = [f"{e['glyph']} {e['meaning']}" for e in sec["entries"]]
+        widest = max((len(c) for c in cells), default=0)
+        # 2-col only when the widest cell fits twice across the width.
+        cols = 2 if widest <= (width - 2) // 2 - 2 else 1
+        col_w = (width - 2) // cols
         lines.append("")
         lines.append(f"  {sec['section']}")
-        lines.append("  " + "─" * 48)
-        cells = [f"{e['glyph']}  {e['meaning']}" for e in sec["entries"]]
         for i in range(0, len(cells), cols):
             row = cells[i:i + cols]
-            # ljust each cell except the last; an over-long cell still keeps a
-            # 2-space gap before the next column so cells never run together.
             packed = "".join(
-                (c.ljust(cell_w) if len(c) < cell_w else c + "  ") if j < len(row) - 1 else c
+                (c.ljust(col_w) if j < len(row) - 1 else c)
                 for j, c in enumerate(row)
             )
             lines.append("  " + packed.rstrip())

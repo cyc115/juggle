@@ -308,26 +308,45 @@ def build_help_content() -> list[dict]:
     return COCKPIT_HELP_TABLE
 
 
-def render_help_lines() -> list[str]:
-    """Render help content as aligned text lines for the modal Static widget.
+# ? Help layout v2 (approved redesign). 2-column key | description with a
+# HANGING INDENT: long descriptions wrap UNDER the description column, never
+# back to column 0 (root cause of the old shatter: modal Static wrapped the
+# desc with no hanging indent). The mnemonic column is dropped for clarity.
+HELP_KEY_W = 16                       # key column width
+HELP_DESC_INDENT = 2 + HELP_KEY_W     # column the description (and its wraps) sit at
+HELP_WIDTH = 70                       # usable text width inside the modal border+padding
 
-    Three-column layout: key (left-aligned) | short (fixed-width) | full desc.
-    Group headers are displayed as section separators.
+
+def _wrap_hanging(lead: str, desc: str, indent: int, width: int) -> list[str]:
+    """`lead` (already padded to `indent` cols) + wrapped `desc`; every
+    continuation line is indented to `indent` so it aligns under the description
+    column and never falls back to column 0."""
+    import textwrap
+    avail = max(12, width - indent)
+    pieces = textwrap.wrap(desc, avail) or [""]
+    out = [lead + pieces[0]]
+    for p in pieces[1:]:
+        out.append(" " * indent + p)
+    return out
+
+
+def render_help_lines(width: int = HELP_WIDTH) -> list[str]:
+    """Render the ? Help overlay as aligned text lines for the modal Static.
+
+    v2 layout: 2-column (key | description) with a hanging indent; each section
+    sub-header ('Navigation', 'Thread actions', …) gets a dotted underline. The
+    Status Legend (regrouped, per-section 2-column) follows.
     """
-    KEY_W = 18
-    SHORT_W = 6
-    lines: list[str] = ["Keyboard Shortcuts", "─" * 52]
+    lines: list[str] = ["Keyboard Shortcuts", "─" * width]
     for group in COCKPIT_HELP_TABLE:
         lines.append("")
         lines.append(f"  {group['group']}")
-        lines.append("  " + "─" * 48)
+        lines.append("  " + "·" * (width - 2))       # dotted sub-header underline
         for entry in group["entries"]:
-            key = entry["key"]
-            short = entry["short"]
-            desc = entry["desc"]
-            lines.append(f"  {key:<{KEY_W}}  {short:<{SHORT_W}}  {desc}")
+            lead = f"  {entry['key']:<{HELP_KEY_W}}"
+            lines += _wrap_hanging(lead, entry["desc"], HELP_DESC_INDENT, width)
     from juggle_cockpit_legend import render_legend_lines
-    lines += render_legend_lines()
+    lines += render_legend_lines(width)
     lines += ["", "Esc / q — close   ·   ↑ ↓ / j k — scroll"]
     return lines
 

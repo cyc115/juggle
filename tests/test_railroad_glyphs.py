@@ -14,7 +14,7 @@ def test_state_mapping():
     assert railroad_glyph("verified") == "●"
     assert railroad_glyph("running") == "◐"
     assert railroad_glyph("ready") == "○"
-    assert railroad_glyph("blocked-failed") == "◇"
+    assert railroad_glyph("blocked-failed") == "⊘"  # canonical vocab: ◇→⊘ (◇=ready)
     assert railroad_glyph("failed-exec") == "✗"
     assert railroad_glyph("open") == "·"
     assert railroad_glyph("weird-unknown") == "·"
