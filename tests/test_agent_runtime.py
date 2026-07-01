@@ -33,6 +33,7 @@ def test_role_absent_from_by_role_falls_to_global():
 
 
 def test_dispatch_flag_overrides_everything():
+    """2026-06-30 agent model/effort config: per-dispatch --model/--effort wins the cascade."""
     s = _s({"model": "opus", "effort": "high",
             "by_role": {"coder": {"model": "haiku", "effort": "low"}}})
     got = resolve_agent_runtime("coder", model_flag="fable-5", effort_flag="max", settings=s)

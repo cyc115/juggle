@@ -368,7 +368,7 @@ def test_cmd_get_agent_does_not_reuse_wrong_role(db, tmp_path, monkeypatch):
         def wait_for_ready_to_paste(self, pane_id, attempts=1):
             return True  # planner pane "ready" — but must be skipped by role
 
-        def spawn_agent(self, _db, role, model=None, harness_override=None):
+        def spawn_agent(self, _db, role, model=None, harness_override=None, effort=None):
             spawned_roles.append(role)
             aid = _db.create_agent(role=role, pane_id="%90", repo_path="/repo")
             return _db.get_agent(aid)
