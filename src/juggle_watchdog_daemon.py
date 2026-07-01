@@ -171,17 +171,6 @@ def _capture_pane(mgr: JuggleTmuxManager, pane_id: str, lines: int = 80) -> str 
     return result.stdout or ""
 
 
-def _topic_sweep(db) -> None:
-    """Sweep every conversation topic through the derived-close reconciler (F5,
-    2026-06-30 topic-graph-state-unify). Fire-and-forget — never takes the tick
-    down."""
-    try:
-        from juggle_topic_reconcile import reconcile_conversation_topics
-        reconcile_conversation_topics(db)
-    except Exception:
-        _log.exception("Watchdog: topic sweep failed — continuing")
-
-
 def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     write_heartbeat()
     snapshot_dir, recovery_dir = _get_dirs()
@@ -294,20 +283,15 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     except Exception:
         _log.exception("Watchdog: daemon reaper tick failed — continuing")
 
-    # Graph claim-dispatch tick (autopilot Phase 2): the watchdog is the SOLE
-    # dispatcher for the armed project's ready tasks (DA B4/M1). graph_tick is
-    # internally fail-safe; this guard is belt-and-braces — a tick bug must
-    # never take the daemon down.
+    # Graph claim-dispatch tick (autopilot Phase 2): SOLE dispatcher for armed
+    # projects' ready tasks (DA B4/M1). Guarded so a tick bug never downs the daemon.
     try:
         from juggle_graph_dispatch import graph_tick
         graph_tick(db, mgr)
     except Exception:
         _log.exception("Watchdog: graph dispatch tick failed — continuing")
-
-    # Conversation-topic derived-close sweep (F5, 2026-06-30 topic-graph-state-
-    # unify): backstop the event-driven triggers so a derived close/reopen can
-    # never diverge for more than one tick.
-    _topic_sweep(db)
+    from juggle_topic_reconcile import tick_sweep as _ts  # F5 conversation-topic sweep
+    _ts(db)
 
     # Self-heal auto-diagnosis: fire-and-forget, never block the tick.
     try:

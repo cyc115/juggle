@@ -28,19 +28,28 @@ def _merged_idle_topic(db):
 
 
 def test_topic_sweep_closes_merged_idle(juggle_db):
-    import juggle_watchdog_daemon as wd
+    from juggle_topic_reconcile import tick_sweep
 
     topic = _merged_idle_topic(juggle_db)
-    wd._topic_sweep(juggle_db)
+    tick_sweep(juggle_db)
     assert juggle_db.get_thread(topic)["state"] == "done"
 
 
 def test_topic_sweep_never_raises_on_bad_db():
-    import juggle_watchdog_daemon as wd
+    from juggle_topic_reconcile import tick_sweep
 
     # A bogus object with no usable connection must not propagate an error.
     class _Bad:
         def _connect(self):
             raise RuntimeError("boom")
 
-    wd._topic_sweep(_Bad())  # no exception
+    tick_sweep(_Bad())  # no exception
+
+
+def test_daemon_tick_wires_the_sweep():
+    """2026-06-30 unify: the watchdog tick body invokes the topic sweep (F5)."""
+    import inspect
+
+    import juggle_watchdog_daemon as wd
+
+    assert "tick_sweep" in inspect.getsource(wd._poll_once)

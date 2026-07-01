@@ -283,31 +283,15 @@ def cmd_doctor(args) -> int:
             from dbops.orphan_guard import reconcile_out_of_band_merges
             reconciled = reconcile_out_of_band_merges(db_instance)
             if reconciled:
-                print(f"merged-sha backfill: {len(reconciled)} topic(s) "
-                      f"reconciled ({', '.join(reconciled)})")
+                print(f"merged-sha backfill: {len(reconciled)} topic(s) reconciled ({', '.join(reconciled)})")
             else:
                 print("merged-sha backfill: nothing to reconcile")
         except Exception as e:
             print(f"merged-sha backfill: skipped ({e})")
     else:
         print("merged-sha backfill: (dry-run — skipped)")
-
-    # 4.6 One-time backfill of the stale-open conversation pile (F6, 2026-06-30
-    # topic-graph-state-unify). CLOSES-ONLY on a provable cyc_<label> merge to
-    # main; childless unmerged topics are left open. Orchestrator-only (G2-safe).
-    if not dry:
-        try:
-            from juggle_topic_reconcile import backfill_stale_open_topics
-            closed = backfill_stale_open_topics(db_instance)
-            if closed:
-                print(f"conversation backfill: {len(closed)} stale-open topic(s) "
-                      f"closed ({', '.join(closed)})")
-            else:
-                print("conversation backfill: nothing to close")
-        except Exception as e:
-            print(f"conversation backfill: skipped ({e})")
-    else:
-        print("conversation backfill: (dry-run — skipped)")
+    from juggle_topic_reconcile import run_conversation_backfill_report as _cbk  # F6 backfill
+    _cbk(db_instance, dry=dry)
 
     # P8 (Task 4.2): the graph-mirrors-threads backfill is RETIRED — a conversation
     # is now a first-class kind='conversation' node, not a graph_topics projection,

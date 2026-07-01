@@ -18,6 +18,17 @@ class TreeChild:
     state: str
 
 
+def load_topic_children(conn, parent_id) -> tuple:
+    """Load a conversation topic's child task nodes as TreeChild rows (F7,
+    2026-06-30 topic-graph-state-unify)."""
+    rows = conn.execute(
+        "SELECT id, state FROM nodes WHERE kind='task' AND parent_id=? "
+        "ORDER BY created_at, id",
+        (parent_id,),
+    ).fetchall()
+    return tuple(TreeChild(r["id"], r["state"]) for r in rows)
+
+
 def tree_lines(
     parent_label: str,
     children: list[TreeChild],

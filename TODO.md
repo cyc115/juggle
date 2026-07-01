@@ -4,6 +4,8 @@
 
 <!-- 2026-06-20 session: all watchdog/leak/full-suite actionable items landed (v1.78.1 → v1.80.0). Remaining below. -->
 
+- [x] **Unify topic & graph state tracking (v1.90.0)** — feature (conversation) topics now auto-close by LINKING their work to child `kind='task'` nodes (`parent_id`) and DERIVING topic state from those children, killing the stale-`open` Topics-pane pile. `send-task --topic` forward-links (idempotent: graph-first reparents, ad-hoc creates one `running` child under INBOX); `derive_topic_state` + `reconcile_conversation_topics` (event-driven on child-verify/human-message + 30s tick sweep, 30-min idle guard, G4a live-agent guard, reopen-on-message); one-time `backfill_stale_open_topics` on doctor migrate (CLOSES-ONLY on provable `cyc_<label>` merge); cockpit Topics pane nests children (expand in-progress / collapse done). Spec/plan: `docs/2026-06-30-topic-graph-state-unify.md`. ✅ 2026-06-30
+
 ## Investigate (surfaced during 2026-06-20 development & integrations)
 - [x] **`juggle-agent-monitor` completion-script dies (SIGTERM / exit 143)** — the persistent monitor SIGTERM'd twice this session (~11 min in) despite a 1 h timeout; agent completions then fall back to task-notifications + the scheduled wakeup. Investigate what sends the SIGTERM (watchdog? a reaper? script self-exit) before relying on it again.  ✅ 2026-06-21 (CW graceful-SIGTERM (f581ca8) + DA per-session monitor (50792cb))
   - Fix: CW f581ca8 made the monitor SIGTERM-graceful; DA 50792cb switched to a per-session monitor so completions aren't killed by a shared-process SIGTERM.

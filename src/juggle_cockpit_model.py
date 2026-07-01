@@ -15,6 +15,7 @@ from juggle_cockpit_graph_dag import (  # noqa: F401 — re-exported for back-co
     load_graph_dags as _load_graph_dags,
 )
 from dbops.node_translation import status_for_state
+from juggle_cockpit_tree import load_topic_children as _load_topic_children
 
 
 @dataclass(frozen=True)
@@ -250,16 +251,6 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
         age = _age_secs(_get("last_active_at"))
         pid = _get("project_id") or "INBOX"
         pname = projects_by_id.get(pid, "Inbox")
-        # F7 (2026-06-30 topic-graph-state-unify): load the topic's child task
-        # nodes so the Topics pane can nest them (expand in-progress / collapse done).
-        from juggle_cockpit_tree import TreeChild
-
-        child_rows = conn.execute(
-            "SELECT id, state FROM nodes WHERE kind='task' AND parent_id=? "
-            "ORDER BY created_at, id",
-            (tid,),
-        ).fetchall()
-        children = tuple(TreeChild(cr["id"], cr["state"]) for cr in child_rows)
         return Topic(
             id=tid,
             label=label,
@@ -270,26 +261,20 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
             project_id=pid,
             project_name=pname,
             task_state=None,
-            children=children,
+            children=_load_topic_children(conn, tid),  # F7 nest child task-nodes
         )
 
     # Conversation panels read nodes (kind='conversation'); status->state value-mapped (P8 Task 3.1).
     # 1. Active
-    for r in conn.execute(
-        "SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'open' ORDER BY last_active_at DESC"
-    ).fetchall():
+    for r in conn.execute("SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'open' ORDER BY last_active_at DESC").fetchall():
         topics.append(_make_topic(r))
 
     # 2. Running
-    for r in conn.execute(
-        "SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'running' ORDER BY last_active_at DESC"
-    ).fetchall():
+    for r in conn.execute("SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'running' ORDER BY last_active_at DESC").fetchall():
         topics.append(_make_topic(r))
 
     # 2b. Background
-    for r in conn.execute(
-        "SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'background' ORDER BY last_active_at DESC"
-    ).fetchall():
+    for r in conn.execute("SELECT * FROM nodes WHERE kind = 'conversation' AND state = 'background' ORDER BY last_active_at DESC").fetchall():
         topics.append(_make_topic(r))
 
     # 3. Closed within TTL

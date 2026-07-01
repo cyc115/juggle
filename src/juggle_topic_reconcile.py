@@ -30,6 +30,33 @@ def close_idle_min() -> int:
         return 30
 
 
+def tick_sweep(db) -> None:
+    """Watchdog-tick entry (F5): sweep every conversation topic through the
+    derived-close reconciler, never raising."""
+    try:
+        reconcile_conversation_topics(db)
+    except Exception:
+        _log.exception("topic tick sweep failed — continuing")
+
+
+def run_conversation_backfill_report(db, *, dry: bool) -> None:
+    """Doctor entry (F6): run the one-time stale-open backfill and print a
+    summary line. In dry-run, report skipped without touching the DB."""
+    if dry:
+        print("conversation backfill: (dry-run — skipped)")
+        return
+    try:
+        closed = backfill_stale_open_topics(db)
+        print(
+            f"conversation backfill: {len(closed)} stale-open topic(s) closed "
+            f"({', '.join(closed)})"
+            if closed
+            else "conversation backfill: nothing to close"
+        )
+    except Exception as e:
+        print(f"conversation backfill: skipped ({e})")
+
+
 def _resolve_conv_repo(db, thread: dict) -> str:
     """Repo holding ``main`` for a conversation's branch-merge check: the thread's
     main_repo_path, else juggle's own repo."""
