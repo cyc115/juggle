@@ -211,3 +211,20 @@ def test_tick_redispatches_reset_task_with_prior_failure(db, monkeypatch):
     assert "a" in stats["dispatched"]
     (task_id, prompt), = [c for c in fake.calls if c[0] == "a"]
     assert "Previous attempt" in prompt and "make test" in prompt
+
+
+# ── migration: additive verify-retry columns ────────────────────────────────
+
+
+def test_migration_57_adds_columns_idempotent():
+    import sqlite3
+    from dbops.migration_57_verify_retries import migrate_57_verify_retries
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, kind TEXT)")
+    migrate_57_verify_retries(conn)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(nodes)")}
+    assert {"verify_retries", "verify_failure"} <= cols
+    migrate_57_verify_retries(conn)  # idempotent — must not raise
+    # no nodes table → no-op, no crash
+    migrate_57_verify_retries(sqlite3.connect(":memory:"))
