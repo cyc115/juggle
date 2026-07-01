@@ -71,7 +71,8 @@ TICK_OWNED_STATES = frozenset(
 _TASK_SELECT = (
     "SELECT id, project_id, title, objective AS prompt, verify_cmd, state, "
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' LIMIT 1) AS thread_id, "
-    "parent_id AS topic_id, handoff, diffstat, verified_at, created_at, updated_at FROM nodes WHERE kind='task'"
+    "parent_id AS topic_id, handoff, diffstat, verified_at, "
+    "verify_retries, verify_failure, created_at, updated_at FROM nodes WHERE kind='task'"
 )
 
 
@@ -166,6 +167,20 @@ def set_task_handoff(db, task_id: str, handoff: str) -> None:
         conn.execute(
             "UPDATE nodes SET handoff=?, updated_at=? WHERE id=? AND kind='task'",
             (handoff, now, task_id),
+        )
+        conn.commit()
+
+
+def bump_verify_retry(db, task_id: str, failure: str | None) -> None:
+    """Verify-fallback: increment the bounded-retry counter and store the prior
+    verify_cmd failure output (for fresh-re-dispatch prompt injection). Never
+    writes state — the caller resets the task via task_transition."""
+    now = _now()
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET verify_retries = COALESCE(verify_retries, 0) + 1, "
+            "verify_failure=?, updated_at=? WHERE id=? AND kind='task'",
+            (failure, now, task_id),
         )
         conn.commit()
 

@@ -43,6 +43,17 @@ def build_hydration(objective: str, task: dict, deps: list[dict]) -> str:
         parts.append(
             f"Machine verification (runs pre-merge): `{task['verify_cmd']}`"
         )
+    # Verify-fallback (self-heal): a FRESH agent re-dispatched after a prior
+    # verify_cmd failure gets the prior failure output so it can fix the root
+    # cause rather than repeat it. The real verify_cmd re-runs pre-merge as usual.
+    prior = (task.get("verify_failure") or "").strip()
+    if prior:
+        parts.append(
+            "## Previous attempt: verify_cmd FAILED — fix the root cause\n"
+            "A prior agent's changes did not pass the machine verification below. "
+            "You have fresh context; diagnose and fix what made it red:\n"
+            f"```\n{prior}\n```"
+        )
     parts.append(
         "## Completion contract\n"
         "When done, complete with:\n"

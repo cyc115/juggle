@@ -143,8 +143,13 @@ def test_failed_integration_completion_blocks_dependents_pin(db):
                for i in items), f"no action item names the blocked tasks: {items}"
 
 
-def test_failed_verify_completion_blocks_dependents(db):
-    """The failed-verify exit (DA M3 channel) propagates identically."""
+def test_failed_verify_completion_blocks_dependents(db, monkeypatch):
+    """The failed-verify exit (DA M3 channel) propagates identically.
+
+    Fallback disabled (N=0) so this pins the TERMINAL propagation: with retries
+    available the verify-fallback resets the task to ready instead (covered in
+    test_verify_fallback)."""
+    monkeypatch.setenv("JUGGLE_VERIFY_FALLBACK_RETRIES", "0")
     _load_tree(db)
     from juggle_cmd_agents_graph import mark_graph_task
 

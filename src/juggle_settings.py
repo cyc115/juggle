@@ -39,6 +39,9 @@ DEFAULTS: dict = {
     "repos": {},
     "thread_idle_threshold_secs": 1800,
     "thread_archive_threshold_secs": 172800,
+    # Verify-fallback (self-heal): bounded-retry budget for a task whose real
+    # verify_cmd was red. 0 disables retries (straight to terminal escalation).
+    "verify_fallback_retries": 1,
     # Task Templates — prepended to agent prompts by role (extracted to
     # juggle_task_templates.py; imported back so the runtime structure is
     # unchanged — DEFAULTS["task_templates"]["coder"] etc. is byte-identical).
@@ -338,6 +341,10 @@ def get_settings() -> dict:
         settings["max_threads"] = int(os.environ["JUGGLE_MAX_THREADS"])
     if "JUGGLE_MAX_BACKGROUND_AGENTS" in os.environ:
         settings["max_agents"] = int(os.environ["JUGGLE_MAX_BACKGROUND_AGENTS"])
+    if "JUGGLE_VERIFY_FALLBACK_RETRIES" in os.environ:
+        settings["verify_fallback_retries"] = int(
+            os.environ["JUGGLE_VERIFY_FALLBACK_RETRIES"]
+        )
     if "JUGGLE_IDLE_THRESHOLD_SECS" in os.environ:
         settings["tmux"]["agent_idle_detection_secs"] = int(
             os.environ["JUGGLE_IDLE_THRESHOLD_SECS"]

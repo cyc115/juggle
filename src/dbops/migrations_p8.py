@@ -34,3 +34,5 @@ def apply_p8_migrations(conn: sqlite3.Connection) -> None:
     migrate_55_drop_legacy(conn)  # reconcile conv state, repoint FKs, DROP threads/graph_* (irreversible)
     from dbops.migration_56_notifications_fk import migrate_56_notifications_fk  # P8 tail
     migrate_56_notifications_fk(conn)  # repoint the one missed FK: notifications.thread_id threads_old -> nodes
+    from dbops.migration_57_verify_retries import migrate_57_verify_retries  # verify-fallback
+    migrate_57_verify_retries(conn)  # additive verify_retries/verify_failure columns on nodes
