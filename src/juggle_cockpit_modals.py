@@ -248,6 +248,12 @@ COCKPIT_HELP_TABLE: list[dict] = [
                 "desc": "Toggle graph mode / notifications panel",
             },
             {
+                "action": "graph_railroad",
+                "key": "G",
+                "short": "Rail",
+                "desc": "Open the full-screen dependency railroad for the selected task's project",
+            },
+            {
                 "action": "projects",
                 "key": "p",
                 "short": "Proj",
