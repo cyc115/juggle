@@ -62,19 +62,36 @@ def _section_header(
     project_name: str | None,
     real_tasks: list[GraphTask],
     inner_w: int,
+    edges: list[tuple[str, str]] | None = None,
 ) -> Text:
-    """Header line: '<id> · <name>  <bar>  <progress>'.
+    """Header line: '<id> · <name>  <spine>  <progress>'.
 
-    The id+name label is truncated with an ellipsis so the whole line fits
-    inner_w, while the progress bar and done/running counts are kept intact.
+    The old ▕█░▏ done-fraction bar is replaced by the Surface-D dependency spine
+    (2026-06-30 graph railroad): a compact git-graph of the tasks' dependency
+    shape. The id+name label is truncated with an ellipsis so the whole line fits
+    inner_w; the format_progress done/running count is kept intact (the spine
+    renders shape only, count=False — no double count).
     """
+    # Lazy import breaks the graph_rows ↔ graph_spine cycle (spine reads
+    # _STATE_COLORS from this module at import time).
+    from juggle_cockpit_graph_lanes import assign_lanes
+    from juggle_cockpit_graph_spine import render_spine
+
     counts = counts_from_states([n.state for n in real_tasks])
-    suffix = f"  {_progress_bar(real_tasks)}  {format_progress(counts)}"
+    progress = format_progress(counts)
     label = f"{project_id} · {project_name}" if project_name else project_id
-    budget = max(3, inner_w - len(suffix))
+    spine_w = max(6, min(24, inner_w // 3))
+    layout = assign_lanes(real_tasks, edges or [])
+    spine = render_spine(layout, width=spine_w, count=False)
+    # label budget = inner_w minus the spine slice, its separators, and progress.
+    budget = max(3, inner_w - (2 + len(spine.plain) + 2 + len(progress)))
     if len(label) > budget:
         label = label[: max(1, budget - 1)] + "…"
-    return Text(f"{label}{suffix}", style=Style(bold=True), no_wrap=True, overflow="ellipsis")
+    out = Text(label, style=Style(bold=True), no_wrap=True, overflow="ellipsis")
+    out.append("  ")
+    out.append_text(spine)
+    out.append(f"  {progress}", style=Style(bold=True))
+    return out
 
 
 def topological_order(
@@ -157,7 +174,7 @@ def _graph_section(
         return [Text(f"{label}: no graph tasks yet", style=Style(dim=True))]
 
     real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
-    header = _section_header(project_id, project_name, real_tasks, inner_w)
+    header = _section_header(project_id, project_name, real_tasks, inner_w, edges)
 
     flat = topological_order(tasks, edges)
     idx_of = {n.id: i + 1 for i, n in enumerate(flat)}

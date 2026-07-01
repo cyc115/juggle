@@ -74,7 +74,7 @@ def build_graph_panel(
 
     inner_w_hdr = max(8, width - 4)
     real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
-    header = _section_header(project_id, project_name, real_tasks, inner_w_hdr)
+    header = _section_header(project_id, project_name, real_tasks, inner_w_hdr, edges)
 
     flat = topological_order(tasks, edges)
     idx_of = {n.id: i + 1 for i, n in enumerate(flat)}
