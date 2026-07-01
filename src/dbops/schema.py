@@ -14,11 +14,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from juggle_settings import get_settings as _get_settings  # noqa: E402
+from juggle_settings import resolve_max_agents as _resolve_max_agents  # noqa: E402
 
 _log = logging.getLogger(__name__)
 
 MAX_THREADS: int = _get_settings()["max_threads"]
-MAX_BACKGROUND_AGENTS: int = _get_settings()["max_agents"]
+# #5045: single resolution path — same as the watchdog daemon and cockpit spawn.
+MAX_BACKGROUND_AGENTS: int = _resolve_max_agents()
 
 DEFAULT_DATA_DIR = Path(_get_settings()["paths"]["data_dir"])
 

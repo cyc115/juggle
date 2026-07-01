@@ -185,6 +185,8 @@ def start_watchdog_detached(db_path, *, repo_path: str | None = None) -> int:
     env["JUGGLE_ORCHESTRATOR"] = "1"
     env[SANCTION_ENV] = "1"
     env.pop("JUGGLE_WATCHDOG_SUPERVISED", None)
+    from juggle_settings import config_max_agents  # #5045: config-authoritative cap
+    env["JUGGLE_MAX_BACKGROUND_AGENTS"] = str(config_max_agents(env))
     log_dir = Path(db_path).parent
     log_dir.mkdir(parents=True, exist_ok=True)
     spawn_log = open(log_dir / "watchdog-spawn.log", "ab")

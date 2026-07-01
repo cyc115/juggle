@@ -315,6 +315,67 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _coerce_int(value):
+    """Return int(value) or None if missing / not a clean integer."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_raw_config(env) -> dict:
+    """Read ~/.juggle/config.json (``_JUGGLE_CONFIG_PATH`` override). {} on error."""
+    path = Path(
+        env.get("_JUGGLE_CONFIG_PATH", str(Path.home() / ".juggle" / "config.json"))
+    )
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
+def resolve_max_agents(env=None, config=None) -> int:
+    """The SINGLE source of truth for the background-agent pool cap (#5045).
+
+    Precedence: env ``JUGGLE_MAX_BACKGROUND_AGENTS`` (explicit optional override)
+    > config ``max_agents`` > ``DEFAULTS``. Config is made *authoritative* for the
+    long-lived watchdog daemon at the spawn seam: the cockpit pins the daemon's
+    env from CONFIG via ``config_max_agents`` (which drops the inherited override),
+    so a stale inherited env can never inflate the daemon's cap above config —
+    the 2026-07-01 integrate-storm root cause.
+
+    ``env`` / ``config`` are injectable for tests; when omitted they are read from
+    ``os.environ`` and ``~/.juggle/config.json`` (``_JUGGLE_CONFIG_PATH`` override).
+    Invalid values fall back — never crashes.
+    """
+    if env is None:
+        env = os.environ
+    if config is None:
+        config = _load_raw_config(env)
+
+    from_env = _coerce_int(env.get("JUGGLE_MAX_BACKGROUND_AGENTS"))
+    if from_env is not None:
+        return from_env
+
+    from_cfg = _coerce_int(config.get("max_agents")) if isinstance(config, dict) else None
+    if from_cfg is not None:
+        return from_cfg
+
+    return DEFAULTS["max_agents"]
+
+
+def config_max_agents(env=None) -> int:
+    """CONFIG-authoritative pool cap: ``resolve_max_agents`` with the inherited
+    ``JUGGLE_MAX_BACKGROUND_AGENTS`` override dropped (config.json path vars kept).
+    This is the value the cockpit pins into the daemon's env so a stale inherited
+    override can never inflate the cap above config (#5045)."""
+    src = os.environ if env is None else env
+    kept = {k: v for k, v in src.items() if k != "JUGGLE_MAX_BACKGROUND_AGENTS"}
+    return resolve_max_agents(env=kept)
+
+
 def get_settings() -> dict:
     """Return merged settings dict. Re-reads config on every call (no cache).
 

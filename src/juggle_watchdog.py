@@ -931,8 +931,8 @@ def check_orphaned_threads(
                 ).fetchone()[0]
 
             try:
-                from juggle_settings import get_settings as _get_settings
-                max_agents = int(_get_settings().get("max_agents", 20))
+                from juggle_settings import resolve_max_agents
+                max_agents = resolve_max_agents()
             except Exception:
                 max_agents = 20
 
