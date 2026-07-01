@@ -88,7 +88,7 @@ def test_canonical_names_only_legacy_aliases_not_registered():
 
 
 def test_every_command_has_a_resource_or_is_a_kept_flat_verb():
-    KEPT_FLAT = {"start", "stop", "doctor", "cockpit", "integrate"}
+    KEPT_FLAT = {"start", "stop", "doctor", "cockpit", "integrate", "metrics"}
     for c in COMMANDS:
         if c.resource is None:
             assert c.verb in KEPT_FLAT, f"unexpected flat verb {c.verb!r}"

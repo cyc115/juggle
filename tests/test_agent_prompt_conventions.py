@@ -26,8 +26,8 @@ def test_prompt_templates_mention_three_commands():
         if "hooks" not in p.name  # hooks_prompt is not an agent dispatch template
     ]
     combined = "".join(p.read_text() for p in prompt_files)
-    if not combined:
-        # Fallback: cmd_agents contains dispatch prompts
-        combined = (SRC / "juggle_cmd_agents.py").read_text()
+    # Always include the canonical dispatch-template location so unrelated
+    # *prompt*-named helper modules (e.g. juggle_prompt_metrics) can't mask it.
+    combined += (SRC / "juggle_cmd_agents.py").read_text()
     for cmd in ("complete-agent", "request-action", "fail-agent"):
         assert cmd in combined, f"missing mention of {cmd} in prompt templates"
