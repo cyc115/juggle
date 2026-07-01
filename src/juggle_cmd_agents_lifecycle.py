@@ -41,6 +41,7 @@ def cmd_get_agent(args):
             repo=getattr(args, "repo", None),
             harness=getattr(args, "harness", None),
             fresh=getattr(args, "fresh", False),
+            effort=getattr(args, "effort", None),
         )
     except CapacityError:
         print(

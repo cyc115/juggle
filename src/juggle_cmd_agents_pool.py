@@ -38,7 +38,8 @@ def cmd_spawn_agent(args):
 
     mgr = JuggleTmuxManager()
     try:
-        agent = mgr.spawn_agent(db, args.role, model=getattr(args, "model", None))
+        agent = mgr.spawn_agent(db, args.role, model=getattr(args, "model", None),
+                                effort=getattr(args, "effort", None))
     except (RuntimeError, ValueError) as e:
         print(f"Error: {e}")
         sys.exit(1)

@@ -29,6 +29,7 @@ def acquire_agent(
     repo=None,
     harness=None,
     fresh: bool = False,
+    effort=None,
     _mgr=None,
 ) -> dict:
     """Pool walk + CAS-assign or spawn a new agent. Sets thread status=background.
@@ -78,7 +79,7 @@ def acquire_agent(
         try:
             agent = mgr.spawn_agent(
                 db, role or "researcher", model=model,
-                harness_override=requested_harness,
+                harness_override=requested_harness, effort=effort,
             )
         except (RuntimeError, ValueError) as e:
             raise RuntimeError(f"agent spawn failed: {e}") from e

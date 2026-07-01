@@ -123,7 +123,7 @@ class JuggleTmuxManager:
 
     def start_agent_in_pane(
         self, pane_id: str, model: str | None = None, role: str | None = None,
-        agent_cfg: dict | None = None,
+        agent_cfg: dict | None = None, effort: str | None = None,
     ) -> None:
         """Launch the configured agent harness in a pane.
 
@@ -152,7 +152,8 @@ class JuggleTmuxManager:
             # pane stays a ready shell.
             return
         cmd = adapter.build_launch_command(
-            role=role, model=model, audit=bool(agent_cfg.get("audit_mode"))
+            role=role, model=model, audit=bool(agent_cfg.get("audit_mode")),
+            effort=effort,
         )
 
         tmp = f"/tmp/juggle_launch_{uuid.uuid4().hex[:8]}.txt"
@@ -539,7 +540,8 @@ class JuggleTmuxManager:
                 os.unlink(cmd_tmp)
 
     def spawn_agent(self, db, role: str, model: str | None = None,
-                    harness_override: str | None = None) -> dict:
+                    harness_override: str | None = None,
+                    effort: str | None = None) -> dict:
         """Spawn a new claude pane, register in DB, return agent dict.
 
         db must be a JuggleDB instance with init_db() already called.
@@ -548,7 +550,9 @@ class JuggleTmuxManager:
 
         Tags the agent with the **launch-time** harness id so recycled panes
         (started under one harness, still running that REPL) display correctly
-        even after a config switch.
+        even after a config switch. The launch model + reasoning effort are the
+        cascade-resolved values (2026-06-30 agent model/effort config): the raw
+        ``model``/``effort`` are the per-dispatch flags; config fills the rest.
         """
         import sys
         from pathlib import Path as _Path
@@ -557,11 +561,18 @@ class JuggleTmuxManager:
         from juggle_db import MAX_BACKGROUND_AGENTS
         from juggle_harness import get_adapter
 
-        agent_cfg = _get_settings().get("agent", {})
+        settings = _get_settings()
+        agent_cfg = settings.get("agent", {})
         if harness_override:
             agent_cfg = dict(agent_cfg, harness=harness_override)
         adapter = get_adapter(role, agent_cfg=agent_cfg)
         harness_id = adapter.id
+
+        # Resolve the model/effort cascade for THIS new pane (config-driven).
+        from juggle_agent_runtime import resolve_agent_runtime
+        _rt = resolve_agent_runtime(role, model_flag=model, effort_flag=effort,
+                                    settings=settings)
+        model, effort = _rt["model"], _rt["effort"]
 
         agents = db.get_all_agents()
         if len(agents) >= MAX_BACKGROUND_AGENTS:
@@ -577,6 +588,7 @@ class JuggleTmuxManager:
         mock_pane = os.environ.get("JUGGLE_TMUX_MOCK_PANE")
         if mock_pane:
             agent_id = db.create_agent(role=role, pane_id=mock_pane, harness=harness_id, repo_path=repo_path)
+            db.update_agent(agent_id, model=model)  # store resolved launch model
             return db.get_agent(agent_id)
 
         # Pre-trust the spawn dir so Claude's folder-trust gate never hangs the
@@ -585,7 +597,8 @@ class JuggleTmuxManager:
 
         self.ensure_session()
         pane_id = self.spawn_pane()
-        self.start_agent_in_pane(pane_id, model=model, role=role, agent_cfg=agent_cfg)
+        self.start_agent_in_pane(pane_id, model=model, role=role,
+                                 agent_cfg=agent_cfg, effort=effort)
 
         # Verified spawn (2026-06-20 leak root cause): an interactive harness MUST
         # render its ready UI before we register the agent; if it never does
@@ -600,6 +613,7 @@ class JuggleTmuxManager:
             )
 
         agent_id = db.create_agent(role=role, pane_id=pane_id, harness=harness_id, repo_path=repo_path)
+        db.update_agent(agent_id, model=model)  # store resolved launch model
         return db.get_agent(agent_id)
 
     def get_pane_last_used(self, pane_id: str) -> int:
