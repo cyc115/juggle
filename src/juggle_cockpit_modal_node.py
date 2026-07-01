@@ -213,6 +213,21 @@ class _NodeDetailModal(ModalScreen):
             yield Static("\n".join(self._field_lines()), id="node-header", markup=False)
             yield Static("", id="node-body", markup=False)
 
+    def on_key(self, event) -> None:
+        """Vim-style j/k (and arrows) scroll the overflowing modal body.
+
+        ``event.stop()`` keeps the key from leaking to the underlying cockpit
+        while the overlay is open. Mirrors ``_HelpModal``'s scroll handler and
+        reuses Textual's built-in ``VerticalScroll.scroll_down/up`` — no custom
+        scroll math.
+        """
+        if event.key in ("j", "down"):
+            self.query_one(VerticalScroll).scroll_down()
+            event.stop()
+        elif event.key in ("k", "up"):
+            self.query_one(VerticalScroll).scroll_up()
+            event.stop()
+
     def on_mount(self) -> None:
         # Task nodes have no summary — render prompt/handoff + close hint and stop.
         if not self._is_topic:

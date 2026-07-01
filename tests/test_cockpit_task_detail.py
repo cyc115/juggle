@@ -9,8 +9,6 @@ Covers:
 import os
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
@@ -293,6 +291,86 @@ def test_node_detail_modal_task_shows_fields_only():
     assert "DEP1" in lines
     assert "Summary" not in lines
     assert "Recent Activity" not in lines
+
+
+# ---------------------------------------------------------------------------
+# Regression pin — 2026-06-30 info-pane j/k scroll
+# Symptom: long topic-info modal content overflowed with no way to scroll.
+# j (down) / k (up) must scroll the modal's VerticalScroll body and stop the
+# event so it does not leak to the underlying cockpit.
+# ---------------------------------------------------------------------------
+
+
+class _FakeScroll:
+    def __init__(self):
+        self.downs = 0
+        self.ups = 0
+
+    def scroll_down(self):
+        self.downs += 1
+
+    def scroll_up(self):
+        self.ups += 1
+
+
+class _FakeKey:
+    def __init__(self, key):
+        self.key = key
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
+def test_node_detail_modal_jk_scrolls_body():
+    """2026-06-30 info-pane j/k scroll: j scrolls the modal body down, k up."""
+    from juggle_cockpit_modals import _NodeDetailModal
+
+    topic = _make_topic("AO", title="My Topic")
+    modal = _NodeDetailModal.from_conversation(topic)
+    assert hasattr(modal, "on_key"), "modal must handle keys for j/k scroll"
+
+    fake = _FakeScroll()
+    modal.query_one = lambda *a, **k: fake  # bypass live DOM
+
+    ev_down = _FakeKey("j")
+    modal.on_key(ev_down)
+    assert fake.downs == 1 and fake.ups == 0
+    assert ev_down.stopped, "j must stop the event so it doesn't leak to the cockpit"
+
+    ev_up = _FakeKey("k")
+    modal.on_key(ev_up)
+    assert fake.ups == 1
+    assert ev_up.stopped, "k must stop the event so it doesn't leak to the cockpit"
+
+
+def test_node_detail_modal_arrows_also_scroll():
+    """down/up arrows share the j/k scroll path (vim + arrow parity)."""
+    from juggle_cockpit_modals import _NodeDetailModal
+
+    topic = _make_topic("AO", title="My Topic")
+    modal = _NodeDetailModal.from_conversation(topic)
+    fake = _FakeScroll()
+    modal.query_one = lambda *a, **k: fake
+
+    modal.on_key(_FakeKey("down"))
+    modal.on_key(_FakeKey("up"))
+    assert fake.downs == 1 and fake.ups == 1
+
+
+def test_node_detail_modal_other_keys_not_scrolled():
+    """Non-scroll keys are left alone (not stopped, no scroll)."""
+    from juggle_cockpit_modals import _NodeDetailModal
+
+    topic = _make_topic("AO", title="My Topic")
+    modal = _NodeDetailModal.from_conversation(topic)
+    fake = _FakeScroll()
+    modal.query_one = lambda *a, **k: fake
+
+    ev = _FakeKey("x")
+    modal.on_key(ev)
+    assert fake.downs == 0 and fake.ups == 0
+    assert not ev.stopped
 
 
 # ---------------------------------------------------------------------------
