@@ -241,16 +241,16 @@ class _NodeDetailModal(ModalScreen):
             self._apply_summary({})
             return
 
-        from juggle_topic_summary_cache import load_cached_sections
+        from juggle_topic_summary_cache import child_node_signature, load_cached_sections
 
         thread_id = self._summary_ctx.get("thread_id", "")
         message_count = self._summary_ctx.get("message_count", 0)
         db = getattr(self.app, "_db", None)
+        self._node_sig = child_node_signature(self._summary_ctx.get("child_nodes"))
 
-        # L1 (in-memory) → L2 (DB) lookup keyed by MAX(messages.id). An EXACT hit
-        # renders instantly; a miss / advanced cursor regenerates.
+        # L1→L2 lookup keyed by (MAX(messages.id), node sig); new message OR node dev regenerates.
         sections, self._cursor = load_cached_sections(
-            db, thread_id, message_count, _topic_summary_cache
+            db, thread_id, message_count, _topic_summary_cache, self._node_sig
         )
         if sections is not None:
             self._apply_summary(sections)
@@ -271,16 +271,16 @@ class _NodeDetailModal(ModalScreen):
             "label": self._label,
             "title": self._node.get("title") or "",
             "status": self._node.get("state") or "",
+            "child_nodes": self._summary_ctx.get("child_nodes") or [],
         }
 
         sections = summarize_topic(task_input, result_output, messages_all, meta)
 
-        # R7: persist ONLY a displayable summary (store_summary gates on content);
-        # an empty / LLM-failed one is never cached, so the next view re-derives.
+        # R7: persist ONLY a displayable summary (store_summary gates on content); node_sig keys the row.
         thread_id = self._summary_ctx.get("thread_id", "")
         cursor = getattr(self, "_cursor", self._summary_ctx.get("message_count", 0))
         db = getattr(self.app, "_db", None)
-        store_summary(db, thread_id, cursor, sections, _topic_summary_cache)
+        store_summary(db, thread_id, cursor, sections, _topic_summary_cache, getattr(self, "_node_sig", ""))
 
         self.app.call_from_thread(self._apply_summary, sections)
 

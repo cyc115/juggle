@@ -455,6 +455,29 @@ def build_summary_ctx(db, thread_id: str | None) -> dict:
         ctx["message_count"] = len(messages_all)
     except Exception:
         pass
+    # Child task-nodes drive the Sub-tasks prompt block AND the node-aware cache
+    # fingerprint (updated_at feeds child_node_signature). Isolated try so a
+    # missing nodes table never costs the message context above.
+    try:
+        with db._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            child_rows = conn.execute(
+                "SELECT id, title, state, agent_result, updated_at FROM nodes "
+                "WHERE parent_id = ? AND kind = 'task' ORDER BY id ASC",
+                (thread_id,),
+            ).fetchall()
+        ctx["child_nodes"] = [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "state": r["state"],
+                "agent_result": r["agent_result"],
+                "updated_at": r["updated_at"],
+            }
+            for r in child_rows
+        ]
+    except Exception:
+        pass
     return ctx
 
 

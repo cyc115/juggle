@@ -69,7 +69,7 @@ def test_migration_creates_table_idempotently():
     conn = _conn()
     migrate_46_topic_summary_cache(conn)  # second run must not raise
     cols = {r[1] for r in conn.execute("PRAGMA table_info(topic_summary_cache)")}
-    assert cols == {"thread_id", "last_message_id", "summary_json", "generated_at"}
+    assert cols == {"thread_id", "last_message_id", "summary_json", "generated_at", "node_signature"}
 
 
 def test_current_cursor_is_max_message_id_or_zero():
@@ -188,4 +188,4 @@ def test_store_summary_skips_empty_and_failed_summaries(tmp_path):
     with db._connect() as conn:
         row = read_summary_cache(conn, "t2")
     assert row is not None and row["sections"] == partial
-    assert l1.get(("t2", 9)) == partial
+    assert l1.get(("t2", 9, "")) == partial

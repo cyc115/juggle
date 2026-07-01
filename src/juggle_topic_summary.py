@@ -38,11 +38,23 @@ def build_summarize_prompt(
         snippets.append(f"{role}: {content}")
     msg_text = "\n".join(snippets) or "(no messages)"
 
+    # Sub-tasks block: reflects child task-node progress so the summary tracks
+    # node development, not just messages. Omitted entirely when there are none.
+    child_nodes = meta.get("child_nodes") or []
+    subtasks_block = ""
+    if child_nodes:
+        rows = "\n".join(
+            f"[{c.get('id')} — {c.get('title') or ''} — {c.get('state') or ''}]"
+            for c in child_nodes
+        )
+        subtasks_block = f"Sub-tasks:\n{rows}\n\n"
+
     return (
         f"You are summarizing a software development topic for someone with little context.\n"
         f"Topic: [{label}] {title} (state: {status})\n\n"
         f"Task/input (what the agent was asked to do):\n{task_input[:800] or '(none)'}\n\n"
         f"Result/output (agent's final result):\n{result_output[:800] or '(none)'}\n\n"
+        f"{subtasks_block}"
         f"Recent messages:\n{msg_text}\n\n"
         f"Write exactly 4 short sections (1-4 sentences each). Plain language.\n"
         f"IMPORTANT: output headers as PLAIN TEXT only — no bold, no markdown, no bullets, "
