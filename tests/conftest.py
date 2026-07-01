@@ -247,6 +247,21 @@ _SERIAL_MODULE_SUFFIXES = (
 )
 
 
+@pytest.fixture
+def juggle_db(tmp_path):
+    """A fresh, isolated JuggleDB under tmp_path (2026-06-30 topic-graph-state-unify).
+
+    Shared by the topic-lifecycle/derive/reconcile/forward-link test modules. Same
+    shape as the local `db` fixtures in test_db_topics.py — the prod-DB guard in
+    `_isolate_db_from_prod` still applies.
+    """
+    from juggle_db import JuggleDB
+
+    d = JuggleDB(db_path=str(tmp_path / "juggle-fixture.db"))
+    d.init_db()
+    return d
+
+
 def pytest_collection_modifyitems(config, items):  # noqa: ARG001
     for item in items:
         path = str(item.fspath).replace(os.sep, "/")

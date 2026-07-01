@@ -109,16 +109,17 @@ def cmd_complete_agent(args):
     #    (task-notifications, '# Autonomous loop tick' headers) which the canonical
     #    classifier excludes. Code over prompts: don't rely on the orchestrator
     #    create-thread'ing a fresh ephemeral thread first.
-    preserve_feature_topic = db.has_human_user_message(thread_uuid)
-    if not preserve_feature_topic:
-        db.set_thread_status(thread_uuid, "closed")
-    elif (thread.get("state") or "") in ("background", "running"):
-        # Un-hijack an in-flight wrongful bind. Gate on the in-flight status so a
-        # duplicate/retry completion never RESURRECTS an already-terminal
-        # (closed/archived/failed) feature topic to 'active' — idempotency
-        # (Codex review, 2026-06-21).
-        db.set_thread_status(thread_uuid, "active")
-    # else: preserved feature topic already terminal → leave status untouched.
+    # R1 (2026-06-30 topic-graph-state-unify): the close/preserve decision is
+    # extracted to juggle_topic_lifecycle.decide_thread_close — behavior-preserving.
+    # None → leave untouched; "active" → un-hijack an in-flight wrongful bind
+    # (gated on in-flight status so a duplicate completion never resurrects an
+    # already-terminal feature topic — Codex review, 2026-06-21).
+    from juggle_topic_lifecycle import decide_thread_close
+
+    _new_status = decide_thread_close(db, thread, thread_uuid)
+    preserve_feature_topic = _new_status != "closed"
+    if _new_status is not None:
+        db.set_thread_status(thread_uuid, _new_status)
 
     # Resolve agent before step 5 (needed for role check below)
     agent = db.get_agent_by_thread(thread_uuid)
