@@ -32,7 +32,16 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   vcs_type      TEXT,
   before_sha    TEXT,
   after_sha     TEXT,
-  was_dirty     INTEGER
+  was_dirty     INTEGER,
+  input_tokens       INTEGER,
+  output_tokens      INTEGER,
+  cache_read_tokens  INTEGER,
+  cache_write_tokens INTEGER,
+  session_id         TEXT,
+  prompt_fingerprint TEXT,
+  prompt_version     TEXT,
+  prompt_bytes       INTEGER,
+  agent_cwd          TEXT
 );
 """
 

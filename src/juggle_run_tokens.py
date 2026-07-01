@@ -60,7 +60,11 @@ def read_run_tokens(run: dict, *, projects_root: Path | None = None) -> dict:
         root = projects_root or _DEFAULT_ROOT
         start = _parse_ts(run.get("dispatched_at"))
         end = _parse_ts(run.get("completed_at"))
-        cwd = run.get("repo_path")
+        # The transcript dir is keyed by the agent's REAL cwd (the worktree),
+        # stored in agent_cwd. repo_path is ALWAYS the main repo (transcripts of
+        # the orchestrator's own session) so it is only a fallback for --allow-main
+        # runs where cwd == repo (2026-06-30 orchestration-metrics review fix).
+        cwd = run.get("agent_cwd") or run.get("repo_path")
         if not (start and end and cwd):
             return dict(_ZERO)
         d = root / project_dir_for_cwd(cwd)

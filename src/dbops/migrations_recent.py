@@ -319,11 +319,11 @@ def apply_recent_migrations(conn: sqlite3.Connection) -> None:
     # Migrations 47-49 (selfheal-triage-v2 P2): group_key + audit + lease.
     apply_selfheal_p2_migrations(conn)
 
-    # Migrations 50.. (unified-topic-graph P8 collapse): extracted to
-    # dbops.migrations_p8 so the collapse's growing migration chain doesn't push
-    # this general registry past its LOC budget.
+    # Migrations 50.. (P8 collapse) extracted to dbops.migrations_p8 (LOC budget).
     from dbops.migrations_p8 import apply_p8_migrations
     apply_p8_migrations(conn)
+    from dbops.migration_metrics_cols import apply_metrics_columns  # metrics token/prompt cols
+    apply_metrics_columns(conn)
 
 
 # Migrations 41, 45 and 47-49 live in their own modules (loc_gate budget).
