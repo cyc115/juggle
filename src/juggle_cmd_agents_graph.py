@@ -209,6 +209,17 @@ def mark_graph_task(db, thread_uuid, integrate_ok, handoff, session_id,
             message=f"⬢ graph task {task['id']} verified",
             session_id=session_id,
         )
+        # F4 (2026-06-30 topic-graph-state-unify): a verified child may complete
+        # its owning conversation topic — reconcile just that parent. Scoped call
+        # is a no-op when the parent is a kind='topic' node (candidate filter).
+        _owner = task.get("topic_id")
+        if _owner:
+            try:
+                from juggle_topic_reconcile import reconcile_conversation_topics
+
+                reconcile_conversation_topics(db, only_topic_id=_owner)
+            except Exception:
+                pass  # never break completion on a reconcile hiccup
     else:
         _notify_failure(db, task, state, thread_uuid, session_id)
 

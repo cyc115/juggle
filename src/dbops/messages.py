@@ -77,6 +77,24 @@ class MessagesMixin:
                 if "no such table" not in str(e).lower():
                     raise
             conn.commit()
+        self._maybe_reopen_conversation(thread_id, role, content)
+
+    def _maybe_reopen_conversation(self, thread_id: str, role: str, content: str):
+        """Reopen a done conversation topic on a fresh HUMAN message (F4,
+        2026-06-30 topic-graph-state-unify). User activity always wins over a
+        derived close. Uses the SAME canonical classifier as has_human_user_message
+        so auto/junk chatter (task-notifications, loop-tick headers) never reopens.
+        The tick sweep (F5) is the backstop."""
+        if role != "user":
+            return
+        if _is_junk_message(content) or not is_auto_topic_eligible(content):
+            return
+        try:
+            thread = self.get_thread(thread_id)
+            if thread and thread.get("state") == "done":
+                self.set_thread_status(thread_id, "active")
+        except Exception:
+            pass  # never let a reopen failure break message storage
 
     def get_message_count(self, thread_id: str, exclude_junk: bool = True) -> int:
         """Count user messages for a thread, optionally excluding junk."""
