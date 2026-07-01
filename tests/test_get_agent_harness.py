@@ -9,6 +9,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import pytest
 
 
+# ── parallel-safety: pin the pool cap for the WHOLE module (#5046) ──────────────
+# Every get-agent test mocks 1–2 idle agents, but `acquire_agent` reads the
+# ambient `juggle_db.MAX_BACKGROUND_AGENTS` at its capacity gate. Under `-n auto`
+# a sibling worker can leak a LOW cap into this worker's process (e.g.
+# tests/watchdog/test_never_tasked.py sets `JUGGLE_MAX_BACKGROUND_AGENTS` and
+# never unsets it), so a test with N mock agents spuriously hits "pool full"
+# depending on cross-worker ordering. #5045 pinned only the reasonix test; this
+# autouse fixture isolates the ENTIRE module from that shared global so no
+# get-agent test depends on the ambient/leaked cap. monkeypatch auto-restores
+# per test, so it is parallel-safe.
+@pytest.fixture(autouse=True)
+def _pin_pool_cap(monkeypatch):
+    monkeypatch.setattr("juggle_db.MAX_BACKGROUND_AGENTS", 20)
+
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _settings(harness="claude"):
@@ -237,12 +252,11 @@ def test_get_agent_harness_flag_selects_reasonix_agent():
     mock_mgr = mock_cls.return_value
     mock_mgr.wait_for_ready_to_paste.return_value = True
 
-    # Isolate the pool-cap check from the ambient config max_agents (#5045): this
-    # test has 2 mock agents and would spuriously hit "pool full" when the machine's
-    # config lowers max_agents to <=2. acquire_agent reads juggle_db.MAX_BACKGROUND_AGENTS.
+    # Pool cap is pinned module-wide by the `_pin_pool_cap` autouse fixture
+    # (#5046) so this 2-agent test never spuriously hits "pool full" under a
+    # leaked/low ambient max_agents.
     with patch("juggle_cmd_agents_common.get_db", return_value=db), \
          patch("juggle_cmd_agents_common.JuggleTmuxManager", mock_cls), \
-         patch("juggle_db.MAX_BACKGROUND_AGENTS", 20), \
          patch("juggle_cmd_agents_common._resolve_thread", return_value="t-uuid"), \
          patch("juggle_cmd_agents_common._get_settings", return_value=_settings("claude")):
         cmd_get_agent(_get_args(repo="/repo", harness="reasonix"))
