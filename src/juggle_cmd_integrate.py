@@ -8,6 +8,7 @@ from pathlib import Path
 from juggle_settings import get_repo_config
 from juggle_integrate_lock import (  # noqa: F401 — re-exported for callers
     AUTOPILOT_LOCK_TIMEOUT_SECS,
+    INTEGRATE_LOCK_TIMEOUT_SECS,
     acquire_repo_lock,
     release_repo_lock,
 )
@@ -91,8 +92,8 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
     push_mode = repo_cfg["push_mode"]
     test_cmd = repo_cfg["test_cmd"]
 
-    # Autopilot context (thread bound to a graph task): fan-in completions
-    # legitimately queue behind a long test_cmd — wait up to 30 min (DA M2).
+    # Graph-task binding still drives the pre-merge verify gate below; it no
+    # longer selects the lock deadline (see lock_timeout).
     task = _graph_task_for_thread(db, thread_uuid)
 
     # Source-binding guard (2026-06-16 multi-repo incident): an autopilot topic
@@ -108,9 +109,15 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         )
         return False, bind_err
 
-    lock_timeout = AUTOPILOT_LOCK_TIMEOUT_SECS if task else 300.0
+    # Global serialized integrate lock (#5038): acquire the per-repo merge-queue
+    # lock HERE — before fetch/rebase/suite/merge/push — so the ENTIRE integrate
+    # (including the full suite) runs under it. Acquisition BLOCKS uniformly with
+    # the 1800s safety valve (no 300s fast-fail); waiters queue behind the holder
+    # and win when it releases, so only one integrate/suite runs at a time.
     try:
-        lock_path = acquire_repo_lock(main_repo_path, timeout_secs=lock_timeout)
+        lock_path = acquire_repo_lock(
+            main_repo_path, timeout_secs=INTEGRATE_LOCK_TIMEOUT_SECS
+        )
     except RuntimeError as e:
         db.add_action_item(
             thread_id=thread_uuid,

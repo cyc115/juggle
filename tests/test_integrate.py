@@ -234,8 +234,12 @@ def test_integrate_task_bound_thread_uses_autopilot_lock_deadline(tmp_path, git_
                for i in items), "no action item filed on lock timeout"
 
 
-def test_integrate_plain_thread_keeps_default_lock_deadline(tmp_path, git_repo):
-    """Non-autopilot integrations keep the 300s lock wait."""
+def test_integrate_plain_thread_uses_serialized_lock_deadline(tmp_path, git_repo):
+    """#5038 (2026-07-01 integrate storm): ALL integrations — autopilot or not —
+    now BLOCK on the merge queue with the generous 1800s safety valve. The old
+    300s-timeout-and-FAIL for plain threads caused N concurrent suites to thrash
+    CPU and trip the waiters' short deadline, leaving tasks verified-but-unmerged.
+    Plain threads must wait the same 1800s as autopilot ones."""
     import juggle_cmd_integrate as jci
 
     wt = _make_worktree(git_repo, str(tmp_path), "PL")
@@ -251,7 +255,7 @@ def test_integrate_plain_thread_keeps_default_lock_deadline(tmp_path, git_repo):
     with patch.object(jci, "acquire_repo_lock", side_effect=fake_acquire):
         ok, _ = jci._run_integrate(thread, db)
     assert not ok
-    assert seen["timeout"] == 300.0
+    assert seen["timeout"] == jci.INTEGRATE_LOCK_TIMEOUT_SECS == 1800.0
 
 
 def test_release_lock_noop_when_not_owner(tmp_path):
@@ -260,6 +264,123 @@ def test_release_lock_noop_when_not_owner(tmp_path):
     lock_file.write_text(f"1\n{time.time()}\n")  # owned by PID 1
     release_repo_lock(lock_file)
     assert lock_file.exists()  # not removed
+
+
+def test_two_concurrent_integrate_lock_acquisitions_serialize_and_both_succeed(tmp_path):
+    """Regression pin (#5038, 2026-07-01 integrate storm): the integrate lock
+    SERIALIZES concurrent integrates — the second acquisition BLOCKS until the
+    first releases, and BOTH succeed (neither times out / fails). This is the
+    whole point of the global serialized integrate lock: only one integrate
+    (and therefore one test suite) runs at a time, so N integrates never spawn
+    N suites at once."""
+    import textwrap
+    import threading
+    from juggle_cmd_integrate import acquire_repo_lock, release_repo_lock
+
+    src_dir = str(Path(__file__).parent.parent / "src")
+    lock_file = tmp_path / "serial.lock"
+    ready = tmp_path / "holder.ready"
+    release = tmp_path / "holder.release"
+    holder_script = tmp_path / "holder.py"
+    holder_script.write_text(textwrap.dedent(f"""
+        import sys, time
+        from pathlib import Path
+        sys.path.insert(0, {src_dir!r})
+        import juggle_integrate_lock as L
+        L._get_lock_path = lambda repo: Path({str(lock_file)!r})
+        lp = L.acquire_repo_lock("/repo", timeout_secs=60)   # holder wins first
+        Path({str(ready)!r}).write_text("1")
+        while not Path({str(release)!r}).exists():            # hold until signalled
+            time.sleep(0.02)
+        L.release_repo_lock(lp)
+        print("HOLDER_OK")
+    """))
+
+    proc = subprocess.Popen(
+        [sys.executable, str(holder_script)],
+        stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        # Wait until the holder subprocess actually holds the lock.
+        deadline = time.time() + 10
+        while not ready.exists() and time.time() < deadline:
+            time.sleep(0.02)
+        assert ready.exists(), "holder never acquired the lock"
+
+        # A second acquirer (this process) requests the SAME lock. It must BLOCK
+        # while the live holder holds it — not steal, not fail.
+        result = {}
+
+        def waiter():
+            try:
+                with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
+                    t0 = time.monotonic()
+                    lp = acquire_repo_lock("/repo", timeout_secs=60)
+                    result["blocked_for"] = time.monotonic() - t0
+                    result["lp"] = lp
+            except Exception as e:  # pragma: no cover - failure path
+                result["error"] = e
+
+        wt = threading.Thread(target=waiter)
+        wt.start()
+        time.sleep(0.5)  # let the waiter spin on the busy-wait
+        assert wt.is_alive(), "waiter did not BLOCK while holder held the lock"
+        assert "lp" not in result, "waiter acquired while holder still held (no serialization)"
+
+        # Release the holder → the blocked waiter should now win.
+        release.write_text("1")
+        wt.join(timeout=10)
+        assert not wt.is_alive(), "waiter never unblocked after holder released"
+        assert "error" not in result, f"second acquisition failed: {result.get('error')}"
+        assert result.get("blocked_for", 0) >= 0.4, "waiter did not block until release"
+        release_repo_lock(result["lp"])
+
+        out, _ = proc.communicate(timeout=10)
+        assert "HOLDER_OK" in out, "holder (first acquisition) did not succeed"
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_integrate_runs_suite_inside_lock(git_repo, tmp_path):
+    """Regression pin (#5038): the FULL test suite runs INSIDE the integrate
+    lock. Acquisition happens at the START of _run_integrate, before
+    fetch/rebase/suite/merge/push, so the lock covers the suite phase — that is
+    what prevents N concurrent integrates from running N suites at once."""
+    from juggle_cmd_integrate import _run_integrate
+    import juggle_cmd_integrate as jci
+
+    wt = _make_worktree(git_repo, str(tmp_path), "LK")
+    _add_commit(wt, "new.py", "z = 3\n", "add new.py")
+    thread = {"id": "t-lk", "worktree_path": wt,
+              "worktree_branch": "cyc_LK", "main_repo_path": git_repo}
+    db = _make_db()
+    lock_file = tmp_path / "lk.lock"
+    captured = {}
+
+    real_acquire = jci.acquire_repo_lock
+
+    def spy_acquire(repo_path, timeout_secs=300.0):
+        lp = real_acquire(repo_path, timeout_secs=timeout_secs)
+        captured["lock_path"] = lp
+        return lp
+
+    def fake_suite(test_cmd, worktree_path, worktree_branch):
+        lp = captured.get("lock_path")
+        captured["held_during_suite"] = bool(lp and lp.exists())
+        return False, "stop-after-lock-check"  # short-circuit the rest
+
+    with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
+        with patch("juggle_cmd_integrate.get_repo_config",
+                   return_value={"push_mode": "direct", "test_cmd": "pytest -q"}):
+            with patch.object(jci, "acquire_repo_lock", side_effect=spy_acquire):
+                with patch("juggle_integrate_fullsuite.run_test_cmd_full",
+                           side_effect=fake_suite):
+                    ok, msg = _run_integrate(thread, db)
+
+    assert not ok  # short-circuited by the fake suite
+    assert captured.get("held_during_suite") is True, \
+        "test suite ran OUTSIDE the integrate lock"
 
 
 # ── _run_integrate tests ──────────────────────────────────────────────────────
