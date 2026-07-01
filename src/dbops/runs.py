@@ -123,6 +123,20 @@ class RunsMixin:
             except Exception:
                 pass  # metrics backfill is best-effort — never break completion
 
+    def set_run_session_id(self, agent_id: str, session_id: str) -> None:
+        """Stamp the Claude session id onto the agent's OPEN run (Tier-1b file
+        resolution, 2026-06-30 orchestration-metrics). The `session_id IS NULL`
+        clause makes a re-stamp a no-op; no-op when no open run exists."""
+        if not agent_id or not session_id:
+            return
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE agent_runs SET session_id=? WHERE agent_id=? "
+                "AND status='dispatched' AND session_id IS NULL",
+                (session_id, agent_id),
+            )
+            conn.commit()
+
     def supersede_open_runs(self, thread_id: str) -> None:
         """Mark any open ('dispatched') runs for thread_id as 'superseded'."""
         with self._connect() as conn:

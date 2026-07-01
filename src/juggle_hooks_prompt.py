@@ -197,6 +197,26 @@ def handle_user_prompt_submit(data: dict) -> None:
     sys.exit(0)
 
 
+def _stamp_agent_session(db, data: dict) -> None:
+    """Tier-1b session-id stamp (2026-06-30 orchestration-metrics): the Stop hook
+    fires in the child agent's session, whose payload cwd == its worktree. Match
+    that to the busy agent working the worktree and stamp the session id onto its
+    open run so read_run_tokens pins exactly one transcript. The orchestrator's
+    Stop (cwd = main repo) matches no busy agent's worktree, so it is a no-op.
+    Best-effort — Tier-2 glob covers any miss."""
+    sid = (data.get("session_id") or "").strip()
+    cwd = (data.get("cwd") or "").strip()
+    if not sid or not cwd:
+        return
+    for a in db.get_all_agents():
+        if a.get("status") != "busy" or not a.get("assigned_thread"):
+            continue
+        t = db.get_thread(a["assigned_thread"]) or {}
+        if (t.get("worktree_path") or "") == cwd:
+            db.set_run_session_id(a["id"], sid)
+            return
+
+
 def handle_stop(data: dict, scan_class_b_fn) -> None:
     """Capture last assistant message and mark notifications delivered."""
     if not is_active():
@@ -204,6 +224,10 @@ def handle_stop(data: dict, scan_class_b_fn) -> None:
 
     try:
         db = get_db()
+        try:
+            _stamp_agent_session(db, data)  # Tier-1b session-id stamp
+        except Exception:
+            pass  # best-effort — never break the Stop hook
 
         # Capture orchestrator response — available via last_assistant_message field
         last_msg = data.get("last_assistant_message", "").strip()
