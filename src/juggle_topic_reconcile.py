@@ -30,6 +30,61 @@ def close_idle_min() -> int:
         return 30
 
 
+def _resolve_conv_repo(db, thread: dict) -> str:
+    """Repo holding ``main`` for a conversation's branch-merge check: the thread's
+    main_repo_path, else juggle's own repo."""
+    repo = (thread.get("main_repo_path") or "").strip()
+    if repo:
+        return repo
+    try:
+        from juggle_cli_common import SRC_DIR
+        from pathlib import Path
+
+        return str(Path(SRC_DIR).parent.resolve())
+    except Exception:
+        return ""
+
+
+def backfill_stale_open_topics(db) -> list[str]:
+    """One-time conservative close of the stale-open conversation pile (F6,
+    2026-06-30 topic-graph-state-unify).
+
+    For each kind='conversation' node in state 'open' with NO children, close it
+    IFF its branch ``cyc_<user_label>`` is provably merged to main (is-ancestor).
+    Unmerged / no-branch / no-repo → left open. CLOSES-ONLY; fabricates no
+    children. Never raises (per-topic guarded). Returns the closed topic ids.
+    """
+    from dbops.graph_guards import branch_merged_to_main
+
+    try:
+        with db._connect() as c:
+            rows = c.execute(
+                "SELECT id FROM nodes n WHERE kind='conversation' AND state='open' "
+                "AND NOT EXISTS (SELECT 1 FROM nodes t WHERE t.kind='task' "
+                "                AND t.parent_id=n.id)"
+            ).fetchall()
+    except Exception:
+        _log.exception("topic backfill: candidate scan failed — skipping")
+        return []
+
+    closed: list[str] = []
+    for row in rows:
+        topic_id = row["id"]
+        try:
+            thread = db.get_thread(topic_id) or {}
+            label = (thread.get("user_label") or "").strip()
+            if not label:
+                continue
+            repo = _resolve_conv_repo(db, thread)
+            if branch_merged_to_main(repo, f"cyc_{label}"):
+                db.set_thread_status(topic_id, "closed")
+                closed.append(topic_id)
+        except Exception:
+            _log.exception("topic backfill: failed for %s — continuing", topic_id)
+            continue
+    return closed
+
+
 def _child_states(db, topic_id: str) -> list[str]:
     with db._connect() as c:
         rows = c.execute(
