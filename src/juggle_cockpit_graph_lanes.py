@@ -22,6 +22,10 @@ class LaneNode:
 class LaneLayout:
     nodes: list[LaneNode]
     lane_count: int
+    # The DAG edges (child, parent) restricted to known nodes — carried so the
+    # Surface-B railroad line-model can replay lane occupancy without re-querying
+    # the DB (single source). Defaulted for backward-compat with 2-arg callers.
+    edges: tuple = ()
 
 
 def _leftmost_free(lanes: list) -> int:
@@ -38,9 +42,11 @@ def assign_lanes(tasks, edges) -> LaneLayout:
     row_of = {n.id: i for i, n in enumerate(order)}
     state = {n.id: n.state for n in order}
     dependents: dict[str, list[str]] = {n.id: [] for n in order}
+    known_edges: list[tuple[str, str]] = []
     for node_id, dep_id in edges:
         if node_id in ids and dep_id in ids:
             dependents[dep_id].append(node_id)
+            known_edges.append((node_id, dep_id))
     for k in dependents:
         dependents[k].sort(key=lambda v: (row_of[v], v))
 
@@ -65,4 +71,4 @@ def assign_lanes(tasks, edges) -> LaneLayout:
                 lanes[_leftmost_free(lanes)] = v
         out.append(LaneNode(nid, row, lane, state[nid], len(deps_v), fan_in))
     lane_count = max((ln.lane for ln in out), default=-1) + 1
-    return LaneLayout(out, lane_count)
+    return LaneLayout(out, lane_count, tuple(known_edges))
