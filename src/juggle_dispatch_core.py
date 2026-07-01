@@ -116,6 +116,7 @@ def send_task_to_agent(
     worktree_branch_override: str | None = None,
     main_repo_override: str | None = None,
     db_path: str | None = None,
+    prompt_version: str | None = None,
     _mgr=None,
 ) -> None:
     """Pane verify, worktree auto-create, prompt build (template + preamble),
@@ -252,44 +253,14 @@ def send_task_to_agent(
         _update["oneshot_pid"] = oneshot_pid
     db.update_agent(agent_id, **_update)
 
-    # Ledger (best-effort — never breaks dispatch)
-    try:
-        from dbops import db_graph, db_topics
-        _thread = db.get_thread(thread_id) or {} if thread_id else {}
-        _task = db_graph.get_task_by_thread(db, thread_id) if thread_id else None
-        _topic = db_topics.get_topic_by_thread(db, thread_id) if thread_id else None
-        _repo_path = agent.get("repo_path") or (_thread.get("worktree_path") if _thread else None)
-        _vcs_type = _before_sha = _was_dirty = None
-        if _repo_path:
-            try:
-                import vcs as _vcs
-                _vcs_type = _vcs.detect(_repo_path)
-                _backend = _vcs.get_backend(_vcs_type)
-                if _backend:
-                    _before_sha = _backend.head(_repo_path)
-                    _was_dirty = _backend.is_dirty(_repo_path)
-            except Exception:
-                pass
-        if thread_id:
-            db.supersede_open_runs(thread_id)
-        run_id = db.insert_agent_run(
-            thread_id=thread_id,
-            input_prompt=full_prompt,
-            agent_id=agent_id,
-            role=_role,
-            model=_update.get("model"),
-            harness=adapter.id,
-            project_id=_thread.get("project_id") if _thread else None,
-            topic_id=_topic["id"] if _topic else None,
-            task_id=_task["id"] if _task else None,
-            repo_path=_repo_path,
-            vcs_type=_vcs_type,
-            before_sha=_before_sha,
-            was_dirty=_was_dirty,
-        )
-        db.update_agent(agent_id, current_run_id=run_id)
-    except Exception as exc:
-        _log.warning("ledger insert failed: %s", exc)
+    # Ledger (best-effort — never breaks dispatch). Extracted to
+    # juggle_dispatch_ledger (2026-06-30 orchestration-metrics; LOC budget).
+    from juggle_dispatch_ledger import record_dispatch_run
+    record_dispatch_run(
+        db, thread_id=thread_id, agent=agent, agent_id=agent_id, role=_role,
+        full_prompt=full_prompt, model=_update.get("model"), harness=adapter.id,
+        prompt_version=prompt_version,
+    )
 
 
 def dispatch_node(

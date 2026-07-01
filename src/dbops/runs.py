@@ -40,12 +40,19 @@ class RunsMixin:
         vcs_type: str | None = None,
         before_sha: str | None = None,
         was_dirty: bool | None = None,
+        prompt_fingerprint: str | None = None,
+        prompt_version: str | None = None,
+        prompt_bytes: int | None = None,
+        agent_cwd: str | None = None,
     ) -> int:
         """Insert a new ledger row in status 'dispatched'. Returns run_id.
 
         The trailing VCS-provenance kwargs (repo_path/vcs_type/before_sha/
         was_dirty) are captured at the dispatch choke point; they default None so
-        non-VCS callers and pre-existing tests are unaffected.
+        non-VCS callers and pre-existing tests are unaffected. The metrics kwargs
+        (prompt_fingerprint/version/bytes, agent_cwd = the agent's real worktree
+        cwd for transcript resolution) likewise default None (2026-06-30
+        orchestration-metrics).
         """
         now = _now()
         dirty = None if was_dirty is None else (1 if was_dirty else 0)
@@ -53,10 +60,12 @@ class RunsMixin:
             cur = conn.execute(
                 "INSERT INTO agent_runs (thread_id, project_id, topic_id, task_id, "
                 "agent_id, role, model, harness, input_prompt, status, dispatched_at, "
-                "repo_path, vcs_type, before_sha, was_dirty) "
-                "VALUES (?,?,?,?,?,?,?,?,?, 'dispatched', ?,?,?,?,?)",
+                "repo_path, vcs_type, before_sha, was_dirty, "
+                "prompt_fingerprint, prompt_version, prompt_bytes, agent_cwd) "
+                "VALUES (?,?,?,?,?,?,?,?,?, 'dispatched', ?,?,?,?,?,?,?,?,?)",
                 (thread_id, project_id, topic_id, task_id, agent_id, role, model,
-                 harness, input_prompt, now, repo_path, vcs_type, before_sha, dirty),
+                 harness, input_prompt, now, repo_path, vcs_type, before_sha, dirty,
+                 prompt_fingerprint, prompt_version, prompt_bytes, agent_cwd),
             )
             conn.commit()
             return int(cur.lastrowid)

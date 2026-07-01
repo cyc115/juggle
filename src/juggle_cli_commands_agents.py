@@ -156,6 +156,8 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
                 help="Bypass worktree guard and allow coder/planner to run in main worktree (logged)"),
             Arg("--topic", dest="topic", default=None,
                 help="Owning feature topic (label/UUID) — child task is parented here for derived close"),
+            Arg("--prompt-version", dest="prompt_version", default=None,
+                help="Human A/B tag stamped on the run for metrics --by prompt-version"),
         ),
         aliases=("send-task",),
         help="Send prompt file to agent pane"),

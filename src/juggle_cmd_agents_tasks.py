@@ -61,6 +61,7 @@ def cmd_send_task(args):
             worktree_branch_override=cli_wt_branch or None,
             main_repo_override=cli_main_repo or None,
             db_path=_db_path,
+            prompt_version=getattr(args, "prompt_version", None),
         )
     except RuntimeError as e:
         err = str(e)
