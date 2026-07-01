@@ -89,15 +89,15 @@ def test_render_legend_lines_smoke():
 
 
 def test_render_legend_lines_is_multicolumn():
-    """AMENDMENT 1: the legend renders DENSE multi-column (≥2 '<glyph> <meaning>'
-    cells per row) so it mostly fits one screen — not one entry per line."""
+    """v2 redesign: the legend packs SHORT-celled sections 2-column (per-section,
+    where cells fit) — e.g. Notifications — so it mostly fits one screen."""
     import juggle_cockpit_legend as L
     lines = L.render_legend_lines(width=110)
-    # At least one section body row must pack two distinct dict-glyphs together.
-    busy_glyph = L.AGENT_STATUS_GLYPHS["busy"]   # 🟢
-    idle_glyph = L.AGENT_STATUS_GLYPHS["idle"]   # ⚫
-    assert any(busy_glyph in ln and idle_glyph in ln for ln in lines), (
-        "expected busy+idle on one row (multi-column legend)"
+    # Notifications cells are short → they must pack two per row.
+    complete_glyph = L.NOTIF_KIND_GLYPHS["complete"]  # ⚡
+    info_glyph = L.NOTIF_KIND_GLYPHS["info"]          # ℹ️
+    assert any(complete_glyph in ln and info_glyph in ln for ln in lines), (
+        "expected complete+info on one row (per-section 2-column legend)"
     )
 
 
@@ -172,3 +172,79 @@ def test_no_inline_emoji_in_renderers():
         "Inline glyph literals in renderers (import them from juggle_cockpit_legend "
         "instead):\n" + "\n".join(violations)
     )
+
+
+# ── v2: canonical lifecycle vocabulary (CANONICAL_VOCAB.md) ───────────────────
+
+def test_canonical_maps_are_bijective():
+    """Each canonical map is one-glyph-per-universal-state (no dup values)."""
+    import juggle_cockpit_legend as L
+    for name in ("CANONICAL_GLYPHS", "CANONICAL_COMPACT"):
+        m = getattr(L, name)
+        vals = list(m.values())
+        assert len(vals) == len(set(vals)), f"{name} has duplicate glyphs: {vals}"
+
+
+def test_no_glyph_denotes_two_lifecycle_states():
+    """VOCAB PIN: every lifecycle glyph maps to EXACTLY ONE universal state.
+    Catches the old defects — ◇ (ready vs blocked), ⏸️ (paused vs unknown),
+    ⚠️ (warn vs action-blocker) each denoted two states before v2."""
+    import juggle_cockpit_legend as L
+    conflicts = {g: sorted(u) for g, u in L.glyph_to_universal_states().items()
+                 if len(u) > 1}
+    assert not conflicts, (
+        f"glyphs denoting multiple lifecycle states: {conflicts}. "
+        "Re-map onto the CANONICAL_GLYPHS single source."
+    )
+
+
+def test_canonical_vocab_defect_fixes():
+    """Lock the five concrete defect fixes from CANONICAL_VOCAB.md."""
+    import juggle_cockpit_legend as L
+    # (1) ◇ collision — railroad blocked-failed → ⊘; ◇ stays = ready
+    assert L.RAILROAD_STATE_GLYPHS["blocked-failed"] == L.CANONICAL_COMPACT["blocked"] == "⊘"
+    assert L.TASK_STATE_GLYPHS["ready"] == "◇"
+    # (2) unified running glyph
+    assert L.CANONICAL_GLYPHS["running"] == "🏃"
+    assert L.CANONICAL_COMPACT["running"] == "◐"
+    # (3) failure ✗-vs-❌ split — notif error → canonical failed emoji ❌
+    assert L.NOTIF_KIND_GLYPHS["error"] == L.CANONICAL_GLYPHS["failed"] == "❌"
+    # (4) ⚠️ overload — action blocker → 🛑; ⚠️ is warn-only
+    assert L.ACTION_TIER_GLYPHS[0] == L.CANONICAL_GLYPHS["needs-you"] == "🛑"
+    assert L.NOTIF_KIND_GLYPHS["warning"] == L.CANONICAL_GLYPHS["warn"] == "⚠️"
+    # (5) ⏸️ overload — sched unknown → ❔; ⏸️ is paused-only
+    assert L.SCHED_STATUS_GLYPHS["unknown"] == L.CANONICAL_GLYPHS["unknown"] == "❔"
+    assert L.TOPIC_STATUS_GLYPHS["paused"] == L.CANONICAL_GLYPHS["paused"] == "⏸️"
+
+
+# ── v2: ? Help modal hanging-indent wrap ──────────────────────────────────────
+
+def test_help_shortcut_wrap_is_hanging_indent():
+    """v2 redesign root-cause fix: a long shortcut description wraps UNDER the
+    description column (hanging indent), never back to column 0 (the old shatter)."""
+    from juggle_cockpit_modals import render_help_lines, HELP_DESC_INDENT
+    lines = render_help_lines(width=60)  # narrow → forces the desc to wrap
+    for i, ln in enumerate(lines):
+        if "Decommission agent" in ln:            # known long description
+            cont = lines[i + 1]
+            assert cont.startswith(" " * HELP_DESC_INDENT) and cont.strip(), (
+                f"continuation not hanging-indented under desc col: {cont!r}"
+            )
+            break
+    else:
+        raise AssertionError("Decommission shortcut not found in help render")
+
+
+def test_help_no_description_shatters_to_column_zero():
+    """No shortcut continuation line falls back to column 0 (wrap-shatter guard).
+    Only banner headers, rules, and the close hint may be flush-left."""
+    from juggle_cockpit_modals import render_help_lines
+    lines = render_help_lines(width=60)
+    allowed_flush = {"Keyboard Shortcuts", "Status Legend"}
+    for ln in lines:
+        if not ln or ln.startswith(" "):
+            continue
+        if ln in allowed_flush or ln.startswith("Esc"):
+            continue
+        # section rules are all box/dot chars
+        assert set(ln) <= set("─·"), f"description shattered to column 0: {ln!r}"
