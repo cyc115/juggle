@@ -25,6 +25,7 @@ from juggle_cmd_context import (
     cmd_retain,
 )
 from juggle_cmd_misc import cmd_agent_tools, cmd_cockpit
+from juggle_cmd_metrics import cmd_metrics
 from juggle_cmd_research import cmd_research
 from juggle_cmd_db_flush import cmd_db_flush
 from juggle_cmd_add_node import cmd_add_node
@@ -127,6 +128,14 @@ MISC_COMMANDS: tuple[Cmd, ...] = (
                 help="During smoke, toggle the lower-right panel into Graph mode (press g) and validate it"),
         ),
         help="Open live cockpit dashboard"),
+    Cmd(None, "metrics", cmd_metrics,
+        args=(
+            Arg("--db", dest="db_path", default=None, help="Path to juggle.db"),
+            Arg("--since", default=None, help="ISO timestamp lower bound on dispatched_at"),
+            Arg("--by", default=None, help="Slice: prompt-version|role|project|model"),
+            Arg("--json", dest="json_out", action="store_true", help="JSON output"),
+        ),
+        help="Orchestration cost/perf/quality rollup over agent_runs"),
     Cmd("node", "create", cmd_add_node,
         args=(
             Arg("title", help="Node title"),
