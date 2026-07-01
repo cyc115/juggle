@@ -53,12 +53,11 @@ async def test_railroad_screen_navigation(juggle_db):
         screen = app.screen
         assert isinstance(screen, RailroadScreen)
         start = screen._sel
-        detail = screen.query_one("#rail-detail")
-        assert screen._lines()[start].id in detail.renderable
+        assert screen._lines()[start].id in screen._detail_text
         await pilot.press("j")
         await pilot.pause()
         assert screen._sel == start + 1
-        assert screen._lines()[screen._sel].id in screen.query_one("#rail-detail").renderable
+        assert screen._lines()[screen._sel].id in screen._detail_text
         await pilot.press("q")
         await pilot.pause()
         assert not isinstance(app.screen, RailroadScreen)

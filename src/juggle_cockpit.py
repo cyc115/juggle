@@ -134,6 +134,7 @@ class CockpitApp(GraphModeMixin, App):
         Binding("t",            "tail_toggle",   "Tl"),
         Binding("i",            "task_detail",   "Info",  show=False),
         Binding("g",            "toggle_graph",  "Gr"),
+        Binding("shift+g",      "graph_railroad", "Rail", show=False),
         Binding("p",            "projects",      "Proj"),
         Binding("w",            "watchdog_toggle",  "Wd",  show=True),
         Binding("r",            "watchdog_restart", "Rwd", show=True),
@@ -897,6 +898,25 @@ class CockpitApp(GraphModeMixin, App):
         """p — show project arm/disarm overlay."""
         from juggle_cockpit_modals import _ProjectArmModal
         self.push_screen(_ProjectArmModal(self._db))
+
+    def action_graph_railroad(self) -> None:
+        """shift+g — open the full-screen railroad for the selected task's project."""
+        from juggle_cockpit_model import snapshot as _snapshot
+        try:
+            state = _snapshot(self._db, load_graph_dag=True)
+        except Exception:
+            return
+        dags = getattr(state, "graph_dags", None) or (
+            [state.graph_dag] if getattr(state, "graph_dag", None) else []
+        )
+        if not dags:
+            return
+        from juggle_cockpit_graph_panel import topological_order
+        flat = [(d, n) for d in dags for n in topological_order(d.tasks, d.edges)]
+        sel = getattr(self, "_graph_sel", 0)
+        pid = flat[sel][0].project_id if 0 <= sel < len(flat) else dags[0].project_id
+        from juggle_cockpit_railroad import RailroadScreen
+        self.push_screen(RailroadScreen(dags, pid, self._db))
 
     def on_resize(self, event: events.Resize) -> None:
         from juggle_cockpit_view import pick_breakpoint
