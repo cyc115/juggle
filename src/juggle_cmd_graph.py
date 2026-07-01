@@ -178,7 +178,7 @@ def cmd_graph_add_task(args):
     """
     import json
 
-    from juggle_graph_add import AddTaskError, add_task
+    from juggle_graph_add import AddTaskError, add_task, resolve_dispatch_topic
 
     db = get_db(getattr(args, "db_path", None), init=True)
     if not db.get_project(args.project):
@@ -195,73 +195,42 @@ def cmd_graph_add_task(args):
         prompt = sys.stdin.read()
     prompt = (prompt or "").strip()
 
-    # P6: Resolve the owning topic. A missing or unknown topic no longer refuses —
-    # it routes through add_node (which defaults to INBOX/the project tag).
-    # A known topic still uses the legacy add_task path (back-compat).
-    topic = getattr(args, "topic", None)
-    topic_exists = topic and db_topics.get_topic(db, topic) is not None
-
-    if topic_exists:
-        # Happy path: caller passed a real topic — use the legacy add_task path.
-        auto_topic = False
-        try:
-            result = add_task(
-                db, args.project,
-                task_id=args.id, title=args.title, prompt=prompt,
-                deps=_csv(args.deps), required_by=_csv(args.required_by),
-                verify_cmd=args.verify_cmd,
-                topic_id=topic, auto_create_topic=auto_topic,
-            )
-        except AddTaskError as e:
-            if getattr(args, "json_out", False):
-                print(json.dumps({"ok": False, "error": str(e)}))
-            else:
-                print(f"add-task REFUSED — graph unchanged: {e}", file=sys.stderr)
-            sys.exit(1)
-
-        # add_task → db_graph.create_task already wrote the authoritative task node
-        # (P8 c4-write-cut: nodes is the sole store), so no extra mirror is needed.
-
-        if getattr(args, "json_out", False):
-            print(json.dumps({"ok": True, **result}))
-            return
-        changed = result["downstream_changed"]
-        tail = ""
-        if changed:
-            tail = " downstream: " + ", ".join(
-                f"{c['id']} {c['from']}→{c['to']}" for c in changed
-            )
-        print(
-            f"Added task {result['task_id']!r} to project {args.project} "
-            f"(state: {result['state']}).{tail}"
+    # DEFAULT-DISPATCHABLE (2026-06-30 orphan-task dispatch gap): every new task
+    # MUST be owned by a graph-topic so graph_tick can dispatch it. A missing
+    # --topic, or one pointing at a non-graph-topic node (e.g. a conversation),
+    # auto-creates a synthetic 'T-<id>' graph-topic home — no code path leaves a
+    # parentless orphan. add_task builds topic+task+FK in one transaction.
+    topic_id, auto_topic = resolve_dispatch_topic(
+        db, args.project, args.id, getattr(args, "topic", None)
+    )
+    try:
+        result = add_task(
+            db, args.project,
+            task_id=args.id, title=args.title, prompt=prompt,
+            deps=_csv(args.deps), required_by=_csv(args.required_by),
+            verify_cmd=args.verify_cmd,
+            topic_id=topic_id, auto_create_topic=auto_topic,
         )
-    else:
-        # P6: missing or unknown topic — route through add_node (INBOX default).
-        # No refusal; the node lands in the project's graph without an owning topic.
-        from juggle_add_node import AddNodeError, add_node
-        try:
-            node_result = add_node(
-                db, kind="task", title=args.title, objective=prompt,
-                project_id=args.project,
-                deps=_csv(args.deps), required_by=_csv(args.required_by),
-                verify_cmd=args.verify_cmd,
-                node_id=getattr(args, "id", None),
-            )
-        except AddNodeError as e:
-            if getattr(args, "json_out", False):
-                print(json.dumps({"ok": False, "error": str(e)}))
-            else:
-                print(f"add-task REFUSED — graph unchanged: {e}", file=sys.stderr)
-            sys.exit(1)
+    except AddTaskError as e:
         if getattr(args, "json_out", False):
-            print(json.dumps({"ok": True, "task_id": node_result["node_id"],
-                              "state": node_result["state"],
-                              "downstream_changed": []}))
-            return
-        print(
-            f"Added task {node_result['node_id']!r} to project {args.project} "
-            f"(state: {node_result['state']}, via add-node)."
+            print(json.dumps({"ok": False, "error": str(e)}))
+        else:
+            print(f"add-task REFUSED — graph unchanged: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if getattr(args, "json_out", False):
+        print(json.dumps({"ok": True, **result}))
+        return
+    changed = result["downstream_changed"]
+    tail = ""
+    if changed:
+        tail = " downstream: " + ", ".join(
+            f"{c['id']} {c['from']}→{c['to']}" for c in changed
         )
+    print(
+        f"Added task {result['task_id']!r} to project {args.project} "
+        f"(state: {result['state']}).{tail}"
+    )
 
 
 def cmd_graph_reconcile(args):

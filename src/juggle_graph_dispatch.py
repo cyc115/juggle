@@ -302,17 +302,26 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
 def _dispatch_flat_task_fallback(
     db, all_projects: list[str], stats: dict, dispatch
 ) -> None:
-    """Dispatch ready graph_tasks for projects that have no graph_topics."""
+    """Dispatch ready graph tasks that have NO graph-topic home (parent_id NULL).
+
+    Belt-and-suspenders so a parentless orphan never silently stalls a project
+    (2026-06-30 orphan-task dispatch gap). Covers both a flat project with ZERO
+    graph-topics (every task parentless) and a stray orphan in a project that
+    HAS (completed) topics — the old code skipped the whole project the moment it
+    had ≥1 topic, stranding these tasks forever. A task WITH a topic parent is the
+    topic path's job (the topic agent carries all its members), never re-dispatched
+    here — so ONLY parentless (topic_id NULL) tasks are true orphans."""
     from juggle_graph_hydration import hydrate_for_task
-    from dbops import db_topics as _dt
 
     for pid in all_projects:
         try:
-            if _dt.list_topics(db, pid):
-                continue  # project has topics — topic path owns dispatch
             stats["swept"] += sweep_stale_claims(db, pid)
             db_graph.recompute_ready(db, pid)
-            tasks = [n for n in db_graph.list_tasks(db, pid) if n["state"] == "ready"]
+            tasks = [
+                n
+                for n in db_graph.list_tasks(db, pid)
+                if n["state"] == "ready" and n.get("topic_id") is None
+            ]
         except Exception:
             _log.exception(
                 "graph tick (flat fallback): ready-set scan failed for %s", pid

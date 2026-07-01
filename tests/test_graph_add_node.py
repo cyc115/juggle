@@ -324,3 +324,60 @@ def test_cli_add_task_json_output(db, capsys):
 def test_cli_add_task_unknown_project_exits(db):
     with pytest.raises(SystemExit):
         cg.cmd_graph_add_task(_args(db, project="NOPE"))
+
+
+# ── DEFAULT-DISPATCHABLE: no add-task may mint an orphan (2026-06-30) ──────────
+
+
+def test_resolve_dispatch_topic_real_topic_passthrough(db):
+    """A real graph-topic is used verbatim (no synthetic home)."""
+    from dbops import db_topics as tp
+    from juggle_graph_add import resolve_dispatch_topic
+
+    tp.create_topic(db, topic_id="REAL", project_id="INBOX", title="r")
+    assert resolve_dispatch_topic(db, "INBOX", "x", "REAL") == ("REAL", False)
+
+
+def test_resolve_dispatch_topic_omitted_synthesizes(db):
+    """2026-06-30 orphan-task dispatch gap: omitting --topic synthesizes a
+    'T-<id>' graph-topic home (auto-create), never an orphan."""
+    from juggle_graph_add import resolve_dispatch_topic
+
+    assert resolve_dispatch_topic(db, "INBOX", "x", None) == ("T-x", True)
+
+
+def test_resolve_dispatch_topic_conversation_synthesizes(db):
+    """2026-06-30 orphan-task dispatch gap: a --topic that points at a
+    non-graph-topic node (conversation) also synthesizes a graph-topic home."""
+    from juggle_add_node import add_node
+    from juggle_graph_add import resolve_dispatch_topic
+
+    conv = add_node(db, kind="conversation", title="GS", project_id="INBOX")
+    assert resolve_dispatch_topic(db, "INBOX", "x", conv["node_id"]) == ("T-x", True)
+
+
+def test_add_task_conversation_topic_gets_graph_topic_home(db):
+    """2026-06-30 orphan-task dispatch gap: `add-task --topic <conversation>`
+    must NOT create a parentless orphan — it auto-creates a graph-topic home so
+    graph_tick can dispatch it."""
+    from dbops import db_topics as tp
+    from juggle_add_node import add_node
+
+    conv = add_node(db, kind="conversation", title="GS", project_id="INBOX")
+    cg.cmd_graph_add_task(_args(db, id="gs-core-d", topic=conv["node_id"]))
+    t = g.get_task(db, "gs-core-d")
+    assert t["topic_id"] is not None, "task left orphaned (no graph-topic home)"
+    assert tp.get_topic(db, t["topic_id"]) is not None, "home is not a graph-topic"
+
+
+def test_add_task_no_topic_gets_synthetic_graph_topic(db):
+    """2026-06-30 orphan-task dispatch gap: omitting --topic yields a real
+    'T-<id>' graph-topic owner (the help text's promised behavior), not an
+    orphan routed through add_node."""
+    from dbops import db_topics as tp
+
+    _diamond(db)
+    cg.cmd_graph_add_task(_args(db, id="x", deps="a"))
+    t = g.get_task(db, "x")
+    assert t["topic_id"] == "T-x"
+    assert tp.get_topic(db, "T-x") is not None

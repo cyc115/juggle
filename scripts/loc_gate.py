@@ -60,7 +60,6 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cmd_research.py": 398,
     "src/juggle_graph_dispatch.py": 397,
     "src/juggle_watchdog_daemon.py": 427,
-    "src/juggle_cmd_graph.py": 340,
     "src/dbops/db_topics.py": 366,  # +1 P8 engine delegation: irreducible db_node_machine import (topic_transition delegates the decision) (2026-06-27)
     "src/juggle_context.py": 345,
     "src/juggle_watchdog_singleton.py": 367,

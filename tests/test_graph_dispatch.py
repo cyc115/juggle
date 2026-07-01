@@ -362,6 +362,58 @@ def test_flat_dispatch_capacity_error_unbinds_and_defers(db):
     assert stats["deferred"] == ["a"]
 
 
+# ── orphan-task dispatch gap (2026-06-30) ─────────────────────────────────────
+
+from dbops import db_topics as _tp_orphan  # noqa: E402
+
+
+def test_orphan_task_dispatched_despite_completed_topics(db):
+    """REGRESSION PIN (2026-06-30 orphan-task dispatch gap): a ready task with NO
+    ready/in-flight graph-topic home must be dispatched by the flat fallback EVEN
+    when the project HAS graph-topics. Symptom: `graph add-task --topic <conv>`
+    minted parentless tasks (gs-core-d etc.) that stalled P2 forever because the
+    fallback only fired for projects with ZERO graph-topics."""
+    _tp_orphan.create_topic(db, topic_id="TP1", project_id="INBOX", title="done")
+    g.create_task(db, task_id="done1", project_id="INBOX", title="d", prompt="p")
+    g.set_task_topic(db, "done1", "TP1")
+    # orphan ready task with no graph-topic parent (parent_id NULL)
+    g.create_task(db, task_id="gs-core-d", project_id="INBOX", title="o", prompt="p")
+    g.recompute_ready(db, "INBOX")
+    assert g.get_task(db, "gs-core-d")["topic_id"] is None
+
+    fake = FakeDispatch()
+    stats = {"dispatched": [], "swept": [], "deferred": [], "errors": []}
+    gd._dispatch_flat_task_fallback(db, ["INBOX"], stats, fake)
+    assert "gs-core-d" in stats["dispatched"], (
+        "orphan ready task stranded — fallback skipped a topic-having project"
+    )
+
+
+def test_task_under_live_topic_not_double_dispatched_by_fallback(db):
+    """The broadened fallback must NOT dispatch a task whose owning topic is
+    ready/in-flight — the topic path owns it (no double dispatch)."""
+    _mk_topic(db, "T-live", n_tasks=1)  # ready topic + ready member task
+    fake = FakeDispatch()
+    stats = {"dispatched": [], "swept": [], "deferred": [], "errors": []}
+    gd._dispatch_flat_task_fallback(db, ["INBOX"], stats, fake)
+    assert stats["dispatched"] == [], "task under a live topic was double-dispatched"
+
+
+def test_graph_tick_dispatches_orphan_in_topic_project(db):
+    """REGRESSION PIN (2026-06-30 orphan-task dispatch gap, #3): the FULL tick —
+    not just the fallback — dispatches the 4-style stranded orphan in a project
+    that already has graph-topics. This is how the existing P2 orphans unblock."""
+    _tp_orphan.create_topic(db, topic_id="TPdone", project_id="INBOX", title="done")
+    g.create_task(db, task_id="carried", project_id="INBOX", title="d", prompt="p")
+    g.set_task_topic(db, "carried", "TPdone")
+    g.create_task(db, task_id="gs-core-d", project_id="INBOX", title="o", prompt="p")
+    g.recompute_ready(db, "INBOX")
+
+    fake = FakeDispatch()
+    stats = gd.graph_tick(db, dispatch_fn=fake)
+    assert "gs-core-d" in stats["dispatched"]
+
+
 def test_tick_ignores_legacy_armed_key(db):
     """REGRESSION PIN (rewritten 2026-06-30, was P7): the legacy
     ARMED_PROJECT_KEY is dead data — writing it does NOT gate the tick. Default-

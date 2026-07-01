@@ -40,6 +40,28 @@ class AddTaskError(ValueError):
     the CLI maps it to a nonzero exit with no partial insert."""
 
 
+def resolve_dispatch_topic(
+    db, project_id: str, task_id: str, requested_topic: str | None
+) -> tuple[str, bool]:
+    """Resolve the graph-topic that will OWN (and thus dispatch) a new task.
+
+    DEFAULT-DISPATCHABLE (2026-06-30 orphan-task dispatch gap): a task must ALWAYS
+    live under a kind='topic' node — topics are the watchdog dispatch unit, so a
+    parentless task is an undispatchable orphan that silently stalls its project.
+    Rules, returning ``(topic_id, auto_create)`` — NEVER ``None``:
+      * ``requested_topic`` names a REAL graph-topic → use it verbatim (False).
+      * ``requested_topic`` missing, OR names a NON-graph-topic node (e.g. a
+        kind='conversation' thread) → synthesize ``'T-<task-id>'`` and flag it
+        for auto-create (True). A conversation owner is thus recorded only as the
+        human-facing thread; the DISPATCH home is always a graph-topic.
+    """
+    from dbops import db_topics
+
+    if requested_topic and db_topics.get_topic(db, requested_topic) is not None:
+        return requested_topic, False
+    return f"T-{task_id}", True
+
+
 def validate_add_task(
     db,
     project_id: str,
