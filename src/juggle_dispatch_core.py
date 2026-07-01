@@ -70,6 +70,11 @@ def acquire_agent(
                 continue
             if not db.cas_assign_agent(candidate["id"], thread_id):
                 continue
+            # Reuse == warm process + CLEAN context: drop the accumulated
+            # transcript before handing the pane a new task. Harness-gated —
+            # only Claude Code has '/clear'; other harnesses skip it.
+            if requested_harness == "claude":
+                mgr._run_tmux("send-keys", "-t", candidate["pane_id"], "/clear", "Enter")
             reset_dir = target_repo or os.path.expanduser("~")
             mgr._run_tmux("send-keys", "-t", candidate["pane_id"], f"cd {reset_dir}", "Enter")
             agent = candidate
