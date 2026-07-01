@@ -169,7 +169,6 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
     load_graph_dag: when True (graph mode active), ALSO load the armed project's
     DAG (tasks+edges) into ``graph_dag``. Default False → zero extra cost.
     """
-    import sqlite3 as _sqlite3
     from datetime import datetime, timezone, timedelta
 
     # Open a fresh connection each call to avoid WAL read-transaction pinning.
@@ -399,6 +398,10 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
 
     _dags = _load_graph_dags(conn) if load_graph_dag else []
     graph_dag, graph_dags = (_dags[0], _dags) if _dags else (None, None)
+
+    from juggle_cockpit_topic_cap import cap_topics, resolve_max_topics  # topics-pane cap
+    _busy = frozenset(a.topic_id for a in agents if a.status == "busy" and a.topic_id)
+    topics = cap_topics(topics, resolve_max_topics(), protected_labels=_busy)
 
     result = CockpitState(
         topics=topics,
