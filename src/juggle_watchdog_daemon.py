@@ -171,6 +171,17 @@ def _capture_pane(mgr: JuggleTmuxManager, pane_id: str, lines: int = 80) -> str 
     return result.stdout or ""
 
 
+def _topic_sweep(db) -> None:
+    """Sweep every conversation topic through the derived-close reconciler (F5,
+    2026-06-30 topic-graph-state-unify). Fire-and-forget — never takes the tick
+    down."""
+    try:
+        from juggle_topic_reconcile import reconcile_conversation_topics
+        reconcile_conversation_topics(db)
+    except Exception:
+        _log.exception("Watchdog: topic sweep failed — continuing")
+
+
 def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     write_heartbeat()
     snapshot_dir, recovery_dir = _get_dirs()
@@ -292,6 +303,11 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
         graph_tick(db, mgr)
     except Exception:
         _log.exception("Watchdog: graph dispatch tick failed — continuing")
+
+    # Conversation-topic derived-close sweep (F5, 2026-06-30 topic-graph-state-
+    # unify): backstop the event-driven triggers so a derived close/reopen can
+    # never diverge for more than one tick.
+    _topic_sweep(db)
 
     # Self-heal auto-diagnosis: fire-and-forget, never block the tick.
     try:
