@@ -130,6 +130,16 @@ class HarnessAdapter:
             return ""
         return self._cfg.get("model_flag", "--model {model}").format(model=model)
 
+    def _effort_part(self, effort: str | None) -> str:
+        """Reasoning-effort flag fragment (2026-06-30 agent model/effort config).
+
+        Mirrors ``_model_part``: the flag template is configurable via
+        ``effort_flag`` (default ``--effort {effort}``, Claude Code's launch flag).
+        Empty/None effort → no flag (harness uses its own session default)."""
+        if not effort:
+            return ""
+        return self._cfg.get("effort_flag", "--effort {effort}").format(effort=effort)
+
     def _restrictions_part(self, role: str | None, audit: bool) -> str:
         """Flag fragment that applies per-role tool restrictions.
 
@@ -140,7 +150,8 @@ class HarnessAdapter:
         return self._cfg.get("restrictions_flag", "") or ""
 
     def build_launch_command(
-        self, role: str | None = None, model: str | None = None, audit: bool = False
+        self, role: str | None = None, model: str | None = None,
+        audit: bool = False, effort: str | None = None,
     ) -> str:
         """Return the full shell command string to paste into a fresh pane."""
         parts = [
@@ -150,6 +161,9 @@ class HarnessAdapter:
         model_part = self._model_part(model)
         if model_part:
             parts.append(model_part)
+        effort_part = self._effort_part(effort)
+        if effort_part:
+            parts.append(effort_part)
         restrictions = self._restrictions_part(role, audit)
         if restrictions:
             parts.append(restrictions)
@@ -166,6 +180,7 @@ class HarnessAdapter:
         role: str | None = None,
         model: str | None = None,
         audit: bool = False,
+        effort: str | None = None,
     ) -> str:
         """Return a one-shot shell command that runs ``prompt_file`` to completion.
 
@@ -178,7 +193,7 @@ class HarnessAdapter:
         that want an explicit stdin sentinel or a file flag override ``prompt_arg``
         (Codex uses ``"- < {prompt_file}"``).
         """
-        launch = self.build_launch_command(role=role, model=model, audit=audit)
+        launch = self.build_launch_command(role=role, model=model, audit=audit, effort=effort)
         prompt_arg = self._cfg.get("prompt_arg", "< {prompt_file}")
         return f"{launch} {prompt_arg.format(prompt_file=prompt_file)}"
 

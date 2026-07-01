@@ -77,6 +77,26 @@ def test_claude_no_model_omits_model_flag():
     assert cmd.endswith("--settings /tmp/default.json")
 
 
+def test_claude_effort_flag_injected():
+    """2026-06-30 agent model/effort config: effort injects as --effort <level>."""
+    cfg = {"claude_launch_command": "claude --dangerously-skip-permissions"}
+    adapter = get_adapter("coder", agent_cfg=cfg)
+    with patch("juggle_agent_settings.write_agent_overlay") as mock_overlay:
+        mock_overlay.return_value = Path("/tmp/coder.json")
+        cmd = adapter.build_launch_command(role="coder", model="sonnet", effort="high")
+    assert "--effort high" in cmd
+
+
+def test_claude_no_effort_omits_effort_flag():
+    """2026-06-30 agent model/effort config: effort=None omits the flag (legacy-identical)."""
+    cfg = {"claude_launch_command": "claude --dangerously-skip-permissions"}
+    adapter = get_adapter("coder", agent_cfg=cfg)
+    with patch("juggle_agent_settings.write_agent_overlay") as mock_overlay:
+        mock_overlay.return_value = Path("/tmp/coder.json")
+        cmd = adapter.build_launch_command(role="coder", model="sonnet", effort=None)
+    assert "--effort" not in cmd
+
+
 # --- template (config-only) harness --------------------------------------
 def _codex_cfg():
     return {
