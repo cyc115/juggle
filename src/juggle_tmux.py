@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Juggle Tmux Manager — persistent agent pool via tmux panes."""
 
+import logging
 import os
 import subprocess
 import time
@@ -596,20 +597,38 @@ class JuggleTmuxManager:
         _pretrust_spawn_dir(repo_path)
 
         self.ensure_session()
-        pane_id = self.spawn_pane()
-        self.start_agent_in_pane(pane_id, model=model, role=role,
-                                 agent_cfg=agent_cfg, effort=effort)
 
         # Verified spawn (2026-06-20 leak root cause): an interactive harness MUST
         # render its ready UI before we register the agent; if it never does
-        # (stuck at trust / crashed boot), kill the pane and FAIL rather than
-        # register a stuck spawn. One-shot harnesses render no UI → skip the gate.
-        if adapter.is_interactive and not self.wait_for_ready_to_paste(pane_id):
-            self.kill_pane(pane_id)
+        # (stuck at trust / crashed boot / a bad model id the harness silently
+        # rejects), kill the pane rather than register a stuck spawn. One-shot
+        # harnesses render no UI → skip the gate.
+        def _boot(launch_model: str | None) -> str | None:
+            pane = self.spawn_pane()
+            self.start_agent_in_pane(pane, model=launch_model, role=role,
+                                     agent_cfg=agent_cfg, effort=effort)
+            if adapter.is_interactive and not self.wait_for_ready_to_paste(pane):
+                self.kill_pane(pane)
+                return None
+            return pane
+
+        pane_id = _boot(model)
+        if pane_id is None and model:
+            # MANDATORY SAFETY (T-coder-model-resolution): a bad / unavailable
+            # model id must NEVER break agent dispatch (the watchdog runs
+            # unattended). The resolved model failed to boot — retry ONCE on the
+            # harness default model (no --model flag) and log a clear warning.
+            logging.getLogger("juggle-tmux").warning(
+                "agent spawn: role=%s model=%r failed to reach ready — falling "
+                "back to the harness default model", role, model,
+            )
+            model = None  # stored as default; cockpit renders None as the default
+            pane_id = _boot(None)
+        if pane_id is None:
             raise RuntimeError(
-                f"agent spawn failed: pane {pane_id} never reached the ready "
-                f"state (likely stuck at the folder-trust prompt or a failed "
-                f"boot). Pane killed; no agent registered."
+                "agent spawn failed: pane never reached the ready state (likely "
+                "stuck at the folder-trust prompt or a failed boot). "
+                "Pane(s) killed; no agent registered."
             )
 
         agent_id = db.create_agent(role=role, pane_id=pane_id, harness=harness_id, repo_path=repo_path)

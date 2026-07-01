@@ -3,7 +3,7 @@
 Cascade, lowest→highest precedence:
   built-in default → agents.model/effort (global) → agents.by_role[role] → per-dispatch flag.
 """
-from juggle_agent_runtime import resolve_agent_runtime
+from juggle_agent_runtime import resolve_agent_runtime, resolve_spawn_model
 
 
 def _s(agents):
@@ -49,3 +49,14 @@ def test_mixed_flag_model_with_by_role_effort():
 def test_none_role_uses_global_only():
     s = _s({"model": "opus", "by_role": {"coder": {"model": "haiku"}}})
     assert resolve_agent_runtime(None, settings=s) == {"model": "opus", "effort": None}
+
+
+def test_resolve_spawn_model_reads_by_role():
+    """T-coder-model-resolution acceptance #1: resolve_spawn_model('coder')
+    reads agents.by_role.coder — the coder tier must win over the global/default."""
+    s = _s({"model": "opus", "by_role": {"coder": {"model": "sonnet", "effort": "medium"}}})
+    assert resolve_spawn_model("coder", settings=s) == "sonnet"
+
+
+def test_resolve_spawn_model_defaults_when_unset():
+    assert resolve_spawn_model("coder", settings={}) == "sonnet"

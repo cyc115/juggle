@@ -149,8 +149,10 @@ def test_spawn_agent_never_ready_does_not_create_db_agent(monkeypatch):
 
     # Never registered a DB agent…
     db.create_agent.assert_not_called()
-    # …and the orphan pane was killed.
-    assert killed == ["%99"]
+    # …and every orphan pane was killed. The mandatory model-fallback
+    # (T-coder-model-resolution) retries ONCE on the harness default when the
+    # first boot never readies, so a never-ready spawn kills both panes.
+    assert killed == ["%99", "%99"]
 
 
 def test_spawn_agent_ready_creates_agent(monkeypatch):

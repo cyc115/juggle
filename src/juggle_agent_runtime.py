@@ -26,3 +26,17 @@ def resolve_agent_runtime(
     model = model_flag or by_role.get("model") or agents.get("model") or _BUILTIN_MODEL
     effort = effort_flag or by_role.get("effort") or agents.get("effort")
     return {"model": model, "effort": effort}
+
+
+def resolve_spawn_model(
+    role: str | None,
+    *,
+    model_flag: str | None = None,
+    settings: dict | None = None,
+) -> str:
+    """Return just the cascade-resolved launch model for ``role``.
+
+    Thin accessor over :func:`resolve_agent_runtime` for callers (spawn path)
+    that only need the model string — e.g. ``resolve_spawn_model('coder')``
+    reads ``agents.by_role.coder.model``."""
+    return resolve_agent_runtime(role, model_flag=model_flag, settings=settings)["model"]
