@@ -237,8 +237,12 @@ def test_get_agent_harness_flag_selects_reasonix_agent():
     mock_mgr = mock_cls.return_value
     mock_mgr.wait_for_ready_to_paste.return_value = True
 
+    # Isolate the pool-cap check from the ambient config max_agents (#5045): this
+    # test has 2 mock agents and would spuriously hit "pool full" when the machine's
+    # config lowers max_agents to <=2. acquire_agent reads juggle_db.MAX_BACKGROUND_AGENTS.
     with patch("juggle_cmd_agents_common.get_db", return_value=db), \
          patch("juggle_cmd_agents_common.JuggleTmuxManager", mock_cls), \
+         patch("juggle_db.MAX_BACKGROUND_AGENTS", 20), \
          patch("juggle_cmd_agents_common._resolve_thread", return_value="t-uuid"), \
          patch("juggle_cmd_agents_common._get_settings", return_value=_settings("claude")):
         cmd_get_agent(_get_args(repo="/repo", harness="reasonix"))
