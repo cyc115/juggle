@@ -56,6 +56,21 @@ TASK_STATE_GLYPHS: dict[str, str] = {
     "blocked-failed": "🚫",
 }
 
+# Single-cell glyphs for the horizontally-compressed dependency spine / railroad
+# (2026-06-30 graph railroad). TASK_STATE_GLYPHS is emoji (double-width) and
+# unusable inline — this is the compact twin, same source module (single source).
+RAILROAD_STATE_GLYPHS: dict[str, str] = {
+    "open": "·", "ready": "○", "dispatching": "◐", "running": "◐",
+    "integrating": "◐", "verified": "●",
+    "failed-exec": "✗", "failed-integration": "✗", "failed-verify": "✗",
+    "blocked-failed": "◇",
+}
+
+
+def railroad_glyph(state: str) -> str:
+    return RAILROAD_STATE_GLYPHS.get(state, "·")
+
+
 NOTIF_KIND_GLYPHS: dict[str, str] = {
     "complete": "⚡",
     "info": "ℹ️",
