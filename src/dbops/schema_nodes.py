@@ -66,6 +66,14 @@ CREATE TABLE IF NOT EXISTS nodes (
   last_active_at          TEXT,
   dispatch_thread_id      TEXT,
 
+  -- Verify-fallback (self-heal): the bounded-retry counter + the prior
+  -- verify_cmd failure output injected into the fresh re-dispatch prompt.
+  -- Task-only in practice; Migration 57 appends these to already-migrated DBs,
+  -- so they are placed LAST (before the CHECK) to keep `SELECT *` column order
+  -- provenance-identical between fresh and migrated DBs.
+  verify_retries          INTEGER NOT NULL DEFAULT 0,
+  verify_failure          TEXT,
+
   -- Kind discriminator (P8 M2): ONE wide table holds every kind (NOT split
   -- per-kind). This CHECK enforces that verify_cmd — the execution-only column —
   -- is carried ONLY by a kind='task' node, so a conversation/topic/research/

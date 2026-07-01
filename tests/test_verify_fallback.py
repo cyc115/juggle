@@ -89,3 +89,125 @@ def test_failed_verify_escalates_when_retries_disabled(db, monkeypatch):
     items = db.get_open_action_items()
     assert any(i.get("priority") == "high" and "failed-verify" in i["message"]
                for i in items)
+
+
+# ── (a) fails once, then passes → verified after 1 retry ─────────────────────
+
+
+def test_verify_fails_once_then_passes_verifies_after_one_retry(db, monkeypatch):
+    monkeypatch.setenv("JUGGLE_VERIFY_FALLBACK_RETRIES", "1")
+    import juggle_cmd_agents_common as _com
+
+    _mk_task(db)
+    # Attempt 1: verify red → bounded retry resets the task to ready.
+    tid1 = _bind_running_thread(db, session="s1")
+    monkeypatch.setattr(
+        _com.juggle_cmd_integrate, "_run_integrate",
+        lambda thread, db_: _verify_fail_result(),
+    )
+    _complete(tid1)
+
+    t = g.get_task(db, "a")
+    assert t["state"] == "ready", "retry must reset the task to ready"
+    assert t["verify_retries"] == 1
+    assert "make test" in (t["verify_failure"] or "")
+
+    # Attempt 2 (fresh agent, tick would re-dispatch): verify green → verified.
+    tid2 = _bind_running_thread(db, session="s2")
+    monkeypatch.setattr(
+        _com.juggle_cmd_integrate, "_run_integrate",
+        lambda thread, db_: (True, "merged"),
+    )
+    _complete(tid2)
+
+    t = g.get_task(db, "a")
+    assert t["state"] == "verified"
+    assert t["verify_retries"] == 1  # counter preserved, not reset
+
+
+# ── (b) always fails → escalated after N retries ─────────────────────────────
+
+
+def test_verify_always_fails_escalates_after_n_retries(db, monkeypatch):
+    monkeypatch.setenv("JUGGLE_VERIFY_FALLBACK_RETRIES", "2")
+    import juggle_cmd_agents_common as _com
+
+    _mk_task(db)
+    monkeypatch.setattr(
+        _com.juggle_cmd_integrate, "_run_integrate",
+        lambda thread, db_: _verify_fail_result(),
+    )
+    # Two retries: each failed-verify resets to ready.
+    for n in range(1, 3):
+        tid = _bind_running_thread(db, session=f"s{n}")
+        _complete(tid)
+        t = g.get_task(db, "a")
+        assert t["state"] == "ready", f"retry {n} must reset to ready"
+        assert t["verify_retries"] == n
+
+    # Third failure exhausts the budget → terminal failed-verify + escalation.
+    tid = _bind_running_thread(db, session="s3")
+    _complete(tid)
+    t = g.get_task(db, "a")
+    assert t["state"] == "failed-verify"
+    assert t["verify_retries"] == 2  # never bumped past the budget
+    items = db.get_open_action_items()
+    assert any(i.get("priority") == "high" and "failed-verify" in i["message"]
+               for i in items)
+
+
+# ── prompt injection: prior failure output reaches the fresh dispatch ────────
+
+
+def test_prior_failure_injected_into_redispatch_prompt(db, monkeypatch):
+    from juggle_graph_hydration import hydrate_for_task
+
+    monkeypatch.setenv("JUGGLE_VERIFY_FALLBACK_RETRIES", "1")
+    import juggle_cmd_agents_common as _com
+
+    _mk_task(db)
+    tid = _bind_running_thread(db)
+    monkeypatch.setattr(
+        _com.juggle_cmd_integrate, "_run_integrate",
+        lambda thread, db_: _verify_fail_result(),
+    )
+    _complete(tid)
+
+    prompt = hydrate_for_task(db, "INBOX", g.get_task(db, "a"))
+    assert "Previous attempt" in prompt
+    assert "make test" in prompt  # the stored verify_cmd failure output
+
+
+# ── loop closes: the tick re-dispatches the reset task with the failure ──────
+
+
+def test_tick_redispatches_reset_task_with_prior_failure(db, monkeypatch):
+    """The reset-to-ready task is re-picked by the EXISTING watchdog tick (flat
+    fallback) and re-dispatched with the prior failure output in its prompt —
+    proving the fallback reuses the real dispatch+verify loop."""
+    import juggle_graph_dispatch as gd
+    import juggle_cmd_agents_common as _com
+
+    monkeypatch.setenv("JUGGLE_VERIFY_FALLBACK_RETRIES", "1")
+    _mk_task(db)
+    tid = _bind_running_thread(db)
+    monkeypatch.setattr(
+        _com.juggle_cmd_integrate, "_run_integrate",
+        lambda thread, db_: _verify_fail_result(),
+    )
+    _complete(tid)
+    assert g.get_task(db, "a")["state"] == "ready"
+
+    class FakeDispatch:
+        def __init__(self):
+            self.calls = []
+
+        def __call__(self, db_, thread_id, prompt, task):
+            self.calls.append((task["id"], prompt))
+
+    fake = FakeDispatch()
+    stats = gd.graph_tick(db, dispatch_fn=fake)
+
+    assert "a" in stats["dispatched"]
+    (task_id, prompt), = [c for c in fake.calls if c[0] == "a"]
+    assert "Previous attempt" in prompt and "make test" in prompt

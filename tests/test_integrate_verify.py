@@ -220,9 +220,13 @@ def test_task_without_verify_cmd_merges_normally(db, git_repo, tmp_path):
 
 # ── completion mapping ────────────────────────────────────────────────────────
 
-def test_verify_failure_marks_task_failed_verify_not_failed_integration(db):
+def test_verify_failure_marks_task_failed_verify_not_failed_integration(db, monkeypatch):
     """The VERIFY_FAIL_PREFIX channel maps to 'failed-verify' on the task —
-    distinct from 'failed-integration' — and main stays untouched (pin)."""
+    distinct from 'failed-integration' — and main stays untouched (pin).
+
+    Fallback disabled (N=0) so this pins the completion→state MAPPING itself,
+    independent of the verify-fallback bounded retry (which would reset to ready)."""
+    monkeypatch.setenv("JUGGLE_VERIFY_FALLBACK_RETRIES", "0")
     from dbops import db_graph
     from juggle_cmd_agents_graph import mark_graph_task
 

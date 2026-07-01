@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-07-01 (v1.93.0)
+- **feat(selfheal): verify-fallback — bounded retry with fresh context**: a graph task whose real `verify_cmd` is red no longer escalates on the first failure. It routes through `juggle_verify_fallback.on_failed_verify`, which — while `verify_retries < N` (config `verify_fallback_retries` / env `JUGGLE_VERIFY_FALLBACK_RETRIES`, default 1) — increments the counter, stores the prior verify failure output, and resets the task to `ready` so the watchdog tick re-dispatches a FRESH agent with that failure injected into its prompt. The tick re-runs the REAL `verify_cmd` exactly as before (safety rail: no verdict CLI, no evidence artifact, no rubber-stamp). On exhaustion the task stays `failed-verify` and escalates via the same HIGH action item as any terminal failure. New `nodes.verify_retries`/`nodes.verify_failure` columns (Migration 57, additive).
+
 ## 2026-06-21 (v1.82.0)
 - **feat: codify reproduce→spec→DA→plan workflow in coder dispatch prompt**: the "### Coder Agent Prompt" template in `commands/start.md` now mandates that a coder dispatched WITHOUT a plan file front-loads reproduce → spec → devil's-advocate → plan (each posted via `juggle notify`) before TDD-implementing; WITH a plan file, implement directly.
 
