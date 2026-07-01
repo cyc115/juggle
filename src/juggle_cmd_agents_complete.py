@@ -186,6 +186,9 @@ def cmd_complete_agent(args):
     mark_graph_topic(
         db, thread_uuid, ft_success, getattr(args, "handoff", None), session_id,
         verify_failed=verify_failed,
+        # The verify_cmd failure detail (self-heal verify-fallback): injected into
+        # the fresh re-dispatch prompt so the retry agent sees WHAT was red.
+        verify_detail=(ft_msg if verify_failed else None),
     )
 
     # Auto-dismiss pre-existing action items (not ones just created from open_questions)
