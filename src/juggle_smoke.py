@@ -128,6 +128,14 @@ def check_truncation(grid: list[str]) -> dict:
 # fails real-estate (incident 2026-06-10: all 7 profiles blank_pct=94%).
 _BODY_PAINT_DEADLINE = 25.0  # max seconds to wait for body content
 _BODY_BLANK_THRESHOLD = 0.40  # matches check_real_estate pass criterion
+# Hard cap on re-poll iterations. Each real re-poll blocks ~1-4s inside
+# handle.frame() (settle+timeout), so the 25s wall-clock deadline is reached
+# in well under this many polls; the cap only bites when frame() returns
+# INSTANTLY — a dead cockpit child hitting EOF, or a test fake — which would
+# otherwise busy-spin at 100% CPU for the whole deadline (livelock) and make
+# the loop's iteration count a function of wall-clock time rather than the
+# inputs (non-hermetic). See tests/test_cockpit_smoke_hermetic.py.
+_BODY_PAINT_MAX_POLLS = 60
 
 
 def capture_body_frame(
@@ -135,22 +143,32 @@ def capture_body_frame(
     rows: int,
     max_wait: float | None = None,
     blank_threshold: float = _BODY_BLANK_THRESHOLD,
+    max_polls: int | None = None,
 ) -> list[str]:
-    """Capture frames until the body has painted or a bounded deadline passes.
+    """Capture frames until the body has painted or a bounded budget passes.
 
     Re-polls handle.frame() while the grid is mostly blank (blank_pct above
-    `blank_threshold`). Returns the last captured grid either way, so a
-    genuinely blank layout still fails check_real_estate downstream.
+    `blank_threshold`), stopping at whichever bound comes first: the `max_wait`
+    wall-clock deadline OR the `max_polls` iteration cap. The poll cap keeps the
+    loop livelock-proof and hermetic when frame() returns instantly (dead child
+    / test fake) — it can never spin unbounded on the clock alone. Returns the
+    last captured grid either way, so a genuinely blank layout still fails
+    check_real_estate downstream.
     """
     if max_wait is None:
         max_wait = _BODY_PAINT_DEADLINE
+    if max_polls is None:
+        max_polls = _BODY_PAINT_MAX_POLLS
     deadline = time.monotonic() + max_wait
     grid = handle.frame(settle=2.0, timeout=12.0)
+    polls = 0
     while (
         check_real_estate(grid, rows)["blank_pct"] > blank_threshold
         and time.monotonic() < deadline
+        and polls < max_polls
     ):
         grid = handle.frame(settle=1.0, timeout=4.0)
+        polls += 1
     return grid
 
 
