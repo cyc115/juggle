@@ -278,10 +278,20 @@ _SERIAL_MODULE_SUFFIXES = (
 # momentarily missing a key), flaking
 # test_juggle_harness.py::test_real_settings_default_harness_is_claude.
 #
-# Two fail-closed guards, mirroring `_isolate_db_from_prod`:
-#   1. Redirect `_JUGGLE_CONFIG_PATH` at a per-test tmp file. Set via setenv so
-#      it ALSO propagates to `uv run` cockpit/CLI subprocess children (which
-#      inherit os.environ), same as the watchdog-spawn neutralizer above.
+# `paths.config_dir` is a SEPARATE settings key (only `JUGGLE_CONFIG_DIR`
+# overrides it, not `_JUGGLE_CONFIG_PATH`) consumed by
+# `juggle_watchdog_inspect._config_dir` (snapshot dir) and
+# `juggle_agent_settings._overlay_dir` (agent-settings overlays) — left
+# unredirected it defaults to the real ~/.juggle too, so a watchdog test
+# writing+globbing a snapshot file races the real, concurrently-running
+# production watchdog daemon on the same dev machine
+# (test_stalled_silent_action_item_filed flaked this way, 2026-07-02).
+#
+# Three fail-closed guards, mirroring `_isolate_db_from_prod`:
+#   1. Redirect `_JUGGLE_CONFIG_PATH` at a per-test tmp file, and
+#      `JUGGLE_CONFIG_DIR` at a per-test tmp dir. Set via setenv so both ALSO
+#      propagate to `uv run` cockpit/CLI subprocess children (which inherit
+#      os.environ), same as the watchdog-spawn neutralizer above.
 #   2. Fail-closed guard: wrap `Path.write_text` globally to RAISE the instant
 #      any test writes the real ~/.juggle/config.json (or its atomic-write
 #      .tmp / .bak-pre-* siblings) — the same hermetic, per-call seam as
@@ -303,6 +313,7 @@ def _is_prod_config_artifact(path) -> bool:
 @pytest.fixture(autouse=True)
 def _isolate_config_from_prod(tmp_path, monkeypatch):
     monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(tmp_path / "juggle-test-config.json"))
+    monkeypatch.setenv("JUGGLE_CONFIG_DIR", str(tmp_path / "juggle-test-config-dir"))
 
     _orig_write_text = Path.write_text
 

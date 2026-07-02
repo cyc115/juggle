@@ -207,7 +207,9 @@ def test_stalled_silent_action_item_filed(tmux_pane, fake_agent, test_db, monkey
     assert len(items) == 1
     assert items[0]["type"] == "failure"
     assert items[0]["priority"] == "high"
-    snapshot_dir = Path.home() / ".juggle" / "watchdog" / "snapshots"
+    from juggle_watchdog_inspect import _config_dir
+
+    snapshot_dir = _config_dir() / "watchdog" / "snapshots"
     snapshots = list(snapshot_dir.glob(f"{fake_agent['agent_id']}-*.txt"))
     assert len(snapshots) >= 1
     for s in snapshots:

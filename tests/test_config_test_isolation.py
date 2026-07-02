@@ -89,3 +89,30 @@ def test_configure_db_mode_default_path_lands_in_tmp_not_home(tmp_path):
     assert written.exists()
     assert written.parent == tmp_path
     assert json.loads(written.read_text())["db"]["mode"] == "tmpfs"
+
+
+def test_config_dir_redirected_away_from_real_home(tmp_path):
+    """2026-07-02 watchdog-flake incident: `paths.config_dir` (a SEPARATE
+    settings key from `_JUGGLE_CONFIG_PATH`, consumed by
+    `juggle_watchdog_inspect._config_dir` for the snapshot dir, and by
+    `juggle_agent_settings._overlay_dir` for agent-settings overlays) must
+    ALSO be redirected, or any test reading it (e.g. a watchdog snapshot
+    write/glob-read pair) races the real live ~/.juggle/watchdog/snapshots
+    dir against a concurrently running production daemon on the same
+    machine — `test_stalled_silent_action_item_filed` flaked exactly this
+    way in a full-suite run."""
+    from juggle_settings import get_settings
+
+    config_dir = Path(get_settings()["paths"]["config_dir"])
+    assert config_dir.parent == tmp_path
+    assert Path.home() not in (config_dir, *config_dir.parents)
+
+
+def test_watchdog_snapshot_dir_lands_in_tmp_not_home(tmp_path):
+    """Representative config_dir-reading call: the watchdog inspector's
+    snapshot dir must resolve under tmp, never the real ~/.juggle/watchdog."""
+    from juggle_watchdog_inspect import _config_dir
+
+    resolved = _config_dir()
+    assert resolved.parent == tmp_path
+    assert Path.home() not in (resolved, *resolved.parents)
