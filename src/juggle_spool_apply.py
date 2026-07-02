@@ -123,6 +123,18 @@ def apply_event(db, event: SpoolEvent) -> tuple[bool, str]:
                 entrypoint=a.get("entrypoint"),
                 command_args=a.get("command_args", "{}"),
             )
+        elif event.type == "record_orchestration_error":
+            # Class B mirror of record_error (T-spool-06b): the captured tool
+            # input rides under 'command_args' (a JSON string); surface/juggle_ref
+            # carry the offending tool reference for triage.
+            db.dedup_or_insert_error(
+                signature_hash=a["signature_hash"],
+                error_class=a.get("error_class", "B"),
+                exc_type=a.get("exc_type"), traceback=a.get("traceback"),
+                entrypoint=a.get("entrypoint"),
+                command_args=a.get("command_args", "{}"),
+                surface=a.get("surface"), juggle_ref=a.get("juggle_ref"),
+            )
         else:
             _dispatch(event)
         _journal_set_outcome(db, event.uuid, "applied")

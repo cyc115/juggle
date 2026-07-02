@@ -76,17 +76,18 @@ def _compute_class_b_signature(tool: str, error_text: str, juggle_ref: str) -> s
     return hashlib.sha256(sig_input.encode()).hexdigest()[:16]
 
 
-def _spool_error_event(event_args: dict) -> None:
-    """Spool a Class A error as a 'record_error' event instead of opening the DB.
+def _spool_error_event(event_args: dict, event_type: str = "record_error") -> None:
+    """Spool an error as a 'record_error' (Class A) or 'record_orchestration_error'
+    (Class B) event instead of opening the DB.
 
     Pure filesystem (dbops.spool) — no DB connection, so an agent/worktree process
     never touches the shared prod DB from the failure path (the last un-spooled
-    write, T-spool-06). The drain replays it through dedup_or_insert_error. Errors
-    aren't thread-bound, so agent_id/thread_id are empty."""
+    write, T-spool-06/06b). The drain replays it through dedup_or_insert_error.
+    Errors aren't thread-bound, so agent_id/thread_id are empty."""
     from dbops.spool import write_event
     from juggle_spool_paths import spool_dir
 
-    write_event(spool_dir(), "record_error", "", "", event_args)
+    write_event(spool_dir(), event_type, "", "", event_args)
 
 
 def record_error(exc: BaseException, entrypoint: str, context: dict | None = None) -> None:
@@ -141,6 +142,19 @@ def record_orchestration_error(
         return
     try:
         sig = _compute_class_b_signature(tool, error_text, juggle_ref)
+        from juggle_spool_cli_common import should_spool
+        if should_spool():
+            _spool_error_event({
+                "signature_hash": sig,
+                "error_class": "B",
+                "exc_type": None,
+                "traceback": error_text,
+                "entrypoint": tool,
+                "command_args": json.dumps(tool_input),
+                "surface": juggle_ref,
+                "juggle_ref": juggle_ref,
+            }, event_type="record_orchestration_error")
+            return
         db = _get_db()
         os.environ[_SELFHEAL_ENV] = "1"
         try:

@@ -100,3 +100,87 @@ def test_record_error_writes_db_when_not_agent_context(monkeypatch, tmp_path):
     assert rows[0]["exc_type"] == "ValueError"
     # And nothing was spooled.
     assert read_pending(tmp_path / "cfg" / "spool") == []
+
+
+# ---- Task 6b: record_orchestration_error (Class B) mirrors record_error ----
+
+
+def test_record_orchestration_error_spools_and_never_opens_db(spooling, monkeypatch):
+    monkeypatch.setattr(sh, "_get_db", _blow_up_if_db_opened)
+    sh.record_orchestration_error(
+        tool="Bash",
+        tool_input={"command": "ls"},
+        error_text="exit 1: no such file",
+        juggle_ref="juggle_cmd_agents.py:42",
+    )
+
+    events = read_pending(spooling)
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.type == "record_orchestration_error"
+    assert ev.args["error_class"] == "B"
+    assert ev.args["exc_type"] is None
+    assert ev.args["entrypoint"] == "Bash"
+    assert ev.args["traceback"] == "exit 1: no such file"
+    assert json.loads(ev.args["command_args"]) == {"command": "ls"}
+    assert ev.args["surface"] == "juggle_cmd_agents.py:42"
+    assert ev.args["juggle_ref"] == "juggle_cmd_agents.py:42"
+    assert ev.args["signature_hash"]  # non-empty class-B signature
+
+
+def test_record_orchestration_error_reentrancy_guard_suppresses_spool(spooling, monkeypatch):
+    monkeypatch.setattr(sh, "_get_db", _blow_up_if_db_opened)
+    monkeypatch.setenv("JUGGLE_SELFHEAL_OP", "1")
+    sh.record_orchestration_error("Bash", {"command": "ls"}, "boom", "ref:1")
+    assert read_pending(spooling) == []
+
+
+def test_record_orchestration_error_writes_db_when_not_agent_context(monkeypatch, tmp_path):
+    """Outside agent context it still writes the row directly (no spool)."""
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(str(tmp_path / "j.db"))
+    db.init_db()
+    monkeypatch.setattr(sh, "_get_db", lambda: db)
+    monkeypatch.setenv("JUGGLE_CONFIG_DIR", str(tmp_path / "cfg"))
+
+    sh.record_orchestration_error("Bash", {"command": "ls"}, "boom", "ref:7")
+
+    with db._connect() as conn:
+        rows = conn.execute(
+            "SELECT error_class, entrypoint, juggle_ref FROM error_events"
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["error_class"] == "B"
+    assert rows[0]["entrypoint"] == "Bash"
+    assert rows[0]["juggle_ref"] == "ref:7"
+    assert read_pending(tmp_path / "cfg" / "spool") == []
+
+
+def test_drain_applies_record_orchestration_error(monkeypatch, tmp_path):
+    """The watchdog-side drain replays a record_orchestration_error event through
+    dedup_or_insert_error with the Class B surface/juggle_ref fields intact."""
+    from juggle_db import JuggleDB
+    from juggle_spool_apply import drain_spool
+    from dbops.spool import write_event
+
+    db = JuggleDB(str(tmp_path / "j.db"))
+    db.init_db()
+    monkeypatch.setenv("JUGGLE_CONFIG_DIR", str(tmp_path / "cfg"))
+    spool = tmp_path / "cfg" / "spool"
+    write_event(spool, "record_orchestration_error", "", "", {
+        "signature_hash": "sig-b", "error_class": "B", "exc_type": None,
+        "traceback": "tool error", "entrypoint": "Bash",
+        "command_args": '{"command": "ls"}',
+        "surface": "juggle_cmd_agents.py:9", "juggle_ref": "juggle_cmd_agents.py:9",
+    })
+    stats = drain_spool(db)
+    assert stats["applied"] == 1
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT error_class, entrypoint, juggle_ref FROM error_events "
+            "WHERE signature_hash=?", ("sig-b",)
+        ).fetchone()
+    assert row is not None
+    assert row["error_class"] == "B"
+    assert row["juggle_ref"] == "juggle_cmd_agents.py:9"
