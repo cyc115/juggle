@@ -20,6 +20,12 @@ import os
 _READY_MARKERS = ("shift+tab to cycle", "bypass permissions on", "/effort")
 _SUBMISSION_MARKERS = ("esc to interrupt", "✻", "✶")
 
+# Structural fallback for "actively processing" that doesn't depend on
+# enumerating spinner glyphs/verbs (2026-07-02 false-positive stall nudge on
+# agent ZJ — glyph '✢' wasn't in _SUBMISSION_MARKERS). Mirrors the SSOT default
+# in juggle_harness_defaults.py's claude adapter (active_status_pattern).
+_ACTIVE_STATUS_PATTERN = r"\(\d+[hms][^()]*↓[^()]*tokens\)"
+
 # Claude Code v2.1.198 (2026-07-01) shows a "Quick safety check" folder-trust
 # dialog on FIRST launch in any untrusted dir — EVEN with
 # --dangerously-skip-permissions. Fresh worktrees are always untrusted, so a
@@ -76,3 +82,16 @@ def _harness_markers():
         )
     except Exception:
         return _READY_MARKERS, _SUBMISSION_MARKERS
+
+
+def _active_status_pattern() -> str:
+    """Return the default harness's active-status-line regex (SSOT) — the
+    structural fallback that doesn't depend on enumerating spinner glyphs.
+    Mirrors ``_harness_markers``'s resolution/fallback shape."""
+    try:
+        from juggle_harness import get_adapter
+
+        adapter = get_adapter()
+        return adapter.active_status_pattern() or _ACTIVE_STATUS_PATTERN
+    except Exception:
+        return _ACTIVE_STATUS_PATTERN

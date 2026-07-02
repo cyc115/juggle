@@ -3,6 +3,7 @@
 
 import logging
 import os
+import re
 import subprocess
 import time
 import uuid
@@ -27,6 +28,8 @@ from juggle_claude_trust import pretrust_spawn_dir as _pretrust_spawn_dir  # noq
 # call/patch surface (juggle_tmux._harness_markers / _READY_MARKERS / …) is
 # intact for callers and tests.
 from juggle_spawn_readiness import (  # noqa: E402
+    _ACTIVE_STATUS_PATTERN,  # noqa: F401 — re-exported for tests/back-compat
+    _active_status_pattern,
     _ACTIVITY_MARKERS,
     _beat_heartbeat_if_watchdog,
     _harness_markers,
@@ -268,6 +271,7 @@ class JuggleTmuxManager:
         )
         head = first_line[:_PROMPT_HEAD_CHARS]
         _, submission_markers = _harness_markers()
+        active_pattern = _active_status_pattern()
 
         retries = 0
         for _ in range(max(1, timeout)):
@@ -279,6 +283,9 @@ class JuggleTmuxManager:
             bottom = "\n".join(tail)
             # (a) explicit submission markers
             if any(m in line for m in submission_markers for line in tail):
+                return True
+            # (a2) structural active-status line — survives unenumerated glyphs (2026-07-02)
+            if active_pattern and re.search(active_pattern, bottom):
                 return True
             # (c) queued-messages indicator — prompt landed, agent is mid-turn
             if "Press up to edit queued messages" in bottom:
@@ -322,14 +329,14 @@ class JuggleTmuxManager:
         rescued — that is a genuine stuck-at-prompt, returns False.
         """
         _, submission_markers = _harness_markers()
+        active_pattern = _active_status_pattern()
         result = self._run_tmux(
             "capture-pane", "-p", "-t", pane_id, "-S", f"-{_DETECT_TAIL_LINES}"
         )
         out = getattr(result, "stdout", "") or ""
         bottom = "\n".join(out.splitlines()[-_DETECT_TAIL_LINES:])
-        if any(m in bottom for m in submission_markers) or any(
-            m in bottom for m in _ACTIVITY_MARKERS
-        ):
+        active_hit = active_pattern and re.search(active_pattern, bottom)
+        if any(m in bottom for m in submission_markers + _ACTIVITY_MARKERS) or active_hit:
             return True
         stuck = (
             "[Pasted text" in bottom

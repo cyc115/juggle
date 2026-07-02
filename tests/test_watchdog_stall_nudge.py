@@ -48,6 +48,40 @@ def test_idle_at_prompt_false_when_no_readiness_marker():
     assert is_idle_at_prompt("", READY, SUBMIT) is False
 
 
+# claude-harness active-status regex (SSOT — mirrors juggle_harness_defaults)
+ACTIVE_PATTERN = r"\(\d+[hms][^()]*↓[^()]*tokens\)"
+
+
+def test_idle_at_prompt_false_on_unenumerated_spinner_glyph_2026_07_02():
+    """Regression: 2026-07-02 false-positive stall nudge on agent ZJ.
+
+    The pane showed spinner glyph '✢' (never enumerated in SUBMIT) with NO
+    'esc to interrupt' text, while the always-present footer marker
+    ('bypass permissions on') matched — so glyph-enumeration-based detection
+    misclassified an actively-working agent as idle-at-prompt, burning both
+    of ZJ's nudge budget and filing a spurious HIGH action item. The
+    structural active-status regex (elapsed-time + '↓ tokens' suffix, present
+    regardless of glyph/verb) must catch this even though '✢' is absent from
+    SUBMIT.
+    """
+    from juggle_watchdog_stall import is_idle_at_prompt
+
+    pane = (
+        "✢ Waddling… (24m 30s · ↓ 29.7k tokens)\n"
+        "⏵⏵ bypass permissions on · 1 shell · ← for agents"
+    )
+    assert is_idle_at_prompt(pane, READY, SUBMIT, ACTIVE_PATTERN) is False
+
+
+def test_idle_at_prompt_true_when_active_pattern_absent_and_no_submission():
+    """No active-status line and no submission marker → still a stall (the
+    active_pattern check is additive, not a replacement for readiness)."""
+    from juggle_watchdog_stall import is_idle_at_prompt
+
+    pane = "recap: done.\n\n > \n  shift+tab to cycle"
+    assert is_idle_at_prompt(pane, READY, SUBMIT, ACTIVE_PATTERN) is True
+
+
 # ── state machine: StallTracker.decide ───────────────────────────────────────
 
 

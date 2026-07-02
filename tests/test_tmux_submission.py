@@ -196,6 +196,29 @@ def test_wait_for_submission_returns_true_when_cleared_then_marker(mgr):
     )
 
 
+def test_wait_for_submission_returns_true_for_unenumerated_spinner_glyph_2026_07_02(mgr):
+    """Regression: 2026-07-02 false-positive stall nudge on agent ZJ — same glyph
+    enumeration fragility applies here (a submitted-but-unenumerated-glyph pane
+    could be mistaken for stuck, spamming Enter retries). The structural
+    active-status-line pattern (elapsed-time + '↓ tokens' suffix) must be
+    recognised as evidence of submission even when the glyph ('✢') isn't in
+    _SUBMISSION_MARKERS.
+    """
+    prompt = "hello"
+    active_output = "✢ Waddling… (24m 30s · ↓ 29.7k tokens)\n"
+
+    with (
+        patch.object(mgr, "_run_tmux", return_value=MagicMock(stdout=active_output)),
+        patch("time.sleep"),
+    ):
+        result = mgr.wait_for_submission("%3", prompt, timeout=3, max_enter_retries=0)
+
+    assert result is True, (
+        "unenumerated spinner glyph with a structural active-status line must "
+        "still be recognised as submitted/active"
+    )
+
+
 def test_wait_for_submission_returns_true_when_processing_marker_present(mgr):
     """'esc to interrupt' / '✻' marker means the prompt was submitted; return True."""
     prompt = "hello"

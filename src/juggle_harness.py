@@ -110,6 +110,12 @@ class HarnessAdapter:
     def submission_markers(self) -> tuple:
         return tuple(self._cfg.get("submission_markers") or ())
 
+    def active_status_pattern(self) -> str:
+        """Structural regex for "actively processing" (SSOT) — the fallback
+        that doesn't depend on enumerating spinner glyphs/verbs. Empty string
+        when unconfigured (caller treats that as "no additional signal")."""
+        return self._cfg.get("active_status_pattern") or ""
+
     # -- command assembly ---------------------------------------------------
     def _command(self) -> str:
         """Launch command: explicit per-harness, else legacy key, else the id."""
@@ -250,6 +256,15 @@ def get_adapter(role: str | None = None, agent_cfg: dict | None = None) -> Harne
 
     cls = _ADAPTERS.get(hcfg.get("type", "template"), TemplateHarnessAdapter)
     return cls(hid, hcfg, agent_cfg)
+
+
+def active_pattern_for_agent(agent: dict) -> str:
+    """Active-status-line regex for an agent (SSOT) — mirrors markers_for_agent
+    in juggle_watchdog_stall.py, the driver that consumes this."""
+    try:
+        return get_adapter(role=agent.get("role")).active_status_pattern()
+    except Exception:
+        return ""
 
 
 # Wire up the built-in adapters: importing the package runs each module's

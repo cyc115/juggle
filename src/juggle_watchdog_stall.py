@@ -20,6 +20,7 @@ meaningful signal, so this detector survives it.
 from __future__ import annotations
 
 import logging
+import re
 import time as _time
 from typing import Any, Callable
 
@@ -42,18 +43,21 @@ def is_idle_at_prompt(
     content: str | None,
     readiness_markers: tuple,
     submission_markers: tuple,
+    active_pattern: str = "",
 ) -> bool:
     """True iff the pane shows the READY prompt with no activity indicator.
 
     A submission marker (spinner / 'esc to interrupt') means the agent is working
-    → never a stall. Empty/None content is never a stall.
-    """
+    → never a stall. Empty/None content is never a stall. ``active_pattern``
+    (SSOT: adapter's ``active_status_pattern``) is an additional structural
+    signal — survives unenumerated glyphs (2026-07-02 false-positive on ZJ)."""
     if not content:
         return False
     if any(m in content for m in submission_markers):
         return False
+    if active_pattern and re.search(active_pattern, content):
+        return False
     return any(m in content for m in readiness_markers)
-
 
 # Per-agent debounce / nudge / escalation state machine
 
@@ -150,7 +154,6 @@ def markers_for_agent(agent: dict) -> tuple[tuple, tuple]:
     except Exception:
         return (), ()
 
-
 def _capture_pane(mgr: Any, pane_id: str, lines: int = 80) -> str | None:
     """Capture pane text (mirrors the daemon helper; returns None if pane gone)."""
     try:
@@ -163,11 +166,9 @@ def _capture_pane(mgr: Any, pane_id: str, lines: int = 80) -> str | None:
     except Exception:
         return None
 
-
 def _dispatch_key(agent: dict) -> str:
     """Identity of the agent's current dispatch — changes on re-dispatch/reuse."""
     return f"{agent.get('assigned_thread')}|{agent.get('busy_since')}|{agent.get('last_task')}"
-
 
 def _thread_label(db: Any, thread_id: str | None, agent_id: str) -> str:
     if not thread_id:
@@ -179,7 +180,6 @@ def _thread_label(db: Any, thread_id: str | None, agent_id: str) -> str:
     if not thread:
         return thread_id[:8]
     return thread.get("user_label") or thread.get("label") or thread_id[:8]
-
 
 # Driver — the watchdog tick entry point
 
@@ -193,16 +193,18 @@ def check_stalled_agents(
     session_id: str = "",
     capture: Callable[[str], str | None] | None = None,
     markers_for: Callable[[dict], tuple[tuple, tuple]] | None = None,
+    active_pattern_for: Callable[[dict], str] | None = None,
 ) -> None:
     """Detect busy agents idling at the prompt and nudge / escalate them.
-    ``capture`` and ``markers_for`` are injectable so the tick is testable
-    without real tmux or a live harness config."""
+    ``capture``/``markers_for``/``active_pattern_for`` are injectable for tests."""
     if now is None:
         now = _time.time()
     if capture is None:
         capture = lambda pid: _capture_pane(mgr, pid)  # noqa: E731
     if markers_for is None:
         markers_for = markers_for_agent
+    if active_pattern_for is None:
+        from juggle_harness import active_pattern_for_agent as active_pattern_for
 
     threshold_min, max_nudges = _stall_config()
     threshold_s = threshold_min * 60.0
@@ -220,7 +222,7 @@ def check_stalled_agents(
         pane_id = agent.get("pane_id") or ""
         content = capture(pane_id)
         ready, submit = markers_for(agent)
-        idle = is_idle_at_prompt(content, ready, submit)
+        idle = is_idle_at_prompt(content, ready, submit, active_pattern_for(agent))
 
         action = tracker.decide(
             agent_id,

@@ -29,6 +29,14 @@ HARNESS_DEFAULTS: dict = {
         # "bypass permissions on" never matched and "/effort" is transient).
         "readiness_markers": ["shift+tab to cycle", "bypass permissions on", "/effort"],
         "submission_markers": ["esc to interrupt", "✻", "✶"],
+        # Structural fallback for "is actively processing" that doesn't depend
+        # on enumerating spinner glyphs/verbs (2026-07-02 false-positive stall
+        # nudge on agent ZJ: glyph '✢' wasn't in submission_markers, so the
+        # always-present footer marker fired while the agent was mid-task).
+        # Every active-processing status line shows an elapsed-time + '↓
+        # <count>k? tokens' suffix regardless of which glyph/verb is showing —
+        # e.g. "✢ Waddling… (24m 30s · ↓ 29.7k tokens)".
+        "active_status_pattern": r"\(\d+[hms][^()]*↓[^()]*tokens\)",
         "supports_hooks": True,
     },
     # Built-in Codex CLI adapter (src/harnesses/codex.py). Inactive
