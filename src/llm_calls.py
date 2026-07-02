@@ -17,6 +17,8 @@ import os
 import subprocess
 import urllib.request
 
+_no_key_notice_shown = False
+
 
 def run_claude_p(
     prompt: str,
@@ -94,6 +96,15 @@ def llm_call(
         max_tokens = cfg.get("max_tokens", 200)
     api_key = os.environ.get("OPENROUTER_KEY", "")
     import time as _time
+    if not api_key:
+        global _no_key_notice_shown
+        if not _no_key_notice_shown:
+            _no_key_notice_shown = True
+            logging.warning(
+                "OPENROUTER_KEY is not set — Juggle is running in degraded mode, "
+                "falling back to claude -p for all LLM calls (semantic research/search "
+                "unavailable). Set OPENROUTER_KEY or re-run `juggle:init` to add a key."
+            )
     if api_key:
         try:
             t0 = _time.monotonic()
