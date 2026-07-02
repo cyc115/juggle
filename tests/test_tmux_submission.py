@@ -219,6 +219,18 @@ def test_wait_for_submission_returns_true_for_unenumerated_spinner_glyph_2026_07
     )
 
 
+def test_submission_confirmed_by_side_effect_recognises_active_pattern(mgr):
+    """Same fragility in the fallback confirmer used after the poll loop times
+    out: an unenumerated glyph with the structural active-status line must
+    still confirm submission (2026-07-02 regression, second call site)."""
+    active_output = "✢ Waddling… (24m 30s · ↓ 29.7k tokens)\n"
+
+    with patch.object(mgr, "_run_tmux", return_value=MagicMock(stdout=active_output)):
+        result = mgr._submission_confirmed_by_side_effect("%3", "head")
+
+    assert result is True
+
+
 def test_wait_for_submission_returns_true_when_processing_marker_present(mgr):
     """'esc to interrupt' / '✻' marker means the prompt was submitted; return True."""
     prompt = "hello"
