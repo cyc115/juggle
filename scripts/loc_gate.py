@@ -58,7 +58,7 @@ GRANDFATHERED: dict[str, int] = {
     "scripts/talkback": 415,
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
-    "src/juggle_graph_dispatch.py": 397,
+    "src/juggle_graph_dispatch.py": 404,  # +7 defect-F: reuse the topic's bound surfacing conversation instead of minting a "[T-<id>]" mirror row (2026-07-01)
     "src/juggle_watchdog_daemon.py": 429,  # +2 defect-B: git-HEAD stale-code exit replaces mtime block, and prod-only gate on the global daemon reaper (2026-07-01)
     "src/dbops/db_topics.py": 366,  # +1 P8 engine delegation: irreducible db_node_machine import (topic_transition delegates the decision) (2026-06-27)
     "src/juggle_context.py": 345,

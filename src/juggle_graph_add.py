@@ -62,6 +62,28 @@ def resolve_dispatch_topic(
     return f"T-{task_id}", True
 
 
+def record_surfacing_conversation(db, topic_id: str, requested_topic) -> None:
+    """Bind an existing descriptive conversation as ``topic_id``'s dispatch thread.
+
+    Dedup defect F (2026-07-01): ``add-task --topic <conversation>`` synthesizes a
+    'T-<id>' graph-topic home (resolve_dispatch_topic), but the human conversation
+    the user named must stay the SINGLE surfacing row — graph_tick reuses this
+    binding instead of minting a "[T-<id>]" mirror. ``requested_topic`` (UUID or
+    slug) resolving to no conversation is left untouched. Never raises."""
+    from dbops import db_topics
+
+    if not requested_topic:
+        return
+    try:
+        conv = db.get_thread(requested_topic) or db.get_thread_by_user_label(
+            requested_topic
+        )
+        if conv is not None:
+            db_topics.set_topic_thread(db, topic_id, conv["id"])
+    except Exception:
+        pass  # a bad --topic never fails the already-committed add
+
+
 def validate_add_task(
     db,
     project_id: str,

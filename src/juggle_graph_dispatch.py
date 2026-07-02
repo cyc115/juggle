@@ -216,12 +216,22 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
         try:
             if not claim_topic(db, tid):
                 continue  # another claimer won (DA B4)
+            # Dedup defect F (2026-07-01): reuse the topic's already-bound
+            # surfacing conversation (named via add-task --topic) instead of
+            # minting a second "[T-<id>]" mirror row. Reuse it even when archived,
+            # so an explicitly-archived surface is never resurrected as a fresh
+            # mirror — ONE conversation row per task, ever.
+            reuse_tid = topic.get("thread_id")
+            thread_id = reuse_tid if (
+                reuse_tid and db.get_thread(reuse_tid) is not None
+            ) else None
             try:
-                thread_id = db.create_thread(
-                    f"[{tid}] {topic['title']}"[:80],
-                    session_id=_session_id(db),
-                    project_id=pid,
-                )
+                if thread_id is None:
+                    thread_id = db.create_thread(
+                        f"[{tid}] {topic['title']}"[:80],
+                        session_id=_session_id(db),
+                        project_id=pid,
+                    )
             except ValueError as e:
                 db_topics.topic_transition(db, tid, "stale_reset")
                 if "Maximum of" not in str(e):

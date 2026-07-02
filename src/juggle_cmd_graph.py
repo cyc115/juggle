@@ -178,7 +178,10 @@ def cmd_graph_add_task(args):
     """
     import json
 
-    from juggle_graph_add import AddTaskError, add_task, resolve_dispatch_topic
+    from juggle_graph_add import (
+        AddTaskError, add_task, record_surfacing_conversation,
+        resolve_dispatch_topic,
+    )
 
     db = get_db(getattr(args, "db_path", None), init=True)
     if not db.get_project(args.project):
@@ -217,6 +220,12 @@ def cmd_graph_add_task(args):
         else:
             print(f"add-task REFUSED — graph unchanged: {e}", file=sys.stderr)
         sys.exit(1)
+
+    # Dedup defect F (2026-07-01): a --topic pointing at an existing conversation
+    # becomes the synthetic topic's surfacing/dispatch thread, so graph_tick reuses
+    # it instead of spawning a second "[T-<id>]" mirror row.
+    if auto_topic:
+        record_surfacing_conversation(db, topic_id, getattr(args, "topic", None))
 
     if getattr(args, "json_out", False):
         print(json.dumps({"ok": True, **result}))
