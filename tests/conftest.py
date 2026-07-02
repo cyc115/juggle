@@ -265,6 +265,61 @@ _SERIAL_MODULE_SUFFIXES = (
 )
 
 
+# ── Config test-isolation guard (2026-07-02 real-config-mutation incident) ───
+# Same isolation defect class as `_isolate_db_from_prod` above, but for
+# ~/.juggle/config.json: every settings/config read (`get_settings`,
+# `juggle_cmd_doctor._resolve_config_path`, `configure_db_mode`,
+# `juggle_cockpit._persist_ratios`, `juggle_cockpit_topic_cap`) already honors
+# a live (uncached) `_JUGGLE_CONFIG_PATH` env override, but nothing redirected
+# it globally for tests — so any test (esp. a real cockpit-exit test, which
+# persists column_ratios on every exit) that didn't individually patch the env
+# var wrote into the real file. Concurrent agent-worktree full-suite runs
+# transiently mutated live user config (harnesses.claude.readiness_markers
+# momentarily missing a key), flaking
+# test_juggle_harness.py::test_real_settings_default_harness_is_claude.
+#
+# Two fail-closed guards, mirroring `_isolate_db_from_prod`:
+#   1. Redirect `_JUGGLE_CONFIG_PATH` at a per-test tmp file. Set via setenv so
+#      it ALSO propagates to `uv run` cockpit/CLI subprocess children (which
+#      inherit os.environ), same as the watchdog-spawn neutralizer above.
+#   2. Fail-closed guard: wrap `Path.write_text` globally to RAISE the instant
+#      any test writes the real ~/.juggle/config.json (or its atomic-write
+#      .tmp / .bak-pre-* siblings) — the same hermetic, per-call seam as
+#      `_guard_no_prod_artifacts`. Scoped to config.json specifically (not the
+#      whole ~/.juggle tree, which also holds agent-settings overlays and a
+#      watchdog pidfile already covered by their OWN, unrelated guards/tests)
+#      so this stays a config-isolation fix, not a broader ~/.juggle sweep.
+_PROD_JUGGLE_DIR = (Path.home() / ".juggle").resolve()
+
+
+def _is_prod_config_artifact(path) -> bool:
+    try:
+        resolved = Path(path).resolve()
+    except OSError:
+        resolved = Path(path)
+    return resolved.parent == _PROD_JUGGLE_DIR and resolved.name.startswith("config.json")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_config_from_prod(tmp_path, monkeypatch):
+    monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(tmp_path / "juggle-test-config.json"))
+
+    _orig_write_text = Path.write_text
+
+    def _guarded_write_text(self, *args, **kwargs):
+        if _is_prod_config_artifact(self):
+            raise RuntimeError(
+                "TEST ISOLATION VIOLATION (2026-07-02 config-mutation incident): a "
+                f"test tried to write the production config {self}. Use a temp "
+                "path (tmp_path / _JUGGLE_CONFIG_PATH)."
+            )
+        return _orig_write_text(self, *args, **kwargs)
+
+    _guarded_write_text._prod_artifact_guarded = True
+    monkeypatch.setattr(Path, "write_text", _guarded_write_text)
+    yield
+
+
 @pytest.fixture
 def juggle_db(tmp_path):
     """A fresh, isolated JuggleDB under tmp_path (2026-06-30 topic-graph-state-unify).
