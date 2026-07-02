@@ -9,34 +9,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 # ---------------------------------------------------------------------------
-# _is_source_stale — pure function
+# (mtime-based _is_source_stale removed 2026-07-01 — replaced by the git-HEAD
+# stale-code exit; see tests/test_watchdog_daemon.py.)
 # ---------------------------------------------------------------------------
-
-
-def test_is_source_stale_detects_newer_file(tmp_path):
-    from juggle_watchdog import _is_source_stale
-
-    f = tmp_path / "watchdog.py"
-    f.write_text("v1")
-    old_mtime = f.stat().st_mtime
-    time.sleep(0.02)
-    f.write_text("v2")
-    assert _is_source_stale(old_mtime, f) is True
-
-
-def test_is_source_stale_returns_false_when_unchanged(tmp_path):
-    from juggle_watchdog import _is_source_stale
-
-    f = tmp_path / "watchdog.py"
-    f.write_text("v1")
-    mtime = f.stat().st_mtime
-    assert _is_source_stale(mtime, f) is False
-
-
-def test_is_source_stale_returns_false_for_missing_file(tmp_path):
-    from juggle_watchdog import _is_source_stale
-
-    assert _is_source_stale(0.0, tmp_path / "nonexistent.py") is False
 
 
 # ---------------------------------------------------------------------------

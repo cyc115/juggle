@@ -8,7 +8,7 @@ Design principle
   Use for transient events the system is already handling automatically.
 
 Split modules (re-exported here for backward-compat):
-  juggle_watchdog_restart.py  — hot-restart / stale-source detection
+  juggle_watchdog_restart.py  — git-HEAD stale-code detection (daemon exit)
   juggle_watchdog_inspect.py  — inspect_agent entry point + _handle_crashed
 """
 
@@ -18,7 +18,7 @@ import hashlib as _hashlib
 import logging
 import os
 import re
-import subprocess
+import subprocess  # noqa: F401 — patch-target anchor (tests patch juggle_watchdog.subprocess.run)
 import time as _time
 from pathlib import Path
 from typing import Any
@@ -27,11 +27,8 @@ from typing import Any
 # Re-exports from split modules (keep all juggle_watchdog.X patch targets alive)
 # ---------------------------------------------------------------------------
 from juggle_watchdog_restart import (  # noqa: E402, F401
-    _HOT_RESTART_GRACE_SECS,
-    _collect_mtimes,
-    _is_source_stale,
-    _maybe_hot_restart,
-    should_hot_restart,
+    current_code_version,
+    should_exit_for_stale_code,
 )
 from juggle_watchdog_inspect import (  # noqa: E402, F401
     _config_dir,

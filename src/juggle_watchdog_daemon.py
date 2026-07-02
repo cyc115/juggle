@@ -36,7 +36,9 @@ from juggle_watchdog import (
     write_snapshot,
 )
 
-_WATCHDOG_SRC = Path(__file__).parent / "juggle_watchdog.py"
+# Repo root captured at IMPORT time (before the main() chdir to ~/.juggle) so
+# git-HEAD staleness checks resolve the canonical main worktree, not the cwd.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _POLL_INTERVAL = int(os.environ.get("JUGGLE_WATCHDOG_INTERVAL", "30"))
 _SUPERVISED = os.environ.get("JUGGLE_WATCHDOG_SUPERVISED", "") == "1"
@@ -320,7 +322,10 @@ def _set_orchestrator_preamble() -> None:
 
 
 def main() -> None:
-    from juggle_watchdog_restart import should_exit_for_reload
+    from juggle_watchdog_restart import (
+        current_code_version,
+        should_exit_for_stale_code,
+    )
 
     from juggle_watchdog_singleton import (
         WatchdogAlreadyRunning,
@@ -375,26 +380,21 @@ def main() -> None:
         _log.info("Watchdog ready (PID=%d, interval=%ds, supervised=%s)",
                   os.getpid(), _POLL_INTERVAL, _SUPERVISED)
 
-        _src_mtime = _WATCHDOG_SRC.stat().st_mtime if _WATCHDOG_SRC.exists() else 0.0
+        # Defect B (2026-07-01): fingerprint the plugin's git HEAD at boot; on any
+        # drift the daemon exits cleanly so the cockpit's ensure_watchdog respawns
+        # it on fresh code. Checked at loop TOP (between ticks) so we never
+        # interrupt an in-flight tick / integrate. Exits regardless of supervisor.
+        _boot_code_version = current_code_version(_REPO_ROOT)
 
         while _running:
-            new_mtime = _WATCHDOG_SRC.stat().st_mtime if _WATCHDOG_SRC.exists() else 0.0
-            stale = new_mtime > _src_mtime
-            if stale:
-                if should_exit_for_reload(stale=True, supervised=_SUPERVISED):
-                    _log.warning(
-                        "Watchdog: source changed (%s mtime %.3f → %.3f) — "
-                        "exiting for cockpit restart",
-                        _WATCHDOG_SRC.name, _src_mtime, new_mtime,
-                    )
-                    sys.exit(0)
-                else:
-                    _log.warning(
-                        "Watchdog: source changed (%s mtime %.3f → %.3f) — "
-                        "unsupervised, continuing without restart",
-                        _WATCHDOG_SRC.name, _src_mtime, new_mtime,
-                    )
-                    _src_mtime = new_mtime  # re-baseline to avoid spam
+            cur_code_version = current_code_version(_REPO_ROOT)
+            if should_exit_for_stale_code(_boot_code_version, cur_code_version):
+                _log.warning(
+                    "Watchdog: plugin code advanced (HEAD %s → %s) — exiting "
+                    "cleanly for respawn on fresh code",
+                    _boot_code_version, cur_code_version,
+                )
+                break  # falls through to finally: pidfile cleanup + lock release
             if _SUPERVISOR_PID is not None:
                 if should_exit_supervisor_gone(_is_pid_alive_local(_SUPERVISOR_PID)):
                     _log.info(

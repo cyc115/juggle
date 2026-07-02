@@ -1,8 +1,11 @@
-"""Tests for watchdog daemon fixes: supervised-reload guard, pidfile prune,
+"""Tests for watchdog daemon fixes: stale-code exit, pidfile prune,
 cockpit-supervision design.
 
-Regression pin: 2026-06-14 watchdog-stay-alive.
-  - Unsupervised daemon must NOT sys.exit on source staleness (it dies permanently).
+Regression pin: 2026-07-01 stale-daemon-activation-gap.
+  - Daemon fingerprints plugin git HEAD at boot + each tick; on drift it exits
+    cleanly REGARDLESS of supervisor (the cockpit respawns it on fresh code).
+  - This supersedes the 2026-06-14 "unsupervised must NOT exit" pin: its premise
+    (exit == permanent death) no longer holds now a respawn path exists.
   - Dead-PID watchdog-*.pid files must be pruned on startup.
   - Watchdog is cockpit-supervised (not launchd); plist is absent.
 """
@@ -11,41 +14,81 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 
-# ── 1. should_exit_for_reload ─────────────────────────────────────────────────
+# ── 1. Stale-code exit (git-HEAD fingerprint) ─────────────────────────────────
 
 
-def test_should_exit_for_reload_supervised_stale_returns_true():
-    """When supervised and source is stale, should signal exit for restart."""
-    from juggle_watchdog_restart import should_exit_for_reload
+def test_should_exit_for_stale_code_exits_on_drift():
+    """REGRESSION PIN 2026-07-01: daemon ran 9h-stale code so merged fixes never activated.
 
-    assert should_exit_for_reload(stale=True, supervised=True) is True
+    Pre-fix: the loop watched only juggle_watchdog.py's mtime and gated exit on
+    ``should_exit_for_reload(stale, supervised)`` == (stale AND supervised); the
+    UNSUPERVISED daemon therefore re-baselined and kept its import-time code
+    indefinitely, so #5038/#5045 fixes merged to main never took effect until a
+    manual restart (~9h stale overnight).
 
-
-def test_should_exit_for_reload_unsupervised_stale_returns_false():
-    """REGRESSION PIN 2026-06-14: unsupervised daemon must NOT exit on staleness.
-
-    Pre-fix: the main loop called sys.exit(0) unconditionally when source was
-    stale. Without a supervisor this killed the daemon permanently on every
-    juggle source edit / git integrate touch.
+    Post-fix: the daemon fingerprints the plugin's git HEAD at boot and each tick;
+    on ANY drift it exits cleanly REGARDLESS of supervisor — the cockpit's periodic
+    ensure_watchdog respawns a fresh process on the new code. This supersedes the
+    2026-06-14 pin ("unsupervised must NOT exit"), whose premise (exit ==
+    permanent death) no longer holds now that a respawn path exists.
     """
-    from juggle_watchdog_restart import should_exit_for_reload
+    from juggle_watchdog_restart import should_exit_for_stale_code
 
-    assert should_exit_for_reload(stale=True, supervised=False) is False
+    assert should_exit_for_stale_code("abc123", "def456") is True
 
 
-def test_should_exit_for_reload_not_stale_returns_false():
-    """When source is not stale, never exit regardless of supervised flag."""
-    from juggle_watchdog_restart import should_exit_for_reload
+def test_should_exit_for_stale_code_same_version_keeps_running():
+    """No drift → never exit."""
+    from juggle_watchdog_restart import should_exit_for_stale_code
 
-    assert should_exit_for_reload(stale=False, supervised=True) is False
-    assert should_exit_for_reload(stale=False, supervised=False) is False
+    assert should_exit_for_stale_code("abc123", "abc123") is False
+
+
+def test_should_exit_for_stale_code_unknown_version_fails_safe():
+    """When either fingerprint is unknown (git unavailable), never exit — the
+    respawn it would trigger can't be verified, so keep ticking on current code."""
+    from juggle_watchdog_restart import should_exit_for_stale_code
+
+    assert should_exit_for_stale_code(None, "def456") is False
+    assert should_exit_for_stale_code("abc123", None) is False
+    assert should_exit_for_stale_code(None, None) is False
+
+
+def test_current_code_version_reads_git_head(tmp_path):
+    """current_code_version returns the repo's git HEAD, changing as it advances."""
+    import subprocess
+
+    from juggle_watchdog_restart import current_code_version
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True,
+                       capture_output=True)
+
+    git("init", "-q")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (tmp_path / "f.txt").write_text("1")
+    git("add", "-A")
+    git("commit", "-qm", "one")
+    v1 = current_code_version(tmp_path)
+    assert v1 and len(v1) >= 7
+    (tmp_path / "f.txt").write_text("2")
+    git("add", "-A")
+    git("commit", "-qm", "two")
+    assert current_code_version(tmp_path) != v1
+
+
+def test_current_code_version_non_repo_returns_none(tmp_path):
+    """Outside a git repo the fingerprint is unknown (None) → fail-safe no-exit."""
+    from juggle_watchdog_restart import current_code_version
+
+    assert current_code_version(tmp_path) is None
 
 
 # ── 2. pidfile prune ─────────────────────────────────────────────────────────
