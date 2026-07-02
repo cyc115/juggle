@@ -68,10 +68,71 @@ def _is_pid_alive_local(pid: int) -> bool:
 SINGLETON_PID_FILE = Path.home() / ".juggle" / "watchdog.pid"
 _JUGGLE_DIR = Path.home() / ".juggle"
 
+# Boot-HEAD sidecar (2026-07-01 churn fix): the live daemon records the git HEAD
+# it booted on so a near-simultaneous respawn can tell whether the incumbent is a
+# fresh SAME-code peer (defer to it) or an OLD-code instance (kill and replace).
+SINGLETON_CODEVERSION_FILE = _JUGGLE_DIR / "watchdog.codeversion"
+
 
 def _write_singleton_pid():
     # Atomic write + race verification (exits 1 if another start claimed the file)
     daemon_pidfile.write_singleton_pid(SINGLETON_PID_FILE, verify=True, name="watchdog")
+
+
+def _read_incumbent_code_version() -> str | None:
+    """Boot HEAD recorded by the daemon currently holding the singleton, or None."""
+    try:
+        v = SINGLETON_CODEVERSION_FILE.read_text().strip()
+        return v or None
+    except OSError:
+        return None
+
+
+def _record_boot_code_version(version: str | None) -> None:
+    """Publish our boot HEAD so a racing respawn can classify us as same/old code."""
+    if version is None:
+        return
+    try:
+        SINGLETON_CODEVERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SINGLETON_CODEVERSION_FILE.write_text(version)
+    except OSError:
+        pass
+
+
+def _reconcile_existing_watchdog(
+    boot_code_version: str | None, *, stale_after: float | None = None
+) -> None:
+    """Idempotent startup reconciliation (2026-07-01 respawn-churn fix).
+
+    Replaces the old unconditional ``_kill_existing_watchdog_from_pidfile`` call.
+    Kills the pidfile incumbent ONLY when it runs OLD code or is HUNG; a fresh,
+    same-code, live incumbent is left alone so the flock (acquired next) makes
+    this redundant newcomer exit — instead of the newcomer SIGTERM'ing a healthy
+    fresh peer and driving the restart storm.
+    """
+    from juggle_watchdog_health import read_heartbeat_age
+    from juggle_watchdog_restart import should_replace_incumbent
+
+    if stale_after is None:
+        stale_after = float(
+            get_settings().get("watchdog", {}).get("hung_heartbeat_secs", 120)
+        )
+    incumbent_version = _read_incumbent_code_version()
+    if boot_code_version is None or incumbent_version is None:
+        same_code: bool | None = None
+    else:
+        same_code = incumbent_version == boot_code_version
+    heartbeat_age = read_heartbeat_age()
+    if should_replace_incumbent(
+        same_code=same_code, heartbeat_age=heartbeat_age, stale_after=stale_after
+    ):
+        _kill_existing_watchdog_from_pidfile(SINGLETON_PID_FILE)
+    else:
+        _log.info(
+            "Watchdog: fresh same-code instance already live (incumbent HEAD=%s) "
+            "— deferring to it, not respawning (idempotent)",
+            incumbent_version,
+        )
 
 
 def _cleanup_singleton_pid():
@@ -367,13 +428,20 @@ def main() -> None:
     _log.info("Watchdog starting (PID=%d, interval=%ds, mode=%s)",
               os.getpid(), _POLL_INTERVAL, mode)
 
+    # Fingerprint our boot HEAD up front — used both by the idempotent respawn
+    # reconciliation below and by the hot-restart staleness check in the loop.
+    _boot_code_version = current_code_version(_REPO_ROOT)
+
     prune_stale_watchdog_pidfiles()
 
-    _kill_existing_watchdog_from_pidfile(SINGLETON_PID_FILE)
+    # Idempotent respawn (2026-07-01 churn fix): only kill the pidfile incumbent
+    # when it runs OLD code or is hung. A fresh SAME-code peer is left alone so
+    # the flock below (not a mutual SIGTERM) resolves the race to one survivor.
+    _reconcile_existing_watchdog(_boot_code_version)
 
     # Exclusive singleton flock per DB: refuse to become a second concurrent
-    # watchdog (the kill above clears the sanctioned predecessor; a survivor here
-    # is a rogue we must not duplicate).
+    # watchdog. When a fresh same-code peer already holds it, this newcomer is the
+    # redundant loser and exits cleanly here — no restart storm.
     try:
         _singleton_fd = acquire_singleton_lock(DB_PATH)
     except WatchdogAlreadyRunning as exc:
@@ -381,6 +449,11 @@ def main() -> None:
         sys.exit(1)
     atexit.register(_release_singleton_lock, _singleton_fd)
 
+    # Publish boot state BEFORE the pidfile: any peer that later reads our PID
+    # from the pidfile is then guaranteed to also see a fresh heartbeat and our
+    # boot HEAD, so it classifies us as a fresh same-code peer and defers.
+    _record_boot_code_version(_boot_code_version)
+    write_heartbeat()
     _write_singleton_pid()
     atexit.register(_cleanup_singleton_pid)
 
@@ -397,10 +470,9 @@ def main() -> None:
         _log.info("Watchdog ready (PID=%d, interval=%ds, supervised=%s)",
                   os.getpid(), _POLL_INTERVAL, _SUPERVISED)
 
-        # Defect B (2026-07-01): fingerprint git HEAD at boot; on drift, exit
-        # cleanly at loop TOP (never mid-tick) → cockpit respawns on fresh code.
-        _boot_code_version = current_code_version(_REPO_ROOT)
-
+        # Defect B (2026-07-01): boot HEAD (fingerprinted above) drives the
+        # hot-restart check; on drift, exit cleanly at loop TOP (never mid-tick)
+        # → cockpit respawns on fresh code.
         while _running:
             cur_code_version = current_code_version(_REPO_ROOT)
             if should_exit_for_stale_code(_boot_code_version, cur_code_version):

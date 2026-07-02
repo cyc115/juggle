@@ -104,6 +104,7 @@ DEFAULTS: dict = {
     "watchdog": {
         "max_daemons": 8, "min_respawn_interval_secs": 60,
         "stall_threshold_minutes": 3, "max_stall_nudges": 2,
+        "hung_heartbeat_secs": 120,
     },
     # Hindsight
     "hindsight": {

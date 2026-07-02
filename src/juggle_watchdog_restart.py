@@ -60,3 +60,27 @@ def should_exit_for_stale_code(
     if boot_version is None or current_version is None:
         return False
     return boot_version != current_version
+
+
+def should_replace_incumbent(
+    *, same_code: bool | None, heartbeat_age: float | None, stale_after: float
+) -> bool:
+    """Idempotent respawn gate (2026-07-01 churn fix).
+
+    A daemon booting finds a PID already recorded in the singleton pidfile. This
+    decides whether to kill-and-replace that incumbent or defer to it. Kill ONLY
+    when the incumbent runs OLD code (``same_code is False`` — different boot
+    HEAD) or is HUNG (``heartbeat_age`` older than ``stale_after``). A fresh,
+    same-code, live incumbent is left untouched: the newcomer then fails to take
+    the singleton flock and exits as the redundant loser, so two near-simultaneous
+    respawns never mutually SIGTERM each other (the 4-restarts-in-64s churn).
+
+    ``same_code is None`` means the incumbent's boot HEAD couldn't be read — treat
+    it as a same-code peer (fail-safe toward NOT churning); it is still replaced if
+    its heartbeat is stale (a genuinely hung/abandoned instance).
+    """
+    if same_code is False:
+        return True
+    if heartbeat_age is not None and heartbeat_age > stale_after:
+        return True
+    return False
