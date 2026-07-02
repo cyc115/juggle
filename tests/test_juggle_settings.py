@@ -89,7 +89,10 @@ def test_task_templates_in_defaults():
 
 
 def test_task_template_override():
-    import os, json, tempfile
+    import json
+    import os
+    import tempfile
+
     from juggle_settings import get_settings
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write(json.dumps({"task_templates": {"coder": "custom"}}))
