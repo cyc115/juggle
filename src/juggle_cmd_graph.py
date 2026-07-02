@@ -18,8 +18,7 @@ from __future__ import annotations
 import sys
 
 from juggle_cli_common import get_db
-# db_graph re-exported (used by add-task + the atomicity regression pin, which
-# monkeypatches cg.db_graph — the same module object juggle_graph_load uses).
+# db_graph re-exported: add-task + the atomicity regression pin monkeypatch cg.db_graph.
 from dbops import db_graph, db_topics  # noqa: F401
 
 # Re-exported for backward compatibility (tests + callers import these from here).
@@ -35,9 +34,7 @@ from juggle_graph_upsert import (  # noqa: F401
 )
 from juggle_graph_upsert import content_changed as _content_changed  # noqa: F401
 
-# The load handler lives in juggle_graph_load (extracted 2026-06-11 for the LOC
-# gate); re-exported so `juggle_cmd_graph.cmd_project_graph_load` stays valid for
-# the parser registration and existing callers/tests.
+# Load handler lives in juggle_graph_load; re-exported for callers/tests.
 from juggle_graph_load import cmd_project_graph_load  # noqa: F401
 
 # Default priority for a 'fix-'-prefixed add-task id lacking an explicit
@@ -99,9 +96,6 @@ def register_graph_parsers(subparsers) -> None:
     `project-graph …` resolves via the alias shim. Kept here (next to the handlers)
     so the graph CLI surface lives in one place.
     """
-    # P9 G2: `project-graph load` is folded into the `graph` group as `graph load`
-    # (legacy `project-graph load …` resolves via the alias shim, which maps
-    # project-graph → graph). The standalone `project-graph` group is removed.
     p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
     _g2s = p_g2.add_subparsers(dest="graph2_command", required=True)
     _g = _g2s.add_parser("load", help="Load/upsert a graph spec markdown file")
@@ -279,19 +273,11 @@ def cmd_graph_mark_task(args):
     agent's per-task completion (R9 hybrid). Maps onto the EXISTING task machine
     via mark_completion(integrate_ok=True, verify_ok=not --fail): task 'verified'
     = committed-in-topic-worktree + verify_cmd green — verified-means-MERGED
-    holds at TOPIC level only (spec §2.3).
-
-    Agent context (should_spool()): early-returns to the spool instead of the
-    init=True DB open below. task_id is NOT resolved via
-    resolve_thread_id_for_spool — it is a task id, not a thread."""
-    from juggle_spool_cli_common import should_spool
-    if should_spool():
-        from dbops.spool import write_event
-        from juggle_spool_paths import spool_dir
-        write_event(spool_dir(), "graph_mark_task", "", "", {
-            "task_id": args.task_id, "fail": getattr(args, "fail", False),
-            "handoff": getattr(args, "handoff", None),
-        })
+    holds at TOPIC level only (spec §2.3)."""
+    from juggle_spool_cli_common import spool_event_if_agent
+    _mt_args = {"task_id": args.task_id, "fail": getattr(args, "fail", False),
+                "handoff": getattr(args, "handoff", None)}
+    if spool_event_if_agent("graph_mark_task", _mt_args):
         print(f"task {args.task_id} → spooled")
         return
     db = get_db(getattr(args, "db_path", None), init=True)

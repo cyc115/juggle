@@ -62,3 +62,18 @@ def resolve_thread_id_for_spool(thread_id_input: str) -> str:
             conn.close()
     except Exception:
         return s
+
+
+def spool_event_if_agent(event_type: str, args: dict) -> bool:
+    """When should_spool(), write ``args`` as a spool event and return True so
+    the caller early-returns instead of opening the DB read-write. Returns
+    False (no-op) otherwise. ``args`` is written as-is — callers whose id is
+    not a thread (e.g. task_id) must NOT resolve it via
+    resolve_thread_id_for_spool before calling this."""
+    if not should_spool():
+        return False
+    from dbops.spool import write_event
+    from juggle_spool_paths import spool_dir
+
+    write_event(spool_dir(), event_type, "", "", args)
+    return True
