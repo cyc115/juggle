@@ -173,6 +173,43 @@ def test_orphan_auto_recovery_emits_notification_not_action_item(tmp_path):
         mock_action.assert_not_called()
 
 
+def test_orphan_auto_recovery_ignores_stale_dispatched_model(tmp_path):
+    """Orphan auto-recovery must NOT forward a stale last_dispatched_model — the
+    respawn has to re-resolve the launch model from current config (mirrors the
+    'Fix 4' rule already applied in execute_recovery), not the snapshot value
+    recorded at the ORIGINAL dispatch (2026-07-01 coder model config ignored)."""
+    from juggle_db import JuggleDB
+    from juggle_watchdog import check_orphaned_threads
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+
+    thread_id = db.create_thread("orphan model test", session_id="")
+    db.update_thread(
+        thread_id, status="background", last_active_at="2020-01-01T00:00:00",
+        last_dispatched_task="redo work", last_dispatched_role="coder",
+        last_dispatched_model="opus",
+    )
+
+    mgr = MagicMock()
+    new_agent = {"id": "c" * 32, "pane_id": "%10"}
+    mgr.spawn_agent.return_value = new_agent
+
+    check_orphaned_threads(
+        db,
+        orphan_threshold=1.0,
+        mgr=mgr,
+        max_recovery_attempts=2,
+    )
+
+    mgr.spawn_agent.assert_called_once()
+    _, kwargs = mgr.spawn_agent.call_args
+    assert kwargs.get("model") is None, (
+        f"orphan recovery forwarded stale model {kwargs.get('model')!r} instead "
+        "of letting spawn_agent re-resolve from current config"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 4. Orphan recovery exhausted (>= max attempts) → action item with [RQ] + Decide
 # ---------------------------------------------------------------------------

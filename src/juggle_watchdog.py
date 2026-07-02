@@ -915,7 +915,10 @@ def check_orphaned_threads(
         mins = int(orphaned_for // 60)
         last_task = thread.get("last_dispatched_task")
         role = thread.get("last_dispatched_role")  # None = unknown; auto-recovery skipped
-        model = thread.get("last_dispatched_model")
+        # Fix 4 (mirrors execute_recovery): never forward the stale snapshot
+        # model — always let spawn_agent re-resolve from current config
+        # (2026-07-01 coder model config ignored).
+        model = None
 
         # Attempt auto-recovery when possible
         did_recover = False
