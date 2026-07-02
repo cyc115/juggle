@@ -20,8 +20,8 @@ from rich.table import Table
 from rich.text import Text
 from rich.style import Style
 
-from juggle_cockpit_graph_layout import GraphTask
-from juggle_cockpit_legend import graph_inline_legend
+from juggle_cockpit_graph_layout import GraphTask, frontier_visible
+from juggle_cockpit_legend import graph_inline_legend, TASK_STATE_GLYPHS
 
 # Per-project row/section renderers extracted to juggle_cockpit_graph_rows
 # (R1, 2026-06-30 graph railroad); re-imported so this module's public symbols
@@ -77,16 +77,24 @@ def build_graph_panel(
     header = _section_header(project_id, project_name, real_tasks, inner_w_hdr, edges)
 
     flat = topological_order(tasks, edges)
+    # Global numbering source: every visible cell keeps its original topological
+    # index (1-based) via idx_of, so dep suffixes (⧗#12) stay pointed at real
+    # indices even though the pruned view hides most verified tasks.
     idx_of = {n.id: i + 1 for i, n in enumerate(flat)}
     first_dep: dict[str, str] = {}
     for task_id, dep_id in edges:
         first_dep.setdefault(task_id, dep_id)
 
+    # Frontier prune (panel default, 2026-07-01): render the non-verified
+    # frontier + one hop of verified context; hidden verified tasks collapse to a
+    # single dim summary cell. Selection iterates this VISIBLE list only.
+    visible, hidden = frontier_visible(tasks, edges)
+
     inner_w = max(8, width - 4)
     idx_w = len(str(len(flat)))
     n_cols = max(1, min(_MAX_COLS, inner_w // _CELL_WIDTH))
     cell_w = max(10, inner_w // n_cols - 1)
-    rows = math.ceil(len(flat) / n_cols)
+    rows = math.ceil(len(visible) / n_cols)
 
     # Vertical scroll when the list is taller than the pane (header+legend = 2).
     # When an outer scrollable viewport is in play (scroll=True), render the
@@ -96,7 +104,7 @@ def build_graph_panel(
     if truncated:
         rows = avail_rows
 
-    sel_id = flat[selection].id if 0 <= selection < len(flat) else None
+    sel_id = visible[selection].id if 0 <= selection < len(visible) else None
 
     grid = Table.grid(padding=(0, 1))
     for _ in range(n_cols):
@@ -107,14 +115,15 @@ def build_graph_panel(
         cells: list = []
         for c in range(n_cols):
             i = c * rows + r            # column-major fill
-            if i < len(flat):
-                task = flat[i]
+            if i < len(visible):
+                task = visible[i]
                 dep_id = first_dep.get(task.id)
                 dep_num = idx_of.get(dep_id) if dep_id else None
                 cells.append(
                     _cell_text(
-                        i + 1, task, idx_w=idx_w, dep_num=dep_num,
-                        cell_w=cell_w, selected=(task.id == sel_id),
+                        idx_of.get(task.id, i + 1), task, idx_w=idx_w,
+                        dep_num=dep_num, cell_w=cell_w,
+                        selected=(task.id == sel_id),
                     )
                 )
                 shown += 1
@@ -123,9 +132,14 @@ def build_graph_panel(
         grid.add_row(*cells)
 
     parts: list = [header, grid]
-    if truncated and shown < len(flat):
+    if truncated and shown < len(visible):
         parts.append(
-            Text(f"  … +{len(flat) - shown} more", style=Style(dim=True, italic=True))
+            Text(f"  … +{len(visible) - shown} more", style=Style(dim=True, italic=True))
+        )
+    if hidden > 0:
+        done_glyph = TASK_STATE_GLYPHS["verified"]
+        parts.append(
+            Text(f"  {done_glyph} {hidden} earlier hidden", style=Style(dim=True))
         )
     legend = Text(graph_inline_legend(), style=Style(dim=True))
     parts.append(legend)
@@ -160,7 +174,9 @@ def build_multi_graph_panel(
             project_name=getattr(d, "project_name", None), scroll=scroll,
         )
     inner_w = max(8, width - 4)
-    flat_all = [n for d in dags for n in topological_order(d.tasks, d.edges)]
+    # Selection iterates the VISIBLE (frontier-pruned) list only, concatenated
+    # across the stacked dags — same order the sections render.
+    flat_all = [n for d in dags for n in frontier_visible(d.tasks, d.edges)[0]]
     sel_id = flat_all[selection].id if 0 <= selection < len(flat_all) else None
     parts: list = []
     for i, d in enumerate(dags):

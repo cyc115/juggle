@@ -53,7 +53,10 @@ class GraphModeMixin:
             h = self.query_one("#graph-scroll").size.height or 20
         except Exception:
             w, h = 80, 20
-        total_tasks = sum(len(d.tasks) for d in dags)
+        # Selection iterates the VISIBLE (frontier-pruned) cells only, so clamp
+        # against the pruned count, not every task.
+        from juggle_cockpit_graph_layout import frontier_visible
+        total_tasks = sum(len(frontier_visible(d.tasks, d.edges)[0]) for d in dags)
         self._graph_sel = min(self._graph_sel, max(0, total_tasks - 1))
         return build_multi_graph_panel(
             dags=dags,
@@ -125,9 +128,10 @@ class GraphModeMixin:
         )
         if not dags:
             return
-        # Concatenated flat list (same order as the panel).
-        from juggle_cockpit_graph_panel import topological_order
-        flat = [n for d in dags for n in topological_order(d.tasks, d.edges)]
+        # Concatenated VISIBLE list (same frontier-pruned order as the panel, so
+        # the selection index resolves to the task the operator sees).
+        from juggle_cockpit_graph_layout import frontier_visible
+        flat = [n for d in dags for n in frontier_visible(d.tasks, d.edges)[0]]
         if not (0 <= self._graph_sel < len(flat)):
             return
         task_id = flat[self._graph_sel].id

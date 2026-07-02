@@ -95,6 +95,61 @@ def build_ranks(tasks: list[GraphTask], edges: list[tuple[str, str]]) -> list[Ra
 
 
 # ---------------------------------------------------------------------------
+# Frontier prune (panel default view)
+# ---------------------------------------------------------------------------
+
+
+def frontier_visible(
+    tasks: list[GraphTask],
+    edges: list[tuple[str, str]],
+    *,
+    tail: int = 5,
+) -> tuple[list[GraphTask], int]:
+    """Prune verified noise from the panel: return (visible_tasks, hidden_count).
+
+    Approved frontier view (2026-07-01 user report — a finished 37-node project
+    rendered as an all-green wall). ``visible_tasks`` is the topological subset
+    the panel should render; ``hidden_count`` is how many verified tasks were
+    pruned (0 when nothing is hidden).
+
+    Frontier = every NON-verified task (running / dispatching / integrating /
+    ready / open / failed-* / blocked-failed) PLUS the DIRECT verified
+    dependencies of any shown task — one hop of context, "what just unblocked
+    this". All other verified tasks are hidden. When the project is fully done
+    (nothing non-verified) the last ``tail`` verified tasks are shown so the
+    pane is never empty.
+
+    Topological order is preserved and this returns a subsequence of the full
+    flat order, so callers keep the global index by looking each visible task up
+    in the original flat list — numbering and dep suffixes stay stable.
+    """
+    flat: list[GraphTask] = []
+    for rank in build_ranks(tasks, edges):
+        flat.extend(rank.tasks)
+
+    non_verified = [n for n in flat if n.state != "verified"]
+    if not non_verified:
+        # Fully done: show the last `tail` verified rows so the pane isn't empty.
+        visible = flat[-tail:] if tail > 0 and len(flat) > tail else list(flat)
+        return visible, len(flat) - len(visible)
+
+    by_id = {n.id: n for n in flat}
+    deps_of: dict[str, list[str]] = {}
+    for task_id, dep_id in edges:
+        deps_of.setdefault(task_id, []).append(dep_id)
+
+    visible_ids = {n.id for n in non_verified}
+    for n in non_verified:
+        for dep_id in deps_of.get(n.id, []):
+            dep = by_id.get(dep_id)
+            if dep is not None and dep.state == "verified":
+                visible_ids.add(dep_id)
+
+    visible = [n for n in flat if n.id in visible_ids]
+    return visible, len(flat) - len(visible)
+
+
+# ---------------------------------------------------------------------------
 # Collapse (focus + context)
 # ---------------------------------------------------------------------------
 

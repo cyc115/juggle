@@ -13,7 +13,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.style import Style
 
-from juggle_cockpit_graph_layout import GraphTask, build_ranks
+from juggle_cockpit_graph_layout import GraphTask, build_ranks, frontier_visible
 from juggle_cockpit_legend import (
     TASK_STATE_GLYPHS,
     GRAPH_READY_SUFFIX,
@@ -177,15 +177,19 @@ def _graph_section(
     header = _section_header(project_id, project_name, real_tasks, inner_w, edges)
 
     flat = topological_order(tasks, edges)
+    # Global numbering preserved: visible cells keep their original topological
+    # index via idx_of even though the frontier prune hides verified tasks.
     idx_of = {n.id: i + 1 for i, n in enumerate(flat)}
     first_dep: dict[str, str] = {}
     for task_id, dep_id in edges:
         first_dep.setdefault(task_id, dep_id)
 
+    visible, hidden = frontier_visible(tasks, edges)
+
     idx_w = len(str(len(flat)))
     n_cols = max(1, min(_MAX_COLS, inner_w // _CELL_WIDTH))
     cell_w = max(10, inner_w // n_cols - 1)
-    rows = math.ceil(len(flat) / n_cols)
+    rows = math.ceil(len(visible) / n_cols)
 
     grid = Table.grid(padding=(0, 1))
     for _ in range(n_cols):
@@ -195,18 +199,22 @@ def _graph_section(
         cells: list = []
         for c in range(n_cols):
             i = c * rows + r
-            if i < len(flat):
-                task = flat[i]
+            if i < len(visible):
+                task = visible[i]
                 dep_id = first_dep.get(task.id)
                 dep_num = idx_of.get(dep_id) if dep_id else None
                 cells.append(
                     _cell_text(
-                        i + 1, task, idx_w=idx_w, dep_num=dep_num,
-                        cell_w=cell_w, selected=(task.id == sel_id),
+                        idx_of.get(task.id, i + 1), task, idx_w=idx_w,
+                        dep_num=dep_num, cell_w=cell_w,
+                        selected=(task.id == sel_id),
                     )
                 )
             else:
                 cells.append(Text(""))
         grid.add_row(*cells)
 
-    return [header, grid]
+    parts: list = [header, grid]
+    if hidden > 0:
+        parts.append(Text(f"  ✅ {hidden} earlier hidden", style=Style(dim=True)))
+    return parts
