@@ -448,13 +448,12 @@ def get_nested(section: str, key: str, default=None):
 
 
 def get_repo_config(repo_path: str) -> dict:
-    """Return integration config for repo_path with safe defaults.
-
-    Unknown repos get push_mode='none' and test_cmd='' — intentionally safe.
-    """
+    """Integration config; unknown repos get safe defaults. ``vcs`` optionally
+    overrides the auto-detected backend ("git"|"sapling"|"hg")."""
     repos = get_settings().get("repos", {})
     cfg = repos.get(str(repo_path), {})
     return {
         "push_mode": cfg.get("push_mode", "none"),
         "test_cmd": cfg.get("test_cmd", ""),
+        "vcs": cfg.get("vcs"),
     }
