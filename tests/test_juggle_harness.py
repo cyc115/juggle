@@ -165,7 +165,9 @@ def test_decorate_task_non_hook_without_anchor_returns_prompt():
 # --- shipped defaults are wired correctly --------------------------------
 def test_real_settings_default_harness_is_claude():
     """With the shipped DEFAULTS, the global default adapter is Claude Code."""
+    from juggle_harness_defaults import HARNESS_DEFAULTS
+
     adapter = get_adapter()
     assert adapter.id == "claude"
-    assert adapter.readiness_markers() == ("bypass permissions on", "/effort")
-    assert adapter.submission_markers() == ("esc to interrupt", "✻", "✶")
+    assert adapter.readiness_markers() == tuple(HARNESS_DEFAULTS["claude"]["readiness_markers"])
+    assert adapter.submission_markers() == tuple(HARNESS_DEFAULTS["claude"]["submission_markers"])
