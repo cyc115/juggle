@@ -15,8 +15,9 @@ working unchanged.
 from __future__ import annotations
 
 import logging
-import subprocess
 from pathlib import Path
+
+from vcs import backend_for
 
 _log = logging.getLogger(__name__)
 
@@ -25,23 +26,18 @@ def current_code_version(repo_path: Path) -> str | None:
     """Fingerprint the plugin's current code as the git HEAD sha of ``repo_path``.
 
     The daemon runs from the canonical main worktree, which fast-forwards on every
-    integrate, so ``git rev-parse HEAD`` is the precise "main advanced past what I
-    loaded" signal covering the WHOLE tracked source tree (not just one file).
+    integrate, so the HEAD sha is the precise "main advanced past what I loaded"
+    signal covering the WHOLE tracked source tree (not just one file).
 
     Returns None when the sha can't be determined (git missing / not a repo /
     timeout). Callers treat None as "unknown" and never exit on it — a respawn we
     can't verify is worse than continuing on current code.
     """
     try:
-        res = subprocess.run(
-            ["git", "-C", str(repo_path), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        backend = backend_for(str(repo_path))
+    except Exception:
         return None
-    if res.returncode != 0:
-        return None
-    return res.stdout.strip() or None
+    return backend.resolve(str(repo_path)) or None
 
 
 def should_exit_for_stale_code(

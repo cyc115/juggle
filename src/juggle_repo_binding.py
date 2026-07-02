@@ -19,17 +19,16 @@ import os
 import subprocess
 from pathlib import Path
 
+from vcs import backend_for
+
 
 def _git_toplevel(path: str) -> str:
-    """``git -C <path> rev-parse --show-toplevel``; '' if not inside a git repo."""
+    """git repo toplevel containing ``path``; '' if not inside a git repo."""
     if not path:
         return ""
     try:
-        return subprocess.check_output(
-            ["git", "-C", path, "rev-parse", "--show-toplevel"],
-            text=True, stderr=subprocess.DEVNULL,
-        ).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
+        return backend_for(path).repo_root(path) or ""
+    except Exception:
         return ""
 
 
@@ -134,25 +133,16 @@ def resolve_worktree_base(
 def canonical_main_ref(repo: str) -> str | None:
     """Return the best canonical main ref for ``repo``.
 
-    Prefers origin/<main> after a targeted fetch so it reflects the pushed
-    truth. Falls back to a local main/master if origin is unreachable or absent.
-    Returns None if no main ref can be resolved at all.
+    Prefers origin/<main> after a fetch so it reflects the pushed truth. Falls
+    back to a local main/master if origin is unreachable or absent. Returns
+    None if no main ref can be resolved at all.
     """
-    # Fetch origin/<main> so the canonical ref reflects the pushed state.
-    # Non-fatal: if origin is unreachable we fall through to local refs.
-    for branch in ("main", "master"):
-        subprocess.run(
-            ["git", "-C", repo, "fetch", "origin", branch],
-            capture_output=True, text=True,
-        )
-    for candidate in ("origin/main", "origin/master", "main", "master"):
-        r = subprocess.run(
-            ["git", "-C", repo, "rev-parse", "--verify", candidate],
-            capture_output=True, text=True,
-        )
-        if r.returncode == 0:
-            return candidate
-    return None
+    try:
+        backend = backend_for(repo)
+    except Exception:
+        return None
+    backend.refresh(repo)
+    return backend.trunk(repo)
 
 
 def main_worktree_of(repo: str) -> str:
@@ -163,17 +153,11 @@ def main_worktree_of(repo: str) -> str:
     Returns "" if ``repo`` is not a git repo.
     """
     try:
-        r = subprocess.run(
-            ["git", "-C", repo, "worktree", "list", "--porcelain"],
-            capture_output=True, text=True,
-        )
-        if r.returncode == 0:
-            for line in r.stdout.splitlines():
-                if line.startswith("worktree "):
-                    return str(Path(line[len("worktree "):].strip()).resolve())
+        backend = backend_for(repo)
+        root = backend.primary_root(repo)
     except Exception:
-        pass
-    return ""
+        return ""
+    return str(Path(root).resolve()) if root else ""
 
 
 def is_plugin_install_dir(repo: str) -> bool:

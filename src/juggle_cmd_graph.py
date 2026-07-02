@@ -51,13 +51,12 @@ def _is_synthetic_topic(topic_id: str) -> bool:
 
 def _git_root(cwd: str) -> str | None:
     """Toplevel of the git repo containing ``cwd``, or None."""
-    import subprocess
+    from vcs import backend_for
 
-    r = subprocess.run(
-        ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
-        capture_output=True, text=True,
-    )
-    return (r.stdout.strip() or None) if r.returncode == 0 else None
+    try:
+        return backend_for(cwd).repo_root(cwd)
+    except Exception:
+        return None
 
 
 def pr_mode_refusal(repo_path: str | None = None) -> str | None:

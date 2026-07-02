@@ -19,8 +19,9 @@ parsing. Pure predicates + one raising assertion.
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
+
+from vcs import backend_for
 
 # The single shared operational DB. Agents must never migrate it.
 SHARED_PROD_DB = (Path.home() / ".claude" / "juggle" / "juggle.db").resolve()
@@ -30,17 +31,13 @@ SHARED_PROD_DB = (Path.home() / ".claude" / "juggle" / "juggle.db").resolve()
 # G1 — verified ⟺ merged to main
 # ---------------------------------------------------------------------------
 
-def _git_ok(args: list[str], cwd: str) -> bool:
+def _backend_for_fail_closed(repo: str):
+    """``backend_for`` is fail-loud (raises on an undetectable repo); every
+    caller here is fail-CLOSED (returns False/'' on any error), so swallow it."""
     try:
-        return (
-            subprocess.run(
-                ["git", "-C", cwd, *args],
-                capture_output=True, text=True, timeout=10,
-            ).returncode
-            == 0
-        )
+        return backend_for(repo)
     except Exception:
-        return False
+        return None
 
 
 def branch_merged_to_main(repo: str, branch: str, *, main: str = "main") -> bool:
@@ -57,9 +54,12 @@ def branch_merged_to_main(repo: str, branch: str, *, main: str = "main") -> bool
         return False
     if not branch:
         return False
-    if not _git_ok(["rev-parse", "--verify", branch], repo):
+    backend = _backend_for_fail_closed(repo)
+    if backend is None:
+        return False
+    if backend.resolve(repo, branch) is None:
         return False  # branch ref gone — NOT proof of merge (fail-closed)
-    return _git_ok(["merge-base", "--is-ancestor", branch, main], repo)
+    return backend.is_ancestor(repo, branch, main)
 
 
 def resolve_branch_sha(repo: str, branch: str) -> str:
@@ -67,14 +67,10 @@ def resolve_branch_sha(repo: str, branch: str) -> str:
     can't be resolved (no repo, no branch, deleted ref, git error)."""
     if not repo or not branch or not Path(repo).exists():
         return ""
-    try:
-        r = subprocess.run(
-            ["git", "-C", repo, "rev-parse", "--verify", branch],
-            capture_output=True, text=True, timeout=10,
-        )
-        return r.stdout.strip() if r.returncode == 0 else ""
-    except Exception:
+    backend = _backend_for_fail_closed(repo)
+    if backend is None:
         return ""
+    return backend.resolve(repo, branch) or ""
 
 
 def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
@@ -85,7 +81,10 @@ def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
     """
     if not repo or not sha or not Path(repo).exists():
         return False
-    return _git_ok(["merge-base", "--is-ancestor", sha, main], repo)
+    backend = _backend_for_fail_closed(repo)
+    if backend is None:
+        return False
+    return backend.is_ancestor(repo, sha, main)
 
 
 def _resolve_topic_repo(db, topic: dict) -> str:

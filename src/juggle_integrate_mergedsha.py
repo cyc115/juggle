@@ -7,9 +7,8 @@ integrate. Re-exported from juggle_cmd_integrate so the existing test
 import/patch surface (juggle_cmd_integrate._record_merged_sha) keeps working.
 """
 
-import subprocess
-
 from juggle_repo_binding import canonical_main_ref as _canonical_main_ref
+from vcs import backend_for
 
 
 def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
@@ -17,11 +16,11 @@ def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
     this thread (T-verified-merged-sha). The single source of truth for the
     verified gate. Fail-soft: best-effort provenance, never blocks integrate.
 
-    Guards (2026-06-16 phantom-SHA fix):
-      1. Object must exist: ``git cat-file -e <sha>``.
-      2. SHA must be an ancestor of the canonical main (``origin/<main>`` after
-         fetch; fallback to local main). A phantom or unmerged SHA is silently
-         skipped — merged_sha is left NULL so the verified-gate stays closed.
+    Guard (2026-06-16 phantom-SHA fix): SHA must be an ancestor of the
+    canonical main (``origin/<main>`` after fetch; fallback to local main) —
+    ``is_ancestor`` is fail-closed on a nonexistent object, subsuming the
+    former standalone ``cat-file -e`` existence check. A phantom or unmerged
+    SHA is silently skipped — merged_sha is left NULL so the gate stays closed.
     """
     try:
         from dbops import db_topics
@@ -29,28 +28,11 @@ def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
         if not topic:
             return
 
-        sha_result = subprocess.run(
-            ["git", "-C", repo, "rev-parse", ref],
-            capture_output=True, text=True,
-        )
-        if sha_result.returncode != 0 or not sha_result.stdout.strip():
-            return
-        sha = sha_result.stdout.strip()
-
-        # Guard 1: object must exist in the repo's object store.
-        cat_file = subprocess.run(
-            ["git", "-C", repo, "cat-file", "-e", sha],
-            capture_output=True, text=True,
-        )
-        if cat_file.returncode != 0:
-            import logging
-            logging.getLogger(__name__).warning(
-                "_record_merged_sha: object %s does not exist in %s — skipping",
-                sha, repo,
-            )
+        backend = backend_for(repo)
+        sha = backend.resolve(repo, ref)
+        if not sha:
             return
 
-        # Guard 2: SHA must be an ancestor of canonical main.
         canonical = _canonical_main_ref(repo)
         if canonical is None:
             import logging
@@ -59,11 +41,7 @@ def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
                 repo,
             )
             return
-        ancestor_check = subprocess.run(
-            ["git", "-C", repo, "merge-base", "--is-ancestor", sha, canonical],
-            capture_output=True, text=True,
-        )
-        if ancestor_check.returncode != 0:
+        if not backend.is_ancestor(repo, sha, canonical):
             import logging
             logging.getLogger(__name__).warning(
                 "_record_merged_sha: %s is NOT an ancestor of %s in %s — skipping",
