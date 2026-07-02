@@ -35,6 +35,16 @@ _ORPHAN_EVENT = "topic_unmerged_orphan"
 # bound to a single agent.
 _GUARD_AGENT_ID = "orphan-guard"
 
+# Grace period (minutes) after the last child task turns verified before a
+# topic becomes eligible for orphan detection — consistent with the
+# watchdog's stall_threshold_minutes convention (juggle_watchdog_stall).
+# Incident (2026-07-02): mark-task verified happens BEFORE the owning agent's
+# own `agent complete` -> `integrate` finalize call in the normal happy path,
+# so detecting the instant all children verify races that finalize and fires
+# a false HIGH action item almost every time a topic completes normally
+# (confirmed on T-spool-02, T-bump-version-1-94).
+_DEFAULT_ORPHAN_GRACE_MINUTES = 5.0
+
 
 def _dispatch_thread(db, node_id: str) -> "str | None":
     """The conversation id this node is dispatched to — the typed kind='dispatch'
@@ -81,12 +91,55 @@ def _node_is_merged(db, node: dict) -> bool:
     return sha_is_ancestor(repo, sha)
 
 
+def _orphan_grace_minutes() -> float:
+    """``watchdog.orphan_grace_minutes`` setting, defaulting to
+    ``_DEFAULT_ORPHAN_GRACE_MINUTES``."""
+    try:
+        from juggle_settings import get_settings
+        wd = get_settings().get("watchdog", {}) or {}
+    except Exception:
+        wd = {}
+    return float(wd.get("orphan_grace_minutes", _DEFAULT_ORPHAN_GRACE_MINUTES))
+
+
+def _owning_agent_busy(db, node: dict) -> bool:
+    """True iff the topic's dispatch thread currently has a live busy agent —
+    it may still be mid-finalize (``agent complete`` -> ``integrate``) on its
+    own thread, which must never be mistaken for an orphan."""
+    thread_id = _dispatch_thread(db, node["id"])
+    if not thread_id:
+        return False
+    return db.get_agent_by_thread(thread_id) is not None
+
+
+def _grace_period_elapsed(child_rows: list[dict], *, grace_minutes: float) -> bool:
+    """True iff >= ``grace_minutes`` have elapsed since the LAST child task
+    turned verified. A child with no ``verified_at`` stamp (e.g. legacy rows
+    with state written directly) is treated as already elapsed — it never
+    blocks detection indefinitely."""
+    stamps = [r["verified_at"] for r in child_rows if r.get("verified_at")]
+    if not stamps:
+        return True
+    latest = max(stamps)
+    try:
+        verified_dt = datetime.fromisoformat(latest)
+    except ValueError:
+        return True
+    if verified_dt.tzinfo is None:
+        verified_dt = verified_dt.replace(tzinfo=timezone.utc)
+    elapsed = datetime.now(timezone.utc) - verified_dt
+    return elapsed >= timedelta(minutes=grace_minutes)
+
+
 def find_unmerged_completed_topics(db) -> list[dict]:
     """Return non-mirror root task nodes whose children are ALL verified but whose
     work is NOT merged to main.
 
     P8 M2: reads from nodes WHERE kind='topic'.
-    A node with zero children, any unfinished child, or proven-merged work is excluded.
+    A node with zero children, any unfinished child, or proven-merged work is
+    excluded. So is a topic whose owning agent is still busy on its dispatch
+    thread, or whose last child verified less than the grace period ago — both
+    guard against racing the owning agent's own finalize sequence (2026-07-02).
     """
     with db._connect() as conn:
         parent_rows = conn.execute(
@@ -95,23 +148,29 @@ def find_unmerged_completed_topics(db) -> list[dict]:
         ).fetchall()
         parents = [dict(r) for r in parent_rows]
 
+    grace_minutes = _orphan_grace_minutes()
     orphans: list[dict] = []
     for node in parents:
         # Skip nodes already stamped as verified
         if node.get("state") == "verified":
             continue
         with db._connect() as conn:
-            child_states = [
-                r[0]
+            child_rows = [
+                dict(r)
                 for r in conn.execute(
-                    "SELECT state FROM nodes WHERE parent_id=?", (node["id"],)
+                    "SELECT state, verified_at FROM nodes WHERE parent_id=?",
+                    (node["id"],),
                 ).fetchall()
             ]
-        if not child_states:
+        if not child_rows:
             continue
-        if not all(s == "verified" for s in child_states):
+        if not all(r["state"] == "verified" for r in child_rows):
             continue
         if _node_is_merged(db, node):
+            continue
+        if _owning_agent_busy(db, node):
+            continue
+        if not _grace_period_elapsed(child_rows, grace_minutes=grace_minutes):
             continue
         orphans.append(node)
     return orphans

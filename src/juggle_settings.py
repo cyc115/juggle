@@ -101,9 +101,13 @@ DEFAULTS: dict = {
     # ensure-watchdog respawn-debounce window (secs). See juggle_reaper / _lifecycle.
     # stall_threshold_minutes / max_stall_nudges (2026-07-01): stalled-pane
     # detector config — see juggle_watchdog_stall.
+    # orphan_grace_minutes (2026-07-02): minimum age since a topic's last child
+    # verified before it is even eligible for orphan detection — see
+    # dbops.orphan_guard.
     "watchdog": {
         "max_daemons": 8, "min_respawn_interval_secs": 60,
         "stall_threshold_minutes": 3, "max_stall_nudges": 2,
+        "orphan_grace_minutes": 5,
     },
     # Hindsight
     "hindsight": {

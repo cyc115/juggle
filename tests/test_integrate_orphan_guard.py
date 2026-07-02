@@ -53,6 +53,20 @@ def _bind_thread(db, *, repo, branch):
     return tid
 
 
+def _make_agent_busy(db, *, thread_id):
+    """Create an agent and CAS-assign it busy on ``thread_id`` (mirrors what
+    a real dispatched agent looks like while it runs its own finalize)."""
+    agent_id = db.create_agent(role="coder", pane_id="pane-1")
+    assert db.cas_assign_agent(agent_id, thread_id)
+    return agent_id
+
+
+def _stamp_child_verified_at(db, node_id, *, iso_ts):
+    with db._connect() as c:
+        c.execute("UPDATE nodes SET verified_at=? WHERE id=?", (iso_ts, node_id))
+        c.commit()
+
+
 def _bind_node_branch(db, node_id, *, repo, branch):
     """Set nodes.worktree_branch + main_repo_path so orphan_guard can find the repo."""
     with db._connect() as c:
@@ -283,3 +297,67 @@ def test_reconcile_skips_truly_unmerged_branch(tmp_path):
 
     assert orphan_guard.reconcile_out_of_band_merges(db) == []
     assert [t["id"] for t in orphan_guard.find_unmerged_completed_topics(db)] == ["T1"]
+
+
+# --- grace period / agent-liveness guard (2026-07-02) -------------------------
+#
+# Regression pin: flag_unmerged_completed_topics fired the instant ALL child
+# tasks reached state='verified', with no grace period and no check of
+# whether the topic's own dispatch agent was still busy running its own
+# finalize (agent complete -> integrate). This raced the happy path (mark-task
+# verified happens BEFORE that same agent's integrate call) and fired a false
+# HIGH action item almost every time a topic completed normally — confirmed
+# live on T-spool-02 and T-bump-version-1-94 (2026-07-02).
+
+
+def test_detector_skips_topic_whose_owning_agent_is_still_busy(tmp_path):
+    """All tasks just verified, but the topic's dispatch-thread agent is still
+    busy (mid its own finalize) → must NOT be flagged as an orphan yet."""
+    from datetime import datetime, timezone
+    from dbops import orphan_guard
+
+    db = _make_db(tmp_path)
+    _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    _stamp_child_verified_at(db, "T1-t0", iso_ts=datetime.now(timezone.utc).isoformat())
+    _make_agent_busy(db, thread_id="thr-1")
+
+    assert orphan_guard.find_unmerged_completed_topics(db) == []
+    assert orphan_guard.flag_unmerged_completed_topics(db) == []
+    assert db.get_open_action_items() == []
+
+
+def test_detector_skips_topic_within_grace_period_even_without_agent(tmp_path):
+    """All tasks just verified moments ago, no busy agent recorded (e.g. agent
+    row already reaped) → still within the grace period, must NOT be flagged."""
+    from datetime import datetime, timezone
+    from dbops import orphan_guard
+
+    db = _make_db(tmp_path)
+    _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    _stamp_child_verified_at(db, "T1-t0", iso_ts=datetime.now(timezone.utc).isoformat())
+
+    assert orphan_guard.find_unmerged_completed_topics(db) == []
+    assert orphan_guard.flag_unmerged_completed_topics(db) == []
+    assert db.get_open_action_items() == []
+
+
+def test_detector_flags_once_grace_elapsed_and_agent_no_longer_busy(tmp_path):
+    """Genuine orphan case: children verified well over the grace period ago,
+    and no busy agent on the dispatch thread → still detected/flagged (do not
+    regress detection of real orphans, e.g. a dead/crashed agent)."""
+    from datetime import datetime, timedelta, timezone
+    from dbops import orphan_guard
+
+    db = _make_db(tmp_path)
+    _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    _stamp_child_verified_at(db, "T1-t0", iso_ts=stale)
+    # No agent bound to thr-1 as busy — the owning agent is gone/idle.
+
+    orphans = orphan_guard.find_unmerged_completed_topics(db)
+    assert [t["id"] for t in orphans] == ["T1"]
+
+    flagged = orphan_guard.flag_unmerged_completed_topics(db)
+    assert flagged == ["T1"]
+    items = db.get_open_action_items()
+    assert any(i["priority"] == "high" and "T1" in i["message"] for i in items)
