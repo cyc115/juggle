@@ -74,6 +74,13 @@ CREATE TABLE IF NOT EXISTS nodes (
   verify_retries          INTEGER NOT NULL DEFAULT 0,
   verify_failure          TEXT,
 
+  -- Dispatch priority (T-fix-priority-dispatch-ordering): higher sorts ahead in
+  -- the ready-dispatch order so fix/defect nodes outrank feature nodes filed
+  -- earlier. Task-and-topic in practice; Migration 59 appends it to already-
+  -- migrated DBs, so it is placed LAST (before the CHECK) to keep `SELECT *`
+  -- column order provenance-identical between fresh and migrated DBs.
+  priority                INTEGER NOT NULL DEFAULT 0,
+
   -- Kind discriminator (P8 M2): ONE wide table holds every kind (NOT split
   -- per-kind). This CHECK enforces that verify_cmd — the execution-only column —
   -- is carried ONLY by a kind='task' node, so a conversation/topic/research/

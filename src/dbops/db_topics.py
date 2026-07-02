@@ -40,7 +40,7 @@ _TOPIC_SELECT = (
     "SELECT id, project_id, title, objective, state, "
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' "
     "LIMIT 1) AS thread_id, merged_sha, handoff, diffstat, "
-    f"verified_at, created_at, updated_at FROM nodes WHERE {_TOPIC_ONLY}"
+    f"verified_at, priority, created_at, updated_at FROM nodes WHERE {_TOPIC_ONLY}"
 )
 
 
@@ -86,18 +86,21 @@ def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
     return new_state
 
 
-def create_topic(db, *, topic_id, project_id, title, objective="", conn=None) -> None:
+def create_topic(
+    db, *, topic_id, project_id, title, objective="", priority: int = 0, conn=None
+) -> None:
     """Insert a topic as an authoritative kind='topic' node (parent_id NULL =
     topic-tier). The kind discriminator (P8 M2) is what separates topics from bare
     tasks. Writes ONLY nodes — the legacy graph_topics INSERT was cut
-    (P8 c4-write-cut)."""
+    (P8 c4-write-cut). ``priority`` (default 0) lifts a fix/defect topic ahead in
+    the ready-dispatch interleave."""
     now = _now()
     with _cx(db, conn) as c:
         c.execute(
             "INSERT OR IGNORE INTO nodes (id, kind, title, objective, state, "
-            "project_id, parent_id, created_at, updated_at) "
-            "VALUES (?, 'topic', ?, ?, 'open', ?, NULL, ?, ?)",
-            (topic_id, title, objective, project_id, now, now),
+            "project_id, parent_id, priority, created_at, updated_at) "
+            "VALUES (?, 'topic', ?, ?, 'open', ?, NULL, ?, ?, ?)",
+            (topic_id, title, objective, project_id, priority, now, now),
         )
 
 

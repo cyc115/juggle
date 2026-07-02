@@ -72,7 +72,8 @@ _TASK_SELECT = (
     "SELECT id, project_id, title, objective AS prompt, verify_cmd, state, "
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' LIMIT 1) AS thread_id, "
     "parent_id AS topic_id, handoff, diffstat, verified_at, "
-    "verify_retries, verify_failure, created_at, updated_at FROM nodes WHERE kind='task'"
+    "verify_retries, verify_failure, priority, created_at, updated_at "
+    "FROM nodes WHERE kind='task'"
 )
 
 
@@ -115,18 +116,19 @@ def task_transition(db, task_id: str, event: str, conn=None) -> str:
 
 def create_task(
     db, *, task_id: str, project_id: str, title: str, prompt: str, verify_cmd=None,
-    conn=None,
+    priority: int = 0, conn=None,
 ) -> None:
     """Insert a new task node in state 'open' (raises on dup). Writes ONLY the
     authoritative nodes row (objective=prompt) — the legacy graph_tasks INSERT was
-    cut (P8 c4-write-cut); nodes is the sole task store."""
+    cut (P8 c4-write-cut); nodes is the sole task store. ``priority`` (default 0)
+    lifts fix/defect tasks ahead in the ready-dispatch order."""
     now = _now()
     with _cx(db, conn) as c:
         c.execute(
             "INSERT INTO nodes (id, kind, title, objective, state, project_id, "
-            "verify_cmd, created_at, updated_at) "
-            "VALUES (?, 'task', ?, ?, 'open', ?, ?, ?, ?)",
-            (task_id, title, prompt, project_id, verify_cmd, now, now),
+            "verify_cmd, priority, created_at, updated_at) "
+            "VALUES (?, 'task', ?, ?, 'open', ?, ?, ?, ?, ?)",
+            (task_id, title, prompt, project_id, verify_cmd, priority, now, now),
         )
 
 

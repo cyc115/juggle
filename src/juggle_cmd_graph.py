@@ -40,6 +40,10 @@ from juggle_graph_upsert import content_changed as _content_changed  # noqa: F40
 # the parser registration and existing callers/tests.
 from juggle_graph_load import cmd_project_graph_load  # noqa: F401
 
+# Default priority for a 'fix-'-prefixed add-task id lacking an explicit
+# --priority (T-fix-priority-dispatch-ordering): outranks 0-default feature tasks.
+FIX_DEFAULT_PRIORITY = 100
+
 
 def _is_synthetic_topic(topic_id: str) -> bool:
     """Synthetic single-task topics (migration-37 / flat-spec fallback) are
@@ -128,6 +132,10 @@ def register_graph_parsers(subparsers) -> None:
         "omit on a flat project to auto-create a synthetic 'T-<task-id>' topic)",
     )
     _an.add_argument(
+        "--priority", type=int, default=None,
+        help="Dispatch priority (higher = first); default 0, 'fix-' ids default high",
+    )
+    _an.add_argument(
         "--json", dest="json_out", action="store_true",
         help="Machine-readable result",
     )
@@ -201,6 +209,11 @@ def cmd_graph_add_task(args):
     topic_id, auto_topic = resolve_dispatch_topic(
         db, args.project, args.id, getattr(args, "topic", None)
     )
+    # Explicit --priority wins; else a 'fix-' id defaults high so the existing
+    # fix-naming convention gets fix-first dispatch with zero new flags.
+    priority = getattr(args, "priority", None)
+    if priority is None:
+        priority = FIX_DEFAULT_PRIORITY if args.id.startswith("fix-") else 0
     try:
         result = add_task(
             db, args.project,
@@ -208,6 +221,7 @@ def cmd_graph_add_task(args):
             deps=_csv(args.deps), required_by=_csv(args.required_by),
             verify_cmd=None,
             topic_id=topic_id, auto_create_topic=auto_topic,
+            priority=priority,
         )
     except AddTaskError as e:
         if getattr(args, "json_out", False):

@@ -174,6 +174,7 @@ def add_task(
     verify_cmd: str | None,
     topic_id: str | None = None,
     auto_create_topic: bool = False,
+    priority: int = 0,
 ) -> dict:
     """Validated, atomic, guarded insert of ONE task into a live graph.
 
@@ -214,7 +215,7 @@ def add_task(
             if db_topics.get_topic(db, topic_id, conn=conn) is None:
                 db_topics.create_topic(
                     db, topic_id=topic_id, project_id=project_id, title=title,
-                    conn=conn,
+                    priority=priority, conn=conn,
                 )
         if task_id in live:
             # Re-add of a mutable existing task: reset content + state to open.
@@ -227,7 +228,7 @@ def add_task(
         else:
             db_graph.create_task(
                 db, task_id=task_id, project_id=project_id, title=title,
-                prompt=prompt, verify_cmd=verify_cmd, conn=conn,
+                prompt=prompt, verify_cmd=verify_cmd, priority=priority, conn=conn,
             )
         if topic_id:
             db_graph.set_task_topic(db, task_id, topic_id, conn=conn)

@@ -22,11 +22,21 @@ def interleave_ready(
     in_flight: dict[str, int],
     armed_order: list[str],
 ) -> list[tuple[str, dict]]:
-    """Fair cross-project dispatch order: list of (project_id, topic)."""
+    """Fair cross-project dispatch order: list of (project_id, topic).
+
+    Within each project the ready queue is stably pre-sorted by ``priority``
+    DESC (T-fix-priority-dispatch-ordering) so a fix/defect topic outranks a
+    feature topic filed earlier; equal-priority topics keep their incoming
+    (created_at, id) order. This is the SINGLE dispatch-ordering source — the
+    cross-project fair interleave below is unchanged.
+    """
     rank = {pid: i for i, pid in enumerate(armed_order)}
     pids = [p for p in ready_by_project if ready_by_project[p]]
     pids.sort(key=lambda p: (in_flight.get(p, 0), rank.get(p, len(rank))))
-    queues = {p: list(ready_by_project[p]) for p in pids}
+    queues = {
+        p: sorted(ready_by_project[p], key=lambda t: -t.get("priority", 0))
+        for p in pids
+    }
     out: list[tuple[str, dict]] = []
     while queues:
         for pid in [p for p in pids if p in queues]:
