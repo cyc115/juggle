@@ -52,6 +52,7 @@ def assign_lanes(tasks, edges) -> LaneLayout:
 
     lanes: list = []  # per column: id this lane is heading toward, or None
     out: list[LaneNode] = []
+    lane_count = 0
     for row, n in enumerate(order):
         nid = n.id
         heading = [i for i, h in enumerate(lanes) if h == nid]
@@ -70,5 +71,11 @@ def assign_lanes(tasks, edges) -> LaneLayout:
             for v in deps_v[1:]:
                 lanes[_leftmost_free(lanes)] = v
         out.append(LaneNode(nid, row, lane, state[nid], len(deps_v), fan_in))
-    lane_count = max((ln.lane for ln in out), default=-1) + 1
+        # A fan-out branch lane (extra dependent beyond the first) can later
+        # be closed by a fan-in convergence where a SMALLER-index lane wins as
+        # `lane` (e.g. two parents racing into the same child) — that branch
+        # lane index never becomes any row's own `.lane`, so tracking peak
+        # `len(lanes)` (not max(ln.lane)) is required to size the rail render
+        # width correctly (2026-07-02, IndexError in gitlog-view rendering).
+        lane_count = max(lane_count, len(lanes))
     return LaneLayout(out, lane_count, tuple(known_edges))

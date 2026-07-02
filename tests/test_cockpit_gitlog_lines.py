@@ -118,3 +118,19 @@ def test_render_gitlog_line_returns_rich_text():
     text = render_gitlog_line(rows[0])
     assert isinstance(text, Text)
     assert "a" in text.plain
+
+
+def test_racing_fan_in_convergence_does_not_crash_rail_render():
+    """Regression pin (2026-07-02): user-reported live crash — cockpit graph
+    view -> 'l' (gitlog screen) -> IndexError: list assignment index out of
+    range. Root cause: assign_lanes' lane_count was computed from each row's
+    own final `.lane` only, undercounting a fan-out branch lane that gets
+    closed by a smaller-index fan-in convergence before ever becoming any
+    row's own lane (here: c branches a 2nd lane for its dependents d and e;
+    e's own landing lane resolves to 0 via d's chain, so c's branch lane 1 is
+    never anyone's `.lane` even though c's own rail needs to draw into it)."""
+    tasks = [_t("c", "verified"), _t("d", "verified"), _t("e", "ready")]
+    edges = [("d", "c"), ("e", "c"), ("e", "d")]
+    rows = gitlog_rows([_dag(tasks, edges)])  # must not raise IndexError
+    assert {r.id for r in rows} == {"c", "d", "e"}
+    assert all(len(r.rail) >= 2 for r in rows)
