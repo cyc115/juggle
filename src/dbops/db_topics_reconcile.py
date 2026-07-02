@@ -38,11 +38,14 @@ def _heal_merged_sha(db, topic: dict) -> bool:
     commit → merged_sha left NULL and the topic wedged at 'integrating'; reconcile
     then re-derived 'integrating' through the same NULL-sha gate forever.
 
-    Resolves the topic's branch (thread ``worktree_branch``, else ``cyc_<label>``)
-    and repo (thread ``main_repo_path``, else juggle's own repo) and, IFF the
-    branch tip is provably an ancestor of main, records it. Returns True only when
-    a real ancestor sha was written — reconcile NEVER verifies without one
-    (verified ⟺ merged). Never raises.
+    Resolves the topic's branch (thread ``worktree_branch`` ONLY — never guessed
+    from the thread's label, which is a rotating wheel-slug identifier with no
+    relation to git branch naming and can collide with an unrelated stray branch
+    left over from some other past dispatch, 2026-07-01 hotfix) and repo (thread
+    ``main_repo_path``, else juggle's own repo) and, IFF the branch tip is
+    provably an ancestor of main, records it. Returns True only when a real
+    ancestor sha was written — reconcile NEVER verifies without one (verified ⟺
+    merged). Never raises.
     """
     from dbops.db_topics import set_topic_merged_sha
     from dbops.graph_guards import (
@@ -58,9 +61,6 @@ def _heal_merged_sha(db, topic: dict) -> bool:
             except Exception:
                 thread = {}
         branch = (thread.get("worktree_branch") or "").strip()
-        if not branch:
-            label = (thread.get("user_label") or "").strip()
-            branch = f"cyc_{label}" if label else ""
         if not branch:
             return False
         repo = (thread.get("main_repo_path") or "").strip() or _resolve_topic_repo(db, topic)

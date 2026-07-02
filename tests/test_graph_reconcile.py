@@ -324,6 +324,54 @@ def test_reconcile_skips_conversation_nodes(db):
     assert "T1" in result
 
 
+def test_heal_merged_sha_never_guesses_branch_from_label(db, tmp_path):
+    """Regression (2026-07-01, hotfix on main @ 3f65bac): _heal_merged_sha's
+    fallback ``branch = f"cyc_{label}"`` guessed a branch name from the thread's
+    auto-assigned wheel-slug label when no ``worktree_branch`` was recorded. That
+    label is just a rotating 2-letter conversation slug — it proves nothing about
+    which git branch (if any) holds this topic's work. In juggle's own self-repo
+    fallback (used when main_repo_path is unset), an unrelated STALE `cyc_<label>`
+    branch from some other past dispatch can coincidentally exist and be merged,
+    causing a false-positive heal. _heal_merged_sha must return False whenever
+    worktree_branch was never recorded — even if a same-named branch exists and
+    is merged — because that branch's existence is not proof of THIS topic's
+    binding."""
+    from dbops import db_topics_reconcile as tr
+
+    repo = tmp_path / "selfrepo"
+    repo.mkdir()
+
+    def _git(*a):
+        return subprocess.run(["git", "-C", str(repo), *a], check=True,
+                              capture_output=True, text=True)
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.email", "t@t.t")
+    _git("config", "user.name", "T")
+    (repo / "f.txt").write_text("base\n")
+    _git("add", ".")
+    _git("commit", "-qm", "base")
+    # An unrelated, already-merged branch that happens to share this topic's
+    # thread label — simulates a stray cyc_<label> branch left over in the
+    # self-repo fallback from some other, unrelated past dispatch.
+    _git("branch", "cyc_AA")
+
+    pid = _mk_project(db)
+    _mk_topic(db, "T1", pid, state="integrating")
+    _mk_task(db, "n1", pid, "T1", state="verified")
+    thread_id = db.create_thread(topic="w", session_id="sessL")
+    db.update_thread(thread_id, main_repo_path=str(repo))  # worktree_branch left unset
+    t.set_topic_thread(db, "T1", thread_id)
+
+    topic = t.get_topic(db, "T1")
+    assert topic["thread_id"] == thread_id
+
+    healed = tr._heal_merged_sha(db, topic)
+
+    assert healed is False, "must not guess a branch from the thread label"
+    assert t.get_topic(db, "T1")["merged_sha"] is None
+
+
 def test_reconcile_integrating_with_live_agent_not_advanced(db):
     """An 'integrating' topic with a LIVE bound agent is still in progress — the
     integrate is genuinely running, not orphaned. Do NOT advance to verified."""
