@@ -92,6 +92,38 @@ def test_ensure_dir_trusted_upgrades_untrusted_existing_entry(tmp_path):
     assert data["projects"][target]["allowedTools"] == []
 
 
+def test_ensure_dir_trusted_keys_on_realpath_for_symlinked_parent(tmp_path):
+    """Defect E (2026-07-01): fresh-worktree spawns hung at the folder-trust
+    prompt for minutes then fell back to the harness default model.
+
+    Claude Code keys folder-trust off the RESOLVED realpath, but pretrust wrote
+    the symlink path as-given. Juggle worktrees live under /tmp (a symlink to
+    /private/tmp on macOS), so the trusted key never matched the realpath Claude
+    looked up — the trust dialog fired on EVERY fresh worktree, consuming the
+    readiness window. Pretrust must record the realpath (keeping the literal
+    path too for back-compat).
+    """
+    import os
+
+    from juggle_claude_trust import ensure_dir_trusted
+
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    link_parent = tmp_path / "link"
+    link_parent.symlink_to(real_parent)
+    (real_parent / "wt").mkdir()
+    target = str(link_parent / "wt")  # via the symlink
+    realkey = os.path.realpath(target)
+    assert realkey != target, "test needs a symlinked parent to be meaningful"
+
+    cfg = tmp_path / "claude.json"
+    ensure_dir_trusted(target, claude_json_path=cfg)
+
+    data = json.loads(cfg.read_text())
+    # The realpath — the key Claude Code actually looks up — must be trusted.
+    assert data["projects"][realkey]["hasTrustDialogAccepted"] is True
+
+
 def test_register_worktree_trust_backcompat_sets_trust(tmp_path, monkeypatch):
     """Back-compat shim _register_worktree_trust must now actually trust."""
     from juggle_cmd_agents_worktree import _register_worktree_trust

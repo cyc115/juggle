@@ -50,13 +50,34 @@ def ensure_dir_trusted(dir_path: str, claude_json_path: Path | str | None = None
         else:
             data = {}
         projects = data.setdefault("projects", {})
-        entry = projects.get(dir_path)
-        if not isinstance(entry, dict):
-            entry = {"allowedTools": []}
-            projects[dir_path] = entry
-        if entry.get("hasTrustDialogAccepted") is True:
-            return False  # already trusted — no rewrite
-        entry["hasTrustDialogAccepted"] = True
+
+        # Trust BOTH the literal path and its resolved realpath. Claude Code keys
+        # folder-trust off the REALPATH, but juggle worktrees live under /tmp
+        # (a symlink to /private/tmp on macOS), so a symlink-path key is never
+        # matched and the trust dialog still fires on every fresh worktree
+        # (defect E, 2026-07-01: readiness window consumed → model fallback).
+        # The literal key is kept for back-compat / Linux (realpath == path).
+        keys = [dir_path]
+        try:
+            real = os.path.realpath(dir_path)
+        except Exception:
+            real = dir_path
+        if real and real != dir_path:
+            keys.append(real)
+
+        wrote = False
+        for key in keys:
+            entry = projects.get(key)
+            if not isinstance(entry, dict):
+                entry = {"allowedTools": []}
+                projects[key] = entry
+            if entry.get("hasTrustDialogAccepted") is True:
+                continue  # already trusted — no rewrite for this key
+            entry["hasTrustDialogAccepted"] = True
+            wrote = True
+
+        if not wrote:
+            return False
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(json.dumps(data, indent=2))
         return True
