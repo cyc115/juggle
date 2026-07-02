@@ -10,7 +10,6 @@ Spec format (markdown), one `##` section per task:
 
     ## <task-id>: <Title>
     deps: dep1, dep2              (optional; `- deps:` also accepted)
-    verify_cmd: pytest tests -q   (optional; lint-gated)
     <remaining lines = dispatch prompt>
 """
 
@@ -129,10 +128,6 @@ def register_graph_parsers(subparsers) -> None:
         "omit on a flat project to auto-create a synthetic 'T-<task-id>' topic)",
     )
     _an.add_argument(
-        "--verify-cmd", dest="verify_cmd", default=None,
-        help="Verification command (lint-gated, same allowlist as load)",
-    )
-    _an.add_argument(
         "--json", dest="json_out", action="store_true",
         help="Machine-readable result",
     )
@@ -172,9 +167,9 @@ def cmd_graph_add_task(args):
     """Inject one new task into an EXISTING project graph mid-execution.
 
     Validated, atomic, guarded upsert via juggle_graph_upsert.add_task — refuses
-    (nonzero exit, graph unchanged) on unknown deps, a cycle, an empty prompt, a
-    verify_cmd lint failure, or touching a protected task. Supports args-or-stdin
-    for --prompt so a long dispatch prompt can be piped.
+    (nonzero exit, graph unchanged) on unknown deps, a cycle, an empty prompt,
+    or touching a protected task. Supports args-or-stdin for --prompt so a long
+    dispatch prompt can be piped.
     """
     import json
 
@@ -211,7 +206,7 @@ def cmd_graph_add_task(args):
             db, args.project,
             task_id=args.id, title=args.title, prompt=prompt,
             deps=_csv(args.deps), required_by=_csv(args.required_by),
-            verify_cmd=args.verify_cmd,
+            verify_cmd=None,
             topic_id=topic_id, auto_create_topic=auto_topic,
         )
     except AddTaskError as e:

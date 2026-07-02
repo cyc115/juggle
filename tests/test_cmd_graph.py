@@ -1,8 +1,8 @@
 """Tests for juggle_cmd_graph — `juggle project-graph load` (autopilot Phase 1).
 
 Covers: markdown spec parsing, validation (cycles, unknown/dup ids, empty
-prompts, verify_cmd lint, task-count sanity), and guarded re-load semantics
-(upsert by id; REFUSE changes to dispatching|running|integrating|verified).
+prompts, task-count sanity), and guarded re-load semantics (upsert by id;
+REFUSE changes to dispatching|running|integrating|verified).
 """
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ Write the schema migration.
 
 ## api: Build API
 deps: schema
-verify_cmd: uv run pytest tests/test_api.py -q
 Implement the API on top of the schema.
 
 ## ui: Build UI
@@ -80,18 +79,21 @@ def test_parse_graph_spec_basic():
     api = tasks[1]
     assert api["title"] == "Build API"
     assert api["deps"] == ["schema"]
-    assert api["verify_cmd"] == "uv run pytest tests/test_api.py -q"
+    assert api["verify_cmd"] is None
     assert "Implement the API" in api["prompt"]
     assert tasks[0]["deps"] == []
     assert tasks[0]["verify_cmd"] is None
     assert tasks[3]["deps"] == ["api", "ui"]
 
 
-def test_parse_accepts_bullet_field_lines():
+def test_parse_ignores_verify_cmd_field_lines():
+    """The verify_cmd spec field was removed (2026-07-01 stage removal) — a
+    `verify_cmd:` line is no longer a recognized field and falls through into
+    the task's prompt text verbatim."""
     tasks = cg.parse_graph_spec("## a: A\n- deps: \n- verify_cmd: pytest -q\ndo a\n")
     assert tasks[0]["deps"] == []
-    assert tasks[0]["verify_cmd"] == "pytest -q"
-    assert tasks[0]["prompt"] == "do a"
+    assert tasks[0]["verify_cmd"] is None
+    assert tasks[0]["prompt"] == "- verify_cmd: pytest -q\ndo a"
 
 
 # ── validation ─────────────────────────────────────────────────────────────────
@@ -147,8 +149,9 @@ def test_lint_verify_cmd_now_accepts_operators(cmd):
     lint previously REJECTED shell operators (& ; | > < ` $()) and non-allowlisted
     executables. The user was shown the command-injection rationale and explicitly
     chose to allow shell operators (compound commands, pipes, redirects, subshells)
-    AND drop the executable allowlist. The lint now accepts them; the compensating
-    control is the verify_cmd audit log (see test_integrate_verify)."""
+    AND drop the executable allowlist. The lint now accepts them; this only gates
+    the stored value on the direct add_task API (2026-07-01: nothing executes
+    verify_cmd anymore — the integrate verify_cmd stage was removed)."""
     assert cg.lint_verify_cmd(cmd) is None
 
 
@@ -197,6 +200,22 @@ def test_reload_upserts_unprotected_tasks(db, tmp_path):
     updated = SPEC.replace("Implement the UI.", "Implement the UI v2.")
     cg.cmd_project_graph_load(_args(tmp_path, db, spec=updated))
     assert g.get_task(db, "ui")["prompt"] == "Implement the UI v2."
+
+
+def test_reload_preserves_stored_verify_cmd(db, tmp_path):
+    """The spec format no longer carries verify_cmd (2026-07-01 removal) — a
+    reload must not clobber a verify_cmd set through another path (e.g. the
+    direct add_task API) with the spec's always-None value."""
+    cg.cmd_project_graph_load(_args(tmp_path, db))
+    g.update_task_content(
+        db, "ui", title="Build UI", prompt="Implement the UI.",
+        verify_cmd="pytest -q",
+    )
+    updated = SPEC.replace("Implement the UI.", "Implement the UI v2.")
+    cg.cmd_project_graph_load(_args(tmp_path, db, spec=updated))
+    task = g.get_task(db, "ui")
+    assert task["prompt"] == "Implement the UI v2."
+    assert task["verify_cmd"] == "pytest -q"
 
 
 def test_reload_refuses_change_to_protected_task(db, tmp_path):

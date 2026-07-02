@@ -9,7 +9,7 @@ would silently SUBSET the suite, so integrate can FAIL LOUD before running it.
 A loud refusal is NOT the command-munging the 2026-06-20 directive removed:
 munging silently rewrites the command; this leaves ``test_cmd`` untouched and
 surfaces the problem. Owns ONLY this string inspection — not the integrate
-pipeline (juggle_cmd_integrate) nor verify (juggle_integrate_verify).
+pipeline (juggle_cmd_integrate).
 """
 from __future__ import annotations
 

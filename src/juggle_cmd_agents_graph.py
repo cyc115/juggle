@@ -170,7 +170,7 @@ def fail_graph_task(db, thread_uuid, session_id, reason=None):
 
 
 def mark_graph_task(db, thread_uuid, integrate_ok, handoff, session_id,
-                    *, verify_failed=False, verify_detail=None):
+                    *, verify_failed=False):
     """If the thread is bound to a graph task, record the completion outcome.
 
     Maps (integrate outcome, verify outcome) → task event via
@@ -220,21 +220,6 @@ def mark_graph_task(db, thread_uuid, integrate_ok, handoff, session_id,
                 reconcile_conversation_topics(db, only_topic_id=_owner)
             except Exception:
                 pass  # never break completion on a reconcile hiccup
-    elif state == "failed-verify":
-        # Self-heal seam (verify-fallback): a task whose REAL verify_cmd was red
-        # goes through the bounded-retry seam, which either resets it for a fresh
-        # re-dispatch or (on exhaustion) runs the SAME escalation as any other
-        # terminal failure. R0: the seam only escalates (behaviour-preserving).
-        from juggle_verify_fallback import on_failed_verify
-
-        # Re-read the task so the seam sees the post-mark_completion state/counter.
-        cur = db_graph.get_task(db, task["id"]) or task
-        on_failed_verify(
-            db, cur, thread_uuid, session_id, verify_detail=verify_detail,
-            escalate=lambda: _notify_failure(
-                db, cur, state, thread_uuid, session_id
-            ),
-        )
     else:
         _notify_failure(db, task, state, thread_uuid, session_id)
 

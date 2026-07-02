@@ -3,9 +3,16 @@ juggle_graph_upsert — shared graph-spec validation + single-task upsert helper
 
 Extracted from juggle_cmd_graph (2026-06-10) so both `project-graph load` (whole
 spec) and `graph add-task` (one task into a live graph) call ONE validation /
-upsert path. Pure validation lives here (cycle check, verify_cmd lint, per-task
-field checks); the DB upsert helpers compose dbops.db_graph primitives without
-duplicating its state semantics (task_transition remains the sole state writer).
+upsert path. Pure validation lives here (cycle check, per-task field checks);
+the DB upsert helpers compose dbops.db_graph primitives without duplicating
+its state semantics (task_transition remains the sole state writer).
+
+``verify_cmd`` (lint_verify_cmd / VERIFY_CMD_ALLOWLIST) is dead at the CLI/spec
+surface (2026-07-01 removal of the integrate verify_cmd stage — user decision):
+`graph add-task` no longer exposes `--verify-cmd` and spec parsing no longer
+reads a `verify_cmd:` field. The column, `add_task`'s ``verify_cmd`` parameter,
+and this lint remain for direct programmatic callers of ``add_task``; nothing
+executes the stored value anymore.
 
 Owns: load-time lint/validation (pure) + the guarded single-task upsert helper.
 Must not own: task state semantics (dbops.db_graph), CLI parsing (juggle_cmd_*).
@@ -20,19 +27,20 @@ from dbops import db_graph
 MAX_TASKS = 50
 
 _HEADING_RE = re.compile(r"^##\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
-_FIELD_RE = re.compile(r"^[-*\s]*\b(deps|verify_cmd)\s*:\s*(.*)$")
+_FIELD_RE = re.compile(r"^[-*\s]*\bdeps\s*:\s*(.*)$")
 _TOPIC_HEADING_RE = re.compile(r"^##\s+topic\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
 _TASK_HEADING_RE = re.compile(r"^###\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
 
 # verify_cmd lint — FULL RELAX (2026-06-30, user decision): shell operators
 # (`&& ; | > < ` `` ` `` `$()` backticks) and any executable are now permitted.
-# verify_cmds run through a shell in juggle_integrate_verify.run_verify_cmd, so
-# compound commands / pipes / redirects / subshells all execute. The prior
-# character blacklist + executable allowlist were removed because an allowlist is
-# trivially bypassable once operators are allowed (chaining), making it moot. The
-# compensating control is the executed-verify_cmd AUDIT LOG (verify_audit.log,
-# written next to the DB by juggle_integrate_verify). Only an empty/blank
-# verify_cmd is still rejected (it is meaningless as a gate).
+# The prior character blacklist + executable allowlist were removed because an
+# allowlist is trivially bypassable once operators are allowed (chaining),
+# making it moot. Only an empty/blank verify_cmd is still rejected (it is
+# meaningless as a stored value).
+#
+# Nothing executes verify_cmd anymore (2026-07-01: integrate's verify_cmd stage
+# was removed — user decision). This lint only gates the still-live direct
+# `add_task` programmatic API's stored value.
 #
 # Kept for backward-compatible imports / documentation of the commonly-used
 # executables — NO LONGER ENFORCED.
@@ -44,8 +52,10 @@ VERIFY_CMD_ALLOWLIST = frozenset(
 def parse_graph_spec(text: str) -> list[dict]:
     """Parse a graph spec markdown string into task dicts.
 
-    Returns [{"id", "title", "deps": [..], "verify_cmd": str|None, "prompt"}].
-    Duplicate ids are preserved (validation reports them).
+    Returns [{"id", "title", "deps": [..], "verify_cmd": None, "prompt"}].
+    ``verify_cmd`` is always None — the spec format no longer accepts it (see
+    ``lint_verify_cmd`` for the still-live direct ``add_task`` API). Duplicate
+    ids are preserved (validation reports them).
     """
     tasks: list[dict] = []
     current: dict | None = None
@@ -67,11 +77,8 @@ def parse_graph_spec(text: str) -> list[dict]:
             continue  # preamble before first task heading
         fm = _FIELD_RE.match(line)
         if fm:
-            field, value = fm.group(1), fm.group(2).strip()
-            if field == "deps":
-                current["deps"] = [d.strip() for d in value.split(",") if d.strip()]
-            else:
-                current["verify_cmd"] = value or None
+            value = fm.group(1).strip()
+            current["deps"] = [d.strip() for d in value.split(",") if d.strip()]
             continue
         body.append(line)
     _flush()
@@ -206,11 +213,8 @@ def parse_topics_spec(text: str) -> list[dict]:
             continue
         fm = _FIELD_RE.match(line)
         if fm and current_task is not None:
-            field, value = fm.group(1), fm.group(2).strip()
-            if field == "deps":
-                current_task["deps"] = [d.strip() for d in value.split(",") if d.strip()]
-            else:
-                current_task["verify_cmd"] = value or None
+            value = fm.group(1).strip()
+            current_task["deps"] = [d.strip() for d in value.split(",") if d.strip()]
             continue
         (body if current_task is not None else obj).append(line)
     _flush_topic()
@@ -250,10 +254,14 @@ def validate_topics(topics: list[dict]) -> list[str]:
 
 def content_changed(existing: dict, spec_task: dict, spec_deps: list[str], db) -> bool:
     """True if a re-loaded spec task differs from the stored task (title /
-    prompt / verify_cmd / dep set). Drives the guarded-upsert decision."""
+    prompt / dep set). Drives the guarded-upsert decision.
+
+    ``verify_cmd`` is intentionally excluded (2026-07-01 stage removal): the
+    spec format no longer carries it, so ``spec_task["verify_cmd"]`` is always
+    None — comparing it would flag every task with a stored value as
+    "changed" and, worse, wipe that value on the next reload."""
     return (
         existing["title"] != spec_task["title"]
         or existing["prompt"] != spec_task["prompt"]
-        or (existing["verify_cmd"] or None) != (spec_task["verify_cmd"] or None)
         or db_graph.get_deps(db, existing["id"]) != sorted(spec_deps)
     )

@@ -53,7 +53,7 @@ def enforce_topic_gate(db, thread_uuid) -> None:
 
 
 def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
-                     *, verify_failed=False, verify_detail=None):
+                     *, verify_failed=False):
     """Topic twin of mark_graph_task: map (integrate, verify) outcomes onto the
     TOPIC machine; verify_ok additionally requires every task 'verified'.
     Falls back to mark_graph_task for legacy task-bound threads."""
@@ -66,8 +66,7 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
         return  # pre-migration DB without graph tables
     if not topic:
         return mark_graph_task(db, thread_uuid, integrate_ok, handoff,
-                               session_id, verify_failed=verify_failed,
-                               verify_detail=verify_detail)
+                               session_id, verify_failed=verify_failed)
     tasks = db_topics.list_topic_tasks(db, topic["id"])
     all_verified = bool(tasks) and all(n["state"] == "verified" for n in tasks)
     try:

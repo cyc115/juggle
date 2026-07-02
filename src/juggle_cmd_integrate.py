@@ -254,14 +254,20 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             if not _ok:
                 return _fail(_reason)
 
-        # ── 5b. Graph-task gate: pre-merge diffstat + verify_cmd (DA M3) ──────
-        # Runs in the worktree, post-rebase, BEFORE any merge/push — alongside
-        # test_cmd (both must pass if both set). A verify failure aborts here:
-        # main untouched, worktree + branch preserved, task → failed-verify.
-        from juggle_integrate_verify import verify_task_premerge
-        v_ok, v_reason = verify_task_premerge(db, task, worktree_path, rebase_onto)
-        if not v_ok:
-            return _fail(v_reason)
+        # ── 5b. Graph-task diffstat capture (pre-merge, DA M4) — only cheap
+        # moment: integrate deletes the branch+worktree on success. Best-effort.
+        if task:
+            try:
+                from dbops import db_graph
+                _diff = subprocess.run(
+                    ["git", "-C", worktree_path, "diff", "--stat", f"{rebase_onto}..HEAD"],
+                    capture_output=True, text=True,
+                )
+                diffstat = (_diff.stdout or "").strip()[:2000] if _diff.returncode == 0 else ""
+                if diffstat:
+                    db_graph.set_task_diffstat(db, task["id"], diffstat)
+            except Exception:
+                pass  # diffstat is best-effort hydration enrichment, never a gate
 
         # ── 6. Resolve local main branch name + validate HEAD ────────────────
         local_main = subprocess.run(

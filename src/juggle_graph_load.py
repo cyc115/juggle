@@ -17,7 +17,6 @@ Spec format (markdown), 3-tier with legacy flat fallback:
     <objective lines>
     ### <task-id>: <Task title>
     deps: dep1, dep2              (optional; cross-topic deps allowed)
-    verify_cmd: pytest tests -q   (optional; lint-gated)
     <remaining lines = dispatch prompt>
 
 A spec with no `## topic` headings loads as before — each flat `## task`
@@ -131,9 +130,12 @@ def cmd_project_graph_load(args):
             ):
                 unchanged += 1
             else:
+                # verify_cmd: preserve the stored value — the spec format no
+                # longer carries it (n["verify_cmd"] is always None), and a
+                # reload must not wipe a value set through another path.
                 db_graph.update_task_content(
                     db, n["id"], title=n["title"], prompt=n["prompt"],
-                    verify_cmd=n["verify_cmd"], conn=conn,
+                    verify_cmd=prev["verify_cmd"], conn=conn,
                 )
                 db_graph.set_task_topic(db, n["id"], task_topic[n["id"]], conn=conn)
                 db_graph.replace_edges(db, n["id"], sorted(n["deps"]), conn=conn)
