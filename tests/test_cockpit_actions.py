@@ -72,7 +72,7 @@ async def test_action_close_unknown_label_no_confirm(tmp_path):
     app = CockpitApp(db_path=db_path)
     with patch.object(app._db, "set_thread_status") as mock_set_status:
         async with app.run_test(size=(160, 40)) as pilot:
-            await pilot.press("shift+c")
+            await pilot.press("C")
             await pilot.pause(0.1)
             # type unknown label
             await pilot.press("z")
@@ -109,7 +109,7 @@ async def test_action_close_valid_label_confirm_y_calls_db(tmp_path):
     app._db.set_thread_status = _spy_set_status  # type: ignore[method-assign]
 
     async with app.run_test(size=(160, 40)) as pilot:
-        await pilot.press("shift+c")
+        await pilot.press("C")
         await pilot.pause(0.1)
         for key in _press_label(t1_label):
             await pilot.press(key)
@@ -153,7 +153,7 @@ async def test_action_close_valid_label_confirm_n_no_db_call(tmp_path):
     app._db.set_thread_status = _spy_set_status  # type: ignore[method-assign]
 
     async with app.run_test(size=(160, 40)) as pilot:
-        await pilot.press("shift+c")
+        await pilot.press("C")
         await pilot.pause(0.1)
         for key in _press_label(t1_label):
             await pilot.press(key)

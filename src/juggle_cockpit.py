@@ -128,7 +128,7 @@ class CockpitApp(GraphModeMixin, App):
         Binding("tab",          "cycle_pane",    "Tab"),
         Binding("s",            "switch",        "Sw"),
         Binding("a",            "ack",           "Ack"),
-        Binding("shift+c",      "close",         "Cl",  key_display="C"),
+        Binding("C",            "close",         "Cl",  key_display="C"),
         Binding("x",            "archive",       "Ar"),
         Binding("d",            "decommission",  "Dc",  show=False),
         Binding("slash",        "filter",        "Flt"),
@@ -136,7 +136,7 @@ class CockpitApp(GraphModeMixin, App):
         Binding("t",            "tail_toggle",   "Tl"),
         Binding("i",            "task_detail",   "Info",  show=False),
         Binding("g",            "toggle_graph",  "Gr"),
-        Binding("shift+g",      "graph_railroad", "Rail", show=False),
+        Binding("G",            "graph_railroad", "Rail", show=False),
         Binding("p",            "projects",      "Proj"),
         Binding("w",            "watchdog_toggle",  "Wd",  show=True),
         Binding("r",            "watchdog_restart", "Rwd", show=True),
@@ -916,7 +916,7 @@ class CockpitApp(GraphModeMixin, App):
         self.push_screen(_ProjectArmModal(self._db))
 
     def action_graph_railroad(self) -> None:
-        """shift+g — open the full-screen railroad for the selected task's project."""
+        """G — open the full-screen railroad for the selected task's project."""
         from juggle_cockpit_model import snapshot as _snapshot
         try:
             state = _snapshot(self._db, load_graph_dag=True)

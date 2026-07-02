@@ -1,5 +1,5 @@
 """juggle_cockpit_railroad — Surface-B full-screen railroad Screen (2026-06-30
-graph railroad, T5). A Textual ``Screen`` bound to ``shift+g`` that renders one
+graph railroad, T5). A Textual ``Screen`` bound to ``G`` that renders one
 project's task DAG as a vertical git-graph (via the pure ``railroad_lines`` core)
 with a moving cursor (j/k) and a bottom node-detail pane. ``node_detail_text``
 assembles the same structured fields the ``_NodeDetailModal`` shows for a task

@@ -22,7 +22,7 @@ REQUIRED_SHOWN_KEYS = {
     "question_mark",  # ? Help
     "s",              # Switch
     "a",              # Ack
-    "shift+c",        # Close
+    "C",              # Close
     "x",              # Archive
     "g",              # Toggle graph  ← was missing (show=False)
     "t",              # Tail toggle   ← was missing (show=False)
