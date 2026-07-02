@@ -226,19 +226,12 @@ def test_shortcut_non_ancestor_preserves_worktree_and_branch(tmp_path):
         "main_repo_path": repo,
     }
 
-    real_run = subprocess.run
+    # Force the G2 empty-branch guard's seam call to report "0 ahead"
+    # (simulating stale/incorrect state) — via GitVCS.has_changes, the seam
+    # primitive that replaced the old raw rev-list --count call site.
+    import vcs_git
 
-    def fake_run(cmd, **kwargs):
-        # Force rev-list --count to return "0" (simulating stale/incorrect state)
-        if (isinstance(cmd, list) and "rev-list" in cmd
-                and "--count" in cmd and "cyc_PH" in str(cmd)):
-            m = Mock()
-            m.returncode = 0
-            m.stdout = "0\n"
-            return m
-        return real_run(cmd, **kwargs)
-
-    with patch("juggle_cmd_integrate.subprocess.run", side_effect=fake_run):
+    with patch.object(vcs_git.GitVCS, "has_changes", return_value=False):
         with patch("juggle_cmd_integrate.get_repo_config",
                    return_value={"push_mode": "none", "test_cmd": ""}):
             with patch("juggle_integrate_lock._get_lock_path",

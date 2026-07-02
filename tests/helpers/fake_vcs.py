@@ -71,8 +71,8 @@ class FakeBackend:
         r = self._record("describe_changes", ws, since=since)
         return r if r is not None else ""
 
-    def submit(self, ws, *, base, mode):
-        r = self._record("submit", ws, base=base, mode=mode)
+    def submit(self, ws, *, base, mode, push=True):
+        r = self._record("submit", ws, base=base, mode=mode, push=push)
         return r if r is not None else SubmitResult(status="landed", landed_rev="landed-rev")
 
     def land_status(self, repo, ticket):

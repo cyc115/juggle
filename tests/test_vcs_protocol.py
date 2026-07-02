@@ -287,7 +287,9 @@ def test_describe_changes_returns_diffstat(main_repo, ws):
 def test_submit_direct_ff_merges_and_pushes(main_repo, origin, ws):
     g = vcs_mod.GitVCS()
     _commit(ws, "feature.txt", "feat\n")
-    base = g.resolve(str(main_repo))
+    # base is the trunk REF NAME (as real callers pass it — GitVCS.submit's
+    # local-main-HEAD-branch guard parses it as such), not a resolved sha.
+    base = "main"
 
     result = g.submit(str(ws), base=base, mode="direct")
 
@@ -304,7 +306,7 @@ def test_submit_direct_ff_merges_and_pushes(main_repo, origin, ws):
 def test_submit_queue_pushes_branch_only(main_repo, origin, ws):
     g = vcs_mod.GitVCS()
     _commit(ws, "feature.txt", "feat\n")
-    base = g.resolve(str(main_repo))
+    base = "main"
 
     result = g.submit(str(ws), base=base, mode="queue")
 

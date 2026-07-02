@@ -130,6 +130,12 @@ class GitVCS:
             if Path(gd, "rebase-merge").exists() or Path(gd, "rebase-apply").exists():
                 _run(["git", "-C", ws, "rebase", "--abort"], ws)
 
+        # graphify-out/** routes to merge=ours (.gitattributes) — set the LOCAL
+        # driver idempotently so a rebase never conflicts on the large graph.json
+        # two branches both regenerate (2026-06-21 concurrent-integrate pileup
+        # root cause 2). Config is shared across linked worktrees.
+        _run(["git", "-C", ws, "config", "merge.ours.driver", "true"], ws)
+
         result = subprocess.run(
             ["git", "-C", ws, "rebase", base], capture_output=True, text=True,
         )
@@ -148,16 +154,37 @@ class GitVCS:
 
     # ── publish ──────────────────────────────────────────────────────────────
 
-    def submit(self, ws: str, *, base: Rev, mode: SubmitMode) -> SubmitResult:
+    def submit(
+        self, ws: str, *, base: Rev, mode: SubmitMode, push: bool = True
+    ) -> SubmitResult:
         """Get the workspace's tested work onto (or into the queue toward) trunk.
 
         ``mode="queue"`` pushes the feature branch only (never ff-merges local
         trunk) — the git-pr recipe. ``mode="direct"`` runs git's full
-        local-main-sync → ff-merge → push recipe.
+        local-main-sync → ff-merge → (push if ``push``) recipe — ``push=False``
+        is the git-mechanics expression of ``push_mode="none"`` (merge locally,
+        publish nowhere); a keyword-only growth param (§1.3), non-breaking.
         """
         branch = _run(["git", "-C", ws, "symbolic-ref", "--short", "HEAD"], ws)
         if not branch:
             return SubmitResult(status="failed", detail="cannot resolve workspace branch")
+
+        main_repo = self.primary_root(self.repo_root(ws) or ws)
+
+        # Validate main_repo's checked-out branch matches the expected trunk
+        # branch name BEFORE any side effect — for every mode, mirroring the
+        # original guard's placement ahead of the push_mode branch (2026-06-14
+        # ZA incident: external state left main checked out on a stray branch).
+        local_main = _run(["git", "-C", main_repo, "symbolic-ref", "--short", "HEAD"], main_repo) or "main"
+        expected_main = base.split("/")[-1]
+        if local_main != expected_main:
+            return SubmitResult(
+                status="failed",
+                detail=(
+                    f"main_repo_path HEAD is on '{local_main}', expected '{expected_main}'. "
+                    f"Check out '{expected_main}' in {main_repo} and re-run integrate."
+                ),
+            )
 
         if mode == "queue":
             push_result = subprocess.run(
@@ -168,8 +195,6 @@ class GitVCS:
             if push_result.returncode != 0:
                 return SubmitResult(status="failed", detail=push_result.stderr.strip())
             return SubmitResult(status="submitted", ticket=branch)
-
-        main_repo = self.primary_root(self.repo_root(ws) or ws)
 
         # Discard local modifications to graphify-out/ before the ff-merge —
         # graphify watch regenerates it on every commit, so a stale local copy
@@ -210,13 +235,13 @@ class GitVCS:
                 detail=f"FF-merge of {branch} failed: {result.stderr.strip()}",
             )
 
-        local_main = _run(["git", "-C", main_repo, "symbolic-ref", "--short", "HEAD"], main_repo) or "main"
-        push_result = subprocess.run(
-            ["git", "-C", main_repo, "push", "origin", f"{local_main}:{local_main}"],
-            capture_output=True, text=True,
-        )
-        if push_result.returncode != 0:
-            return SubmitResult(status="failed", detail=f"Push failed: {push_result.stderr.strip()}")
+        if push:
+            push_result = subprocess.run(
+                ["git", "-C", main_repo, "push", "origin", f"{local_main}:{local_main}"],
+                capture_output=True, text=True,
+            )
+            if push_result.returncode != 0:
+                return SubmitResult(status="failed", detail=f"Push failed: {push_result.stderr.strip()}")
 
         landed_rev = _run(["git", "-C", main_repo, "rev-parse", "HEAD"], main_repo)
         return SubmitResult(status="landed", landed_rev=landed_rev)

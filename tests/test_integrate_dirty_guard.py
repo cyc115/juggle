@@ -100,48 +100,50 @@ def _run(thread, db, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Unit tests: helper functions
+# Unit tests: the seam primitives that replaced is_worktree_dirty /
+# branch_commits_ahead (vcs-route-integrate: A3 dirty-gate/empty-branch-guard
+# call sites now route through GitVCS.dirty_files / GitVCS.has_changes).
 # ---------------------------------------------------------------------------
 
 
-def test_is_worktree_dirty_false_on_clean_tree(tmp_path, bare_repo):
+def test_dirty_files_empty_on_clean_tree(tmp_path, bare_repo):
     repo, _ = bare_repo
     wt = _make_worktree(repo, str(tmp_path), "clean")
-    from juggle_cmd_integrate import is_worktree_dirty
-    assert is_worktree_dirty(wt) is False
+    from vcs_git import GitVCS
+    assert GitVCS().dirty_files(wt) == []
 
 
-def test_is_worktree_dirty_true_on_untracked_file(tmp_path, bare_repo):
+def test_dirty_files_nonempty_on_untracked_file(tmp_path, bare_repo):
     repo, _ = bare_repo
     wt = _make_worktree(repo, str(tmp_path), "dirty")
     (Path(wt) / "new_file.py").write_text("work in progress\n")
-    from juggle_cmd_integrate import is_worktree_dirty
-    assert is_worktree_dirty(wt) is True
+    from vcs_git import GitVCS
+    assert GitVCS().dirty_files(wt) != []
 
 
-def test_is_worktree_dirty_true_on_modified_tracked_file(tmp_path, bare_repo):
+def test_dirty_files_nonempty_on_modified_tracked_file(tmp_path, bare_repo):
     repo, _ = bare_repo
     wt = _make_worktree(repo, str(tmp_path), "mod")
     (Path(wt) / "a.py").write_text("x = 99\n")  # modify tracked file
-    from juggle_cmd_integrate import is_worktree_dirty
-    assert is_worktree_dirty(wt) is True
+    from vcs_git import GitVCS
+    assert GitVCS().dirty_files(wt) != []
 
 
-def test_branch_commits_ahead_zero_on_fresh_worktree(tmp_path, bare_repo):
+def test_has_changes_false_on_fresh_worktree(tmp_path, bare_repo):
     repo, _ = bare_repo
-    _make_worktree(repo, str(tmp_path), "empty")
-    from juggle_cmd_integrate import branch_commits_ahead
-    assert branch_commits_ahead(repo, "cyc_empty", "origin/main") == 0
+    wt = _make_worktree(repo, str(tmp_path), "empty")
+    from vcs_git import GitVCS
+    assert GitVCS().has_changes(wt, since="origin/main") is False
 
 
-def test_branch_commits_ahead_nonzero_after_commit(tmp_path, bare_repo):
+def test_has_changes_true_after_commit(tmp_path, bare_repo):
     repo, _ = bare_repo
     wt = _make_worktree(repo, str(tmp_path), "work")
     (Path(wt) / "work.py").write_text("y = 2\n")
     _git("add", "work.py", cwd=Path(wt))
     _git("commit", "-m", "add work", cwd=Path(wt))
-    from juggle_cmd_integrate import branch_commits_ahead
-    assert branch_commits_ahead(repo, "cyc_work", "origin/main") == 1
+    from vcs_git import GitVCS
+    assert GitVCS().has_changes(wt, since="origin/main") is True
 
 
 # ---------------------------------------------------------------------------
