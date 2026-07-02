@@ -50,7 +50,7 @@ GRANDFATHERED: dict[str, int] = {
     # schema, a Migration-45 call in apply_recent_migrations, and argparse wiring
     # cannot be extracted out of their owning modules. Migration 45's body WAS
     # extracted to dbops/migration_selfheal_status_check.py (491->443 here).
-    "src/juggle_settings.py": 456,  # +5 stalled-pane detector config (watchdog.stall_threshold_minutes / max_stall_nudges) (2026-07-01)
+    "src/juggle_settings.py": 460,  # +4 orphan-guard grace-period config (watchdog.orphan_grace_minutes) (2026-07-02)
     "src/juggle_cmd_integrate.py": 450,
     "src/juggle_cockpit_view.py": 461,
     "src/juggle_cockpit_model.py": 439,
