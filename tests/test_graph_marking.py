@@ -23,6 +23,10 @@ def db(tmp_path, monkeypatch):
     import juggle_cli_common as common
 
     monkeypatch.setattr(common, "get_db", lambda: d)
+    # Force should_spool() False regardless of the pytest-invoking cwd (which
+    # may itself be a "juggle-juggle-*" worktree) — these tests exercise the
+    # direct-write path, not the agent-context spool early-return.
+    monkeypatch.setenv("JUGGLE_ORCHESTRATOR", "1")
     return d
 
 

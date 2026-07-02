@@ -279,7 +279,21 @@ def cmd_graph_mark_task(args):
     agent's per-task completion (R9 hybrid). Maps onto the EXISTING task machine
     via mark_completion(integrate_ok=True, verify_ok=not --fail): task 'verified'
     = committed-in-topic-worktree + verify_cmd green — verified-means-MERGED
-    holds at TOPIC level only (spec §2.3)."""
+    holds at TOPIC level only (spec §2.3).
+
+    Agent context (should_spool()): early-returns to the spool instead of the
+    init=True DB open below. task_id is NOT resolved via
+    resolve_thread_id_for_spool — it is a task id, not a thread."""
+    from juggle_spool_cli_common import should_spool
+    if should_spool():
+        from dbops.spool import write_event
+        from juggle_spool_paths import spool_dir
+        write_event(spool_dir(), "graph_mark_task", "", "", {
+            "task_id": args.task_id, "fail": getattr(args, "fail", False),
+            "handoff": getattr(args, "handoff", None),
+        })
+        print(f"task {args.task_id} → spooled")
+        return
     db = get_db(getattr(args, "db_path", None), init=True)
     task = db_graph.get_task(db, args.task_id)
     if not task:
