@@ -64,6 +64,7 @@ from dbops.runs import RunsMixin  # noqa: E402, F401
 from dbops.selfheal import SelfhealMixin  # noqa: E402, F401
 from dbops.selfheal_audit import SelfhealAuditMixin  # noqa: E402, F401
 from dbops.session import SessionMixin  # noqa: E402, F401
+from dbops.schema_spool import CREATE_SPOOL_JOURNAL  # noqa: E402, F401
 from dbops.threads import ThreadsMixin  # noqa: E402, F401
 
 # ---------------------------------------------------------------------------
@@ -171,6 +172,7 @@ class JuggleDB(
             conn.execute(CREATE_ERROR_EVENTS)
             conn.execute(CREATE_SELFHEAL_AUDIT)
             conn.execute(CREATE_PROJECTS)
+            conn.execute(CREATE_SPOOL_JOURNAL)
             conn.execute(CREATE_GRAPH_TASKS)
             conn.execute(CREATE_GRAPH_EDGES)
             conn.execute(CREATE_GRAPH_TOPICS)

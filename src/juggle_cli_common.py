@@ -33,6 +33,11 @@ def _get_hindsight_client():
     return HindsightClient.from_config()
 
 
+def _db_path() -> Path:
+    """DB path spool helpers resolve against (test-isolated DB_PATH)."""
+    return DB_PATH
+
+
 def get_db(db_path=None, init=False):
     """Return a JuggleDB handle.
 
@@ -102,6 +107,9 @@ def _resolve_thread(db, thread_id_input: str) -> str:
 
     print(f"Error: unrecognised thread id format: {s!r}")
     sys.exit(1)
+
+# Re-export shims (impl in juggle_spool_cli_common.py, LOC-gate split):
+from juggle_spool_cli_common import resolve_thread_id_for_spool, should_spool  # noqa: E402,F401
 
 
 def _humanize_dt(iso_str: str) -> str:

@@ -57,3 +57,19 @@ def open_connection(path: Path | str) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA busy_timeout=5000;")
     return conn
+
+
+def open_connection_readonly(path: Path | str) -> sqlite3.Connection:
+    """Open a READ-ONLY SQLite connection (SQLite URI mode=ro).
+
+    Any write on the returned connection raises sqlite3.OperationalError
+    ("attempt to write a readonly database") at the SQLite layer — this is the
+    enforcement primitive behind 'agent reads stay direct but MUST be
+    read-only' (single-writer broker design step 3), and it is also how
+    Task 3-4's spool writers resolve a thread label to its immutable UUID at
+    write time without ever opening the shared DB read-write.
+    """
+    uri = f"file:{Path(path)}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True, factory=_ClosingConnection)
+    conn.row_factory = sqlite3.Row
+    return conn
