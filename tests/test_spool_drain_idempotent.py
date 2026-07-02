@@ -43,7 +43,10 @@ def _make_thread(db, label="AB"):
 
 def test_drain_applies_action_notify_event(db, spool):
     tid = _make_thread(db)
-    write_event(spool, "action_notify", "agent-1", tid, {"thread_id": tid, "message": "hi"})
+    # Real writer shape (cmd_notify): thread_id rides the event's top-level
+    # field, args carries ONLY {"message": ...} — apply_event must seed the
+    # replayed Namespace's thread_id from the top level, not from args.
+    write_event(spool, "action_notify", "agent-1", tid, {"message": "hi"})
     stats = drain_spool(db)
     assert stats["applied"] == 1
     with db._connect() as conn:
@@ -53,7 +56,7 @@ def test_drain_applies_action_notify_event(db, spool):
 
 def test_drain_is_idempotent_across_two_calls_same_event(db, spool):
     tid = _make_thread(db)
-    write_event(spool, "action_notify", "agent-1", tid, {"thread_id": tid, "message": "once"})
+    write_event(spool, "action_notify", "agent-1", tid, {"message": "once"})
     stats1 = drain_spool(db)
     assert stats1["applied"] == 1
     assert read_pending(spool) == []
@@ -65,7 +68,7 @@ def test_drain_skips_already_applied_uuid_without_reapplying(db, spool, monkeypa
     """If a file somehow survives past a successful apply (e.g. rename raced), the
     journal is the idempotency backstop — re-applying the same uuid is a no-op."""
     tid = _make_thread(db)
-    write_event(spool, "action_notify", "agent-1", tid, {"thread_id": tid, "message": "dup"})
+    write_event(spool, "action_notify", "agent-1", tid, {"message": "dup"})
     from dbops.spool import read_pending as _rp
     event = _rp(spool)[0]
     ok, _ = apply_event(db, event)
@@ -125,7 +128,7 @@ def test_apply_event_refuses_to_reapply_stuck_applying_state(db, spool):
     uuid must refuse to blind-retry (side effects like git-push/integrate may be
     partially complete) and dead-letter for manual triage instead."""
     tid = _make_thread(db)
-    uuid = write_event(spool, "action_notify", "agent-1", tid, {"thread_id": tid, "message": "x"})
+    uuid = write_event(spool, "action_notify", "agent-1", tid, {"message": "x"})
     with db._connect() as conn:
         conn.execute(
             "INSERT INTO spool_journal(uuid, event_type, applied_at, outcome) VALUES (?,?,?,?)",
@@ -136,3 +139,48 @@ def test_apply_event_refuses_to_reapply_stuck_applying_state(db, spool):
     ok, msg = apply_event(db, event)
     assert ok is False
     assert "applying" in msg.lower() or "interrupted" in msg.lower()
+
+
+def test_drain_applies_action_create_via_existing_cmd_request_action(db, spool):
+    """Real writer shape (cmd_request_action): thread_id at the top level, args
+    carries {message, type, priority} — the replayed handler reads args.thread_id,
+    so apply_event must seed it from the top level or the event dead-letters."""
+    tid = _make_thread(db)
+    write_event(spool, "action_create", "agent-1", tid,
+                {"message": "do the thing", "type": "manual_step", "priority": "high"})
+    stats = drain_spool(db)
+    assert stats["applied"] == 1
+    assert stats["dead"] == 0
+    assert any("do the thing" in (i.get("message") or "") for i in db.get_open_action_items())
+
+
+def test_drain_routes_graph_mark_task_event_type(db, spool):
+    """Regression pin: the committed writer emits event type 'graph_mark_task'
+    (juggle_cmd_graph.py), NOT 'mark_task'. A stale type string would route to
+    the else-arm and dead-letter EVERY real mark-task with 'unknown spool event
+    type'. The task itself is absent here, so the replayed handler fails its own
+    validation — but the failure must NOT be an unknown-type routing miss."""
+    write_event(spool, "graph_mark_task", "agent-1", "",
+                {"task_id": "no-such-task", "fail": False, "handoff": None})
+    event = read_pending(spool)[0]
+    ok, msg = apply_event(db, event)
+    assert "unknown spool event type" not in msg.lower()
+
+
+def test_drain_applies_record_error_with_command_args_key(db, spool):
+    """Real writer shape (_spool_error_event): the captured context rides under
+    'command_args' (a JSON string), NOT 'context'. Reading the wrong key would
+    silently drop it — pin that the replayed dedup_or_insert_error persists it."""
+    write_event(spool, "record_error", "", "", {
+        "signature_hash": "sig-xyz", "error_class": "A", "exc_type": "ValueError",
+        "traceback": "Traceback ...", "entrypoint": "juggle_cli",
+        "command_args": '{"cmd": "graph mark-task"}',
+    })
+    stats = drain_spool(db)
+    assert stats["applied"] == 1
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT command_args FROM error_events WHERE signature_hash=?", ("sig-xyz",)
+        ).fetchone()
+    assert row is not None
+    assert "graph mark-task" in row["command_args"]

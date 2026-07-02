@@ -52,30 +52,41 @@ _NS_DEFAULTS = dict(
 )
 
 
+def _ns(event: SpoolEvent) -> argparse.Namespace:
+    """Reconstruct the SAME argparse.Namespace the original CLI parser would
+    have built: defaults, then the event's top-level thread_id (the CLI's
+    positional — some writers keep it there, not in args, e.g. action_notify/
+    action_create), then the event args (an args-supplied thread_id, e.g. the
+    resolved one on agent_complete, wins over the top-level)."""
+    return argparse.Namespace(**{**_NS_DEFAULTS, "thread_id": event.thread_id, **event.args})
+
+
 def _dispatch(event: SpoolEvent) -> None:
     """Call the ONE matching cmd_* write function for this event type.
-    Raises on any failure — apply_event is the sole exception boundary."""
+    Raises on any failure — apply_event is the sole exception boundary.
+    Event-type strings and arg shapes match the committed spool writers
+    (juggle_cmd_agents*/juggle_cmd_graph), NOT a parallel reimplementation."""
     a = event.args
     if event.type == "agent_complete":
         from juggle_cmd_agents_complete import cmd_complete_agent
-        cmd_complete_agent(argparse.Namespace(**{**_NS_DEFAULTS, **a}))
+        cmd_complete_agent(_ns(event))
     elif event.type == "agent_fail":
         from juggle_cmd_agents_complete import cmd_fail_agent
-        cmd_fail_agent(argparse.Namespace(**{**_NS_DEFAULTS, **a}))
+        cmd_fail_agent(_ns(event))
     elif event.type == "action_create":
         from juggle_cmd_agents import cmd_request_action
-        cmd_request_action(argparse.Namespace(**{**_NS_DEFAULTS, **a}))
+        cmd_request_action(_ns(event))
     elif event.type == "action_ack":
         from juggle_cmd_agents import cmd_ack_action
-        cmd_ack_action(argparse.Namespace(**{**_NS_DEFAULTS, **a}))
+        cmd_ack_action(_ns(event))
     elif event.type == "action_notify":
         if not a.get("message"):
             raise ValueError("action_notify event missing required 'message'")
         from juggle_cmd_agents import cmd_notify
-        cmd_notify(argparse.Namespace(**{**_NS_DEFAULTS, **a}))
-    elif event.type == "mark_task":
+        cmd_notify(_ns(event))
+    elif event.type == "graph_mark_task":
         from juggle_cmd_graph import cmd_graph_mark_task
-        cmd_graph_mark_task(argparse.Namespace(**{**_NS_DEFAULTS, **a}))
+        cmd_graph_mark_task(_ns(event))
     else:
         raise ValueError(f"unknown spool event type {event.type!r}")
 
@@ -102,10 +113,15 @@ def apply_event(db, event: SpoolEvent) -> tuple[bool, str]:
     try:
         a = event.args
         if event.type == "record_error":
+            # Arg keys match _spool_error_event (juggle_selfheal.py): the
+            # captured context rides under 'command_args' (a JSON string), NOT
+            # 'context' — reading the wrong key would silently drop it.
             db.dedup_or_insert_error(
-                signature_hash=a["signature_hash"], error_class="A",
-                exc_type=a["exc_type"], traceback=a["traceback"],
-                entrypoint=a["entrypoint"], command_args=a.get("context", "{}"),
+                signature_hash=a["signature_hash"],
+                error_class=a.get("error_class", "A"),
+                exc_type=a.get("exc_type"), traceback=a.get("traceback"),
+                entrypoint=a.get("entrypoint"),
+                command_args=a.get("command_args", "{}"),
             )
         else:
             _dispatch(event)
