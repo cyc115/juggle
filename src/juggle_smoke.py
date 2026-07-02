@@ -54,6 +54,44 @@ def load_viewports(path: str | Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Isolated DB seeding (hermetic smoke)
+# ---------------------------------------------------------------------------
+
+
+def seed_smoke_db(db_path: str, n_threads: int = 30) -> str:
+    """Create and seed an isolated juggle.db for hermetic smoke rendering.
+
+    The smoke matrix must NOT run the cockpit against the shared production DB:
+    in an agent/worktree context migration of the shared DB is refused
+    (SharedDBMigrationRefused) and the cockpit crashes at startup, blanking every
+    viewport. An isolated DB also makes the render deterministic — the cockpit
+    needs populated topics to fill the body panes, or check_real_estate flags the
+    mostly-blank layout.
+
+    Seeds `n_threads` topics, temporarily lifting the module-level MAX_THREADS cap
+    (the documented test env exports JUGGLE_MAX_THREADS=10) so all are created.
+    Returns `db_path`.
+    """
+    import juggle_db
+    import dbops.schema as _schema
+    import dbops.threads as _threads
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    old_max = juggle_db.MAX_THREADS
+    new_max = max(old_max, n_threads)
+    juggle_db.MAX_THREADS = _schema.MAX_THREADS = _threads.MAX_THREADS = new_max
+    try:
+        for i in range(n_threads):
+            db.create_thread(f"smoke-topic-{i:02d}", session_id="s0")
+    finally:
+        juggle_db.MAX_THREADS = _schema.MAX_THREADS = _threads.MAX_THREADS = old_max
+    return db_path
+
+
+# ---------------------------------------------------------------------------
 # Pure heuristics
 # ---------------------------------------------------------------------------
 

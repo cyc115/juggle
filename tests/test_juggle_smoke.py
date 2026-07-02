@@ -628,6 +628,66 @@ def test_cockpit_pty_close_is_idempotent(tmp_path):
     handle.close()  # must not raise
 
 
+def test_smoke_uses_isolated_db_not_shared_prod(monkeypatch):
+    """Regression pin (2026-07-01): `cockpit --smoke` with no --db ran the cockpit
+    against the shared production DB (db_path=None → default resolution). In an
+    agent/worktree context the cockpit refuses to migrate the shared DB
+    (SharedDBMigrationRefused) and crashes at startup, so every viewport blanked
+    out — footer MISSING and blank_pct>40% across the whole matrix. This silently
+    disabled the mandatory cockpit merge gate. The smoke path must run against an
+    isolated, seeded DB, never the shared prod DB."""
+    from types import SimpleNamespace
+    from pathlib import Path
+
+    import juggle_cmd_misc
+    import juggle_smoke
+    from dbops.graph_guards import SHARED_PROD_DB
+
+    captured: dict = {}
+
+    def fake_run_smoke(viewports, db_path=None, **kw):
+        captured["db_path"] = db_path
+        return [
+            {"profile": n, "cols": v["cols"], "rows": v["rows"], "pass": True}
+            for n, v in viewports.items()
+        ]
+
+    monkeypatch.setattr(juggle_smoke, "run_smoke", fake_run_smoke)
+
+    args = SimpleNamespace(
+        smoke=True,
+        viewport_name=None,
+        json_out=False,
+        interactive=False,
+        smoke_graph=False,
+        db_path=None,
+    )
+    with pytest.raises(SystemExit) as ei:
+        juggle_cmd_misc.cmd_cockpit(args)
+
+    assert ei.value.code == 0
+    db_used = captured.get("db_path")
+    assert db_used, (
+        "smoke ran with db_path=None → cockpit falls back to the shared prod DB "
+        "and crashes in an agent/worktree context"
+    )
+    assert Path(db_used).resolve() != SHARED_PROD_DB, (
+        "smoke must run against an isolated DB, never the shared production DB"
+    )
+
+
+def test_seed_smoke_db_creates_populated_isolated_db(tmp_path):
+    """seed_smoke_db must produce a non-shared DB with enough topics to fill the
+    body panes (empty DB → mostly-blank → check_real_estate fails)."""
+    from juggle_smoke import seed_smoke_db
+    from juggle_db import JuggleDB
+
+    db_path = seed_smoke_db(str(tmp_path / "juggle.db"), n_threads=12)
+    assert Path(db_path).exists()
+    threads = JuggleDB(db_path=db_path).get_all_threads()
+    assert len(threads) >= 12
+
+
 def test_smoke_genuinely_blank_body_still_fails(monkeypatch, tmp_path):
     """Companion to the 2026-06-10 blank-frame pin: a cockpit whose body NEVER
     paints must still fail real-estate (poll deadline bounded, last grid kept)."""

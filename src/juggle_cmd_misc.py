@@ -22,7 +22,8 @@ def cmd_cockpit(args):
     """
     if getattr(args, "smoke", False):
         import json as _json
-        from juggle_smoke import load_viewports, run_smoke
+        import tempfile
+        from juggle_smoke import load_viewports, run_smoke, seed_smoke_db
 
         vp_path = Path(__file__).parent.parent / "config" / "viewports.yaml"
         viewports = load_viewports(vp_path)
@@ -40,13 +41,27 @@ def cmd_cockpit(args):
 
         out_dir = Path("data/cockpit-viewport-review")
         interactive = getattr(args, "interactive", False)
-        results = run_smoke(
-            viewports,
-            db_path=getattr(args, "db_path", None),
-            output_dir=out_dir,
-            interactive=interactive,
-            graph_mode=getattr(args, "smoke_graph", False),
-        )
+        db_path = getattr(args, "db_path", None)
+
+        def _run(seeded_db):
+            return run_smoke(
+                viewports,
+                db_path=seeded_db,
+                output_dir=out_dir,
+                interactive=interactive,
+                graph_mode=getattr(args, "smoke_graph", False),
+            )
+
+        if db_path:
+            # Caller supplied an explicit DB — honour it.
+            results = _run(db_path)
+        else:
+            # No --db: seed an isolated, populated DB so the cockpit renders
+            # deterministically and never touches the shared production DB
+            # (which an agent/worktree context refuses to migrate → crash).
+            with tempfile.TemporaryDirectory(prefix="juggle-smoke-") as _td:
+                seeded = seed_smoke_db(str(Path(_td) / "juggle.db"))
+                results = _run(seeded)
 
         any_fail = any(not r.get("pass") for r in results)
         if getattr(args, "json_out", False):
