@@ -77,6 +77,29 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
             verify_ok=(not verify_failed) and all_verified,
             handoff=handoff,
         )
+    except db_topics.UnmergedVerifyRefused as e:
+        # Defect C (2026-07-01): integrate reported success but no merged_sha was
+        # recorded (e.g. recorded before the push, against a stale origin/main) →
+        # →verified is refused. Do NOT swallow silently: self-heal via reconcile,
+        # which re-derives merged_sha from git reality and completes →verified.
+        import logging
+        _log = logging.getLogger("juggle-topic")
+        _log.warning(
+            "topic %s: verify refused (merged_sha unrecorded) — attempting "
+            "reconcile self-heal: %s", topic["id"], e,
+        )
+        try:
+            state = db_topics.reconcile_topic_state(db, topic["id"])
+        except Exception:
+            _log.exception("topic %s: reconcile self-heal failed", topic["id"])
+            state = (db_topics.get_topic(db, topic["id"]) or {}).get("state", "integrating")
+        if state != "verified":
+            db.add_action_item(
+                thread_id=None,
+                message=(f"Topic {topic['id']} stuck at {state} after integrate: "
+                         f"merged_sha could not be reconciled from git. Investigate."),
+                type_="failure", priority="high",
+            )
     except ValueError as e:
         print(f"Warning: graph topic {topic['id']} not marked — {e}")
         return

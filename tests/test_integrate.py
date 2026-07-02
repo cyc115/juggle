@@ -436,6 +436,43 @@ def test_integrate_happy_path_direct_mode(git_repo_with_remote, tmp_path):
     assert "feat: add feature" in remote_log
 
 
+def test_integrate_direct_records_merged_sha_after_push_pin(git_repo_with_remote, tmp_path):
+    """defect C (2026-07-01): merged_sha was recorded BEFORE the push and its
+    ancestry checked against origin/main, which did not yet contain the commit →
+    merged_sha NULL, topic stuck at 'integrating'. Record AFTER the push so the
+    canonical origin/<main> already contains the merged commit."""
+    from juggle_cmd_integrate import _run_integrate
+    from juggle_db import JuggleDB
+    from dbops import db_topics
+
+    local, remote = git_repo_with_remote
+    wt = _make_worktree(local, str(tmp_path), "MS")
+    _add_commit(wt, "feat.py", "y = 2\n", "feat: add feature")
+
+    db = JuggleDB(db_path=str(tmp_path / "j_ms.db"))
+    db.init_db()
+    tid = db.create_thread("t", session_id="s")
+    db.update_thread(tid, worktree_path=wt, worktree_branch="cyc_MS", main_repo_path=local)
+    db_topics.create_topic(db, topic_id="T-ms", project_id="INBOX", title="F")
+    db_topics.set_topic_thread(db, "T-ms", tid)
+
+    thread = db.get_thread(tid)
+    with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "direct", "test_cmd": ""}):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok, msg = _run_integrate(thread, db)
+
+    assert ok, msg
+    topic = db_topics.get_topic(db, "T-ms")
+    assert topic["merged_sha"], "merged_sha must be recorded after a direct push"
+    # And it must be a real ancestor of the pushed remote main.
+    r = subprocess.run(
+        ["git", "-C", remote, "merge-base", "--is-ancestor", topic["merged_sha"], "main"],
+        capture_output=True,
+    )
+    assert r.returncode == 0, "recorded merged_sha must be an ancestor of the pushed main"
+
+
 def test_integrate_happy_path_pr_mode(git_repo_with_remote, tmp_path):
     """pr mode: branch pushed to origin, local main NOT advanced."""
     from juggle_cmd_integrate import _run_integrate

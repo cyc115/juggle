@@ -363,11 +363,6 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         if result.returncode != 0:
             return _fail(f"FF-merge of {worktree_branch} failed: {result.stderr.strip()}")
 
-        # Record the merged commit (local main tip == branch tip) as the topic's
-        # merged_sha — the single source of truth for the verified gate — BEFORE
-        # worktree fields are cleared below.
-        _record_merged_sha(db, thread_uuid, main_repo_path, local_main)
-
         if push_mode == "direct":
             push_result = subprocess.run(
                 ["git", "-C", main_repo_path, "push", "origin",
@@ -376,6 +371,15 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             )
             if push_result.returncode != 0:
                 return _fail(f"Push failed: {push_result.stderr.strip()}")
+
+        # Record the merged commit (local main tip == branch tip) as the topic's
+        # merged_sha — the single source of truth for the verified gate. Recorded
+        # AFTER the push (defect C, 2026-07-01): _record_merged_sha checks ancestry
+        # against canonical origin/<main>, so recording BEFORE the push tested
+        # against an origin/<main> that did not yet contain the commit → merged_sha
+        # left NULL and the topic wedged at 'integrating'. Still BEFORE the worktree
+        # fields are cleared below (thread → topic binding still resolves).
+        _record_merged_sha(db, thread_uuid, main_repo_path, local_main)
 
         # ── 8. Remove worktree + branch ───────────────────────────────────────
         subprocess.run(

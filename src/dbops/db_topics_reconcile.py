@@ -29,6 +29,52 @@ _FAILED_TASK_STATES = frozenset({
 _ACTIVE_TASK_STATES = frozenset({"running", "dispatching", "integrating"})
 
 
+def _heal_merged_sha(db, topic: dict) -> bool:
+    """Defect C self-heal (2026-07-01): re-derive and RECORD a topic's merged_sha
+    from git reality when its work IS merged but no sha was recorded.
+
+    Incident (T-fix-max-agents-config): integrate recorded merged_sha BEFORE the
+    push and checked ancestry against origin/<main>, which did not yet contain the
+    commit → merged_sha left NULL and the topic wedged at 'integrating'; reconcile
+    then re-derived 'integrating' through the same NULL-sha gate forever.
+
+    Resolves the topic's branch (thread ``worktree_branch``, else ``cyc_<label>``)
+    and repo (thread ``main_repo_path``, else juggle's own repo) and, IFF the
+    branch tip is provably an ancestor of main, records it. Returns True only when
+    a real ancestor sha was written — reconcile NEVER verifies without one
+    (verified ⟺ merged). Never raises.
+    """
+    from dbops.db_topics import set_topic_merged_sha
+    from dbops.graph_guards import (
+        _resolve_topic_repo, resolve_branch_sha, sha_is_ancestor,
+    )
+
+    try:
+        thread_id = topic.get("thread_id")
+        thread = {}
+        if thread_id:
+            try:
+                thread = db.get_thread(thread_id) or {}
+            except Exception:
+                thread = {}
+        branch = (thread.get("worktree_branch") or "").strip()
+        if not branch:
+            label = (thread.get("user_label") or "").strip()
+            branch = f"cyc_{label}" if label else ""
+        if not branch:
+            return False
+        repo = (thread.get("main_repo_path") or "").strip() or _resolve_topic_repo(db, topic)
+        if not repo:
+            return False
+        sha = resolve_branch_sha(repo, branch)
+        if not sha or not sha_is_ancestor(repo, sha):
+            return False
+        set_topic_merged_sha(db, topic["id"], sha)
+        return True
+    except Exception:
+        return False
+
+
 def _has_live_bound_agent(db, topic: dict) -> bool:
     """G4a: True iff a busy agent is bound to the topic's thread.
 
@@ -86,6 +132,11 @@ def reconcile_topic_state(db, topic_id: str) -> str:
         # was a false-verified hole. An orphan with merged_sha NULL stays
         # 'integrating' (needs-attention), NEVER verified.
         if _verified_allowed(db, topic_id):
+            target = "verified"
+        elif _heal_merged_sha(db, topic) and _verified_allowed(db, topic_id):
+            # Defect C self-heal: the work IS merged but merged_sha was never
+            # recorded (integrate recorded it before the push). Re-derive it from
+            # git reality and complete →verified — never verify without a real sha.
             target = "verified"
         else:
             target = "integrating"

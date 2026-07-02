@@ -173,6 +173,77 @@ def test_reconcile_does_not_verify_sha_not_on_main(db, tmp_path):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# defect C (2026-07-01): reconcile self-heals integrating-but-merged topics
+#
+# INCIDENT: T-fix-max-agents-config stuck at 'integrating' post-merge. integrate
+# recorded merged_sha BEFORE the push (checked ancestry against origin/main which
+# did not yet contain the commit) → merged_sha NULL (swallowed). mark_topic_
+# completion raised UnmergedVerifyRefused on →verified which mark_graph_topic
+# swallowed → topic stuck 'integrating'; reconcile re-derived 'integrating'
+# through the same NULL-sha gate and could NOT repair.
+# ---------------------------------------------------------------------------
+
+
+def _ffmerge_branch_into_main(repo: Path, branch: str) -> str:
+    """Create ``branch``, add a commit, ff-merge it into main. Returns its sha
+    (now an ancestor of main, but NOT recorded anywhere on the topic)."""
+    _git(repo, "checkout", "-q", "-b", branch)
+    (repo / "f.txt").write_text("feat\n")
+    _git(repo, "commit", "-aqm", "feat")
+    sha = _git(repo, "rev-parse", branch).stdout.strip()
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--ff-only", branch)
+    return sha
+
+
+def test_reconcile_heals_integrating_when_branch_merged_but_sha_null(db, tmp_path):
+    """RED pin (2026-07-01 T-fix-max-agents-config): topic at 'integrating', all
+    tasks verified, branch provably merged to main, merged_sha NULL. reconcile
+    must re-derive merged_sha from git reality and complete →verified."""
+    repo = _make_repo(tmp_path)
+    sha = _ffmerge_branch_into_main(repo, "cyc_x")  # _mk_topic binds worktree_branch='cyc_x'
+    _mk_topic_all_verified(db, "T-heal", repo)      # integrating + sha NULL
+    assert t.get_topic(db, "T-heal")["merged_sha"] is None
+
+    result = tr.reconcile_topic_state(db, "T-heal")
+
+    assert result == "verified"
+    healed = t.get_topic(db, "T-heal")
+    assert healed["merged_sha"] == sha, "reconcile must RECORD the merged_sha it derived"
+    assert healed["verified_at"] is not None
+
+
+def test_reconcile_does_not_heal_when_branch_not_ancestor(db, tmp_path):
+    """Self-heal must NEVER verify without a real merged sha: an unmerged branch
+    tip (not an ancestor of main) leaves the topic at 'integrating', sha NULL."""
+    repo = _make_repo(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "cyc_x")      # branch exists but NOT merged
+    (repo / "f.txt").write_text("wip\n")
+    _git(repo, "commit", "-aqm", "wip")
+    _git(repo, "checkout", "-q", "main")
+    _mk_topic_all_verified(db, "T-nom", repo)
+
+    assert tr.reconcile_topic_state(db, "T-nom") == "integrating"
+    assert t.get_topic(db, "T-nom")["merged_sha"] is None
+
+
+def test_mark_graph_topic_self_heals_instead_of_silently_sticking(db, tmp_path):
+    """RED pin (2026-07-01): mark_graph_topic swallowed UnmergedVerifyRefused and
+    left the topic stuck at 'integrating'. It must NOT swallow silently — self-heal
+    via reconcile (which records the merged_sha) so the topic reaches 'verified'."""
+    from juggle_cmd_agents_graph_topics import mark_graph_topic
+
+    repo = _make_repo(tmp_path)
+    _ffmerge_branch_into_main(repo, "cyc_x")
+    _mk_topic_all_verified(db, "T-mk", repo)         # integrating + sha NULL
+    tid = t.get_topic(db, "T-mk")["thread_id"]
+
+    mark_graph_topic(db, tid, integrate_ok=True, handoff="h", session_id="s")
+
+    assert t.get_topic(db, "T-mk")["state"] == "verified"
+
+
 def test_worktree_branch_recorded_at_dispatch(db):
     t.create_topic(db, topic_id="a", project_id="INBOX", title="Topic a")
     nid = "a-k0"
