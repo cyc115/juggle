@@ -171,6 +171,11 @@ def test_drain_applies_record_orchestration_error(monkeypatch, tmp_path):
     db = JuggleDB(str(tmp_path / "j.db"))
     db.init_db()
     monkeypatch.setenv("JUGGLE_CONFIG_DIR", str(tmp_path / "cfg"))
+    # The global conftest guard defaults JUGGLE_SPOOL_DIR (higher precedence
+    # than config_dir — see juggle_spool_paths.spool_dir) to its own tmp dir;
+    # clear it here so drain_spool()'s internal spool_dir() call resolves to
+    # THIS test's config_dir-based spool, where the event below is written.
+    monkeypatch.delenv("JUGGLE_SPOOL_DIR", raising=False)
     spool = tmp_path / "cfg" / "spool"
     write_event(spool, "record_orchestration_error", "", "", {
         "signature_hash": "sig-b", "error_class": "B", "exc_type": None,
