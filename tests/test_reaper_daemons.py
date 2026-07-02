@@ -182,10 +182,13 @@ def test_daemon_cap_zero_or_negative_is_disabled():
 
 
 def test_poll_once_invokes_daemon_reaper(tmp_path):
-    """_poll_once must call reap_watchdog_daemons_tick.
+    """_poll_once must call reap_watchdog_daemons_tick WHEN it owns the prod DB.
 
     2026-06-20 leak: the daemon loop had no daemon reaper at all. This pin
     fails if a refactor drops the wiring (the leak would silently return).
+
+    2026-07-01 isolation: the global (pgrep) reaper is now prod-gated, so the
+    call is only made when ``is_prod_db(DB_PATH)`` — patched True here.
     """
     import importlib.machinery
     import importlib.util
@@ -226,12 +229,73 @@ def test_poll_once_invokes_daemon_reaper(tmp_path):
     db.get_all_agents.return_value = []
     mgr = mock.MagicMock()
 
+    import juggle_watchdog_singleton as _wsg
     with mock.patch.dict("sys.modules", {"juggle_reaper": reaper_module_mock}):
-        with mock.patch.object(mod, "get_settings", return_value=settings):
-            with mock.patch.object(mod, "check_orphaned_threads"):
-                with mock.patch.object(mod, "get_session_id", return_value="s1"):
-                    with mock.patch.object(mod, "write_heartbeat", mock.MagicMock()):
-                        mod._poll_once(db, mgr)
+        with mock.patch.object(_wsg, "is_prod_db", return_value=True):
+            with mock.patch.object(mod, "get_settings", return_value=settings):
+                with mock.patch.object(mod, "check_orphaned_threads"):
+                    with mock.patch.object(mod, "get_session_id", return_value="s1"):
+                        with mock.patch.object(mod, "write_heartbeat", mock.MagicMock()):
+                            mod._poll_once(db, mgr)
 
     reaper_mock.assert_called_once_with(5)
+    logging.disable(logging.NOTSET)
+
+
+def test_poll_once_nonprod_daemon_skips_global_reaper(tmp_path):
+    """REGRESSION PIN 2026-07-01 (test-isolation): a NON-prod (worktree/test)
+    daemon must NOT invoke the system-wide (pgrep) daemon reaper, so a suite run
+    can never SIGTERM an externally-started / live prod watchdog it did not spawn.
+
+    Pre-fix: _poll_once called reap_watchdog_daemons_tick unconditionally; a
+    test-spawned daemon's tick enumerated ALL watchdog processes and could kill
+    the live prod daemon via enforce_daemon_cap (oldest-first).
+    """
+    import importlib.machinery
+    import importlib.util
+    import logging
+    import tempfile
+    from unittest import mock
+
+    src_dir = Path(__file__).parent.parent / "src"
+    loader = importlib.machinery.SourceFileLoader(
+        "juggle_watchdog_daemon_pin2", str(src_dir / "juggle_watchdog_daemon.py")
+    )
+    spec = importlib.util.spec_from_loader("juggle_watchdog_daemon_pin2", loader)
+    mod = importlib.util.module_from_spec(spec)
+
+    settings = {
+        "paths": {"config_dir": tempfile.mkdtemp()},
+        "agent_boot_grace_secs": 120,
+        "agent_idle_ttl_secs": 43200,
+        "watchdog": {"max_daemons": 5},
+    }
+    js_mock = mock.MagicMock()
+    js_mock.get_settings = mock.Mock(return_value=settings)
+    _mocks = {
+        "juggle_db": mock.MagicMock(),
+        "juggle_settings": js_mock,
+        "juggle_tmux": mock.MagicMock(),
+        "juggle_watchdog": mock.MagicMock(),
+        "juggle_watchdog_health": mock.MagicMock(),
+    }
+    with mock.patch.dict("sys.modules", _mocks):
+        spec.loader.exec_module(mod)
+
+    reaper_mock = mock.MagicMock()
+    reaper_module_mock = mock.MagicMock(reap_watchdog_daemons_tick=reaper_mock)
+    db = mock.MagicMock()
+    db.get_all_agents.return_value = []
+    mgr = mock.MagicMock()
+
+    import juggle_watchdog_singleton as _wsg
+    with mock.patch.dict("sys.modules", {"juggle_reaper": reaper_module_mock}):
+        with mock.patch.object(_wsg, "is_prod_db", return_value=False):
+            with mock.patch.object(mod, "get_settings", return_value=settings):
+                with mock.patch.object(mod, "check_orphaned_threads"):
+                    with mock.patch.object(mod, "get_session_id", return_value="s1"):
+                        with mock.patch.object(mod, "write_heartbeat", mock.MagicMock()):
+                            mod._poll_once(db, mgr)
+
+    reaper_mock.assert_not_called()
     logging.disable(logging.NOTSET)

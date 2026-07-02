@@ -51,6 +51,10 @@ def test_sanctioned_direct_launch_stays_alive(tmp_path):
     env["JUGGLE_DB_PATH"] = str(db_path)
     env["JUGGLE_ORCHESTRATOR"] = "1"
     env[wsg.SANCTION_ENV] = "1"
+    # Isolate the daemon's log + snapshot/recovery dirs to tmp so a test-spawned
+    # daemon NEVER writes the shared ~/.juggle/watchdog.log (2026-07-01: test
+    # daemons polluted the prod watchdog log and looked like prod thrashing).
+    env["JUGGLE_CONFIG_DIR"] = str(tmp_path)
     env.pop("JUGGLE_IS_AGENT", None)
     env.pop("JUGGLE_WATCHDOG_SUPERVISED", None)
 

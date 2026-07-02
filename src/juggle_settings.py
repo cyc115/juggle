@@ -418,6 +418,9 @@ def get_settings() -> dict:
         settings["tmux"]["ready_poll_interval_secs"] = float(
             os.environ["JUGGLE_READY_POLL_INTERVAL_SECS"]
         )
+    # config_dir override — isolates a test daemon's log/dirs off ~/.juggle (2026-07-01).
+    if "JUGGLE_CONFIG_DIR" in os.environ:
+        settings["paths"]["config_dir"] = os.environ["JUGGLE_CONFIG_DIR"]
     # Expand ~ in all path values
     for key in ("data_dir", "config_dir", "digest_log_dir"):
         settings["paths"][key] = str(Path(settings["paths"][key]).expanduser())

@@ -16,6 +16,21 @@ def test_get_settings_reads_defaults_when_no_config(tmp_path, monkeypatch):
     assert s["max_threads"] == DEFAULTS["max_threads"]
 
 
+def test_get_settings_honors_config_dir_env_override(tmp_path, monkeypatch):
+    """REGRESSION PIN 2026-07-01 (test-isolation): JUGGLE_CONFIG_DIR redirects
+    config_dir so a test-spawned watchdog daemon writes its log + snapshot/
+    recovery dirs under tmp_path, never the shared ~/.juggle/watchdog.log.
+
+    Pre-fix get_settings ignored the env → config_dir stayed the ~/.juggle
+    default → real test daemons polluted the prod watchdog log.
+    """
+    monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(tmp_path / "nonexistent.json"))
+    monkeypatch.setenv("JUGGLE_CONFIG_DIR", str(tmp_path / "isolated"))
+    from juggle_settings import get_settings
+
+    assert get_settings()["paths"]["config_dir"] == str(tmp_path / "isolated")
+
+
 def test_get_settings_loads_config_file(tmp_path, monkeypatch):
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"max_threads": 7}))

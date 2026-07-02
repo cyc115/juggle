@@ -277,11 +277,15 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     except Exception:
         pass
 
-    # Watchdog-daemon reaper (2026-06-20 leak, RCA §6): reap daemons whose
-    # worktree/DB vanished + enforce the global daemon cap. Fail-safe.
+    # Watchdog-daemon reaper (2026-06-20 leak): reap orphans + global daemon cap.
+    # ONLY the sanctioned prod daemon polices the system-wide (pgrep) table — a
+    # non-prod daemon must never SIGTERM a process it did not spawn (2026-07-01
+    # isolation: test daemons killed the live prod watchdog via the cap). Fail-safe.
     try:
         from juggle_reaper import reap_watchdog_daemons_tick
-        reap_watchdog_daemons_tick(int(get_settings().get("watchdog", {}).get("max_daemons", 8)))
+        from juggle_watchdog_singleton import is_prod_db
+        if is_prod_db(DB_PATH):
+            reap_watchdog_daemons_tick(int(get_settings().get("watchdog", {}).get("max_daemons", 8)))
     except Exception:
         _log.exception("Watchdog: daemon reaper tick failed — continuing")
 
@@ -380,10 +384,8 @@ def main() -> None:
         _log.info("Watchdog ready (PID=%d, interval=%ds, supervised=%s)",
                   os.getpid(), _POLL_INTERVAL, _SUPERVISED)
 
-        # Defect B (2026-07-01): fingerprint the plugin's git HEAD at boot; on any
-        # drift the daemon exits cleanly so the cockpit's ensure_watchdog respawns
-        # it on fresh code. Checked at loop TOP (between ticks) so we never
-        # interrupt an in-flight tick / integrate. Exits regardless of supervisor.
+        # Defect B (2026-07-01): fingerprint git HEAD at boot; on drift, exit
+        # cleanly at loop TOP (never mid-tick) → cockpit respawns on fresh code.
         _boot_code_version = current_code_version(_REPO_ROOT)
 
         while _running:
