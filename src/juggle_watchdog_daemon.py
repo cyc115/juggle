@@ -22,6 +22,7 @@ from pathlib import Path
 import daemon_pidfile
 from juggle_db import JuggleDB, DB_PATH
 from juggle_settings import get_settings
+from juggle_spool_apply import drain_spool
 from juggle_tmux import JuggleTmuxManager
 from juggle_watchdog_health import write_heartbeat
 from juggle_watchdog_respawn import (
@@ -184,6 +185,15 @@ def _capture_pane(mgr: JuggleTmuxManager, pane_id: str, lines: int = 80) -> str 
 
 def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     write_heartbeat()
+
+    # Spool drain (T-spool-09): apply agent-context spooled events (Task 7/8's
+    # write path) every tick. Guarded so a drain bug never downs the tick —
+    # apply_event already isolates per-event failures via dead-lettering.
+    try:
+        drain_spool(db)
+    except Exception:
+        _log.exception("Watchdog: spool drain tick failed — continuing")
+
     snapshot_dir, recovery_dir = _get_dirs()
     now_ts = time.time()
     session_id = get_session_id(db)
@@ -408,6 +418,13 @@ def main() -> None:
         db = JuggleDB(str(DB_PATH))
         db.init_db()
         db.cleanup_watchdog_events()
+
+        # Drain-on-start (T-spool-09): apply any events spooled while the
+        # watchdog was down, instead of leaving them stranded until tick 1.
+        try:
+            drain_spool(db)
+        except Exception:
+            _log.exception("Watchdog: startup spool drain failed — continuing")
 
         mgr = JuggleTmuxManager()
         _log.info("Watchdog ready (PID=%d, interval=%ds, supervised=%s)",
