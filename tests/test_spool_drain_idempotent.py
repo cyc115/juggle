@@ -121,6 +121,34 @@ def test_apply_event_dead_letters_on_systemexit_without_propagating(db, spool, m
     assert row["outcome"] == "failed"
 
 
+def test_apply_event_journals_failure_in_the_db_it_was_called_with_not_get_db(db, spool, monkeypatch, tmp_path):
+    """Regression pin (2026-07-02 spool isolation incident, point 4): a replay
+    failure must journal 'failed' in the SAME db apply_event/drain_spool were
+    called with — never split-brain into whatever DB the dispatched cmd_*
+    handler's own get_db() happens to resolve (e.g. an unrelated tmp DB in this
+    test) while the caller's journal silently sees nothing."""
+    other_db = JuggleDB(str(tmp_path / "other-not-the-caller-db.db"))
+    other_db.init_db()
+    import juggle_cli_common as cli_common
+    monkeypatch.setattr(cli_common, "get_db", lambda *a, **kw: other_db)
+
+    uuid = write_event(spool, "agent_complete", "agent-1", "bogus-thread-id", {
+        "thread_id": "bogus-thread-id", "result_summary": "x", "retain_text": None,
+        "open_questions": None, "handoff": None, "role": None,
+    })
+    event = read_pending(spool)[0]
+    ok, _msg = apply_event(db, event)
+    assert ok is False
+
+    with db._connect() as conn:
+        row = conn.execute("SELECT outcome FROM spool_journal WHERE uuid=?", (uuid,)).fetchone()
+    assert row is not None and row["outcome"] == "failed"
+
+    with other_db._connect() as conn:
+        other_row = conn.execute("SELECT outcome FROM spool_journal WHERE uuid=?", (uuid,)).fetchone()
+    assert other_row is None
+
+
 def test_apply_event_refuses_to_reapply_stuck_applying_state(db, spool):
     """DA Resolution #2 pin: simulate a crash between the 'applying' journal
     write and the handler completing (process killed mid-flight — the only way

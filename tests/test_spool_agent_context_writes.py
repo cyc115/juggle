@@ -103,6 +103,10 @@ def spool_env(monkeypatch, tmp_path):
     monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
     config_dir = tmp_path / "juggle_config"
     monkeypatch.setenv("JUGGLE_CONFIG_DIR", str(config_dir))
+    # The global conftest guard defaults JUGGLE_SPOOL_DIR (higher precedence
+    # than config_dir — see juggle_spool_paths.spool_dir) to its own tmp dir;
+    # clear it here so this fixture's config_dir-based redirect wins.
+    monkeypatch.delenv("JUGGLE_SPOOL_DIR", raising=False)
     monkeypatch.setattr(cli_common, "DB_PATH", tmp_path / "empty.db")
     return config_dir / "spool"
 

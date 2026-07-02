@@ -55,6 +55,61 @@ def _isolate_db_from_prod(tmp_path, monkeypatch):
     yield
 
 
+# ── Spool test isolation (2026-07-02 dead-letter incident) ────────────────────
+# 79 production spool events were consumed/dead-lettered by agent worktree TEST
+# RUNS of test_spool_drain_idempotent.py — drain_spool/spool_dir() resolved the
+# REAL ~/.juggle/spool while tests journaled into per-test tmp DBs. Two layers,
+# mirroring `_isolate_db_from_prod` above:
+#
+#   1. `JUGGLE_SPOOL_DIR` is pointed at a per-test tmp dir, so any call to
+#      `spool_dir()` (any import style — the env var is read at CALL time, so
+#      this covers both `from juggle_spool_paths import spool_dir` at module
+#      level and inside a function body) lands in a throwaway dir.
+#
+#   2. The spool read/write primitives (`dbops.spool.write_event` /
+#      `read_pending` / `move_to_dead`) are wrapped to RAISE the instant any
+#      test targets the real spool dir directly (bypassing spool_dir()
+#      entirely) — see tests/test_spool_isolation.py.
+@pytest.fixture(autouse=True)
+def _isolate_spool_from_prod(tmp_path, monkeypatch):
+    monkeypatch.setenv("JUGGLE_SPOOL_DIR", str(tmp_path / "spool-isolated"))
+
+    import dbops.spool as _spool_mod
+    from _spool_isolation import assert_not_prod_spool
+
+    _orig_write_event = _spool_mod.write_event
+    _orig_read_pending = _spool_mod.read_pending
+    _orig_move_to_dead = _spool_mod.move_to_dead
+
+    def _guarded_write_event(spool_dir, *a, **kw):
+        assert_not_prod_spool(spool_dir)
+        return _orig_write_event(spool_dir, *a, **kw)
+
+    def _guarded_read_pending(spool_dir, *a, **kw):
+        assert_not_prod_spool(spool_dir)
+        return _orig_read_pending(spool_dir, *a, **kw)
+
+    def _guarded_move_to_dead(spool_dir, *a, **kw):
+        assert_not_prod_spool(spool_dir)
+        return _orig_move_to_dead(spool_dir, *a, **kw)
+
+    for _name, _fn in (
+        ("write_event", _guarded_write_event),
+        ("read_pending", _guarded_read_pending),
+        ("move_to_dead", _guarded_move_to_dead),
+    ):
+        monkeypatch.setattr(_spool_mod, _name, _fn)
+        # `juggle_spool_apply` imports read_pending/move_to_dead at MODULE
+        # level (`from dbops.spool import ...`) — that binding is frozen at
+        # import time, so patching only the dbops.spool attribute above is
+        # invisible to it. Patch the local name too (mirrors the multi-module
+        # worktree guard below).
+        _sa_mod = sys.modules.get("juggle_spool_apply")
+        if _sa_mod is not None and hasattr(_sa_mod, _name):
+            monkeypatch.setattr(_sa_mod, _name, _fn)
+    yield
+
+
 # ── Worktree-leak guard (2026-06-20 incident) ─────────────────────────────────
 # A test that called ``_create_worktree`` WITHOUT pointing ``worktree_root`` at
 # its own ``tmp_path`` wrote the checkout to /private/tmp/juggle-* — outside
