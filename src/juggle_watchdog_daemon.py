@@ -138,6 +138,11 @@ _running = True
 # In-memory Enter retry count; resets on restart (stalled-silent is fallback)
 _enter_sent: dict[str, int] = {}
 
+# Stalled-pane detector state (busy agents idling at the prompt). Lives across
+# ticks like _enter_sent; resets on daemon restart. See juggle_watchdog_stall.
+from juggle_watchdog_stall import StallTracker as _StallTracker  # noqa: E402
+_stall_tracker = _StallTracker()
+
 # P4 tick-on-demand: threading.Event coalesces N concurrent SIGUSR1 signals
 # into at most one extra tick. The handler ONLY sets the event (async-signal-safe
 # in CPython: GIL + threading.Event.set() is lock-free in the signal context).
@@ -256,6 +261,14 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
                       agent_id[:8])
 
         # "quiet" — no action
+
+    # Loop 1b: stalled-pane detector — nudge busy agents idling at the prompt
+    # (finished work but never finalized). Guarded so a bug never downs the tick.
+    try:
+        from juggle_watchdog_stall import check_stalled_agents
+        check_stalled_agents(db, mgr, _stall_tracker, now=now_ts, session_id=session_id)
+    except Exception:
+        _log.exception("Watchdog: stall detector tick failed — continuing")
 
     # Loop 2: orphaned thread detection
     _orphan_threshold = float(os.environ.get("JUGGLE_ORPHAN_THRESHOLD", "300"))

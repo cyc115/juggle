@@ -99,7 +99,12 @@ DEFAULTS: dict = {
     },
     # Watchdog daemon lifecycle (2026-06-20): global daemon cap (<=0 disables) +
     # ensure-watchdog respawn-debounce window (secs). See juggle_reaper / _lifecycle.
-    "watchdog": {"max_daemons": 8, "min_respawn_interval_secs": 60},
+    # stall_threshold_minutes / max_stall_nudges (2026-07-01): stalled-pane
+    # detector config — see juggle_watchdog_stall.
+    "watchdog": {
+        "max_daemons": 8, "min_respawn_interval_secs": 60,
+        "stall_threshold_minutes": 3, "max_stall_nudges": 2,
+    },
     # Hindsight
     "hindsight": {
         "enabled": False,

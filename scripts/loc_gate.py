@@ -50,7 +50,7 @@ GRANDFATHERED: dict[str, int] = {
     # schema, a Migration-45 call in apply_recent_migrations, and argparse wiring
     # cannot be extracted out of their owning modules. Migration 45's body WAS
     # extracted to dbops/migration_selfheal_status_check.py (491->443 here).
-    "src/juggle_settings.py": 451,
+    "src/juggle_settings.py": 456,  # +5 stalled-pane detector config (watchdog.stall_threshold_minutes / max_stall_nudges) (2026-07-01)
     "src/juggle_cmd_integrate.py": 450,
     "src/juggle_cockpit_view.py": 461,
     "src/juggle_cockpit_model.py": 439,
@@ -59,7 +59,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
     "src/juggle_graph_dispatch.py": 404,  # +7 defect-F: reuse the topic's bound surfacing conversation instead of minting a "[T-<id>]" mirror row (2026-07-01)
-    "src/juggle_watchdog_daemon.py": 429,  # +2 defect-B: git-HEAD stale-code exit replaces mtime block, and prod-only gate on the global daemon reaper (2026-07-01)
+    "src/juggle_watchdog_daemon.py": 442,  # +13 stalled-pane detector wiring: StallTracker instance + check_stalled_agents tick pass (2026-07-01)
     "src/dbops/db_topics.py": 366,  # +1 P8 engine delegation: irreducible db_node_machine import (topic_transition delegates the decision) (2026-06-27)
     "src/juggle_context.py": 345,
     "src/juggle_watchdog_singleton.py": 367,
