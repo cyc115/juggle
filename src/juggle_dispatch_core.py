@@ -42,11 +42,6 @@ def acquire_agent(
 
     mgr = _mgr or _com.JuggleTmuxManager()
 
-    if len(db.get_all_agents()) >= MAX_BACKGROUND_AGENTS:
-        raise CapacityError(
-            f"agent pool full ({MAX_BACKGROUND_AGENTS} max) for thread {thread_id}"
-        )
-
     target_repo = repo
     if target_repo is None:
         target_repo = _spawn_repo_path()
@@ -81,6 +76,12 @@ def acquire_agent(
             break
 
     if agent is None:
+        # Only the spawn branch grows the pool, so enforce the cap HERE — a
+        # reusable idle agent must never be refused at cap (2026-07-01 incident).
+        if len(db.get_all_agents()) >= MAX_BACKGROUND_AGENTS:
+            raise CapacityError(
+                f"agent pool full ({MAX_BACKGROUND_AGENTS} max) for thread {thread_id}"
+            )
         try:
             agent = mgr.spawn_agent(
                 db, role or "researcher", model=model,
