@@ -82,6 +82,8 @@ def cmd_cockpit(args):
     cmd = ["uv", "run", str(script)]
     if getattr(args, "db_path", None):
         cmd += ["--db", args.db_path]
+    if getattr(args, "graph_full", False):
+        cmd += ["--graph-full"]
     if getattr(args, "legend", False):
         cmd += ["--legend"]
     elif getattr(args, "out", False):

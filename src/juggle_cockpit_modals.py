@@ -254,6 +254,12 @@ COCKPIT_HELP_TABLE: list[dict] = [
                 "desc": "Open the full-screen dependency railroad for the selected task's project",
             },
             {
+                "action": "gitlog",
+                "key": "l  (in Graph mode)",
+                "short": "Log",
+                "desc": "Open the full-screen git-log graph view of every project's task graph; l again closes",
+            },
+            {
                 "action": "projects",
                 "key": "p",
                 "short": "Proj",

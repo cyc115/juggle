@@ -112,6 +112,9 @@ MISC_COMMANDS: tuple[Cmd, ...] = (
             Arg("--duration", type=int, default=60, metavar="N",
                 help="Duration in seconds for --profile (default: 60)"),
             Arg("--screenshot", metavar="PATH", help="Save PNG/JPG/SVG screenshot to PATH"),
+            Arg("--graph-full", dest="graph_full", action="store_true",
+                help="With --out/--screenshot: render the full-screen git-log graph view "
+                     "(cockpit-gitlog-view) instead of the four-pane dashboard"),
             Arg("--legend", action="store_true",
                 help="Print the ? help overlay (keys + glyph legend) to stdout then exit (no TUI)"),
             Arg("--smoke", action="store_true",

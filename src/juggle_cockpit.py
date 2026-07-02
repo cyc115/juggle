@@ -1037,19 +1037,15 @@ if __name__ == "__main__":
         metavar="N",
         help="Duration in seconds for --profile (default: 60)",
     )
-    parser.add_argument(
-        "--profile-worker",
-        action="store_true",
-        dest="profile_worker",
-        help=argparse.SUPPRESS,  # internal: child process spawned by run_profile
-    )
+    # internal: child process spawned by run_profile
+    parser.add_argument("--profile-worker", action="store_true", dest="profile_worker",
+                         help=argparse.SUPPRESS)
     parser.add_argument("--screenshot", metavar="PATH", default=None, help="Save PNG/JPG/SVG screenshot to PATH")
     parser.add_argument("--graph", action="store_true", help="Render the lower-right panel in graph mode (screenshot)")
-    parser.add_argument(
-        "--legend",
-        action="store_true",
-        help="Print the ? help overlay (keys + glyph legend) to stdout then exit",
-    )
+    parser.add_argument("--graph-full", dest="graph_full", action="store_true",
+        help="With --out/--screenshot: render the full-screen git-log view instead")
+    parser.add_argument("--legend", action="store_true",
+                         help="Print the ? help overlay (keys + glyph legend) to stdout then exit")
     args = parser.parse_args()
     if args.legend:
         from juggle_cockpit_modals import render_help_lines
@@ -1057,14 +1053,16 @@ if __name__ == "__main__":
         sys.exit(0)
     if args.screenshot:
         from juggle_cockpit_screenshot import save_screenshot
-        out = save_screenshot(
-            args.screenshot, args.db_path, graph_mode=getattr(args, "graph", False)
-        )
+        out = save_screenshot(args.screenshot, args.db_path, graph_mode=args.graph,
+                               graph_full=args.graph_full)
         print(out)
         sys.exit(0)
     if args.out:
-        from juggle_cockpit_static import render_static
-        sys.stdout.write(render_static(db_path=args.db_path))
+        if args.graph_full:
+            from juggle_cockpit_static import render_gitlog_static as _r
+        else:
+            from juggle_cockpit_static import render_static as _r
+        sys.stdout.write(_r(db_path=args.db_path))
         sys.exit(0)
     if args.profile_worker:
         _profile_worker_loop(args.duration, db_path=args.db_path)
