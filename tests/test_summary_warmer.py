@@ -175,3 +175,17 @@ def test_warm_one_bad_topic_does_not_abort_sweep(tmp_path, monkeypatch):
 
 def test_warm_returns_zero_for_none_db():
     assert warm_stale_summaries(None) == 0
+
+
+def test_warm_caps_regens_per_sweep(tmp_path):
+    """A burst of many stale topics (e.g. cold start) must not block a single
+    tick for minutes — warm_stale_summaries caps regens per call so backlog
+    drains gradually across ticks instead."""
+    db = _juggle_db(tmp_path)
+    for i in range(5):
+        tid = db.create_thread(f"Topic {i}", session_id="")
+        db.add_message(tid, "user", "hi")
+
+    n = warm_stale_summaries(db, llm_fn=_mock_llm, threshold=3, max_regens=2)
+
+    assert n == 2

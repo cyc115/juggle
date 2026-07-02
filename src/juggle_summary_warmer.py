@@ -15,6 +15,12 @@ import sqlite3
 
 _log = logging.getLogger("juggle.watchdog")
 
+# Safety cap on regens per sweep: a cold start (or a burst of simultaneously
+# stale topics) must not block a single tick for minutes running sequential
+# LLM calls (3.9-18.3s each, measured 2026-07-01) — backlog drains gradually
+# across ticks instead.
+_DEFAULT_MAX_REGENS_PER_SWEEP = 5
+
 
 def topic_needs_warming(cached_last_message_id: int | None, current_cursor: int, threshold: int) -> bool:
     """Pure decision: should the eager warmer regenerate this topic's cache row?
@@ -29,12 +35,16 @@ def topic_needs_warming(cached_last_message_id: int | None, current_cursor: int,
     return (current_cursor - cached_last_message_id) >= threshold
 
 
-def warm_stale_summaries(db, llm_fn=None, threshold: int | None = None) -> int:
+def warm_stale_summaries(
+    db, llm_fn=None, threshold: int | None = None, max_regens: int = _DEFAULT_MAX_REGENS_PER_SWEEP
+) -> int:
     """Regenerate stale topic_summary_cache rows for non-archived topics.
 
-    At most one regen per topic per call (single pass over `get_all_threads`).
-    Any per-topic failure is logged and skipped — one bad topic never aborts
-    the sweep. Returns the number of topics regenerated.
+    At most one regen per topic per call (single pass over `get_all_threads`),
+    and at most `max_regens` total per call — remaining stale topics are left
+    for the next tick sweep rather than blocking this one. Any per-topic
+    failure is logged and skipped — one bad topic never aborts the sweep.
+    Returns the number of topics regenerated.
     """
     if db is None:
         return 0
@@ -59,6 +69,12 @@ def warm_stale_summaries(db, llm_fn=None, threshold: int | None = None) -> int:
 
     regenerated = 0
     for thread in threads:
+        if regenerated >= max_regens:
+            _log.info(
+                "warm_stale_summaries: hit max_regens=%d cap — remaining stale topics deferred to next sweep",
+                max_regens,
+            )
+            break
         thread_id = thread.get("id")
         if not thread_id:
             continue
