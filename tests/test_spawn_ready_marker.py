@@ -98,11 +98,11 @@ def test_wait_for_ready_beats_heartbeat_while_blocking_in_watchdog(monkeypatch):
     minutes the heartbeat went stale and every CLI call warned "watchdog not
     running or unresponsive". Inside the watchdog process the poll must refresh
     the heartbeat as it waits."""
-    import juggle_tmux
+    import juggle_spawn_readiness
     from juggle_tmux import JuggleTmuxManager
 
     beats = []
-    monkeypatch.setattr(juggle_tmux, "write_heartbeat",
+    monkeypatch.setattr(juggle_spawn_readiness, "write_heartbeat",
                         lambda *a, **k: beats.append(1), raising=False)
     monkeypatch.setenv("JUGGLE_WATCHDOG_SANCTIONED", "1")
     monkeypatch.delenv("JUGGLE_TMUX_MOCK_NOT_READY_PANES", raising=False)
@@ -119,11 +119,11 @@ def test_wait_for_ready_beats_heartbeat_while_blocking_in_watchdog(monkeypatch):
 def test_wait_for_ready_no_heartbeat_outside_watchdog(monkeypatch):
     """Outside the watchdog process (plain CLI dispatch) the readiness poll must
     NOT touch the heartbeat — that would mask a genuinely dead watchdog."""
-    import juggle_tmux
+    import juggle_spawn_readiness
     from juggle_tmux import JuggleTmuxManager
 
     beats = []
-    monkeypatch.setattr(juggle_tmux, "write_heartbeat",
+    monkeypatch.setattr(juggle_spawn_readiness, "write_heartbeat",
                         lambda *a, **k: beats.append(1), raising=False)
     monkeypatch.delenv("JUGGLE_WATCHDOG_SANCTIONED", raising=False)
     monkeypatch.delenv("JUGGLE_TMUX_MOCK_NOT_READY_PANES", raising=False)

@@ -22,66 +22,20 @@ from juggle_repo_binding import spawn_repo_path as _spawn_repo_path  # noqa: E40
 from juggle_claude_trust import pretrust_spawn_dir as _pretrust_spawn_dir  # noqa: E402,F401
 
 
-# Built-in Claude Code markers — used as the fallback when the configured
-# harness adapter can't be resolved (see _harness_markers).
-#
-# "shift+tab to cycle" is the STABLE structural marker of a ready interactive
-# input box: it renders in every permission mode ("accept edits on ... (shift+tab
-# to cycle)", "bypass permissions on ... (shift+tab to cycle)") and for every
-# model, and persists when the pane is idle — unlike the transient "/effort"
-# widget or the mode-specific "bypass permissions on" text (defect E, 2026-07-01:
-# juggle spawns in accept-edits mode, so those two never reliably matched).
-_READY_MARKERS = ("shift+tab to cycle", "bypass permissions on", "/effort")
-_SUBMISSION_MARKERS = ("esc to interrupt", "✻", "✶")
-# Markers indicating the agent is already processing (consumed prompt, started tool calls).
-# Used in wait_for_submission to detect the fast-agent false-negative: prompt left the
-# input box before the first poll, so _SUBMISSION_MARKERS are gone but agent is running.
-_ACTIVITY_MARKERS = ("⏺",)
+# Spawn-readiness marker plumbing lives in juggle_spawn_readiness (extracted for
+# the LOC/architecture gate). Imported into this namespace so the historical
+# call/patch surface (juggle_tmux._harness_markers / _READY_MARKERS / …) is
+# intact for callers and tests.
+from juggle_spawn_readiness import (  # noqa: E402
+    _ACTIVITY_MARKERS,
+    _beat_heartbeat_if_watchdog,
+    _harness_markers,
+    _READY_MARKERS,  # noqa: F401 — re-exported for tests/back-compat
+    _SUBMISSION_MARKERS,  # noqa: F401 — re-exported for wait_for_submission
+)
+
 _DETECT_TAIL_LINES = 10  # lines of scrollback tail used for submission/stuck detection
 _PROMPT_HEAD_CHARS = 40
-
-
-# Best-effort watchdog-heartbeat refresh, bound at import so tests can patch it.
-# A long spawn-readiness wait runs INSIDE the watchdog tick; without a refresh
-# the heartbeat goes stale and CLI calls warn "watchdog not running" (defect E).
-try:
-    from juggle_watchdog_health import write_heartbeat  # noqa: F401
-except Exception:  # pragma: no cover — health module always importable in practice
-    write_heartbeat = None  # type: ignore[assignment]
-
-
-def _beat_heartbeat_if_watchdog() -> None:
-    """Refresh the watchdog heartbeat when running inside the watchdog process.
-
-    Guarded by ``JUGGLE_WATCHDOG_SANCTIONED`` (set only in the watchdog child)
-    so a plain CLI dispatch never touches the heartbeat — that would mask a
-    genuinely dead watchdog. Never raises."""
-    if os.environ.get("JUGGLE_WATCHDOG_SANCTIONED") != "1" or write_heartbeat is None:
-        return
-    try:
-        write_heartbeat()
-    except Exception:
-        pass
-
-
-def _harness_markers():
-    """Return ``(readiness, submission)`` marker tuples for the default harness.
-
-    Resolved from the GLOBAL default harness (``agent.harness``) via
-    ``juggle_harness.get_adapter`` — panes don't carry their harness id, so a
-    mixed per-role harness setup shares these markers. Falls back to the
-    built-in Claude markers if the adapter can't be resolved.
-    """
-    try:
-        from juggle_harness import get_adapter
-
-        adapter = get_adapter()
-        return (
-            adapter.readiness_markers() or _READY_MARKERS,
-            adapter.submission_markers() or _SUBMISSION_MARKERS,
-        )
-    except Exception:
-        return _READY_MARKERS, _SUBMISSION_MARKERS
 
 
 class JuggleTmuxManager:

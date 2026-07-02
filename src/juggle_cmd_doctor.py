@@ -1,11 +1,15 @@
 """Juggle CLI — `doctor` subcommand: migrate config + DB to current schema."""
 
-import copy
 import json
 import os
 import shutil
 import sqlite3
 from pathlib import Path
+
+# Pure config-schema migrations live in juggle_doctor_migrations (extracted for
+# the LOC/architecture gate). Re-exported here for the historical call/patch
+# surface (juggle_cmd_doctor._migrate_config used by tests + cmd_doctor).
+from juggle_doctor_migrations import _migrate_config  # noqa: F401
 
 
 # Home-default config/backup locations. These double as the module-level
@@ -30,68 +34,6 @@ def _resolve_config_path() -> Path:
     silently mutate the home config instead (Codex review, 2026-06-20).
     """
     return Path(os.environ.get("_JUGGLE_CONFIG_PATH", str(_HOME_CONFIG_DEFAULT)))
-
-
-def _migrate_config(cfg: dict) -> tuple[dict, list[str]]:
-    """Pure helper: rewrite a config dict from the pre-1.21.0 schema to 1.21+.
-
-    Returns (new_cfg, list_of_change_descriptions).
-    """
-    cfg = copy.deepcopy(cfg)
-    changes: list[str] = []
-
-    # Defect E (2026-07-01): upgrade a stale claude readiness_markers list that
-    # pinned the old transient/mode-specific chrome ("bypass permissions on" /
-    # "/effort") to include the stable structural marker. juggle spawns in
-    # accept-edits mode, so a settled ready pane matched neither of the old
-    # markers and fresh spawns hung until the readiness timeout. Additive +
-    # idempotent — never removes a user's own markers.
-    _STABLE_READY_MARKER = "shift+tab to cycle"
-    claude_harness = (
-        (cfg.get("agent") or {}).get("harnesses", {}).get("claude")
-        if isinstance(cfg.get("agent"), dict)
-        else None
-    )
-    if isinstance(claude_harness, dict):
-        markers = claude_harness.get("readiness_markers")
-        if isinstance(markers, list) and _STABLE_READY_MARKER not in markers:
-            claude_harness["readiness_markers"] = [_STABLE_READY_MARKER] + markers
-            changes.append(
-                f"agent.harnesses.claude.readiness_markers += {_STABLE_READY_MARKER!r} "
-                "(defect E: stable spawn-readiness marker)"
-            )
-
-    domains = cfg.get("domains")
-    if not isinstance(domains, dict):
-        return cfg, changes
-
-    paths = cfg.setdefault("paths", {})
-
-    if "vault" not in paths:
-        initial_paths = domains.get("initial_domain_paths") or []
-        for entry in initial_paths:
-            if (
-                isinstance(entry, (list, tuple))
-                and len(entry) >= 2
-                and entry[1] == "vault"
-            ):
-                paths["vault"] = entry[0]
-                changes.append(
-                    f"paths.vault = {entry[0]} (migrated from domains.initial_domain_paths)"
-                )
-                break
-
-    if "vault_name" not in paths:
-        legacy_name = domains.get("vault_name", "")
-        if legacy_name:
-            paths["vault_name"] = legacy_name
-            changes.append(
-                f"paths.vault_name = {legacy_name} (migrated from domains.vault_name)"
-            )
-
-    del cfg["domains"]
-    changes.append("removed obsolete domains block")
-    return cfg, changes
 
 
 def _clear_settings_cache() -> None:
