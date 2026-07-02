@@ -154,6 +154,24 @@ def _guard_no_prod_artifacts_active(_guard_no_prod_artifacts):  # noqa: ARG001
     return True
 
 
+# ── Agent-context cwd-heuristic neutralizer (T-spool-03, 2026-07-02) ─────────
+# `dbops.graph_guards.is_agent_context()` treats ANY cwd containing
+# "juggle-juggle-" as an agent/worktree process (defence in depth — see its
+# docstring). Coder agents run the suite from inside exactly such a worktree
+# (e.g. /tmp/juggle-juggle-AZ), so once product code started branching on
+# `should_spool()` (cmd_complete_agent/cmd_fail_agent, T-spool-03) the entire
+# suite silently flipped into "agent context" and spooled instead of exercising
+# the real DB path it was written to test. JUGGLE_ORCHESTRATOR=1 is the
+# authoritative override (wins over cwd AND JUGGLE_IS_AGENT — see
+# is_agent_context()), so default every test to the orchestrator's perspective;
+# tests that specifically want agent/spool behavior opt back in per-test via
+# `monkeypatch.delenv("JUGGLE_ORCHESTRATOR", ...)` (see test_spool_agent_complete_fail_writes.py).
+@pytest.fixture(autouse=True)
+def _default_orchestrator_context(monkeypatch):
+    monkeypatch.setenv("JUGGLE_ORCHESTRATOR", "1")
+    yield
+
+
 # ── Watchdog real-daemon spawn neutralizer + survivor guard (2026-06-21 leak) ──
 # The always-full-suite (v1.80) surfaced a real-daemon leak: CockpitApp.on_mount
 # self-heals a detached watchdog via ensure_watchdog → a REAL

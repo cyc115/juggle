@@ -20,6 +20,19 @@ def cmd_complete_agent(args):
     """Mark agent complete: thread → closed, create notifications_v2 row,
     convert any open_questions to action_items."""
     import juggle_cli_common as _common
+    from juggle_spool_cli_common import spool_event_if_agent
+
+    # Resolve thread_id BEFORE spooling (DA Resolution #6): avoids a freed/reassigned label misapplying a replayed event.
+    _resolved_tid = _common.resolve_thread_id_for_spool(args.thread_id)
+    _ca_args = dict(
+        thread_id=_resolved_tid, result_summary=args.result_summary,
+        retain_text=getattr(args, "retain_text", None), open_questions=getattr(args, "open_questions", None),
+        handoff=getattr(args, "handoff", None), role=getattr(args, "role", None),
+    )
+    if spool_event_if_agent("agent_complete", _ca_args):
+        print(f"Agent complete for Topic {args.thread_id} → spooled.")
+        return
+
     db = _common.get_db()
     thread_uuid = _common._resolve_thread(db, args.thread_id)
     thread = db.get_thread(thread_uuid)
@@ -197,6 +210,16 @@ def cmd_complete_agent(args):
 def cmd_fail_agent(args):
     """Route agent failure: transient → leave running for retry; persistent → action_item + close."""
     import juggle_cli_common as _common
+    from juggle_spool_cli_common import spool_event_if_agent
+
+    _resolved_tid = _common.resolve_thread_id_for_spool(args.thread_id)
+    _fa_args = dict(
+        thread_id=_resolved_tid, error=args.error, failure_type=getattr(args, "failure_type", None),
+        max_retries=getattr(args, "max_retries", 0), recovery_dispatched=getattr(args, "recovery_dispatched", False),
+    )
+    if spool_event_if_agent("agent_fail", _fa_args):
+        print(f"Agent failure for Topic {args.thread_id} → spooled.")
+        return
 
     db = _common.get_db()
     thread_uuid = _common._resolve_thread(db, args.thread_id)

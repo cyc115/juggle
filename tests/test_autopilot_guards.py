@@ -122,6 +122,7 @@ def test_g1_verify_allowed_when_branch_merged(db, tmp_path):
 def test_g2_refuses_shared_db_migration_from_agent(monkeypatch, tmp_path):
     monkeypatch.setattr(gg, "SHARED_PROD_DB",
                         (tmp_path / "shared.db").resolve())
+    monkeypatch.delenv("JUGGLE_ORCHESTRATOR", raising=False)
     monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
     with pytest.raises(gg.SharedDBMigrationRefused):
         gg.assert_migration_allowed(str(tmp_path / "shared.db"))
@@ -198,6 +199,7 @@ def test_agent_plain_write_skips_migration_on_shared_db(monkeypatch, tmp_path):
     runner instead of raising."""
     shared = (tmp_path / "shared.db").resolve()
     monkeypatch.setattr(gg, "SHARED_PROD_DB", shared)
+    monkeypatch.delenv("JUGGLE_ORCHESTRATOR", raising=False)
     monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
     monkeypatch.setattr(
         gg.Path, "cwd", classmethod(lambda cls: Path("/tmp/juggle-juggle-VB"))
@@ -222,6 +224,7 @@ def test_agent_require_migrate_still_refused_on_shared_db(monkeypatch, tmp_path)
     runner never runs from an agent."""
     shared = (tmp_path / "shared.db").resolve()
     monkeypatch.setattr(gg, "SHARED_PROD_DB", shared)
+    monkeypatch.delenv("JUGGLE_ORCHESTRATOR", raising=False)
     monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
     monkeypatch.setattr(
         gg.Path, "cwd", classmethod(lambda cls: Path("/tmp/juggle-juggle-VB"))
