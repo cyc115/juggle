@@ -69,6 +69,7 @@ def llm_call(
     timeout: int = 10,
     max_tokens: int | None = None,
     json_mode: bool = False,
+    disable_reasoning: bool = False,
 ) -> str | None:
     """Profile-based LLM dispatcher.
 
@@ -80,6 +81,9 @@ def llm_call(
     callers must pass a larger value (200 truncates synthesis).
     json_mode: request a JSON object from OpenRouter (response_format). The claude
     -p fallback relies on the prompt instructing JSON; callers keep their own parse.
+    disable_reasoning: adds OpenRouter's "reasoning": {"enabled": false} to the
+    payload — some routed models spend the max_tokens budget on hidden reasoning
+    tokens, truncating the visible output. No effect on the claude -p fallback.
     """
     from juggle_settings import get_settings
     profiles = get_settings().get("llm_profiles", {})
@@ -100,6 +104,8 @@ def llm_call(
             }
             if json_mode:
                 payload["response_format"] = {"type": "json_object"}
+            if disable_reasoning:
+                payload["reasoning"] = {"enabled": False}
             body = json.dumps(payload).encode()
             req = urllib.request.Request(
                 "https://openrouter.ai/api/v1/chat/completions",

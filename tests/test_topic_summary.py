@@ -217,3 +217,38 @@ def test_format_recent_activity_empty():
     from juggle_topic_summary import format_recent_activity
 
     assert format_recent_activity([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Regression pin — 2026-07-01 incident: default llm_call max_tokens=200
+# truncated a reasoning-enabled OpenRouter route to a 21-char response,
+# parsing 1/4 sections and falling back to raw display.
+# ---------------------------------------------------------------------------
+
+
+def test_summarize_topic_default_llm_fn_passes_max_tokens_and_disables_reasoning(monkeypatch):
+    """summarize_topic's default llm_fn (llm_fn=None) must pass max_tokens=~600
+    and disable_reasoning=True to llm_call, so reasoning-enabled OpenRouter
+    routes don't burn the token budget on hidden reasoning and truncate the
+    visible 4-section output (regression: 2026-07-01, 21-char summary)."""
+    import sys
+    from unittest.mock import MagicMock
+
+    fake_llm_calls = MagicMock()
+    calls = []
+
+    def fake_llm_call(prompt, profile="cheap", timeout=30, **kwargs):
+        calls.append(kwargs)
+        return SAMPLE_LLM_RESPONSE
+
+    fake_llm_calls.llm_call = fake_llm_call
+    monkeypatch.setitem(sys.modules, "llm_calls", fake_llm_calls)
+
+    from juggle_topic_summary import summarize_topic
+
+    sections = summarize_topic(SAMPLE_TASK_INPUT, SAMPLE_RESULT_OUTPUT, SAMPLE_MESSAGES, SAMPLE_META)
+
+    assert len(calls) == 1
+    assert calls[0].get("max_tokens", 0) >= 500
+    assert calls[0].get("disable_reasoning") is True
+    assert sections["context"] != ""

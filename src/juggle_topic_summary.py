@@ -146,7 +146,9 @@ def summarize_topic(
 
         def llm_fn(prompt: str) -> str | None:
             t0 = time.monotonic()
-            result = llm_call(prompt, profile="cheap", timeout=30)
+            result = llm_call(
+                prompt, profile="cheap", timeout=30, max_tokens=600, disable_reasoning=True
+            )
             elapsed_ms = int((time.monotonic() - t0) * 1000)
             # provider logged inside llm_call; log elapsed here for the modal path
             _log.info(
