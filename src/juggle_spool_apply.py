@@ -45,7 +45,16 @@ def _journal_set_outcome(db, uuid: str, outcome: str) -> None:
         conn.commit()
 
 
+# Every attribute any replayed cmd_* handler reads MUST be seeded here (or via
+# the top-level thread_id) so a partial/empty-args event degrades to the
+# handler's own validation (SystemExit → clean dead-letter) instead of an
+# AttributeError before it (2026-07-02 incident: agent_complete replay raised
+# "'Namespace' object has no attribute 'result_summary'" for empty-args junk
+# events). Keys mirror the writer shapes in juggle_cmd_agents*/juggle_cmd_graph;
+# test_spool_apply_event_shape pins writer-args ⊆ these defaults ∪ {thread_id}.
 _NS_DEFAULTS = dict(
+    result_summary=None, error=None, message=None,
+    action_id=None, task_id=None,
     retain_text=None, open_questions=None, handoff=None, role=None,
     failure_type=None, max_retries=0, recovery_dispatched=False,
     type="manual_step", priority="normal", fail=False, db_path=None,
@@ -157,6 +166,7 @@ def drain_spool(db) -> dict:
     signal; spool_journal is the idempotency backstop for the rare case a file
     survives a successful apply, e.g. a crash between apply and unlink)."""
     stats = {"applied": 0, "skipped_dup": 0, "dead": 0}
+    dead: list[tuple[str, str, str, str]] = []  # (thread_id, uuid, type, msg)
     for event in read_pending(spool_dir()):
         ok, msg = apply_event(db, event)
         if ok:
@@ -170,10 +180,37 @@ def drain_spool(db) -> dict:
             stats["dead"] += 1
             if event.path is not None:
                 move_to_dead(spool_dir(), event.path, msg)
+            dead.append((event.thread_id or "", event.uuid, event.type, msg))
+    _file_dead_letter_action_items(db, dead)
+    return stats
+
+
+# A burst of empty/malformed junk events (e.g. the 2026-07-02 empty-args
+# agent_complete fixtures) must NOT flood the cockpit with one HIGH action item
+# each — cap per-event items and collapse the overflow into a single grouped
+# alert so the signal survives without the noise.
+_DEAD_ACTION_ITEM_CAP = 3
+
+
+def _file_dead_letter_action_items(db, dead: list[tuple[str, str, str, str]]) -> None:
+    if not dead:
+        return
+    if len(dead) <= _DEAD_ACTION_ITEM_CAP:
+        for thread_id, uuid, etype, msg in dead:
             db.add_action_item(
-                thread_id=event.thread_id or None,
-                message=f"⚠️ Spool event {event.uuid} ({event.type}) dead-lettered: {msg}",
+                thread_id=thread_id or None,
+                message=f"⚠️ Spool event {uuid} ({etype}) dead-lettered: {msg}",
                 type_="failure",
                 priority="high",
             )
-    return stats
+        return
+    sample = ", ".join(f"{etype}:{uuid[:8]}" for _, uuid, etype, _ in dead[:_DEAD_ACTION_ITEM_CAP])
+    db.add_action_item(
+        thread_id=None,
+        message=(
+            f"⚠️ {len(dead)} spool events dead-lettered this drain "
+            f"(first {_DEAD_ACTION_ITEM_CAP}: {sample}). See spool/dead/ for full reasons."
+        ),
+        type_="failure",
+        priority="high",
+    )
