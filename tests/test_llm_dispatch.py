@@ -41,7 +41,7 @@ def test_llm_call_normal_uses_normal_model(tmp_path, monkeypatch):
     body = mock_req.call_args[0][1]
     import json
     parsed = json.loads(body)
-    assert "kimi" in parsed["model"]
+    assert "deepseek" in parsed["model"]
 
 
 def test_llm_call_unknown_profile_raises():

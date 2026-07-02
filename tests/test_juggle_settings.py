@@ -80,6 +80,19 @@ def test_get_settings_survives_corrupt_config(tmp_path, monkeypatch):
 
 # ── Fix 2: task_templates ───────────────────────────────────────────────────
 
+def test_llm_profiles_defaults_are_deepseek_v4():
+    from juggle_settings import DEFAULTS
+
+    profiles = DEFAULTS["llm_profiles"]
+    assert profiles["cheap"]["openrouter_model"] == "deepseek/deepseek-v4-flash"
+    assert profiles["cheap"]["fallback_model"] == "claude-haiku-4-5-20251001"
+    assert profiles["normal"]["openrouter_model"] == "deepseek/deepseek-v4-pro"
+    assert profiles["normal"]["fallback_model"] == "sonnet"
+    assert profiles["synthesis"]["openrouter_model"] == "deepseek/deepseek-v4-flash"
+    assert profiles["synthesis"]["fallback_model"] == "sonnet"
+    assert profiles["synthesis"]["max_tokens"] == 2048
+
+
 def test_task_templates_in_defaults():
     from juggle_settings import DEFAULTS
     assert "task_templates" in DEFAULTS

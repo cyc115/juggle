@@ -271,16 +271,16 @@ DEFAULTS: dict = {
     # LLM dispatcher profiles (model ids are editable in config.json)
     "llm_profiles": {
         "cheap": {
-            "openrouter_model": "deepseek/deepseek-chat-v3-0324:free",
+            "openrouter_model": "deepseek/deepseek-v4-flash",
             "fallback_model": "claude-haiku-4-5-20251001",
         },
         "normal": {
-            "openrouter_model": "moonshotai/kimi-k2:free",
-            "fallback_model": "claude-sonnet-4-6",
+            "openrouter_model": "deepseek/deepseek-v4-pro",
+            "fallback_model": "sonnet",
         },
         "synthesis": {
-            "openrouter_model": "google/gemini-2.5-flash",
-            "fallback_model": "claude-sonnet-4-6",
+            "openrouter_model": "deepseek/deepseek-v4-flash",
+            "fallback_model": "sonnet",
             "max_tokens": 2048,
         },
     },
