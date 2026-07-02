@@ -6,8 +6,15 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 
-def test_notify_inserts_notification_v2(tmp_path):
+def test_notify_inserts_notification_v2(tmp_path, monkeypatch):
     from juggle_db import JuggleDB
+
+    # Exercise the default (non-spool) codepath — see
+    # test_spool_readonly_resolve.py precedent for why this is needed when
+    # pytest runs inside a dispatched agent's "juggle-juggle-*" worktree.
+    for var in ("JUGGLE_IS_AGENT", "JUGGLE_ORCHESTRATOR", "JUGGLE_AGENT_WORKTREE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.chdir(tmp_path)
 
     db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
     db.init_db()

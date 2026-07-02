@@ -10,6 +10,18 @@ import pytest
 from juggle_db import JuggleDB
 
 
+@pytest.fixture(autouse=True)
+def _not_agent_context(monkeypatch, tmp_path):
+    """These tests exercise the default (non-spool) codepath. Without this,
+    is_agent_context()'s cwd heuristic ("juggle-juggle-" substring) can
+    misfire when pytest itself runs inside a dispatched agent's worktree
+    (e.g. /tmp/juggle-juggle-<label>), routing cmd_* through the spool
+    early-return instead. See test_spool_readonly_resolve.py precedent."""
+    for var in ("JUGGLE_IS_AGENT", "JUGGLE_ORCHESTRATOR", "JUGGLE_AGENT_WORKTREE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     path = tmp_path / "juggle.db"
