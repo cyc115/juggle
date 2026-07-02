@@ -63,9 +63,9 @@ def test_no_nudge_before_threshold():
     from juggle_watchdog_stall import StallTracker
 
     t = StallTracker()
-    assert _decide(t, "A", True, 0.0) == "pending"      # first idle → start clock
-    assert _decide(t, "A", True, 60.0) == "pending"     # 60s < 180s
-    assert _decide(t, "A", True, 179.0) == "pending"    # still under threshold
+    assert _decide(t, "A", True, 0.0) == "waiting"      # first idle → start clock
+    assert _decide(t, "A", True, 60.0) == "waiting"     # 60s < 180s
+    assert _decide(t, "A", True, 179.0) == "waiting"    # still under threshold
     assert _decide(t, "A", True, 180.0) == "nudge"      # threshold reached
 
 
@@ -84,15 +84,15 @@ def test_nudges_up_to_max_then_escalates_then_silent():
 
     t = StallTracker()
     # start clock
-    assert _decide(t, "A", True, 0.0) == "pending"
+    assert _decide(t, "A", True, 0.0) == "waiting"
     # nudge #1 at threshold; each nudge re-arms the debounce clock
     assert _decide(t, "A", True, 180.0) == "nudge"
     assert t.nudges["A"] == 1
-    assert _decide(t, "A", True, 300.0) == "pending"    # within re-armed window
+    assert _decide(t, "A", True, 300.0) == "waiting"    # within re-armed window
     # nudge #2 after another threshold
     assert _decide(t, "A", True, 360.0) == "nudge"
     assert t.nudges["A"] == 2
-    assert _decide(t, "A", True, 480.0) == "pending"    # within re-armed window
+    assert _decide(t, "A", True, 480.0) == "waiting"    # within re-armed window
     # escalate one threshold after the last nudge (max reached)
     assert _decide(t, "A", True, 540.0) == "escalate"
     # thereafter silent — no repeat escalation, no more nudges
@@ -109,7 +109,7 @@ def test_counter_resets_on_new_dispatch():
     assert _decide(t, "A", True, 180.0, dk="d1") == "nudge"
     assert t.nudges["A"] == 1
     # New dispatch (agent reused / re-dispatched) → fresh state
-    assert _decide(t, "A", True, 190.0, dk="d2") == "pending"
+    assert _decide(t, "A", True, 190.0, dk="d2") == "waiting"
     assert t.nudges.get("A", 0) == 0
     assert _decide(t, "A", True, 370.0, dk="d2") == "nudge"
     assert t.nudges["A"] == 1
@@ -120,10 +120,10 @@ def test_activity_clears_idle_clock():
     from juggle_watchdog_stall import StallTracker
 
     t = StallTracker()
-    assert _decide(t, "A", True, 0.0) == "pending"
+    assert _decide(t, "A", True, 0.0) == "waiting"
     assert _decide(t, "A", False, 100.0) == "active"    # agent resumed
-    assert _decide(t, "A", True, 150.0) == "pending"    # clock restarts here
-    assert _decide(t, "A", True, 250.0) == "pending"    # 100s since restart < 180s
+    assert _decide(t, "A", True, 150.0) == "waiting"    # clock restarts here
+    assert _decide(t, "A", True, 250.0) == "waiting"    # 100s since restart < 180s
     assert _decide(t, "A", True, 330.0) == "nudge"      # 180s since restart
 
 

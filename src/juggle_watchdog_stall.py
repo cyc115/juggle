@@ -93,7 +93,7 @@ class StallTracker:
         dispatch_key: str,
     ) -> str:
         """Advance one tick. Returns: 'active' (not idle; debounce cleared),
-        'pending' (idle, window not elapsed), 'nudge' (threshold reached; counter
+        'waiting' (idle, window not elapsed), 'nudge' (threshold reached; counter
         bumped), 'escalate' (max nudges exhausted; file HIGH item once), or
         'silent' (already escalated)."""
         # New dispatch / agent reuse → fresh state.
@@ -108,9 +108,9 @@ class StallTracker:
         first = self.idle_since.get(agent_id)
         if first is None:
             self.idle_since[agent_id] = now
-            return "pending"
+            return "waiting"
         if now - first < threshold_s:
-            return "pending"
+            return "waiting"
 
         if agent_id in self.escalated:
             return "silent"
