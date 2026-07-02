@@ -3,11 +3,16 @@ juggle_cmd_agents_worktree — Git worktree helpers for agent dispatch/completio
 
 Owns: _create_worktree (isolated worktree per thread, used by send-task) and
       _finalize_worktree (ff-merge → remove → branch-delete, used by complete-agent).
-Must not own: command handler logic or DB access.
+Must not own: command handler logic or DB access, or juggle naming conventions
+      beyond what THIS module computes (``cyc_<label>``, ``juggle-<basename>-
+      <label>``) — vcs.py's ``create_workspace``/``remove_workspace`` take the
+      already-computed branch/path and do only the mechanical VCS operation.
 """
 
 import subprocess
 from pathlib import Path
+
+from vcs import backend_for
 
 
 def _register_worktree_trust(worktree_path: str) -> None:
@@ -42,7 +47,10 @@ def _finalize_worktree(thread: dict) -> tuple:
     if not Path(main_repo_path).exists():
         return False, f"Main repo not found: {main_repo_path}"
 
-    # 1. Try ff-only merge from worktree branch
+    # 1. Try ff-only merge from worktree branch. Kept as a raw local-only merge
+    # (NOT routed through vcs.submit(), which always pushes for mode="direct")
+    # — the push/no-push submit() variant this eventually consolidates into is
+    # decided in the vcs-route-integrate topic.
     result = subprocess.run(
         ["git", "-C", main_repo_path, "merge", "--ff-only", worktree_branch],
         capture_output=True, text=True,
@@ -53,21 +61,13 @@ def _finalize_worktree(thread: dict) -> tuple:
             f"Worktree left at {worktree_path}. Manual resolution required."
         )
 
-    # 2. Remove worktree
-    result = subprocess.run(
-        ["git", "-C", main_repo_path, "worktree", "remove", worktree_path],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        return False, f"Worktree remove failed: {result.stderr.strip()}"
-
-    # 3. Delete branch
-    result = subprocess.run(
-        ["git", "-C", main_repo_path, "branch", "-d", worktree_branch],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        return True, f"Merged + worktree removed, but branch delete failed: {result.stderr.strip()}"
+    # 2+3. Remove worktree + delete branch (remove_workspace absorbs both).
+    try:
+        removed = backend_for(main_repo_path).remove_workspace(main_repo_path, worktree_path)
+    except Exception as e:
+        return False, f"Worktree/branch cleanup failed for {worktree_path}: {e}"
+    if not removed:
+        return False, f"Worktree/branch cleanup failed for {worktree_path}"
 
     return True, f"Worktree {worktree_path} finalized (merged {worktree_branch})."
 
@@ -79,22 +79,14 @@ def _main_worktree_root(repo_path: str) -> str:
     *inside* another worktree (e.g. repo_path=/tmp/juggle-juggle-WR), deriving
     the path basename from that worktree compounds the name
     (juggle-juggle-juggle-WR-...) and the linked worktree may lack a main/master
-    ref, breaking integrate. The first entry of ``git worktree list --porcelain``
-    is always the main worktree; use its path so basename is stable ("juggle")
-    and ``git worktree add`` runs from the primary repo.
+    ref, breaking integrate. ``primary_root`` always resolves to the main
+    worktree so basename is stable ("juggle") and ``create_workspace`` runs
+    from the primary repo.
     """
     try:
-        r = subprocess.run(
-            ["git", "-C", repo_path, "worktree", "list", "--porcelain"],
-            capture_output=True, text=True,
-        )
-        if r.returncode == 0:
-            for line in r.stdout.splitlines():
-                if line.startswith("worktree "):
-                    return line[len("worktree "):].strip()
+        return backend_for(repo_path).primary_root(repo_path) or repo_path
     except Exception:
-        pass
-    return repo_path
+        return repo_path
 
 
 def _create_worktree(
@@ -121,12 +113,17 @@ def _create_worktree(
         _register_worktree_trust(worktree_path)
         return True, worktree_path, branch, f"Worktree already exists: {worktree_path}"
 
-    result = subprocess.run(
-        ["git", "-C", repo_path, "worktree", "add", "-b", branch, worktree_path],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        return False, "", "", f"git worktree add failed: {result.stderr.strip()}"
+    try:
+        backend = backend_for(repo_path)
+    except Exception as e:
+        return False, "", "", f"git worktree add failed: {e}"
+    # Base = the source repo's current HEAD (today's implicit behavior,
+    # preserved verbatim — the H2 latent-bug fix is a separate follow-up topic
+    # that threads a stack-relative base through this same param).
+    base = backend.resolve(repo_path)
+    result = backend.create_workspace(repo_path, branch, worktree_path, base=base)
+    if not result.ok:
+        return False, "", "", f"git worktree add failed: {result.detail}"
 
     # Symlink .venv for immediate test runs — skip silently when absent
     main_venv = Path(repo_path) / ".venv"
