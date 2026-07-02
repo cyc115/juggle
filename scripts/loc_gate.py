@@ -59,7 +59,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
     "src/juggle_graph_dispatch.py": 404,  # +7 defect-F: reuse the topic's bound surfacing conversation instead of minting a "[T-<id>]" mirror row (2026-07-01)
-    "src/juggle_watchdog_daemon.py": 474,  # +17 T-spool-09: drain_spool wired into _poll_once (tick) + main() (drain-on-start) (2026-07-01)
+    "src/juggle_watchdog_daemon.py": 484,  # +10 summary-eager-gen: wire warm_stale_summaries into the tick, on top of T-spool-09's 474 (2026-07-02)
     "src/dbops/db_topics.py": 366,  # +1 P8 engine delegation: irreducible db_node_machine import (topic_transition delegates the decision) (2026-06-27)
     "src/juggle_context.py": 345,
     "src/juggle_watchdog_singleton.py": 367,

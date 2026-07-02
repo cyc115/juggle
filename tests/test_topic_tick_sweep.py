@@ -53,3 +53,13 @@ def test_daemon_tick_wires_the_sweep():
     import juggle_watchdog_daemon as wd
 
     assert "tick_sweep" in inspect.getsource(wd._poll_once)
+
+
+def test_daemon_tick_wires_summary_warming():
+    """summary-eager-gen: the watchdog tick body invokes the eager (i)-pane
+    summary cache warmer."""
+    import inspect
+
+    import juggle_watchdog_daemon as wd
+
+    assert "warm_stale_summaries" in inspect.getsource(wd._poll_once)

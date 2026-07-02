@@ -333,6 +333,16 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     except Exception:
         _log.exception("Watchdog: selfheal diagnosis tick failed — continuing")
 
+    # Eager (i)-pane summary cache warming (summary-eager-gen): regenerate
+    # stale topic_summary_cache rows in the background so the modal reads
+    # cache-only in the common case, instead of the user waiting on a
+    # synchronous LLM call. Never blocks the tick.
+    try:
+        from juggle_summary_warmer import warm_stale_summaries
+        warm_stale_summaries(db)
+    except Exception:
+        _log.exception("Watchdog: summary warming tick failed — continuing")
+
 
 def _set_orchestrator_preamble() -> None:
     """Mark this process as the orchestrator and chdir to a stable non-worktree dir.
