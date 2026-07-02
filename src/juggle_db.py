@@ -126,16 +126,35 @@ class JuggleDB(
         from juggle_db_connect import open_connection
         return open_connection(self.db_path)
 
-    def init_db(self):
+    def init_db(self, *, require_migrate: bool = False):
         """Create tables if not exist, run schema migrations, enable WAL mode.
 
-        G2: refuse to migrate the shared production DB from an agent/worktree
-        context (only the orchestrator migrates the shared DB). Raises
-        SharedDBMigrationRefused before any DDL touches the shared file.
-        """
-        from dbops.graph_guards import assert_migration_allowed
+        G2: an agent/worktree process against the shared prod DB SKIPS the
+        migration runner instead of being refused outright — plain CLI
+        reads/writes (mark-task, agent complete, action notify, ...) must
+        work from agent contexts. Tables are still created (idempotent,
+        harmless). A genuinely stale schema fails loud naturally: any
+        downstream query against a missing column/table raises its own
+        ``sqlite3.OperationalError`` — nothing here swallows that.
 
-        assert_migration_allowed(self.db_path)
+        Pass ``require_migrate=True`` (doctor / db init / migration-runner
+        call sites ONLY) to keep the original hard refusal — those call
+        sites intend to actually run schema migrations, which agents must
+        never do against the shared DB. Raises SharedDBMigrationRefused
+        before any DDL touches the shared file in that case.
+        """
+        from dbops.graph_guards import (
+            assert_migration_allowed,
+            is_agent_context,
+            is_shared_prod_db,
+        )
+
+        agent_shared = is_shared_prod_db(self.db_path) and is_agent_context()
+        if require_migrate or not agent_shared:
+            assert_migration_allowed(self.db_path)
+            skip_migrations = False
+        else:
+            skip_migrations = True
         with self._connect() as conn:
             # WAL/synchronous/busy_timeout are set by _connect() on every open.
             conn.execute(CREATE_THREADS)
@@ -195,7 +214,8 @@ class JuggleDB(
                 "CREATE INDEX IF NOT EXISTS idx_action_items_thread "
                 "ON action_items(thread_id)"
             )
-            run_migrations(conn)
+            if not skip_migrations:
+                run_migrations(conn)
             conn.commit()
 
     # _migrate kept as a shim for any callers that patched it in tests

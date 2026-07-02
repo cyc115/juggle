@@ -204,7 +204,7 @@ class _FakeDB:
     def __init__(self, path):
         self._path = path
 
-    def init_db(self):
+    def init_db(self, *, require_migrate=False):
         pass
 
     def list_projects(self, include_archived=False):

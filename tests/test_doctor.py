@@ -179,7 +179,7 @@ def test_doctor_always_calls_init_db_on_current_schema(tmp_path, monkeypatch, ca
         def __init__(self, path):
             self._path = path
 
-        def init_db(self):
+        def init_db(self, *, require_migrate=False):
             init_db_calls.append(self._path)
 
         def list_projects(self, include_archived=False):
@@ -211,7 +211,7 @@ def test_doctor_dry_run_skips_init_db(tmp_path, monkeypatch, capsys):
         def __init__(self, path):
             self._path = path
 
-        def init_db(self):
+        def init_db(self, *, require_migrate=False):
             init_db_calls.append(self._path)
 
         def list_projects(self, include_archived=False):

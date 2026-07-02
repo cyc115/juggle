@@ -184,6 +184,80 @@ def test_g2_agent_refusal_still_enforced_without_orchestrator_marker(monkeypatch
 
 
 # ---------------------------------------------------------------------------
+# G2 follow-up — 2026-07-01 blocker item 5079: assert_migration_allowed
+# over-blocked EVERY init_db(init=True) call (mark-task, add-task, runs,
+# projects, selfheal, ...) from an agent/worktree context, not just real
+# migration runners. Plain state writes must work; only doctor/db-init keep
+# the hard refusal.
+# ---------------------------------------------------------------------------
+
+def test_agent_plain_write_skips_migration_on_shared_db(monkeypatch, tmp_path):
+    """graph mark-task (get_db(init=True) -> init_db()) must NOT be refused
+    from an agent/worktree context — it is a plain state write, not a
+    migration. Tables are still created; init_db() just skips the migration
+    runner instead of raising."""
+    shared = (tmp_path / "shared.db").resolve()
+    monkeypatch.setattr(gg, "SHARED_PROD_DB", shared)
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.setattr(
+        gg.Path, "cwd", classmethod(lambda cls: Path("/tmp/juggle-juggle-VB"))
+    )
+
+    d = JuggleDB(db_path=str(shared))
+    d.init_db()  # require_migrate defaults False — must not raise
+
+    with d._connect() as conn:
+        tables = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+    assert "threads" in tables and "graph_tasks" in tables
+
+
+def test_agent_require_migrate_still_refused_on_shared_db(monkeypatch, tmp_path):
+    """doctor / db init (require_migrate=True) must still refuse to touch the
+    shared prod DB from an agent/worktree context — the actual migration
+    runner never runs from an agent."""
+    shared = (tmp_path / "shared.db").resolve()
+    monkeypatch.setattr(gg, "SHARED_PROD_DB", shared)
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.setattr(
+        gg.Path, "cwd", classmethod(lambda cls: Path("/tmp/juggle-juggle-VB"))
+    )
+
+    d = JuggleDB(db_path=str(shared))
+    with pytest.raises(gg.SharedDBMigrationRefused):
+        d.init_db(require_migrate=True)
+
+
+def test_agent_init_db_paths_consistent_regardless_of_init_flag(monkeypatch, tmp_path):
+    """2026-07-01 heuristic-inconsistency finding: one agent's completion
+    ('agent complete' -> get_db(), no init) never touched
+    assert_migration_allowed, while a sibling agent's 'graph mark-task' ->
+    get_db(init=True) -> init_db() did and was refused — same agent context,
+    different outcome purely because of which CLI command happened to pass
+    init=True. Both plain-write shapes must now behave identically: neither
+    raises when require_migrate is left at its default."""
+    shared = (tmp_path / "shared.db").resolve()
+    monkeypatch.setattr(gg, "SHARED_PROD_DB", shared)
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.setattr(
+        gg.Path, "cwd", classmethod(lambda cls: Path("/tmp/juggle-juggle-VB"))
+    )
+
+    # "agent complete" shape: get_db() with no init — never called init_db().
+    no_init_db = JuggleDB(db_path=str(shared))  # constructing alone never raised
+
+    # "graph mark-task" shape: get_db(init=True) -> init_db().
+    mark_task_db = JuggleDB(db_path=str(shared))
+    mark_task_db.init_db()  # must not raise — same outcome as the no-init shape
+
+    assert no_init_db.db_path == mark_task_db.db_path == shared
+
+
+# ---------------------------------------------------------------------------
 # G3 — claimable invariant (no empty/blocked topic promoted to ready)
 # ---------------------------------------------------------------------------
 

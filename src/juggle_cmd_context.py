@@ -29,7 +29,7 @@ def cmd_get_context(_):
 def cmd_init_db(_):
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
     db = get_db()
-    db.init_db()
+    db.init_db(require_migrate=True)
     print("DB initialized.")
 
 

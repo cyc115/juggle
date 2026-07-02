@@ -189,7 +189,7 @@ def cmd_doctor(args) -> int:
                     print("db: quiesced watchdog for safe migration")
             except Exception as e:  # never let quiesce failure mask the migration
                 print(f"db: watchdog quiesce skipped ({e})")
-            JuggleDB(DB_PATH).init_db()
+            JuggleDB(DB_PATH).init_db(require_migrate=True)
             if legacy_notes:
                 print(f"db: ran {'; '.join(legacy_notes)}")
             print("db: ran idempotent migration pass")
