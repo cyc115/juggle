@@ -12,6 +12,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def _non_agent_context(monkeypatch, tmp_path):
+    """These record_error pins assert the DIRECT-WRITE (non-agent) path. Neutralize
+    the ambient agent context (this suite may run inside a dispatched agent / a
+    juggle-juggle-* worktree) so record_error does not divert to the spool
+    (T-spool-06); agent-context spooling is covered by test_spool_record_error.py."""
+    for var in ("JUGGLE_IS_AGENT", "JUGGLE_ORCHESTRATOR", "JUGGLE_AGENT_WORKTREE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.chdir(tmp_path)
+
+
 # ---------------------------------------------------------------------------
 # Task 1 gate: Class B transcript parsing (real schema)
 # Stays RED until Task 6 implements _do_class_b_scan in juggle_hooks.py
