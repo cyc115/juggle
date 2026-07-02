@@ -230,7 +230,8 @@ to verify is not done — expose its state programmatically.
 
 If you are working inside `/tmp/juggle-<basename>-<thread>/` (a dedicated worktree):
 - Do ALL work there — never edit the main working tree.
-- Before `agent complete`: run `juggle integrate <thread>` — handles rebase, merge, push, and cleanup automatically. No manual ff-merge or worktree remove needed.
+- Integration is watchdog-owned — never run the integrate command yourself; the watchdog integrates automatically once you call `agent complete` (handles rebase, merge, push, and cleanup).
+- If finalization (agent complete / mark-task) errors, immediately call agent fail with the error — never silently retry in a loop.
 ```
 
 **Planner** (role = `planner`):
@@ -299,7 +300,7 @@ Run agent get + agent send-task twice — once for researcher, once for coder �
 
 Run agent get + agent send-task for each coder. Split the scope from Q2 across the two coders (e.g., frontend vs backend, service A vs service B). Each task file contains its scoped subtask only.
 
-**Worktree isolation (auto for parallel coders):** `agent send-task` auto-creates `/tmp/juggle-<basename>-<thread>/` on branch `cyc_<thread>` for role∈{coder,planner} with a repo. No manual `git worktree add` step. The worktree path and branch are injected into the agent's prompt automatically. Coders finalize with `juggle integrate <thread>` — no manual merge/remove.
+**Worktree isolation (auto for parallel coders):** `agent send-task` auto-creates `/tmp/juggle-<basename>-<thread>/` on branch `cyc_<thread>` for role∈{coder,planner} with a repo. No manual `git worktree add` step. The worktree path and branch are injected into the agent's prompt automatically. Coders finalize by calling `agent complete` — the watchdog integrates automatically, no manual merge/remove.
 
 ### Pool exhausted
 

@@ -99,9 +99,9 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 
 **Parallel decomp:** Identify independent tasks → dispatch all at once → return to user immediately. No inline work. When dispatching 2+ independent coders, `agent send-task` auto-creates an isolated worktree per coder (for role∈{coder,planner} with a repo). No manual `git worktree add` needed.
 
-**Worktree protocol:** Auto-created on `agent send-task` (coder/planner + repo). Coders work entirely inside `/tmp/juggle-<basename>-<thread>/` on branch `cyc_<thread>`. Integration: `juggle integrate <thread>` (rebase-aware: fetch→rebase→test→ff-merge→push). Use `--allow-main` only when worktree creation is impossible (rare; logged).
+**Worktree protocol:** Auto-created on `agent send-task` (coder/planner + repo). Coders work entirely inside `/tmp/juggle-<basename>-<thread>/` on branch `cyc_<thread>`. Integration is watchdog-owned (rebase-aware: fetch→rebase→test→ff-merge→push) — it runs automatically once the agent calls `agent complete`. Use `--allow-main` only when worktree creation is impossible (rare; logged).
 
-**Worktree cleanup (each orchestration/verification cycle):** Branch merged or PR pushed / thread completed → `juggle integrate <thread>` handles removal automatically. Orphaned worktree (agent dead, tests pass) → `juggle integrate <thread>`. **Never** delete a worktree with unmerged commits belonging to an active or unrelated task.
+**Worktree cleanup (each orchestration/verification cycle):** Branch merged or PR pushed / thread completed → the watchdog's automatic integration handles removal. Orphaned worktree (agent dead, tests pass) → the watchdog's automatic integration. **Never** delete a worktree with unmerged commits belonging to an active or unrelated task.
 
 **No bare blockers:** Solve or dispatch research first; present with recommendation **as an `AskUserQuestion`/`action create`, not prose**. Relay subagent `--open-questions`/BLOCKERs as filed action items, never prose-only.
 
@@ -273,7 +273,8 @@ Implement plan at <plan_file_path>.
 
 If you are working inside `/tmp/juggle-<basename>-<thread>/` (a dedicated worktree):
 - Do ALL work there — never edit the main working tree.
-- Before `agent complete`: run `juggle integrate <thread>` — it handles rebase, merge, push, and cleanup automatically. No manual ff-merge or worktree remove needed.
+- Integration is watchdog-owned — never run the integrate command yourself; the watchdog integrates automatically once you call `agent complete`.
+- If finalization (agent complete / mark-task) errors, immediately call agent fail with the error — never silently retry in a loop.
 
 Validation (mandatory before agent complete):
 - Makefile/scripts/docker-compose/Dockerfile changes: run end-to-end, paste output in result.
