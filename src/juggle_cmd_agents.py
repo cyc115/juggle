@@ -75,12 +75,6 @@ def cmd_request_action(args):
     only last_active_at is touched."""
     import juggle_cli_common as _common
 
-    db = _common.get_db()
-    thread_uuid = _common._resolve_thread(db, args.thread_id)
-    thread = db.get_thread(thread_uuid)
-    if not thread:
-        print(f"Error: Thread {args.thread_id} not found.")
-        sys.exit(1)
     priority = getattr(args, "priority", None) or "normal"
     type_ = getattr(args, "type", None) or "manual_step"
     if priority not in ("low", "normal", "high"):
@@ -90,6 +84,26 @@ def cmd_request_action(args):
         print(
             f"Error: type must be question/manual_step/decision/failure, got {type_!r}"
         )
+        sys.exit(1)
+
+    if _common.should_spool():
+        from dbops.spool import write_event
+        from juggle_spool_cli_common import resolve_thread_id_for_spool
+        from juggle_spool_paths import spool_dir
+
+        thread_uuid = resolve_thread_id_for_spool(args.thread_id)
+        write_event(
+            spool_dir(), "action_create", "", thread_uuid,
+            {"message": args.message, "type": type_, "priority": priority},
+        )
+        print(f"Action item queued for Topic {args.thread_id} (priority={priority}).")
+        return
+
+    db = _common.get_db()
+    thread_uuid = _common._resolve_thread(db, args.thread_id)
+    thread = db.get_thread(thread_uuid)
+    if not thread:
+        print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
     aid = db.add_action_item(
         thread_id=thread_uuid,
@@ -111,12 +125,22 @@ def cmd_ack_action(args):
     """Dismiss an action item by id."""
     import juggle_cli_common as _common
 
-    db = _common.get_db()
     try:
         action_id = int(args.action_id)
     except ValueError:
         print(f"Error: expected a numeric action id, got {args.action_id!r}.")
         sys.exit(1)
+
+    if _common.should_spool():
+        from dbops.spool import write_event
+        from juggle_spool_paths import spool_dir
+
+        # No thread_id on an ack — resolve_thread_id_for_spool is skipped.
+        write_event(spool_dir(), "action_ack", "", "", {"action_id": action_id})
+        print(f"Action item #{action_id} dismissed.")
+        return
+
+    db = _common.get_db()
     db.dismiss_action_item(action_id)
     print(f"Action item #{action_id} dismissed.")
 
@@ -145,6 +169,18 @@ def cmd_list_actions(_):
 def cmd_notify(args):
     """Insert a notifications_v2 row for the given thread."""
     import juggle_cli_common as _common
+
+    if _common.should_spool():
+        from dbops.spool import write_event
+        from juggle_spool_cli_common import resolve_thread_id_for_spool
+        from juggle_spool_paths import spool_dir
+
+        thread_uuid = resolve_thread_id_for_spool(args.thread_id)
+        write_event(
+            spool_dir(), "action_notify", "", thread_uuid, {"message": args.message},
+        )
+        print(f"Notification queued for Topic {args.thread_id}.")
+        return
 
     db = _common.get_db()
     thread_uuid = _common._resolve_thread(db, args.thread_id)
