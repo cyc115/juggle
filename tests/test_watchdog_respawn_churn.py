@@ -77,102 +77,109 @@ def test_should_replace_incumbent_no_heartbeat_same_code_defers():
 # ── 2. Startup reconciliation is idempotent (no self-SIGTERM churn) ───────────
 
 
-def _setup_reconcile_dir(monkeypatch, tmp_path):
-    """Point the daemon module's singleton sidecars at an isolated tmp dir."""
-    import juggle_watchdog_daemon as wd
+def _setup_reconcile(tmp_path):
+    """Isolated pidfile + codeversion sidecar and a SIGTERM-recording kill spy."""
+    import juggle_watchdog_respawn as respawn
 
     pidfile = tmp_path / "watchdog.pid"
     codever = tmp_path / "watchdog.codeversion"
-    monkeypatch.setattr(wd, "SINGLETON_PID_FILE", pidfile)
-    monkeypatch.setattr(wd, "SINGLETON_CODEVERSION_FILE", codever)
-    return wd, pidfile, codever
+    kills: list = []
+    return respawn, pidfile, codever, kills, kills.append
 
 
-def test_reconcile_skips_kill_for_fresh_same_code_incumbent(tmp_path, monkeypatch):
+def test_reconcile_skips_kill_for_fresh_same_code_incumbent(tmp_path):
     """CHURN PIN: a second daemon booting on the SAME code sees the pidfile
     incumbent's recorded HEAD == its own boot HEAD and a fresh heartbeat, so it
     sends ZERO SIGTERMs — it defers to the flock instead."""
-    import juggle_watchdog_health as health
-
-    wd, pidfile, codever = _setup_reconcile_dir(monkeypatch, tmp_path)
+    respawn, pidfile, codever, kills, kill_fn = _setup_reconcile(tmp_path)
 
     pidfile.write_text("4242")           # incumbent PID
     codever.write_text("headSHA")        # incumbent booted on this HEAD
-    monkeypatch.setattr(health, "read_heartbeat_age", lambda *a, **k: 2.0)
 
-    kills: list = []
-    monkeypatch.setattr(
-        wd, "_kill_existing_watchdog_from_pidfile", lambda *a, **k: kills.append(a)
+    killed = respawn.reconcile_existing_watchdog(
+        "headSHA", pidfile=pidfile, kill_fn=kill_fn,
+        heartbeat_age=2.0, stale_after=120, codeversion_path=codever,
     )
 
-    wd._reconcile_existing_watchdog("headSHA", stale_after=120)
-
-    assert kills == [], "fresh same-code incumbent must never be SIGTERM'd"
+    assert killed is False and kills == [], "fresh same-code incumbent must never be SIGTERM'd"
 
 
-def test_reconcile_kills_old_code_incumbent(tmp_path, monkeypatch):
+def test_reconcile_kills_old_code_incumbent(tmp_path):
     """An incumbent recorded on a DIFFERENT (older) HEAD is killed and replaced."""
-    import juggle_watchdog_health as health
-
-    wd, pidfile, codever = _setup_reconcile_dir(monkeypatch, tmp_path)
+    respawn, pidfile, codever, kills, kill_fn = _setup_reconcile(tmp_path)
 
     pidfile.write_text("4242")
     codever.write_text("oldSHA")
-    monkeypatch.setattr(health, "read_heartbeat_age", lambda *a, **k: 2.0)
 
-    kills: list = []
-    monkeypatch.setattr(
-        wd, "_kill_existing_watchdog_from_pidfile", lambda *a, **k: kills.append(a)
+    killed = respawn.reconcile_existing_watchdog(
+        "newSHA", pidfile=pidfile, kill_fn=kill_fn,
+        heartbeat_age=2.0, stale_after=120, codeversion_path=codever,
     )
 
-    wd._reconcile_existing_watchdog("newSHA", stale_after=120)
-
-    assert len(kills) == 1, "old-code incumbent must be killed and replaced"
+    assert killed is True and kills == [pidfile], "old-code incumbent must be killed and replaced"
 
 
-def test_reconcile_kills_hung_same_code_incumbent(tmp_path, monkeypatch):
+def test_reconcile_kills_hung_same_code_incumbent(tmp_path):
     """A same-code incumbent that stopped heartbeating (hung) is killed."""
-    import juggle_watchdog_health as health
-
-    wd, pidfile, codever = _setup_reconcile_dir(monkeypatch, tmp_path)
+    respawn, pidfile, codever, kills, kill_fn = _setup_reconcile(tmp_path)
 
     pidfile.write_text("4242")
     codever.write_text("headSHA")
-    monkeypatch.setattr(health, "read_heartbeat_age", lambda *a, **k: 999.0)
 
-    kills: list = []
-    monkeypatch.setattr(
-        wd, "_kill_existing_watchdog_from_pidfile", lambda *a, **k: kills.append(a)
+    killed = respawn.reconcile_existing_watchdog(
+        "headSHA", pidfile=pidfile, kill_fn=kill_fn,
+        heartbeat_age=999.0, stale_after=120, codeversion_path=codever,
     )
 
-    wd._reconcile_existing_watchdog("headSHA", stale_after=120)
-
-    assert len(kills) == 1, "hung same-code incumbent must be killed and replaced"
+    assert killed is True and kills == [pidfile], "hung same-code incumbent must be killed and replaced"
 
 
-def test_two_near_simultaneous_respawns_yield_one_survivor(tmp_path, monkeypatch):
+def test_reconcile_unknown_incumbent_version_fresh_defers(tmp_path):
+    """No codeversion sidecar (incumbent HEAD unknown) but a fresh heartbeat →
+    defer; never churn a live instance we can't classify."""
+    respawn, pidfile, codever, kills, kill_fn = _setup_reconcile(tmp_path)
+
+    pidfile.write_text("4242")  # codever sidecar absent
+
+    killed = respawn.reconcile_existing_watchdog(
+        "headSHA", pidfile=pidfile, kill_fn=kill_fn,
+        heartbeat_age=2.0, stale_after=120, codeversion_path=codever,
+    )
+
+    assert killed is False and kills == []
+
+
+def test_two_near_simultaneous_respawns_yield_one_survivor(tmp_path):
     """End-to-end churn pin: incumbent D1 is fully up (pidfile + codeversion +
     fresh heartbeat). A near-simultaneous newcomer D2 on the SAME code reconciles
     → ZERO kills, so D1 survives and the flock would make D2 exit as the loser.
     Exactly one surviving daemon, zero SIGTERMs of a fresh same-code instance."""
-    import juggle_watchdog_health as health
-
-    wd, pidfile, codever = _setup_reconcile_dir(monkeypatch, tmp_path)
+    respawn, pidfile, codever, sigterms, kill_fn = _setup_reconcile(tmp_path)
 
     # D1 came up first and published its singleton state.
     pidfile.write_text("1001")
     codever.write_text("SAME_HEAD")
-    monkeypatch.setattr(health, "read_heartbeat_age", lambda *a, **k: 3.0)
-
-    sigterms: list = []
-    monkeypatch.setattr(
-        wd, "_kill_existing_watchdog_from_pidfile", lambda *a, **k: sigterms.append(a)
-    )
 
     # D2 boots on the SAME code and reconciles before trying the flock.
-    wd._reconcile_existing_watchdog("SAME_HEAD", stale_after=120)
+    killed = respawn.reconcile_existing_watchdog(
+        "SAME_HEAD", pidfile=pidfile, kill_fn=kill_fn,
+        heartbeat_age=3.0, stale_after=120, codeversion_path=codever,
+    )
 
-    assert sigterms == [], (
+    assert killed is False and sigterms == [], (
         "a fresh same-code respawn must send zero SIGTERMs — D1 survives, "
         "D2 defers to the flock (exactly one daemon)"
     )
+
+
+def test_record_and_read_boot_code_version_roundtrip(tmp_path):
+    """record_boot_code_version publishes the boot HEAD; read_incumbent reads it
+    back. A None version is a no-op (never writes an empty sidecar)."""
+    import juggle_watchdog_respawn as respawn
+
+    sidecar = tmp_path / "watchdog.codeversion"
+    respawn.record_boot_code_version("abc123", path=sidecar)
+    assert respawn.read_incumbent_code_version(sidecar) == "abc123"
+
+    respawn.record_boot_code_version(None, path=tmp_path / "absent.codeversion")
+    assert respawn.read_incumbent_code_version(tmp_path / "absent.codeversion") is None
