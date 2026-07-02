@@ -135,3 +135,40 @@ def test_wait_for_ready_no_heartbeat_outside_watchdog(monkeypatch):
 
     assert mgr.wait_for_ready_to_paste("%1", attempts=3, interval=0) is False
     assert beats == []
+
+
+def test_wait_for_ready_answers_folder_trust_dialog(monkeypatch):
+    """Defect E backstop: if a pane blocks at the v2.1.198 'Quick safety check'
+    folder-trust dialog, the readiness prober must ANSWER it (send Enter to
+    accept the default) rather than time out, then detect the ready prompt."""
+    from juggle_tmux import JuggleTmuxManager
+
+    trust_screen = (
+        "─" * 20 + "\n"
+        " Quick safety check: Is this a project you created or one you trust?\n"
+        " ❯ 1. Yes, I trust this folder\n"
+        "   2. No, exit\n"
+        " Enter to confirm · Esc to cancel\n"
+    )
+    ready_screen = "❯ \n  ⏵⏵ accept edits on (shift+tab to cycle) · ← for agents\n"
+
+    monkeypatch.delenv("JUGGLE_TMUX_MOCK_NOT_READY_PANES", raising=False)
+    _markers_from_defaults(monkeypatch)
+    mgr = JuggleTmuxManager(session_name="juggle")
+
+    captures = [trust_screen, ready_screen]
+    sent = []
+
+    def fake_tmux(*args, **kwargs):
+        if args and args[0] == "send-keys":
+            sent.append(args)
+            return SimpleNamespace(stdout="", returncode=0)
+        # capture-pane: trust dialog first, ready prompt after
+        out = captures.pop(0) if captures else ready_screen
+        return SimpleNamespace(stdout=out, returncode=0)
+
+    monkeypatch.setattr(mgr, "_run_tmux", fake_tmux)
+
+    assert mgr.wait_for_ready_to_paste("%1", attempts=5, interval=0) is True
+    assert any(a[0] == "send-keys" and "Enter" in a for a in sent), \
+        "must answer the folder-trust dialog with Enter"

@@ -19,6 +19,16 @@ import os
 # juggle spawns in accept-edits mode, so those two never reliably matched).
 _READY_MARKERS = ("shift+tab to cycle", "bypass permissions on", "/effort")
 _SUBMISSION_MARKERS = ("esc to interrupt", "✻", "✶")
+
+# Claude Code v2.1.198 (2026-07-01) shows a "Quick safety check" folder-trust
+# dialog on FIRST launch in any untrusted dir — EVEN with
+# --dangerously-skip-permissions. Fresh worktrees are always untrusted, so a
+# pane blocks here until the readiness timeout (defect E). Pre-trust
+# (juggle_claude_trust) normally prevents it; these markers let the readiness
+# prober recognize the dialog as a BACKSTOP and answer it (Enter accepts the
+# default "Yes, I trust this folder"). Kept distinct from ready markers so the
+# dialog is never mistaken for a ready pane.
+_TRUST_PROMPT_MARKERS = ("Quick safety check", "Yes, I trust this folder")
 # Markers indicating the agent is already processing (consumed prompt, started tool calls).
 # Used in wait_for_submission to detect the fast-agent false-negative: prompt left the
 # input box before the first poll, so _SUBMISSION_MARKERS are gone but agent is running.

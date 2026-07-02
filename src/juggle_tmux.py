@@ -32,6 +32,7 @@ from juggle_spawn_readiness import (  # noqa: E402
     _harness_markers,
     _READY_MARKERS,  # noqa: F401 — re-exported for tests/back-compat
     _SUBMISSION_MARKERS,  # noqa: F401 — re-exported for wait_for_submission
+    _TRUST_PROMPT_MARKERS,
 )
 
 _DETECT_TAIL_LINES = 10  # lines of scrollback tail used for submission/stuck detection
@@ -225,6 +226,12 @@ class JuggleTmuxManager:
             out = getattr(result, "stdout", "") or ""
             if any(m in out for m in ready_markers):
                 return True
+            # Backstop for the v2.1.198 folder-trust dialog (defect E): pre-trust
+            # should prevent it, but if a fresh/untrusted pane blocks at "Quick
+            # safety check", answer it (Enter accepts the default "Yes, I trust
+            # this folder") so the pane proceeds to the ready prompt.
+            if any(m in out for m in _TRUST_PROMPT_MARKERS):
+                self._run_tmux("send-keys", "-t", pane_id, "Enter")
             # Keep the watchdog heartbeat fresh while this poll blocks the tick
             # (defect E: a multi-minute wait made the heartbeat go stale).
             _beat_heartbeat_if_watchdog()
