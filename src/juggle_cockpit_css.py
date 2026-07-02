@@ -80,4 +80,14 @@ COCKPIT_CSS = """
         color: $success;
         content-align: right middle;
     }
+    #spool-status {
+        layer: overlay;
+        dock: bottom;
+        width: 16;
+        height: 1;
+        offset: 16 -1;
+        background: $panel;
+        color: $success;
+        content-align: right middle;
+    }
     """.replace("__MIN_NOTIF_HEIGHT__", str(_MIN_NOTIF_HEIGHT))

@@ -22,6 +22,7 @@ from juggle_context import get_thread_state
 from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
 from juggle_settings import get_settings as _get_settings
 from dbops.schema import is_auto_topic_eligible
+from juggle_spool_apply import drain_spool
 
 
 def _get_version():
@@ -103,6 +104,13 @@ def cmd_start(_):
     # ensure the singleton watchdog is alive (the cockpit also self-heals it on an
     # interval, but a headless CLI user needs this to escape a freeze).
     _start_watchdog_for_cmd_start(db)
+
+    # Drain-on-start (T-spool-11): apply any events spooled while nothing was
+    # running, instead of leaving them stranded until the watchdog's first tick.
+    try:
+        drain_spool(db)
+    except Exception:
+        _log.warning("cmd_start: spool drain failed", exc_info=True)
 
     ver = _get_version()
     threads = db.get_all_threads()

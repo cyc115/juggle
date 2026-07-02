@@ -58,6 +58,8 @@ from juggle_cockpit_widgets import HSplitter, Splitter
 from juggle_cockpit_graph_mode import GraphModeMixin
 from juggle_cockpit_css import COCKPIT_CSS, _MIN_NOTIF_HEIGHT
 from juggle_cockpit_title import _cockpit_subtitle, _drift_banner, _get_version
+from juggle_cockpit_spool_status import get_spool_status_line
+from juggle_spool_paths import spool_dir as _spool_dir
 from juggle_watchdog_singleton import (
     canonical_repo_path,
     ensure_watchdog,
@@ -234,6 +236,7 @@ class CockpitApp(GraphModeMixin, App):
                         yield Static("", id="graph-body")
         yield Footer(compact=True)
         yield Static("", id="wd-status")
+        yield Static("", id="spool-status")
 
     def on_mount(self) -> None:
         self.title = "Juggle"
@@ -323,6 +326,15 @@ class CockpitApp(GraphModeMixin, App):
             self.notify(f"watchdog restart failed: {e}", severity="error")
         self._update_watchdog_status()
 
+    def _update_spool_status(self) -> None:
+        try:
+            line = get_spool_status_line(_spool_dir())
+            widget = self.query_one("#spool-status", Static)
+            widget.update(line)
+            widget.styles.color = "red" if line.endswith("!") else "green"
+        except Exception:
+            pass
+
     def _update_watchdog_status(self) -> None:
         try:
             db_path = self._watchdog_db_path()
@@ -375,6 +387,7 @@ class CockpitApp(GraphModeMixin, App):
         # Cheap re-read of on-disk version on the existing refresh interval (no
         # new daemon); guarded independently so a snapshot error can't mask drift.
         self._update_version_banner()
+        self._update_spool_status()
 
         from juggle_cockpit_model import snapshot as _snapshot
         from juggle_cockpit_view import (
