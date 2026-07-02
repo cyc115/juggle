@@ -90,6 +90,21 @@ def test_synthesis_profile_exists_with_large_max_tokens(tmp_path, monkeypatch):
     assert profiles["synthesis"]["max_tokens"] >= 2048
 
 
+def test_llm_profiles_default_to_deepseek_v4(tmp_path, monkeypatch):
+    """Code defaults use the deepseek-v4 family (2026-07-01 chore)."""
+    monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(tmp_path / "config.json"))
+    from juggle_settings import get_settings
+
+    profiles = get_settings()["llm_profiles"]
+    assert profiles["cheap"]["openrouter_model"] == "deepseek/deepseek-v4-flash"
+    assert profiles["cheap"]["fallback_model"] == "claude-haiku-4-5-20251001"
+    assert profiles["normal"]["openrouter_model"] == "deepseek/deepseek-v4-pro"
+    assert profiles["normal"]["fallback_model"] == "sonnet"
+    assert profiles["synthesis"]["openrouter_model"] == "deepseek/deepseek-v4-flash"
+    assert profiles["synthesis"]["fallback_model"] == "sonnet"
+    assert profiles["synthesis"]["max_tokens"] == 2048
+
+
 # --- Task 2: research synthesis + haiku filter fall back to claude -p ---------
 
 
