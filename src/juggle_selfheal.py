@@ -76,8 +76,25 @@ def _compute_class_b_signature(tool: str, error_text: str, juggle_ref: str) -> s
     return hashlib.sha256(sig_input.encode()).hexdigest()[:16]
 
 
+def _spool_error_event(event_args: dict) -> None:
+    """Spool a Class A error as a 'record_error' event instead of opening the DB.
+
+    Pure filesystem (dbops.spool) — no DB connection, so an agent/worktree process
+    never touches the shared prod DB from the failure path (the last un-spooled
+    write, T-spool-06). The drain replays it through dedup_or_insert_error. Errors
+    aren't thread-bound, so agent_id/thread_id are empty."""
+    from dbops.spool import write_event
+    from juggle_spool_paths import spool_dir
+
+    write_event(spool_dir(), "record_error", "", "", event_args)
+
+
 def record_error(exc: BaseException, entrypoint: str, context: dict | None = None) -> None:
-    """Capture a Class A exception. Never re-raises. Self-protecting."""
+    """Capture a Class A exception. Never re-raises. Self-protecting.
+
+    In an agent/worktree context (should_spool()) the event is SPOOLED for the
+    orchestrator to drain rather than written directly — a direct write from a
+    stale-schema worktree would trip the migration guard (T-spool-06)."""
     if os.environ.get(_SELFHEAL_ENV):
         return
     try:
@@ -85,6 +102,17 @@ def record_error(exc: BaseException, entrypoint: str, context: dict | None = Non
             return
         sig = _compute_class_a_signature(exc, entrypoint)
         full_tb = "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
+        from juggle_spool_cli_common import should_spool
+        if should_spool():
+            _spool_error_event({
+                "signature_hash": sig,
+                "error_class": "A",
+                "exc_type": type(exc).__name__,
+                "traceback": full_tb,
+                "entrypoint": entrypoint,
+                "command_args": json.dumps(context or {}),
+            })
+            return
         db = _get_db()
         os.environ[_SELFHEAL_ENV] = "1"
         try:

@@ -21,10 +21,25 @@ the import-frozen prod path.
 import os
 from pathlib import Path
 
+import pytest
+
 from juggle_db import JuggleDB
 from juggle_selfheal import _get_db, record_error
 
 _ELOOP = OSError(62, "Too many levels of symbolic links")
+
+
+@pytest.fixture(autouse=True)
+def _non_agent_context(monkeypatch, tmp_path):
+    """These pins assert the DIRECT-WRITE (non-agent) path: an orchestrator/hook
+    recording an error writes it to the redirected DB. Neutralize the ambient
+    agent context (this suite may itself run inside a dispatched agent / a
+    juggle-juggle-* worktree) so record_error does not divert to the spool
+    (T-spool-06); the agent-context spool path is covered by
+    tests/test_spool_record_error.py."""
+    for var in ("JUGGLE_IS_AGENT", "JUGGLE_ORCHESTRATOR", "JUGGLE_AGENT_WORKTREE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.chdir(tmp_path)
 
 
 def _raise_eloop():
