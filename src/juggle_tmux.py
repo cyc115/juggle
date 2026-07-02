@@ -24,7 +24,14 @@ from juggle_claude_trust import pretrust_spawn_dir as _pretrust_spawn_dir  # noq
 
 # Built-in Claude Code markers — used as the fallback when the configured
 # harness adapter can't be resolved (see _harness_markers).
-_READY_MARKERS = ("bypass permissions on", "/effort")
+#
+# "shift+tab to cycle" is the STABLE structural marker of a ready interactive
+# input box: it renders in every permission mode ("accept edits on ... (shift+tab
+# to cycle)", "bypass permissions on ... (shift+tab to cycle)") and for every
+# model, and persists when the pane is idle — unlike the transient "/effort"
+# widget or the mode-specific "bypass permissions on" text (defect E, 2026-07-01:
+# juggle spawns in accept-edits mode, so those two never reliably matched).
+_READY_MARKERS = ("shift+tab to cycle", "bypass permissions on", "/effort")
 _SUBMISSION_MARKERS = ("esc to interrupt", "✻", "✶")
 # Markers indicating the agent is already processing (consumed prompt, started tool calls).
 # Used in wait_for_submission to detect the fast-agent false-negative: prompt left the
@@ -32,6 +39,29 @@ _SUBMISSION_MARKERS = ("esc to interrupt", "✻", "✶")
 _ACTIVITY_MARKERS = ("⏺",)
 _DETECT_TAIL_LINES = 10  # lines of scrollback tail used for submission/stuck detection
 _PROMPT_HEAD_CHARS = 40
+
+
+# Best-effort watchdog-heartbeat refresh, bound at import so tests can patch it.
+# A long spawn-readiness wait runs INSIDE the watchdog tick; without a refresh
+# the heartbeat goes stale and CLI calls warn "watchdog not running" (defect E).
+try:
+    from juggle_watchdog_health import write_heartbeat  # noqa: F401
+except Exception:  # pragma: no cover — health module always importable in practice
+    write_heartbeat = None  # type: ignore[assignment]
+
+
+def _beat_heartbeat_if_watchdog() -> None:
+    """Refresh the watchdog heartbeat when running inside the watchdog process.
+
+    Guarded by ``JUGGLE_WATCHDOG_SANCTIONED`` (set only in the watchdog child)
+    so a plain CLI dispatch never touches the heartbeat — that would mask a
+    genuinely dead watchdog. Never raises."""
+    if os.environ.get("JUGGLE_WATCHDOG_SANCTIONED") != "1" or write_heartbeat is None:
+        return
+    try:
+        write_heartbeat()
+    except Exception:
+        pass
 
 
 def _harness_markers():
@@ -241,6 +271,9 @@ class JuggleTmuxManager:
             out = getattr(result, "stdout", "") or ""
             if any(m in out for m in ready_markers):
                 return True
+            # Keep the watchdog heartbeat fresh while this poll blocks the tick
+            # (defect E: a multi-minute wait made the heartbeat go stale).
+            _beat_heartbeat_if_watchdog()
             if i < attempts - 1:  # don't sleep after the final attempt
                 time.sleep(interval)
         return False

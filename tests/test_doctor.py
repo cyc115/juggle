@@ -73,6 +73,39 @@ def test_migrate_config_no_op_when_no_domains_block():
     assert changes == []
 
 
+def test_migrate_config_upgrades_stale_readiness_markers():
+    """Defect E (2026-07-01): a live config that pinned the old readiness
+    markers must be upgraded to include the stable "shift+tab to cycle" marker,
+    else fresh spawns keep failing readiness detection even after the code fix."""
+    cfg = {
+        "agent": {
+            "harnesses": {
+                "claude": {"readiness_markers": ["bypass permissions on", "/effort"]}
+            }
+        }
+    }
+    new_cfg, changes = _migrate_config(dict(cfg))
+    markers = new_cfg["agent"]["harnesses"]["claude"]["readiness_markers"]
+    assert "shift+tab to cycle" in markers
+    # original markers preserved (additive upgrade, not a replace)
+    assert "bypass permissions on" in markers
+    assert any("readiness_markers" in c for c in changes)
+
+
+def test_migrate_config_readiness_markers_idempotent():
+    """Re-running the migration on an already-upgraded config is a no-op."""
+    cfg = {
+        "agent": {
+            "harnesses": {
+                "claude": {"readiness_markers": ["shift+tab to cycle", "/effort"]}
+            }
+        }
+    }
+    new_cfg, changes = _migrate_config(dict(cfg))
+    assert new_cfg == cfg
+    assert not any("readiness_markers" in c for c in changes)
+
+
 def test_migrate_config_handles_missing_vault_entry():
     """domains block without a 'vault' path: still strip block, leave paths alone."""
     cfg = {

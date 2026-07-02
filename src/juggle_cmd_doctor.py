@@ -39,6 +39,28 @@ def _migrate_config(cfg: dict) -> tuple[dict, list[str]]:
     """
     cfg = copy.deepcopy(cfg)
     changes: list[str] = []
+
+    # Defect E (2026-07-01): upgrade a stale claude readiness_markers list that
+    # pinned the old transient/mode-specific chrome ("bypass permissions on" /
+    # "/effort") to include the stable structural marker. juggle spawns in
+    # accept-edits mode, so a settled ready pane matched neither of the old
+    # markers and fresh spawns hung until the readiness timeout. Additive +
+    # idempotent — never removes a user's own markers.
+    _STABLE_READY_MARKER = "shift+tab to cycle"
+    claude_harness = (
+        (cfg.get("agent") or {}).get("harnesses", {}).get("claude")
+        if isinstance(cfg.get("agent"), dict)
+        else None
+    )
+    if isinstance(claude_harness, dict):
+        markers = claude_harness.get("readiness_markers")
+        if isinstance(markers, list) and _STABLE_READY_MARKER not in markers:
+            claude_harness["readiness_markers"] = [_STABLE_READY_MARKER] + markers
+            changes.append(
+                f"agent.harnesses.claude.readiness_markers += {_STABLE_READY_MARKER!r} "
+                "(defect E: stable spawn-readiness marker)"
+            )
+
     domains = cfg.get("domains")
     if not isinstance(domains, dict):
         return cfg, changes

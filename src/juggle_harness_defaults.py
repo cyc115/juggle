@@ -23,7 +23,11 @@ HARNESS_DEFAULTS: dict = {
         # automatically — add your own here.
         "env": {},
         "env_unset": ["CLAUDE_PLUGIN_DATA"],
-        "readiness_markers": ["bypass permissions on", "/effort"],
+        # "shift+tab to cycle" is the stable structural marker of a ready input
+        # box — present in every permission mode and model, and it persists when
+        # idle (defect E, 2026-07-01: juggle spawns in accept-edits mode, so
+        # "bypass permissions on" never matched and "/effort" is transient).
+        "readiness_markers": ["shift+tab to cycle", "bypass permissions on", "/effort"],
         "submission_markers": ["esc to interrupt", "✻", "✶"],
         "supports_hooks": True,
     },

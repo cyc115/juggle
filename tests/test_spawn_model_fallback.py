@@ -93,6 +93,14 @@ def test_spawn_falls_back_to_default_model_when_resolved_model_fails(caplog):
     assert agent is not None
     assert any("fall" in r.message.lower() or "fallback" in r.message.lower()
                for r in caplog.records), "expected a warning about model fallback"
+    # Defect E (2026-07-01): after fallback the agent must record the ACTUAL
+    # launch model (harness default → None), NOT the requested model — the agent
+    # list showed 'sonnet' while the pane ran the default. The last update_agent
+    # for this agent must store model=None.
+    model_updates = [c for c in db.update_agent.call_args_list
+                     if "model" in c.kwargs]
+    assert model_updates, "spawn must persist the launch model"
+    assert model_updates[-1].kwargs["model"] is None
 
 
 def test_spawn_raises_when_even_default_model_fails():
