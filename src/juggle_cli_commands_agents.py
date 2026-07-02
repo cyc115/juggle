@@ -62,6 +62,10 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
             Arg("thread_id", help="Thread ID or label"),
             Arg("--allow-main", action="store_true", dest="allow_main", default=False,
                 help="Allow integration even if worktree fields are missing (operator bypass)"),
+            Arg("--allow-legacy-agent-integrate", action="store_true",
+                dest="allow_legacy_agent_integrate", default=False,
+                help="Compat bypass: allow a direct agent-context integrate call "
+                     "(integrate is watchdog-owned; operator/legacy escape hatch)"),
         ),
         help="Rebase-aware atomic worktree finalization: fetch → rebase → test → ff-merge → push"),
     Cmd("agent", "fail", cmd_fail_agent,

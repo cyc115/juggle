@@ -436,6 +436,22 @@ def cmd_integrate(args):
         print(f"Error: Thread {args.thread_id} not found.")
         sys.exit(1)
 
+    # T-spool-10: integrate is watchdog-owned — the watchdog tick applies it
+    # automatically, so a direct agent-context call (e.g. a coder's own
+    # Terminal Checklist) is refused. --allow-legacy-agent-integrate is the
+    # operator/legacy compat bypass.
+    if not getattr(args, "allow_legacy_agent_integrate", False):
+        from dbops.graph_guards import is_agent_context
+
+        if is_agent_context():
+            print(
+                "Error: integrate is watchdog-owned — direct agent-context calls "
+                "are refused. The watchdog tick applies integrate automatically; "
+                "re-run with --allow-legacy-agent-integrate for an operator/legacy "
+                "bypass."
+            )
+            sys.exit(1)
+
     allow_main = getattr(args, "allow_main", False)
     success, msg = _run_integrate(thread, db, allow_main=allow_main)
 
