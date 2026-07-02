@@ -25,6 +25,7 @@ from juggle_hooks_autopilot import (  # noqa: F401 — re-exported for juggle_ho
     autopilot_context as _autopilot_context,
 )
 from juggle_hooks_prose import clear_prose_decision, record_prose_decision
+from juggle_hooks_classb import _last_assistant_text_from_transcript
 
 
 # Patterns that are always safe to approve (send "1" = proceed).
@@ -229,8 +230,19 @@ def handle_stop(data: dict, scan_class_b_fn) -> None:
         except Exception:
             pass  # best-effort — never break the Stop hook
 
-        # Capture orchestrator response — available via last_assistant_message field
+        # Capture orchestrator response — available via last_assistant_message field.
+        # Fall back to scanning the transcript when that field is empty: the
+        # harness only reflects the FINAL assistant record, which is blank when
+        # the turn ends with a bare tool_use after the real prose answer
+        # (2026-07-01 fix-qa-capture-empty-answer).
         last_msg = data.get("last_assistant_message", "").strip()
+        if not last_msg and data.get("transcript_path"):
+            try:
+                last_msg = _last_assistant_text_from_transcript(
+                    data["transcript_path"]
+                ).strip()
+            except Exception:
+                pass  # best-effort — never break the Stop hook
         if last_msg and len(last_msg) > 10:
             thread_id = db.get_current_thread()
             if thread_id is not None:

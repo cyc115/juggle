@@ -99,6 +99,64 @@ def test_stop_handler_ignores_short_messages(active_db, monkeypatch):
     assert not any(m["role"] == "assistant" for m in messages)
 
 
+def test_stop_handler_falls_back_to_transcript_when_turn_ends_in_tool_call(
+    active_db, monkeypatch, tmp_path
+):
+    """Regression pin (2026-07-01, fix-qa-capture-empty-answer): the
+    orchestrator answers in prose, then ends its turn with a bare tool_use
+    (e.g. ScheduleWakeup) — the harness's last_assistant_message field comes
+    back empty because it only reflects the FINAL assistant record. Q&A
+    history must still capture the earlier prose answer from the transcript."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
+    import importlib
+    import juggle_hooks
+    import juggle_hooks_config
+
+    importlib.reload(juggle_hooks)
+    monkeypatch.setattr(juggle_hooks_config, "DB_PATH", active_db.db_path)
+    monkeypatch.setattr(juggle_hooks, "DB_PATH", active_db.db_path)
+
+    transcript = tmp_path / "transcript.jsonl"
+    records = [
+        {"type": "user", "message": {"content": "What auth flow do we use?"}},
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "We use OAuth2 with a rotating refresh token.",
+                    }
+                ]
+            },
+        },
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "tu1",
+                        "name": "ScheduleWakeup",
+                        "input": {},
+                    }
+                ]
+            },
+        },
+    ]
+    transcript.write_text("\n".join(json.dumps(r) for r in records))
+
+    data = {"last_assistant_message": "", "transcript_path": str(transcript)}
+
+    with pytest.raises(SystemExit):
+        juggle_hooks.handle_stop(data)
+
+    messages = active_db.get_messages(active_db.get_current_thread(), token_budget=9999)
+    assistant_msgs = [m for m in messages if m["role"] == "assistant"]
+    assert len(assistant_msgs) == 1
+    assert assistant_msgs[0]["content"] == "We use OAuth2 with a rotating refresh token."
+
+
 def test_stop_handler_missing_field_is_noop(active_db, monkeypatch):
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(active_db.db_path.parent))
     import importlib

@@ -1,7 +1,10 @@
 """
 juggle_hooks_classb — Class B transcript scan (Stop-hook, Juggle-caused errors).
 
-Owns: _scan_transcript_for_class_b, _do_class_b_scan, _attribute_tool_errors.
+Owns: _scan_transcript_for_class_b, _do_class_b_scan, _attribute_tool_errors,
+_read_transcript_records, _current_turn_records, and
+_last_assistant_text_from_transcript (used by juggle_hooks_prompt's Stop
+handler as a fallback when the harness's last_assistant_message is empty).
 Must not own: DB path constants, handler dispatch, checkpoint logic.
 """
 
@@ -33,17 +36,9 @@ def _scan_transcript_for_class_b(data: dict) -> None:
         logging.warning("Class B transcript scan failed: %s", exc)
 
 
-def _do_class_b_scan(transcript_path: Path) -> None:
-    """Parse transcript JSONL and record tool errors attributed to Juggle.
-
-    Verified real schema (2026-05-30):
-    - type="user" with message.content=str → human turn boundary
-    - type="assistant" → tool_use blocks in message.content list
-    - type="user" with message.content=list → tool_result blocks
-    - tool_use: {type, id, name, input, caller}
-    - tool_result: {type, tool_use_id, is_error, content}
-    - is_error is True for errors; False or None for success
-    """
+def _read_transcript_records(transcript_path: Path) -> list[dict]:
+    """Parse the tail of a transcript JSONL file into records (best-effort,
+    skips malformed lines)."""
     all_lines = transcript_path.read_text(errors="replace").splitlines()
     lines = all_lines[-_MAX_TRANSCRIPT_LINES:]
 
@@ -53,8 +48,20 @@ def _do_class_b_scan(transcript_path: Path) -> None:
             records.append(json.loads(line))
         except json.JSONDecodeError:
             continue
+    return records
 
-    # Find last human-text turn boundary
+
+def _current_turn_records(records: list[dict]) -> list[dict]:
+    """Records after the last human-text turn boundary.
+
+    Verified real schema (2026-05-30):
+    - type="user" with message.content=str → human turn boundary
+    - type="assistant" → tool_use blocks in message.content list
+    - type="user" with message.content=list → tool_result blocks
+    - tool_use: {type, id, name, input, caller}
+    - tool_result: {type, tool_use_id, is_error, content}
+    - is_error is True for errors; False or None for success
+    """
     boundary_idx = -1
     for i, rec in enumerate(records):
         if rec.get("type") != "user":
@@ -67,9 +74,46 @@ def _do_class_b_scan(transcript_path: Path) -> None:
                 boundary_idx = i
 
     if boundary_idx < 0:
-        return
+        return []
+    return records[boundary_idx + 1:]
 
-    current_turn = records[boundary_idx + 1:]
+
+def _last_assistant_text_from_transcript(transcript_path: str) -> str:
+    """Fallback for when the harness's last_assistant_message field is empty.
+
+    Bug (2026-07-01, fix-qa-capture-empty-answer): last_assistant_message
+    reflects only the FINAL assistant record of the turn. When the
+    orchestrator answers in prose and then ends the turn with a bare
+    tool_use (e.g. ScheduleWakeup) with no trailing text, that final record
+    has no text block and the field comes back empty even though an earlier
+    assistant record in the SAME turn held the real answer. Scan every
+    assistant record in the current turn and return the LAST non-empty text
+    block, regardless of trailing tool calls."""
+    try:
+        records = _read_transcript_records(Path(transcript_path))
+    except OSError:
+        return ""
+    last_text = ""
+    for rec in _current_turn_records(records):
+        if rec.get("type") != "assistant":
+            continue
+        content = rec.get("message", {}).get("content", [])
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = (item.get("text") or "").strip()
+                if text:
+                    last_text = text
+    return last_text
+
+
+def _do_class_b_scan(transcript_path: Path) -> None:
+    """Parse transcript JSONL and record tool errors attributed to Juggle."""
+    records = _read_transcript_records(transcript_path)
+    current_turn = _current_turn_records(records)
+    if not current_turn:
+        return
 
     tool_uses: list[dict] = []
     for rec in current_turn:
