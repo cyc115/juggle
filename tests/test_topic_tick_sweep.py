@@ -57,9 +57,16 @@ def test_daemon_tick_wires_the_sweep():
 
 def test_daemon_tick_wires_summary_warming():
     """summary-eager-gen: the watchdog tick body invokes the eager (i)-pane
-    summary cache warmer."""
+    summary cache warmer.
+
+    T-fix-watchdog-tick-lock-hang: warming now runs fire-and-forget via
+    juggle_watchdog_tickguard.dispatch_summary_warming (never synchronously
+    in _poll_once — see tests/test_watchdog_tick_lock_hang.py for the hang
+    regression pin)."""
     import inspect
 
     import juggle_watchdog_daemon as wd
+    import juggle_watchdog_tickguard as tg
 
-    assert "warm_stale_summaries" in inspect.getsource(wd._poll_once)
+    assert "dispatch_summary_warming" in inspect.getsource(wd._poll_once)
+    assert "warm_stale_summaries" in inspect.getsource(tg.dispatch_summary_warming)

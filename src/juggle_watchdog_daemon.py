@@ -29,6 +29,7 @@ from juggle_watchdog_respawn import (
     reconcile_existing_watchdog,
     record_boot_code_version,
 )
+from juggle_watchdog_tickguard import arm_tick_watchdog, dispatch_summary_warming
 from juggle_watchdog import (
     _kill_existing_watchdog_from_pidfile,
     check_orphaned_threads,
@@ -333,15 +334,9 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     except Exception:
         _log.exception("Watchdog: selfheal diagnosis tick failed — continuing")
 
-    # Eager (i)-pane summary cache warming (summary-eager-gen): regenerate
-    # stale topic_summary_cache rows in the background so the modal reads
-    # cache-only in the common case, instead of the user waiting on a
-    # synchronous LLM call. Never blocks the tick.
-    try:
-        from juggle_summary_warmer import warm_stale_summaries
-        warm_stale_summaries(db)
-    except Exception:
-        _log.exception("Watchdog: summary warming tick failed — continuing")
+    # Eager (i)-pane summary cache warming (summary-eager-gen), fire-and-forget
+    # (see juggle_watchdog_tickguard — T-fix-watchdog-tick-lock-hang).
+    dispatch_summary_warming(db)
 
 
 def _set_orchestrator_preamble() -> None:
@@ -466,6 +461,7 @@ def main() -> None:
             _tick_event.clear()
             if not _running:
                 break
+            tick_timer = arm_tick_watchdog(_POLL_INTERVAL)
             try:
                 _poll_once(db, mgr)
             except Exception as exc:
@@ -475,6 +471,8 @@ def main() -> None:
                     record_error(exc, "juggle_watchdog.poll")
                 except Exception:
                     pass
+            finally:
+                tick_timer.cancel()
     finally:
         _cleanup_singleton_pid()
         _log.info("Watchdog stopped.")
