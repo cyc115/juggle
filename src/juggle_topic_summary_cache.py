@@ -185,6 +185,25 @@ def load_cached_sections(
     return (None, cursor)
 
 
+def invalidate_summary_cache(db, thread_id: str, l1: dict) -> None:
+    """Drop the L2 row and any L1 entries for ``thread_id`` — forces the next
+    ``load_cached_sections`` call to MISS (FULL regen). Used by the modal's
+    'r' regen key. A DB failure is swallowed (must never break the modal).
+    """
+    if not thread_id:
+        return
+    for key in [k for k in l1 if k[0] == thread_id]:
+        del l1[key]
+    if db is None:
+        return
+    try:
+        with db._connect() as conn:
+            conn.execute("DELETE FROM topic_summary_cache WHERE thread_id = ?", (thread_id,))
+            conn.commit()
+    except Exception as e:  # pragma: no cover - defensive
+        _log.warning("invalidate_summary_cache failed (%s): %s", thread_id, e)
+
+
 def store_summary(
     db, thread_id: str, cursor: int, sections: dict, l1: dict, node_signature: str = ""
 ) -> None:

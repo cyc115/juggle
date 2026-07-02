@@ -214,18 +214,19 @@ class _NodeDetailModal(ModalScreen):
             yield Static("", id="node-body", markup=False)
 
     def on_key(self, event) -> None:
-        """Vim-style j/k (and arrows) scroll the overflowing modal body.
-
-        ``event.stop()`` keeps the key from leaking to the underlying cockpit
-        while the overlay is open. Mirrors ``_HelpModal``'s scroll handler and
-        reuses Textual's built-in ``VerticalScroll.scroll_down/up`` — no custom
-        scroll math.
-        """
+        """j/k or arrows scroll the body; 'r' (topic only) forces a summary regen."""
         if event.key in ("j", "down"):
             self.query_one(VerticalScroll).scroll_down()
             event.stop()
         elif event.key in ("k", "up"):
             self.query_one(VerticalScroll).scroll_up()
+            event.stop()
+        elif event.key == "r" and self._is_topic and self._summary_ctx.get("messages_all"):
+            from juggle_topic_summary_cache import invalidate_summary_cache
+            tid = self._summary_ctx.get("thread_id", "")
+            invalidate_summary_cache(getattr(self.app, "_db", None), tid, _topic_summary_cache)
+            self.query_one("#node-body", Static).update("Regenerating…")
+            self.run_worker(self._fetch_summary, thread=True)
             event.stop()
 
     def on_mount(self) -> None:
@@ -295,5 +296,5 @@ class _NodeDetailModal(ModalScreen):
             _log.warning("_apply_summary: branch=raw_fallback (0 sections filled — check summarize logs)")
             body_lines = self._raw_body_lines() + ["", "(summary unavailable)"]
 
-        body_lines += ["", "Esc / q — close"]
+        body_lines += ["", "Esc / q — close   ·   r — regen"]
         self.query_one("#node-body", Static).update("\n".join(body_lines))

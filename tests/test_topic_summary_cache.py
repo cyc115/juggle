@@ -18,6 +18,7 @@ from juggle_topic_summary_cache import (
     current_cursor,
     decide_summary_action,
     has_displayable_content,
+    invalidate_summary_cache,
     load_cached_sections,
     read_summary_cache,
     store_summary,
@@ -167,6 +168,34 @@ def test_load_cached_sections_exact_hit_no_llm_after_restart(tmp_path, monkeypat
     assert sections == _SECTIONS
     assert resolved == cur
     assert calls["n"] == 0  # zero LLM invocations on an exact hit
+
+
+# ── invalidate (r regen) ──────────────────────────────────────────────────
+
+def test_invalidate_summary_cache_drops_l2_row(tmp_path):
+    db = _juggle_db(tmp_path)
+    store_summary(db, "t1", 5, _SECTIONS, {})
+    with db._connect() as conn:
+        assert read_summary_cache(conn, "t1") is not None
+
+    invalidate_summary_cache(db, "t1", {})
+
+    with db._connect() as conn:
+        assert read_summary_cache(conn, "t1") is None
+
+
+def test_invalidate_summary_cache_drops_matching_l1_entries():
+    l1 = {("t1", 5, ""): _SECTIONS, ("t1", 9, "sig"): _SECTIONS, ("t2", 5, ""): _SECTIONS}
+    invalidate_summary_cache(None, "t1", l1)
+    assert ("t1", 5, "") not in l1
+    assert ("t1", 9, "sig") not in l1
+    assert ("t2", 5, "") in l1  # other threads untouched
+
+
+def test_invalidate_summary_cache_no_db_no_thread_id_is_noop():
+    l1 = {("", 5, ""): _SECTIONS}
+    invalidate_summary_cache(None, "", l1)  # must not raise
+    assert l1 == {("", 5, ""): _SECTIONS}  # key not for this thread_id ("") — untouched by design
 
 
 def test_store_summary_skips_empty_and_failed_summaries(tmp_path):
