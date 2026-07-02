@@ -240,8 +240,11 @@ class CockpitApp(GraphModeMixin, App):
         self.sub_title = _cockpit_subtitle(_get_version(), width=self.size.width)
 
         if not self._db.is_active():
+            # The toast from notify() is swallowed by the alternate screen on
+            # exit — print the reason to stderr too so it's not a silent exit.
             self.notify("Juggle inactive. Run /juggle:start first.", severity="error")
-            self.exit(1)
+            print("Juggle inactive — run: juggle start", file=sys.stderr)
+            self.exit(return_code=1)
             return
 
         # Apply settings-driven initial sizes.
@@ -975,10 +978,11 @@ class CockpitApp(GraphModeMixin, App):
 # ---------------------------------------------------------------------------
 
 
-def run(db_path: str | None = None) -> None:
+def run(db_path: str | None = None) -> int:
     try:
         app = CockpitApp(db_path=db_path)
         app.run()
+        return app.return_code or 0
     except Exception as exc:
         try:
             from juggle_selfheal import record_error
@@ -1055,4 +1059,4 @@ if __name__ == "__main__":
     if args.profile:
         run_profile(duration=args.duration, db_path=args.db_path)
         sys.exit(0)
-    run(db_path=args.db_path)
+    sys.exit(run(db_path=args.db_path))

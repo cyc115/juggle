@@ -88,6 +88,33 @@ def test_persist_ratios_missing_config_no_exception(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Test 4b — inactive Juggle: print reason to stderr, exit nonzero (not silent)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_inactive_cockpit_prints_reason_and_exits_nonzero(tmp_path, capfd):
+    """UX bug (2026-07-01): with Juggle stopped, the cockpit's alternate screen
+    swallows the notify() toast — the user sees a silent exit. on_mount must
+    ALSO print the reason to stderr and actually exit with code 1 (observed
+    process exit was 0 — self.exit(1) passes 1 as `result`, not `return_code`)."""
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    # Never called db.set_active(True) — is_active() is False.
+
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test():
+        pass
+
+    assert app.return_code == 1
+    assert "juggle start" in capfd.readouterr().err.lower()
+
+
+# ---------------------------------------------------------------------------
 # Test 5 — lifecycle: q-press triggers _persist_ratios via exit() (Textual Pilot)
 # ---------------------------------------------------------------------------
 
