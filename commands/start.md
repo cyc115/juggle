@@ -9,11 +9,13 @@ allowed-tools: Read, Glob, Grep, Bash, Agent, Edit, Write
 uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py start
 ```
 
+**Monitor lifecycle contract:** always kill any existing monitor for this session before arming a new one (the script self-evicts its own prior pidfile on start — never let two Monitor tool calls run concurrently for one session). Arm exactly ONE persistent monitor per `/juggle:start` invocation — re-running `/juggle:start` mid-session re-arms (kill old, start new), it never stacks a second monitor alongside the first.
+
 Arm monitor immediately:
 ```
 Monitor: ${CLAUDE_PLUGIN_ROOT}/scripts/juggle-agent-monitor
 ```
-Each line signals a completed agent: `[LABEL] researcher: <title>` → "Review ready — [LABEL]: <title>" | `[LABEL] coder/planner: <title>` → "[LABEL] done — <title>". Retrieve result and surface to user.
+Each line is one pushable event (`handled_by` = orchestrator/user). Completion lines keep the back-compat format: `[LABEL] researcher: <title>` → "Review ready — [LABEL]: <title>" | `[LABEL] coder/planner: <title>` → "[LABEL] done — <title>". Other kinds (task/topic status, violations, manual notify) print their message text as-is. More than 3 same-kind events in one poll coalesce into a single summary line. Retrieve result and surface to user.
 
 Auto-create Topic A from first substantive message: `thread create "<label>"`
 

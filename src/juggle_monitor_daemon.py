@@ -18,7 +18,10 @@ import time
 from pathlib import Path
 
 import daemon_pidfile
+from dbops.event_kinds import AGENT_COMPLETE, LEGACY
 from juggle_settings import get_settings
+
+_COALESCE_THRESHOLD = 3  # >N same-kind rows in one poll cycle -> one summary line
 
 _JUGGLE_DIR = Path.home() / ".juggle"
 # Defaults; main() reassigns these to the per-session paths (see _session_id).
@@ -98,25 +101,53 @@ def _role_for_thread(conn: sqlite3.Connection, thread_id: str) -> str:
 
 def _poll_once(
     conn: sqlite3.Connection, last_seen_id: int
-) -> tuple[list[tuple[str, str]], int]:
-    """Query new completions. Returns ([(thread_id, output_line)], new_last_seen_id)."""
+) -> tuple[list[tuple[str | None, str]], int]:
+    """Query new pushable events (T1a: handled_by != 'watchdog').
+
+    Returns ([(thread_id_or_None, output_line)], new_last_seen_id). Kind
+    AGENT_COMPLETE/LEGACY on a 'done' conversation thread keeps the exact
+    back-compat `[LABEL] role: title` line (matches the pre-T1b behavior);
+    every other pushable kind prints its notification message as-is. More
+    than _COALESCE_THRESHOLD same-kind rows in one cycle collapse into a
+    single summary line (thread_id=None, so it bypasses per-thread dedup).
+    """
     rows = conn.execute(
         """
-        SELECT n.id, n.thread_id, t.user_label, t.title
+        SELECT n.id, n.thread_id, n.message, n.kind, n.handled_by,
+               t.user_label, t.title, t.state
         FROM notifications_v2 n
-        JOIN nodes t ON n.thread_id = t.id AND t.kind='conversation'
-        WHERE n.id > ? AND t.state = 'done'
+        LEFT JOIN nodes t ON n.thread_id = t.id AND t.kind='conversation'
+        WHERE n.id > ?
         ORDER BY n.id
         """,
         (last_seen_id,),
     ).fetchall()
 
-    results = []
+    from collections import Counter
+
+    counts = Counter(row["kind"] for row in rows if row["handled_by"] != "watchdog")
+    coalesced_kinds = {k for k, n in counts.items() if n > _COALESCE_THRESHOLD}
+    emitted_coalesce_line: set[str] = set()
+    results: list[tuple[str | None, str]] = []
+
     for row in rows:
-        role = _role_for_thread(conn, row["thread_id"])
-        label = row["user_label"] or "?"
-        title = row["title"] or "?"
-        results.append((row["thread_id"], f"[{label}] {role}: {title}"))
+        if row["handled_by"] == "watchdog":
+            last_seen_id = row["id"]
+            continue
+        kind = row["kind"]
+        if kind in coalesced_kinds:
+            if kind not in emitted_coalesce_line:
+                emitted_coalesce_line.add(kind)
+                results.append((None, f"⬢ {counts[kind]} × {kind} events"))
+        elif kind in (AGENT_COMPLETE, LEGACY) and row["state"] == "done":
+            role = _role_for_thread(conn, row["thread_id"])
+            label = row["user_label"] or "?"
+            title = row["title"] or "?"
+            results.append((row["thread_id"], f"[{label}] {role}: {title}"))
+        elif kind in (AGENT_COMPLETE, LEGACY):
+            pass  # not a done conversation thread — matches pre-T1b behavior (skip)
+        else:
+            results.append((None, row["message"]))
         last_seen_id = row["id"]
     return results, last_seen_id
 
@@ -203,8 +234,12 @@ def main() -> None:
             results, new_last_seen_id = _poll_once(conn, last_seen_id)
             conn.close()
             for thread_id, line in results:
-                if thread_id not in emitted:
-                    emitted.add(thread_id)
+                # thread_id=None covers threadless/coalesced events — always
+                # print (nothing to dedupe against); completion lines dedupe
+                # by thread_id as before.
+                if thread_id is None or thread_id not in emitted:
+                    if thread_id is not None:
+                        emitted.add(thread_id)
                     print(line, flush=True)
             # Advance + persist the cursor ONLY after the lines are flushed, so a
             # SIGTERM->relaunch re-emits unconsumed completions rather than losing them.
