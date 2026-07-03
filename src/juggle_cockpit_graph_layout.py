@@ -99,6 +99,34 @@ def build_ranks(tasks: list[GraphTask], edges: list[tuple[str, str]]) -> list[Ra
 # ---------------------------------------------------------------------------
 
 
+def dag_is_done(tasks: list[GraphTask]) -> bool:
+    """A project's DAG is fully done when it has >=1 real (non-mirror) task and
+    every one is verified — the same predicate ``frontier_visible`` uses for its
+    'fully done' branch. Drives the cockpit done-collapse (spec 2026-07-03)."""
+    real = [n for n in tasks if not getattr(n, "is_mirror", False)]
+    return bool(real) and all(n.state == "verified" for n in real)
+
+
+def selectable_units(
+    tasks: list[GraphTask], edges: list[tuple[str, str]]
+) -> list[GraphTask]:
+    """Navigable units for one DAG — the single source of truth shared by the
+    panel render and the keyboard-selection sites.
+
+    A fully-done project collapses to a SINGLE representative unit (its last
+    real task in topological order) so it occupies exactly one selection slot,
+    matching the collapsed one-line render (selectable != expanded). An active
+    project keeps its frontier-visible list.
+    """
+    if dag_is_done(tasks):
+        flat: list[GraphTask] = []
+        for rank in build_ranks(tasks, edges):
+            flat.extend(rank.tasks)
+        real = [n for n in flat if not getattr(n, "is_mirror", False)]
+        return [real[-1]] if real else []
+    return frontier_visible(tasks, edges)[0]
+
+
 def frontier_visible(
     tasks: list[GraphTask],
     edges: list[tuple[str, str]],

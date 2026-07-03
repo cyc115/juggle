@@ -331,3 +331,43 @@ async def test_graph_header_shows_project_name_in_app(tmp_path):
         buf = io.StringIO()
         Console(width=158, file=buf, no_color=True).print(panel)
         assert "Juggle Claude Code Plugin" in buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Done-project collapse (spec 2026-07-03-cockpit-graph-sort §3)
+# ---------------------------------------------------------------------------
+
+
+def test_done_project_renders_collapsed_one_line_summary():
+    """PIN: cockpit-graph-autosort (2026-07-03) — a fully-verified project must
+    collapse to a single '✅ <name> — N/N done' line instead of its full DAG,
+    reclaiming vertical space; an active sibling still renders its full grid."""
+    from juggle_cockpit_graph_dag import GraphDag
+    from juggle_cockpit_graph_panel import build_multi_graph_panel
+
+    dags = [
+        GraphDag(
+            project_id="ACT",
+            tasks=[GraphTask("act-run", "Build", "running", thread_id="t1")],
+            edges=[], member_tasks={}, project_name="Active One",
+        ),
+        GraphDag(
+            project_id="DONE",
+            tasks=[
+                GraphTask("zzdone1", "Alpha", "verified"),
+                GraphTask("zzdone2", "Beta", "verified"),
+            ],
+            edges=[("zzdone2", "zzdone1")], member_tasks={}, project_name="Done Two",
+        ),
+    ]
+    panel = build_multi_graph_panel(
+        dags=dags, selection=0, unread=0, width=120, height=40, pan_offset=0
+    )
+    out = _text(panel, width=120)
+    # Collapsed summary line present…
+    assert "✅ Done Two — 2/2 done" in out
+    # …and the done project's individual task cells are NOT rendered.
+    assert "zzdone1" not in out
+    assert "zzdone2" not in out
+    # The active sibling still renders its grid cell.
+    assert "act-run" in out
