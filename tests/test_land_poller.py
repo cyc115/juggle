@@ -110,6 +110,26 @@ def test_pending_leaves_topic_unlanded(db, tmp_path, monkeypatch):
     assert tp.get_topic(db, "T2")["state"] == "integrated-unlanded"
 
 
+def test_landed_but_not_yet_ancestor_stays_pending(db, tmp_path, monkeypatch):
+    """G1 gate pin: topic_transition RAISES UnmergedVerifyRefused (not a
+    non-'verified' return) when landed_rev isn't (yet) an ancestor of main
+    (e.g. remote not fetched) — the poller must catch it and retry next tick,
+    never crash or false-verify."""
+    repo = _merged_repo(tmp_path)
+    _unlanded_topic(db, "T8", repo)
+
+    fake = FakeBackend()
+    fake.scripted["land_status"] = LandStatus(state="landed", landed_rev="not-an-ancestor-sha")
+    monkeypatch.setattr(lp, "backend_for", lambda r: fake)
+
+    stats = lp.poll_unlanded_topics(db, "INBOX")
+
+    assert stats["pending"] == ["T8"]
+    assert stats["errors"] == []
+    topic = tp.get_topic(db, "T8")
+    assert topic["state"] == "integrated-unlanded"
+
+
 def test_timeout_land_fails_with_high_action_item(db, tmp_path, monkeypatch):
     repo = _merged_repo(tmp_path)
     _unlanded_topic(db, "T3", repo)

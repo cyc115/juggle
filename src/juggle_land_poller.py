@@ -19,6 +19,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from dbops import db_topics
+from dbops.db_topics import UnmergedVerifyRefused
 from vcs import backend_for
 
 _log = logging.getLogger("juggle-land-poller")
@@ -99,14 +100,17 @@ def poll_unlanded_topics(db, project_id: str) -> dict:
             status = backend_for(repo).land_status(repo, ticket)
             if status.state == "landed":
                 db_topics.set_topic_merged_sha(db, tid, status.landed_rev)
-                new_state = db_topics.topic_transition(db, tid, "land_confirmed")
-                if new_state == "verified":
-                    _teardown_topic_workspace(db, topic, repo)
-                    stats["landed"].append(tid)
-                else:
+                try:
+                    db_topics.topic_transition(db, tid, "land_confirmed")
+                except UnmergedVerifyRefused:
                     # Gate refused (not-yet-ancestor merged_sha, e.g. remote not
-                    # yet fetched) — stays 'integrated-unlanded', retried next tick.
+                    # yet fetched) — topic_transition RAISES rather than
+                    # returning a non-'verified' state, so this must be caught
+                    # explicitly. Stays 'integrated-unlanded', retried next tick.
                     stats["pending"].append(tid)
+                    continue
+                _teardown_topic_workspace(db, topic, repo)
+                stats["landed"].append(tid)
                 continue
             if status.state == "failed":
                 db_topics.topic_transition(db, tid, "land_fail")
