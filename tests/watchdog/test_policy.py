@@ -126,8 +126,8 @@ def test_nudge_and_notify_sends_notification_not_action_item():
 
     nudge_and_notify(db, mgr, _make_agent(), content="Cogitated\nline2\nline3")
 
-    db.add_notification_v2.assert_called_once()
-    notif_kwargs = db.add_notification_v2.call_args[1]
+    db.emit_event.assert_called_once()
+    notif_kwargs = db.emit_event.call_args[1]
     assert "alive-but-stalled" in notif_kwargs["message"]
     # Must NOT file a blocking action item
     db.add_action_item.assert_not_called()
@@ -208,7 +208,7 @@ def test_execute_recovery_short_circuits_for_alive_slow(tmp_path):
     # Must not write a recovery snapshot
     assert list(tmp_path.glob("*.txt")) == []
     # Must send a notification (via nudge_and_notify) — not a blocking action item
-    db.add_notification_v2.assert_called_once()
+    db.emit_event.assert_called_once()
     db.add_action_item.assert_not_called()
 
 

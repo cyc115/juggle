@@ -82,7 +82,7 @@ def test_first_stall_auto_recovery_emits_notification_not_action_item(tmp_path):
     )
 
     # Must emit a notification for the auto-retry
-    db.add_notification_v2.assert_called()
+    db.emit_event.assert_called()
     # Must NOT file a blocking action item for an auto-recoverable event
     db.add_action_item.assert_not_called()
 
@@ -160,7 +160,7 @@ def test_orphan_auto_recovery_emits_notification_not_action_item(tmp_path):
     mgr.spawn_agent.return_value = new_agent
 
     with patch.object(db, "add_action_item") as mock_action, \
-         patch.object(db, "add_notification_v2") as mock_notif:
+         patch.object(db, "emit_event") as mock_notif:
         check_orphaned_threads(
             db,
             orphan_threshold=1.0,

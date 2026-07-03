@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import sys
 
+from dbops import event_kinds as _ek
+
 _TASK_TERMINAL = frozenset(
     {"verified", "failed-exec", "failed-integration", "failed-verify",
      "blocked-failed"}
@@ -114,19 +116,21 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
         pass
 
     if state == "verified":
-        db.add_notification_v2(
+        db.emit_event(
             thread_id=thread_uuid,
             message=f"⬢ topic {topic['id']} verified (merged)",
             session_id=session_id,
+            kind=_ek.TOPIC_STATUS,
         )
     else:
         blocked = db_topics.propagate_topic_failure(db, topic["id"])
         detail = (f" Dependent topics blocked: {', '.join(blocked)}."
                   if blocked else "")
-        db.add_notification_v2(
+        db.emit_event(
             thread_id=thread_uuid,
             message=f"⬢ topic {topic['id']} → {state}",
             session_id=session_id,
+            kind=_ek.TOPIC_STATUS,
         )
         db.add_action_item(
             thread_id=None,
@@ -137,10 +141,11 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
     for ready_id in db_topics.recompute_topic_ready(db, topic["project_id"]):
         rt = db_topics.get_topic(db, ready_id)
         title = rt["title"] if rt else ready_id
-        db.add_notification_v2(
+        db.emit_event(
             thread_id=None,
             message=f"⬢ topic ready: {ready_id} — {title}",
             session_id=session_id,
+            kind=_ek.TOPIC_STATUS,
         )
 
 
@@ -169,10 +174,11 @@ def fail_graph_topic(db, thread_uuid, session_id, reason=None) -> bool:
     detail = (f"dependent topics blocked: {', '.join(blocked)}."
               if blocked else "fix before dependents can run.")
     cause = f" Cause: {reason}." if reason else ""
-    db.add_notification_v2(
+    db.emit_event(
         thread_id=thread_uuid,
         message=f"⬢ topic {topic['id']} → {state}",
         session_id=session_id,
+        kind=_ek.TOPIC_STATUS,
     )
     db.add_action_item(
         thread_id=thread_uuid,

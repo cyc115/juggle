@@ -23,6 +23,8 @@ import time as _time
 from pathlib import Path
 from typing import Any
 
+from dbops import event_kinds as _ek
+
 # ---------------------------------------------------------------------------
 # Re-exports from split modules (keep all juggle_watchdog.X patch targets alive)
 # ---------------------------------------------------------------------------
@@ -342,10 +344,9 @@ def handle_prompt(db: Any, mgr: Any, agent: dict, pane_id: str, key: str) -> Non
     thread_id = agent.get("assigned_thread")
     label = _get_thread_label(db, thread_id) if thread_id else agent["id"][:8]
     session_id = get_session_id(db)
-    db.add_notification_v2(
-        thread_id=thread_id,
+    db.emit_event(
+        thread_id=thread_id, session_id=session_id, kind=_ek.WATCHDOG_PROMPT,
         message=f"[Watchdog] [{label}] auto-resolved permission prompt (key={key!r})",
-        session_id=session_id,
     )
     _log.info("Watchdog: prompt resolved for agent %s key=%r", agent["id"][:8], key)
 
@@ -479,8 +480,9 @@ def nudge_and_notify(db: Any, mgr: Any, agent: dict, content: str) -> None:
 
     # Send a passive notification — alive-but-slow is informational, not a blocker.
     if thread_id:
-        db.add_notification_v2(
-            thread_id=thread_id, message=message, session_id=session_id
+        db.emit_event(
+            thread_id=thread_id, message=message, session_id=session_id,
+            kind=_ek.WATCHDOG_STALL,
         )
 
     _log.info(
@@ -716,13 +718,10 @@ def execute_recovery(
         return
 
     if thread_id:
-        db.add_notification_v2(
-            thread_id=thread_id,
-            message=(
-                f"[Watchdog] [{label}] {role} stalled/crashed — auto-retrying "
-                f"(recovery snapshot: {snap_path.name})"
-            ),
-            session_id=session_id,
+        db.emit_event(
+            thread_id=thread_id, session_id=session_id, kind=_ek.WATCHDOG_RECOVERY,
+            message=(f"[Watchdog] [{label}] {role} stalled/crashed — auto-retrying "
+                     f"(recovery snapshot: {snap_path.name})"),
         )
 
     new_agent = mgr.spawn_agent(db, role=role, model=model)
@@ -808,13 +807,10 @@ def execute_recovery(
         return
 
     if thread_id:
-        db.add_notification_v2(
-            thread_id=thread_id,
-            message=(
-                f"[Watchdog] [{label}] {role} agent auto-re-dispatched to "
-                f"{new_agent_id[:8]} after stall"
-            ),
-            session_id=session_id,
+        db.emit_event(
+            thread_id=thread_id, session_id=session_id, kind=_ek.WATCHDOG_RECOVERY,
+            message=(f"[Watchdog] [{label}] {role} agent auto-re-dispatched to "
+                     f"{new_agent_id[:8]} after stall"),
         )
 
     db.add_watchdog_event(
@@ -965,15 +961,14 @@ def check_orphaned_threads(
                         _sid = get_session_id(db)
                     except Exception:
                         pass
-                    db.add_notification_v2(
-                        thread_id=thread_id,
+                    db.emit_event(
+                        thread_id=thread_id, session_id=_sid, kind=_ek.WATCHDOG_RECOVERY,
                         message=(
                             f"[Watchdog] [{label}] orphaned thread auto-recovery: "
                             f"re-dispatched to agent {new_agent_id[:8]} "
                             f"(attempt {attempt_count + 1}/{max_recovery_attempts}, "
                             f"{mins} min no agent)"
                         ),
-                        session_id=_sid,
                     )
                     did_recover = True
                     _log.info(

@@ -26,7 +26,10 @@ def test_notifications_v2_table_exists(db):
             r["name"]
             for r in conn.execute("PRAGMA table_info(notifications_v2)").fetchall()
         }
-    assert cols == {"id", "thread_id", "message", "created_at", "session_id"}
+    assert cols == {
+        "id", "thread_id", "message", "created_at", "session_id",
+        "kind", "handled_by",
+    }
 
 
 def test_action_items_table_exists(db):

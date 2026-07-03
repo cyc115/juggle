@@ -23,6 +23,8 @@ Agent completion protocol (embed in all dispatched prompts):
 import sys
 from pathlib import Path
 
+from dbops import event_kinds as _ek
+
 # Re-exported shared symbols (single patch surface: juggle_cmd_agents_common)
 from juggle_cmd_agents_common import (  # noqa: F401
     _AGENT_TTL_SECS,
@@ -193,8 +195,11 @@ def cmd_notify(args):
             "SELECT value FROM session WHERE key = 'session_id'"
         ).fetchone()
     session_id = srow["value"] if srow else ""
-    db.add_notification_v2(
-        thread_id=thread_uuid, message=args.message, session_id=session_id
+    db.emit_event(
+        thread_id=thread_uuid,
+        message=args.message,
+        session_id=session_id,
+        kind=_ek.MANUAL,
     )
     db.touch_last_active(thread_uuid)
     label = thread.get("user_label") or thread_uuid[:6]

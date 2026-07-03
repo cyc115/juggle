@@ -21,6 +21,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from dbops import db_graph, db_topics
+from dbops import event_kinds as _ek
 from dbops.schema import _now
 from juggle_autopilot_state import (  # noqa: F401 — re-exported for compat
     ARMED_PROJECT_KEY,
@@ -287,10 +288,9 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
                 continue
             _dispatch_fails.pop(fail_key, None)
             db_topics.topic_transition(db, tid, "dispatch")  # → running
-            db.add_notification_v2(
-                thread_id=thread_id,
+            db.emit_event(
+                thread_id=thread_id, session_id=_session_id(db), kind=_ek.AUTOPILOT_DISPATCH,
                 message=f"⬢ autopilot dispatched topic {tid} — {topic['title']}",
-                session_id=_session_id(db),
             )
             stats["dispatched"].append(tid)
         except Exception:
@@ -380,10 +380,9 @@ def _dispatch_flat_task_fallback(
                     continue
                 _dispatch_fails.pop(fail_key, None)
                 db_graph.task_transition(db, task_id, "dispatch")
-                db.add_notification_v2(
-                    thread_id=thread_id,
+                db.emit_event(
+                    thread_id=thread_id, session_id=_session_id(db), kind=_ek.AUTOPILOT_DISPATCH,
                     message=f"⬢ autopilot dispatched task {task_id} — {task['title']}",
-                    session_id=_session_id(db),
                 )
                 stats["dispatched"].append(task_id)
             except Exception:

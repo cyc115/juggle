@@ -24,6 +24,8 @@ import re
 import time as _time
 from typing import Any, Callable
 
+from dbops import event_kinds as _ek
+
 _log = logging.getLogger("juggle-watchdog")
 
 # Config defaults (overridable under the ``watchdog`` settings block).
@@ -262,13 +264,10 @@ def _send_nudge(
     )
     if thread_id:
         try:
-            db.add_notification_v2(
-                thread_id=thread_id,
-                message=(
-                    f"[Watchdog] [{label}] idle-at-prompt mid-task — sent finalize "
-                    f"nudge ({nudge_n}/{max_nudges})"
-                ),
-                session_id=session_id,
+            db.emit_event(
+                thread_id=thread_id, session_id=session_id, kind=_ek.WATCHDOG_STALL,
+                message=(f"[Watchdog] [{label}] idle-at-prompt mid-task — sent finalize "
+                         f"nudge ({nudge_n}/{max_nudges})"),
             )
         except Exception:
             pass

@@ -19,6 +19,8 @@ import time as _time
 from pathlib import Path
 from typing import Any
 
+from dbops import event_kinds as _ek
+
 _log = logging.getLogger(__name__)
 
 
@@ -152,10 +154,11 @@ def inspect_agent(agent_id: str, db: Any, _tmux_session: str) -> dict:
             subprocess.run(
                 ["tmux", "send-keys", "-t", pane_id, "Enter"], capture_output=True
             )
-        notif_id = db.add_notification_v2(
+        notif_id = db.emit_event(
             thread_id=thread_id,
             message=f"[Watchdog] [{label}] auto-resolved permission prompt (key={matched_key!r})",
             session_id=session_id,
+            kind=_ek.WATCHDOG_PROMPT,
         )
         result["notification_id"] = notif_id
         return result
@@ -186,10 +189,11 @@ def inspect_agent(agent_id: str, db: Any, _tmux_session: str) -> dict:
         subprocess.run(
             ["tmux", "send-keys", "-t", pane_id, "Enter"], capture_output=True
         )
-        notif_id = db.add_notification_v2(
+        notif_id = db.emit_event(
             thread_id=thread_id,
             message=f"[Watchdog] [{label}] stuck-at-prompt — sent Enter to unblock",
             session_id=session_id,
+            kind=_ek.WATCHDOG_PROMPT,
         )
         result["notification_id"] = notif_id
         return result

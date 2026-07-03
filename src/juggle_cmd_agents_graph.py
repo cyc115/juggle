@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import sys
 
+from dbops import event_kinds as _ek
+
 # Task states where a completion is still meaningful (mirrors db_graph
 # mark_completion's legal walk); terminal/blocked tasks skip enforcement —
 # a double-completion stays the Phase 1 warn+no-op, never a refusal.
@@ -119,10 +121,11 @@ def _notify_failure(db, task, state, thread_uuid, session_id, reason=None):
     from dbops import db_graph
 
     blocked = db_graph.propagate_failure(db, task["id"])
-    db.add_notification_v2(
+    db.emit_event(
         thread_id=thread_uuid,
         message=f"⬢ graph task {task['id']} → {state}",
         session_id=session_id,
+        kind=_ek.TASK_STATUS,
     )
     detail = (
         f"dependents blocked (blocked-failed): {', '.join(blocked)}. "
@@ -204,10 +207,11 @@ def mark_graph_task(db, thread_uuid, integrate_ok, handoff, session_id,
         return
 
     if state == "verified":
-        db.add_notification_v2(
+        db.emit_event(
             thread_id=thread_uuid,
             message=f"⬢ graph task {task['id']} verified",
             session_id=session_id,
+            kind=_ek.TASK_STATUS,
         )
         # F4 (2026-06-30 topic-graph-state-unify): a verified child may complete
         # its owning conversation topic — reconcile just that parent. Scoped call
@@ -226,10 +230,11 @@ def mark_graph_task(db, thread_uuid, integrate_ok, handoff, session_id,
     for ready_id in db_graph.recompute_ready(db, task["project_id"]):
         ready_task = db_graph.get_task(db, ready_id)
         title = ready_task["title"] if ready_task else ready_id
-        db.add_notification_v2(
+        db.emit_event(
             thread_id=None,
             message=f"⬢ graph task ready: {ready_id} — {title}",
             session_id=session_id,
+            kind=_ek.TASK_STATUS,
         )
         db.add_action_item(
             thread_id=None,

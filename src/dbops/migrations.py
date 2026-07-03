@@ -275,13 +275,11 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     # Wired here (not in apply_recent_migrations) — migrations_recent.py is at its
     # LOC-gate budget; run_migrations is the sole runner so every path still gets it.
     from dbops.migration_topic_summary_cache import migrate_46_topic_summary_cache
-
     migrate_46_topic_summary_cache(conn)
 
     # Migration 58 (single-writer broker, T-spool): additive spool_journal table —
     # crash-safe idempotency ledger for the watchdog's spool drain (Task 8). Wired
-    # directly here (not apply_recent_migrations/migrations_p8), matching the
-    # Migration 46 precedent: this table is unrelated to the P8 nodes collapse.
+    # directly here (Migration 46 precedent): unrelated to the P8 nodes collapse.
     from dbops.schema_spool import CREATE_SPOOL_JOURNAL
     try:
         conn.execute(CREATE_SPOOL_JOURNAL)
@@ -290,16 +288,13 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         _log.warning("Migration 58 (spool journal) skipped: %s", e)
 
-    # Migrations 59-61: wired directly here (Migration 46/58 precedent) — additive
-    # nodes columns (priority, submitted_rev, pending_merged_sha/_repo).
+    # Migrations 59-62: wired directly here (Migration 46/58 precedent) — additive
+    # nodes columns + notifications_v2.kind/handled_by (irl-backbone R1).
     from dbops.migration_59_node_priority import migrate_59_node_priority
     from dbops.migration_60_submitted_rev import migrate_60_submitted_rev
     from dbops.migration_61_pending_merged_sha import migrate_61_pending_merged_sha
+    from dbops.migration_62_event_kind_routing import migrate_62_event_kind_routing
     migrate_59_node_priority(conn)
     migrate_60_submitted_rev(conn)
     migrate_61_pending_merged_sha(conn)
-
-    # Migration 62 (irl-backbone R1, event funnel): additive
-    # notifications_v2.kind/handled_by columns, defaults 'legacy'/''.
-    from dbops.migration_62_event_kind_routing import migrate_62_event_kind_routing
     migrate_62_event_kind_routing(conn)

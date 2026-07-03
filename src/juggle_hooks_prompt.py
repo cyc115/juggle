@@ -26,6 +26,7 @@ from juggle_hooks_autopilot import (  # noqa: F401 — re-exported for juggle_ho
 )
 from juggle_hooks_prose import clear_prose_decision, record_prose_decision
 from juggle_hooks_classb import _last_assistant_text_from_transcript
+from dbops import event_kinds as _ek
 
 
 # Patterns that are always safe to approve (send "1" = proceed).
@@ -258,12 +259,13 @@ def handle_stop(data: dict, scan_class_b_fn) -> None:
                     re.search(p, last_msg, re.IGNORECASE)
                     for p in _PERMISSION_ASKING_PATTERNS
                 ):
-                    db.add_notification_v2(
+                    db.emit_event(
                         thread_id,
                         "⚠️ ORCHESTRATOR: You asked for permission instead of acting. "
                         "Clear fixes → dispatch immediately. Only gate on genuine design "
                         "decisions via AskUserQuestion.",
                         session_id=_get_session_id(db),
+                        kind=_ek.ORCHESTRATOR_VIOLATION,
                     )
                     logging.warning(
                         "Stop: permission-asking detected in thread %s", thread_id

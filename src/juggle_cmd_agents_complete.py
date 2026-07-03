@@ -14,6 +14,7 @@ import sys
 from datetime import datetime, timezone
 
 import juggle_cmd_agents_common as _com
+from dbops import event_kinds as _ek
 
 
 def cmd_complete_agent(args):
@@ -144,10 +145,9 @@ def cmd_complete_agent(args):
 
     # 5. Create notification row (informational, session TTL)
     title = thread.get("title") or "thread"
-    db.add_notification_v2(
-        thread_id=thread_uuid,
-        message=f"{title}: {args.result_summary}",
-        session_id=session_id,
+    db.emit_event(
+        thread_id=thread_uuid, message=f"{title}: {args.result_summary}",
+        session_id=session_id, kind=_ek.AGENT_COMPLETE,
     )
 
     # 6a. Role-based action items
@@ -264,10 +264,9 @@ def cmd_fail_agent(args):
 
     recovery = getattr(args, "recovery_dispatched", False)
     if recovery:
-        db.add_notification_v2(
-            thread_id=thread_uuid,
-            message=f"⟳ [{label}] Recovery dispatched — {args.error}",
-            session_id=session_id,
+        db.emit_event(
+            thread_id=thread_uuid, message=f"⟳ [{label}] Recovery dispatched — {args.error}",
+            session_id=session_id, kind=_ek.AGENT_RECOVERY_DISPATCHED,
         )
         db.set_thread_status(thread_uuid, "running")
         print(
@@ -280,10 +279,9 @@ def cmd_fail_agent(args):
             type_="failure",
             priority="high",
         )
-        db.add_notification_v2(
-            thread_id=thread_uuid,
-            message=f"✗ [{label}] Unrecoverable — {args.error}",
-            session_id=session_id,
+        db.emit_event(
+            thread_id=thread_uuid, message=f"✗ [{label}] Unrecoverable — {args.error}",
+            session_id=session_id, kind=_ek.AGENT_FAILURE,
         )
         db.set_thread_status(thread_uuid, "closed")
         # Agent death must reach the graph (DA round-2 MAJOR-1, 2026-06-10):

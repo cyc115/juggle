@@ -24,9 +24,17 @@ class NotificationsMixin:
         message: str,
         session_id: str,
         kind: str = "legacy",
-        handled_by: str = "",
+        handled_by: str | None = None,
     ) -> int:
-        """Insert a notifications_v2 row tagged with kind/handled_by. Returns new id."""
+        """Insert a notifications_v2 row tagged with kind/handled_by. Returns new id.
+
+        handled_by defaults to the routing derived from ``kind`` (see
+        dbops.event_kinds) — pass it explicitly only to override.
+        """
+        if handled_by is None:
+            from dbops.event_kinds import handled_by_for_kind
+
+            handled_by = handled_by_for_kind(kind)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             cur = conn.execute(

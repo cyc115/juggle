@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 import daemon_pidfile
+from dbops import event_kinds as _ek
 from juggle_db import JuggleDB, DB_PATH
 from juggle_settings import get_settings
 from juggle_spool_apply import drain_spool
@@ -250,11 +251,12 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
             if enter_count < 2:
                 mgr._run_tmux("send-keys", "-t", pane_id, "Enter")
                 _enter_sent[agent_id] = enter_count + 1
-                db.add_notification_v2(
+                db.emit_event(
                     thread_id=agent.get("assigned_thread"),
                     message=(f"[Watchdog] agent {agent_id[:8]} stuck-at-prompt — "
                              f"sent Enter (attempt {enter_count + 1}/2)"),
                     session_id=session_id,
+                    kind=_ek.WATCHDOG_PROMPT,
                 )
                 _log.info("Watchdog: stuck-at-prompt Enter #%d sent to %s",
                           enter_count + 1, agent_id[:8])

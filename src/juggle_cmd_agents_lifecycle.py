@@ -14,6 +14,7 @@ import sys
 from datetime import datetime, timezone
 
 import juggle_cmd_agents_common as _com
+from dbops import event_kinds as _ek
 
 
 def cmd_get_agent(args):
@@ -158,10 +159,11 @@ def cmd_release_agent(args):
                 type_="failure",
                 priority="high",
             )
-            db.add_notification_v2(
+            db.emit_event(
                 assigned,
                 f"[Topic {label} failed] Agent released without completing.",
                 session_id=session_id,
+                kind=_ek.AGENT_FAILURE,
             )
 
     print(f"Agent {agent_id[:8]} released.")

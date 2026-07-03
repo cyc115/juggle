@@ -13,6 +13,7 @@ import re
 import sys
 
 import juggle_hooks_config as _cfg
+from dbops import event_kinds as _ek
 from juggle_db import JuggleDB
 from juggle_hooks_askuser import clear_askuser_decision, record_askuser_decision
 from juggle_verify_cap import enforce_verify_spawn_cap
@@ -267,8 +268,11 @@ def handle_post_tool_use(data: dict) -> None:
                 f"Strip JUGGLE blocks before dispatching agents."
             )
             current = db.get_current_thread()
-            db.add_notification_v2(
-                thread_id or current or "", warning, session_id=_get_session_id(db)
+            db.emit_event(
+                thread_id or current or "",
+                warning,
+                session_id=_get_session_id(db),
+                kind=_ek.ORCHESTRATOR_VIOLATION,
             )
             logging.warning(
                 "JUGGLE ACTIVE leaked into sub-agent prompt for thread %s", thread_id
