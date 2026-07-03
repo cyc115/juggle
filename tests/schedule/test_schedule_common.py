@@ -208,16 +208,6 @@ def test_gh_create_issue_success():
         assert result == "https://github.com/owner/repo/issues/42"
 
 
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_gh_create_issue_with_labels():
-    mock_result = MagicMock()
-    mock_result.stdout = "https://github.com/owner/repo/issues/42"
-    with patch("schedules.common.gh_run", return_value=mock_result), \
-         patch("schedules.common._ensure_gh_label"):
-        result = common.gh_create_issue("issue", "body", labels=["bug", "urgent"])
-        assert result == "https://github.com/owner/repo/issues/42"
-
-
 def test_gh_create_issue_handles_error():
     with patch("schedules.common.gh_run", side_effect=Exception("gh error")):
         result = common.gh_create_issue("title", "body")
@@ -273,44 +263,6 @@ def test_gh_pr_list_head_empty_stdout():
 # claude_p
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_claude_p_success():
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = json.dumps({
-        "result": "hello world",
-        "usage": {"input_tokens": 10, "output_tokens": 5}
-    })
-    with patch("subprocess.run", return_value=mock_result):
-        result = common.claude_p("test prompt")
-        assert result == "hello world"
-
-
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_claude_p_with_cost_tracker():
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = json.dumps({
-        "result": "output",
-        "usage": {"input_tokens": 1_000_000, "output_tokens": 100_000}
-    })
-    ct = common.CostTracker(cap_usd=10.0, routine="test")
-    with patch("subprocess.run", return_value=mock_result):
-        result = common.claude_p("test", cost_tracker=ct)
-        assert result == "output"
-        assert ct.total > 0
-
-
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_claude_p_fallback_to_text():
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = "plain text output"
-    with patch("subprocess.run", return_value=mock_result):
-        result = common.claude_p("test prompt")
-        assert result == "plain text output"
-
-
 def test_claude_p_handles_error():
     mock_result = MagicMock()
     mock_result.returncode = 1
@@ -318,46 +270,6 @@ def test_claude_p_handles_error():
     with patch("subprocess.run", return_value=mock_result):
         result = common.claude_p("test prompt")
         assert result == ""
-
-
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_claude_p_with_custom_model():
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = json.dumps({"result": "test"})
-    with patch("subprocess.run", return_value=mock_result) as mock_run:
-        common.claude_p("test", model="claude-haiku-4-5")
-        call_args = mock_run.call_args[0][0]
-        assert "claude-haiku-4-5" in call_args
-
-
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_claude_p_timeout_param():
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = json.dumps({"result": "test"})
-    with patch("subprocess.run", return_value=mock_result) as mock_run:
-        common.claude_p("test", timeout=300)
-        assert mock_run.call_args[1]["timeout"] == 300
-
-
-# ---------------------------------------------------------------------------
-# get_db
-# ---------------------------------------------------------------------------
-
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_get_db_returns_juggle_db_instance():
-    result = common.get_db()
-    assert result is not None
-    assert hasattr(result, "_connect")
-
-
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_get_db_uses_test_db_env_var(tmp_path, monkeypatch):
-    test_db = tmp_path / "test.db"
-    monkeypatch.setenv("_JUGGLE_TEST_DB", str(test_db))
-    result = common.get_db()
-    assert result is not None
 
 
 # ---------------------------------------------------------------------------
@@ -771,7 +683,6 @@ class TestGhPrListHead:
             result = jsc.gh_pr_list_head("feature/")
             assert result == []
 
-    @pytest.mark.skip(reason="auto-generated, needs review")
     def test_gh_pr_list_head_handles_malformed_json(self):
         """Returns empty list on JSON parse error"""
         with patch.object(jsc, "gh_run") as mock_gh:
@@ -870,14 +781,6 @@ class TestClaudeP:
             call_kwargs = mock_run.call_args[1]
             assert call_kwargs["timeout"] == 60
 
-    @pytest.mark.skip(reason="auto-generated, needs review")
-    def test_claude_p_timeout_exception(self):
-        """Handles subprocess timeout exception"""
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 1)):
-            jsc.claude_p("prompt")
-            # Should return empty string or raise gracefully
-
-
 class TestGetDb:
     """Tests for get_db()"""
 
@@ -898,7 +801,6 @@ class TestGetDb:
                 args = mock_db_class.call_args[0]
                 assert test_db_path in args
 
-    @pytest.mark.skip(reason="auto-generated, needs review")
     def test_get_db_uses_default_db_path(self):
         """Uses default DB_PATH when env var not set"""
         with patch.dict(os.environ, {}, clear=True):

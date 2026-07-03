@@ -503,34 +503,6 @@ def test_first_stall_recovery_event_created(db, mock_mgr, tmp_path):
 
 
 # =============================================================================
-# PID File Cleanup Tests
-# =============================================================================
-
-
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_watchdog_daemon_pid_cleanup_on_crash(tmp_path):
-    """Test PID file cleanup: ensure cleanup via try/finally in daemon.
-
-    Regression: Without try/finally, PID file left behind if daemon crashes
-    before reaching the while loop (e.g., during DB init).
-
-    This test would need to:
-    1. Run watchdog daemon as subprocess
-    2. Kill it with signal before while loop
-    3. Verify PID file cleaned up
-
-    Currently skipped: requires subprocess harness and timing control.
-    """
-    pass
-
-
-@pytest.mark.skip(reason="auto-generated, needs review")
-def test_watchdog_daemon_pid_cleanup_on_normal_exit(tmp_path):
-    """Test PID file cleanup: normal SIGTERM exit also cleans PID file."""
-    pass
-
-
-# =============================================================================
 # Integration Tests
 # =============================================================================
 
