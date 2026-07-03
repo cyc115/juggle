@@ -14,10 +14,45 @@ from __future__ import annotations
 
 from dbops.db_topics import (
     get_topic,
+    get_topic_by_thread,
     set_topic_handoff,
     set_topic_submitted_rev,
     topic_transition,
 )
+from dbops.schema import _now
+
+
+def set_topic_fail_envelope(db, topic_id, fail_envelope: str) -> None:
+    """Persist the JSON fail envelope for a TOPIC-bound integrate refusal
+    (irl-repair T4). The topic path integrates once as a unit and binds the
+    thread to the TOPIC node (not a member task), so get_task_by_thread finds
+    nothing and set_task_fail_envelope (kind='task') never fires — this is the
+    topic-node counterpart the repair sweep reads to pick a playbook."""
+    now = _now()
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET fail_envelope=?, updated_at=? WHERE id=? AND kind='topic'",
+            (fail_envelope, now, topic_id),
+        )
+        conn.commit()
+
+
+def store_fail_envelope(db, thread_id, task, fail_envelope: str) -> None:
+    """Persist an integrate fail envelope where the T4 repair sweep can read it:
+    on the bound graph TASK (flat-task path), else on the TOPIC bound to the
+    thread. A non-graph thread (no task, no bound topic) persists nothing.
+    Best-effort — a Mock/pre-migration db resolving no topic simply skips."""
+    if task:
+        from dbops import db_graph
+
+        db_graph.set_task_fail_envelope(db, task["id"], fail_envelope)
+        return
+    try:
+        topic = get_topic_by_thread(db, thread_id)
+    except Exception:
+        topic = None
+    if topic:
+        set_topic_fail_envelope(db, topic["id"], fail_envelope)
 
 _ADVANCE_TO_INTEGRATING = {
     "open": ("deps_ready", "claim", "dispatch", "integrate_start"),
@@ -25,6 +60,12 @@ _ADVANCE_TO_INTEGRATING = {
     "dispatching": ("dispatch", "integrate_start"),
     "running": ("integrate_start",),
     "integrating": (),
+    # irl-repair T4: a watchdog repair agent dispatched into the preserved
+    # worktree of a failed-integration topic re-runs integrate and completes
+    # here. `reopen` (NOT `reload` — that clears the dispatch thread) resurrects
+    # the topic while keeping its bound thread, then it walks up to integrating.
+    # A re-failed integrate falls straight back to failed-integration.
+    "failed-integration": ("reopen", "deps_ready", "claim", "dispatch", "integrate_start"),
 }
 
 

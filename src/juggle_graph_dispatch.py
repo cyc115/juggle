@@ -198,6 +198,11 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     all_projects = select_armed(_all_project_ids(db), get_disarmed_projects(db))
     dispatch = dispatch_fn or _dispatch_via_pool
 
+    # irl-repair T4: pre-claim repair sweep — a dispatchable repair wins the
+    # last agent slot BEFORE the claim loop (conditional slot reservation).
+    from juggle_graph_repair import run_repair_sweeps
+    stats["repaired"] = run_repair_sweeps(db, all_projects, dispatch, _session_id(db))
+
     ready_by_project: dict[str, list[dict]] = {}
     in_flight: dict[str, int] = {}
     for pid in all_projects:

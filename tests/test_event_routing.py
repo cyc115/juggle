@@ -8,10 +8,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dbops import event_kinds as ek
 
 
-def test_fifteen_kinds_defined():
+def test_sixteen_kinds_defined():
     """irl-envelope T2 adds integrate_failed + machinery_error to T1a's 12;
-    irl-retry T3 adds repair_exhausted."""
-    assert len(ek.ALL_KINDS) == 15
+    irl-retry T3 adds repair_exhausted; irl-repair T4 adds repair_dispatched."""
+    assert len(ek.ALL_KINDS) == 16
+
+
+def test_repair_dispatched_is_watchdog_not_pushable():
+    """T4: the repair-dispatch notice is FYI-only (DB row), never pushed —
+    the orchestrator learns the outcome from the repair's own integrate result."""
+    assert ek.handled_by_for_kind(ek.REPAIR_DISPATCHED) == "watchdog"
+    assert not ek.is_pushable(ek.handled_by_for_kind(ek.REPAIR_DISPATCHED))
 
 
 def test_integrate_failed_is_orchestrator_pushable_watchdog_default():

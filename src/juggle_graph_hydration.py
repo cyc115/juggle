@@ -19,8 +19,78 @@ juggle_graph_dispatch re-exports both names so existing imports keep working.
 
 from __future__ import annotations
 
+import json
+
 from dbops import db_graph
 from juggle_prompt_context import TaskSpec, TopicPromptPayload
+
+# ── irl-repair T4: class playbooks ──────────────────────────────────────────
+# Per-class repair instructions a watchdog-dispatched coder follows to clear a
+# failed integrate in its PRESERVED worktree. Keyed by the fail_class the
+# envelope carries (juggle_integrate_envelope.classify). `machinery` is absent
+# on purpose — it is never auto-repaired (a pipeline bug is not the topic's
+# fault; it escalates to the orchestrator instead).
+_REPAIR_PLAYBOOKS: dict[str, str] = {
+    "conflict": (
+        "This branch failed to integrate on a REBASE CONFLICT. Reconcile it:\n"
+        "1. `git fetch` and rebase your branch onto the latest trunk.\n"
+        "2. Resolve the conflicts in the files listed in the envelope (keep BOTH "
+        "sides' intent — the other side already landed on trunk).\n"
+        "3. Commit the resolution, run the FULL test suite green, then re-run "
+        "`juggle agent complete` so the watchdog re-integrates."
+    ),
+    "divergence": (
+        "This branch failed to integrate because trunk MOVED (ff-merge refused — "
+        "the branch is behind). Reconcile it:\n"
+        "1. `git fetch` and rebase your branch onto the latest trunk.\n"
+        "2. Resolve any conflicts in the listed files, keeping both sides' intent.\n"
+        "3. Commit, run the FULL suite green, then re-run `juggle agent complete` "
+        "so the watchdog re-integrates."
+    ),
+    "red-suite": (
+        "This branch's work is committed but the FULL test suite went RED at "
+        "integrate — most likely a SEMANTIC collision with work that landed on "
+        "trunk after you branched. Diagnose it:\n"
+        "1. Rebase onto the latest trunk so you see the collision.\n"
+        "2. Read the failing tests in the envelope's log_tail, find the root "
+        "cause, and fix the code (do NOT weaken or delete the tests).\n"
+        "3. Get the FULL suite green, commit, then re-run `juggle agent complete`."
+    ),
+    "collision": (
+        "This branch failed to integrate on a WORKTREE COLLISION (uncommitted / "
+        "untracked files clashed with the merge). Reconcile the named paths by "
+        "CONTENT:\n"
+        "1. For each path in the envelope, diff your version against trunk's.\n"
+        "2. **NEVER delete non-identical work** — if two versions differ, merge "
+        "their intent; deleting the other side is data loss (incident cyc_CB, "
+        "2026-07-03). Only drop a file when it is byte-identical to trunk's.\n"
+        "3. Commit the reconciled tree, run the FULL suite green, then re-run "
+        "`juggle agent complete` so the watchdog re-integrates."
+    ),
+}
+
+
+def build_repair_prompt(envelope: dict) -> str:
+    """Dispatch prompt for a watchdog repair agent (irl-repair T4).
+
+    Pure. Selects the class playbook and embeds the full fail envelope JSON so
+    the agent sees the conflicting files / failing-test log_tail / branch /
+    worktree / attempt history. Falls back to the conflict playbook for an
+    unknown class (fail-safe: rebase+resolve+rerun is the least-destructive
+    recovery). The worktree is ALREADY preserved on the bound thread, so the
+    prompt never tells the agent to create one — it works in place.
+    """
+    fail_class = (envelope or {}).get("class", "conflict")
+    playbook = _REPAIR_PLAYBOOKS.get(fail_class, _REPAIR_PLAYBOOKS["conflict"])
+    envelope_json = json.dumps(envelope or {}, indent=2, sort_keys=True)
+    return (
+        f"# Repair task — integrate failed ({fail_class})\n"
+        "A prior integrate of this topic's branch was refused. You are dispatched "
+        "into the SAME preserved worktree to fix it — do not start fresh, do not "
+        "create a new branch.\n\n"
+        f"## Playbook\n{playbook}\n\n"
+        f"## Failure envelope\n```json\n{envelope_json}\n```"
+    )
 
 
 def _context_narrative(objective: str, deps: list[dict], *, heading: str) -> str | None:

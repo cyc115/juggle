@@ -1,15 +1,24 @@
-"""Watchdog-tick repair sweeps (irl-backbone T1c).
+"""Watchdog-tick repair sweeps (irl-backbone T1c + irl-repair T4).
 
 Owns: sweep_orchestrator_ttl (orchestrator-kind notification TTL/dead-monitor
-detection) and reconcile_missing_topic_notifications (backfill for
-failed/wedged topics that never got a TOPIC_STATUS row). Both are fail-soft
-and idempotent — safe to call every watchdog tick. Must not own dispatch
-logic (juggle_graph_dispatch) or the monitor's own polling loop
-(juggle_monitor_daemon) — only reads its pidfile/cursor breadcrumbs.
+detection), reconcile_missing_topic_notifications (backfill for failed/wedged
+topics that never got a TOPIC_STATUS row) — both fail-soft and idempotent,
+called every watchdog tick — and (T4) sweep_repair_dispatch, the PRE-CLAIM
+repair sweep graph_tick runs before its topic-claim loop: it hands a coder a
+class playbook and re-dispatches it into the preserved worktree of every
+failed-integration topic whose envelope is still repair-dispatchable.
+
+Must not own: the monitor's own polling loop (juggle_monitor_daemon — only its
+pidfile/cursor breadcrumbs are read) or the claim/hydrate machinery. The T4
+sweep does not touch the state machine (a repaired topic stays in
+failed-integration until its agent re-completes); it reuses graph_tick's own
+internal ``dispatch`` callable so it goes through the tick's dispatch path, not
+the CLI (which refuses tick-owned threads).
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -117,6 +126,106 @@ def reconcile_missing_topic_notifications(db):
         )
         backfilled.append(t["id"])
     return backfilled
+
+
+# ── irl-repair T4: pre-claim repair-dispatch sweep ──────────────────────────
+
+
+def is_repair_dispatchable(envelope: dict | None) -> bool:
+    """True iff a routine (non-machinery) failure is still under its retry caps.
+
+    The signal is computed once, authoritatively, by
+    ``juggle_integrate_envelope.record_refusal`` at fail time (it knows whether
+    the retry policy allowed a fresh attempt) and stamped onto the envelope as
+    ``repair_dispatchable``. machinery classes and cap/backstop breaches leave
+    it False — so an exhausted or awaiting-orchestrator topic reserves nothing
+    and never starves the claim loop (plan T4 DA #6)."""
+    return bool((envelope or {}).get("repair_dispatchable"))
+
+
+def _parse_envelope(raw):
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def sweep_repair_dispatch(db, project_id: str, *, dispatch, session_id: str = "") -> list[str]:
+    """Dispatch a repair coder into the preserved worktree of each dispatchable
+    failed-integration topic in ``project_id``. Returns the repaired topic ids.
+
+    Ordered BEFORE graph_tick's claim loop so a repair — which unblocks
+    dependents — outranks a fresh topic for the last agent slot (the conditional
+    slot reservation: only a DISPATCHABLE repair takes a slot first; an
+    exhausted topic is skipped and reserves nothing). ``dispatch`` is
+    graph_tick's own internal dispatch callable (NOT the CLI), so the preserved
+    worktree on the topic's still-bound thread is reused in place. Fail-soft: a
+    capacity hit stops the sweep (retried next tick, slot still reserved); any
+    other per-topic error is logged and skipped so one bad topic can't wedge it.
+    """
+    from dbops import db_topics
+    from juggle_graph_hydration import build_repair_prompt
+
+    dispatched: list[str] = []
+    try:
+        topics = db_topics.list_topics(db, project_id)
+    except Exception:
+        _log.exception("repair sweep: topic scan failed for project %s", project_id)
+        return dispatched
+
+    for topic in topics:
+        if topic.get("state") != "failed-integration":
+            continue
+        thread_id = topic.get("thread_id")
+        if not thread_id:
+            continue  # thread unbound (reloaded) — worktree gone, nothing to repair
+        envelope = _parse_envelope(topic.get("fail_envelope"))
+        if not is_repair_dispatchable(envelope):
+            continue
+
+        try:
+            dispatch(db, thread_id, build_repair_prompt(envelope), topic)
+        except Exception as exc:  # noqa: BLE001 — classify below, never propagate
+            from juggle_graph_dispatch import CapacityError
+            if isinstance(exc, CapacityError):
+                _log.info("repair sweep: capacity hit — topic %s deferred", topic["id"])
+                break  # slot reserved: sweep re-runs first next tick
+            _log.exception("repair sweep: dispatch failed for topic %s", topic["id"])
+            continue
+
+        # Consumed: flip dispatchable off so the next tick doesn't re-dispatch
+        # while the agent works. Its re-integrate writes a fresh envelope
+        # (success clears it; a re-failure recomputes dispatchability under the
+        # now-incremented caps → repair_exhausted).
+        envelope["repair_dispatchable"] = False
+        envelope["repair_dispatched"] = True
+        db_topics.set_topic_fail_envelope(db, topic["id"], json.dumps(envelope))
+        db.emit_event(
+            thread_id,
+            f"⬢ repair dispatched for topic {topic['id']} "
+            f"[{envelope.get('class')}] — {topic.get('title', '')}",
+            session_id,
+            kind=_ek.REPAIR_DISPATCHED,
+            handled_by="watchdog",
+        )
+        dispatched.append(topic["id"])
+    return dispatched
+
+
+def run_repair_sweeps(db, project_ids, dispatch, session_id: str = "") -> list[str]:
+    """graph_tick entry point: run sweep_repair_dispatch across every project
+    (fail-soft — one bad project never wedges the tick) and return every
+    repaired topic id. Kept here (not in graph_dispatch) so the dispatch module
+    stays under the LOC gate (plan T4 module budget)."""
+    repaired: list[str] = []
+    for pid in project_ids:
+        try:
+            repaired += sweep_repair_dispatch(db, pid, dispatch=dispatch, session_id=session_id)
+        except Exception:
+            _log.exception("repair sweep: project %s failed — continuing", pid)
+    return repaired
 
 
 def run_tick_sweeps(db) -> None:

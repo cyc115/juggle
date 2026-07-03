@@ -1,8 +1,8 @@
 """Event kind enum + delivery routing (irl-backbone T1a; irl-envelope T2 adds
 ``integrate_failed``/``machinery_error``; irl-retry T3 adds
-``repair_exhausted``).
+``repair_exhausted``; irl-repair T4 adds ``repair_dispatched``).
 
-Every notifications_v2 row now carries a ``kind`` (one of the 15 below) and
+Every notifications_v2 row now carries a ``kind`` (one of those below) and
 a ``handled_by`` tag describing who needs to see it:
 
   * ``watchdog``     — the watchdog already auto-handled this; DB row only,
@@ -32,6 +32,7 @@ MANUAL = "manual"
 INTEGRATE_FAILED = "integrate_failed"
 MACHINERY_ERROR = "machinery_error"
 REPAIR_EXHAUSTED = "repair_exhausted"
+REPAIR_DISPATCHED = "repair_dispatched"
 
 ALL_KINDS = frozenset(
     {
@@ -50,6 +51,7 @@ ALL_KINDS = frozenset(
         INTEGRATE_FAILED,
         MACHINERY_ERROR,
         REPAIR_EXHAUSTED,
+        REPAIR_DISPATCHED,
     }
 )
 
@@ -75,6 +77,10 @@ HANDLED_BY = {
     INTEGRATE_FAILED: "watchdog",
     MACHINERY_ERROR: "orchestrator",
     REPAIR_EXHAUSTED: "orchestrator",
+    # irl-repair T4: the watchdog dispatched a repair agent into the preserved
+    # worktree — FYI only, DB row (never pushed; the orchestrator learns of the
+    # outcome via the repair's own integrate result, not this dispatch notice).
+    REPAIR_DISPATCHED: "watchdog",
 }
 
 # handled_by values that are pushed (to a human or the orchestrator) rather

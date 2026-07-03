@@ -42,7 +42,7 @@ _TOPIC_SELECT = (
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' "
     "LIMIT 1) AS thread_id, merged_sha, submitted_rev, pending_merged_sha, "
     "pending_merged_repo, handoff, diffstat, plan_path, spec_path, worktree_branch, "
-    f"verified_at, priority, created_at, updated_at FROM nodes WHERE {_TOPIC_ONLY}"
+    f"fail_envelope, verified_at, priority, created_at, updated_at FROM nodes WHERE {_TOPIC_ONLY}"
 )
 
 
@@ -363,4 +363,5 @@ from dbops.db_topics_marking import (  # noqa: E402,F401
     mark_topic_completion,
     mark_topic_exec_failed,
     propagate_topic_failure,
+    set_topic_fail_envelope,
 )

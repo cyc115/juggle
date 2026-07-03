@@ -57,9 +57,9 @@ GRANDFATHERED: dict[str, int] = {
     "scripts/talkback": 415,
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
-    "src/juggle_graph_dispatch.py": 404,  # +7 defect-F: reuse the topic's bound surfacing conversation instead of minting a "[T-<id>]" mirror row (2026-07-01)
+    "src/juggle_graph_dispatch.py": 409,  # +5 irl-repair T4: pre-claim repair-sweep call before the topic-claim loop (2026-07-03)
     "src/juggle_watchdog_daemon.py": 484,  # +10 summary-eager-gen: wire warm_stale_summaries into the tick, on top of T-spool-09's 474 (2026-07-02)
-    "src/dbops/db_topics.py": 366,  # +1 P8 engine delegation: irreducible db_node_machine import (topic_transition delegates the decision) (2026-06-27)
+    "src/dbops/db_topics.py": 367,  # +1 irl-repair T4: re-export set_topic_fail_envelope from db_topics_marking (2026-07-03)
     "src/juggle_context.py": 345,
     "src/juggle_watchdog_singleton.py": 367,
     "src/dbops/schema.py": 342,  # selfheal-v2 P1: VALID_ERROR_STATUSES constant

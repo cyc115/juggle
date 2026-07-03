@@ -250,6 +250,11 @@ def record_refusal(step: str, detail: str, ctx: FailContext) -> FailRecord:
     envelope = build_envelope(fail_class, ctx)
     kind, handled_by = handled_by_for(fail_class)
 
+    # T4 reads this flag to decide whether the failed topic gets a repair agent.
+    # machinery is never auto-repaired; a routine class is dispatchable exactly
+    # when the retry policy allows a fresh attempt (a cap/backstop breach flips
+    # it False AND escalates below).
+    dispatchable = False
     if fail_class != MACHINERY:
         prior = _prior_envelope(ctx.task)
         signature = compute_signature(fail_class, ctx.files)
@@ -268,11 +273,15 @@ def record_refusal(step: str, detail: str, ctx: FailContext) -> FailRecord:
             register_attempt(envelope, signature)
         if not decision.allowed:
             kind, handled_by = "repair_exhausted", "orchestrator"
+        dispatchable = decision.allowed
+    envelope["repair_dispatchable"] = dispatchable
 
-    if ctx.task:
-        from dbops import db_graph
+    # Persist on the bound task, else on the topic bound to the thread (T4) —
+    # a non-graph thread persists nothing. One helper owns the task-vs-topic
+    # decision so this module stays a thin policy layer.
+    from dbops.db_topics_marking import store_fail_envelope
 
-        db_graph.set_task_fail_envelope(ctx.db, ctx.task["id"], json.dumps(envelope))
+    store_fail_envelope(ctx.db, ctx.thread_id, ctx.task, json.dumps(envelope))
 
     ctx.db.emit_event(
         ctx.thread_id, f"{kind} [{fail_class}]: {detail}", ctx.session_id,
