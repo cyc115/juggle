@@ -218,21 +218,26 @@ class HarnessAdapter:
         return f"{launch} {prompt_arg.format(prompt_file=prompt_file)}"
 
     # -- task decoration (context delivery) ---------------------------------
-    def decorate_task(self, role: str | None, prompt: str) -> str:
+    def decorate_task(
+        self, role: str | None, prompt: str, thread_label: str | None = None,
+    ) -> str:
         """Adjust a task prompt before it is pasted into the agent.
 
         Default strategy: hook-capable harnesses inject the role anchor via
         their UserPromptSubmit-equivalent hook, so the prompt is left untouched;
         harnesses without juggle hooks get the anchor prepended here so the
-        agent still learns its role + completion command. A harness with a
-        different mechanism (e.g. writing AGENTS.md) may override this.
+        agent still learns its role + completion command. ``thread_label`` (the
+        actual thread this task is dispatched to) is threaded through so the
+        anchor's COMPLETION line is fully literal, never a placeholder (2026-07-03
+        DG incident). A harness with a different mechanism (e.g. writing
+        AGENTS.md) may override this.
         """
         if self.supports_hooks:
             return prompt
         try:
             from juggle_context import render_agent_role_anchor_for
 
-            anchor = render_agent_role_anchor_for(role)
+            anchor = render_agent_role_anchor_for(role, thread_label=thread_label)
         except Exception:
             anchor = ""
         return f"{anchor}\n\n{prompt}" if anchor else prompt

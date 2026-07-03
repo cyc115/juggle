@@ -15,6 +15,12 @@ from juggle_context_startup import (  # noqa: F401 — re-exported public API
     get_thread_state,
     render_topics_tree,
 )
+from juggle_context_anchor import (  # noqa: F401 — re-exported public API
+    _agent_thread_label,
+    _lookup_thread_label_for_pane,
+    _render_agent_role_anchor,
+    render_agent_role_anchor_for,
+)
 
 # Hard cap derived from settings: ~2000 tokens => ~8000 chars
 _CHAR_LIMIT: int = _get_settings()["context_injection_char_limit"]
@@ -141,49 +147,16 @@ def _render_tier2(t: dict) -> str:
     return f"[{label}] ✅ closed  | {title}"
 
 
-def render_agent_role_anchor_for(role: str) -> str:
-    """Return the AGENT ROLE anchor block for an explicit ``role``.
-
-    Shared by the env-driven hook path (``_render_agent_role_anchor``, used by
-    Claude Code's UserPromptSubmit hook) and by harness adapters that inline the
-    anchor into the task prompt for harnesses without juggle hooks
-    (``juggle_harness.HarnessAdapter.decorate_task``). Returns "" for an unknown
-    or unconfigured role.
-    """
-    if not role:
-        return ""
-    role_context = _get_settings().get("agent", {}).get("role_context", {})
-    identity = role_context.get(role, "")
-    if not identity:
-        return ""
-    from pathlib import Path as _Path
-    try: _r = _Path(__file__).resolve().parent.parent
-    except OSError: _r = _Path(__file__).parent.parent
-    # CLAUDE_PLUGIN_ROOT (plugin-cache path, can be stale) never used here — 2026-07-03 CR+CO.
-    plugin_root = os.environ.get("JUGGLE_REPO_ROOT") or str(_r)
-    return (
-        "--- AGENT ROLE ---\n"
-        f"ROLE: {role}. {identity}\n"
-        f'COMPLETION: python3 {plugin_root}/src/juggle_cli.py agent complete <THREAD> "<summary>" --retain "<key finding>"'
-    )
-
-
-def _render_agent_role_anchor() -> str:
-    """Return the AGENT ROLE anchor block for agent panes. Empty string otherwise."""
-    if os.environ.get("JUGGLE_IS_AGENT") != "1":
-        return ""
-    return render_agent_role_anchor_for(os.environ.get("JUGGLE_AGENT_ROLE", ""))
-
-
 def _build(db: JuggleDB) -> str:
     # Agent sessions get ONLY their role anchor — never the orchestrator
     # dashboard. The "JUGGLE ACTIVE" block is orchestrator-only context
     # (explicitly tagged "do not forward to sub-agents") and an agent is told
     # to ignore all of it, so injecting it wastes up to context_injection_char_limit
-    # (~2000 tokens) per task prompt on every dispatched agent. Returned before
-    # any DB query so it costs nothing and needs no active orchestrator.
+    # (~2000 tokens) per task prompt on every dispatched agent. ``db`` is passed
+    # through so the anchor's COMPLETION line can resolve the agent's actual
+    # assigned thread (TMUX_PANE lookup) instead of a placeholder.
     if os.environ.get("JUGGLE_IS_AGENT") == "1":
-        return _render_agent_role_anchor()
+        return _render_agent_role_anchor(db)
 
     if not db.is_active():
         return ""

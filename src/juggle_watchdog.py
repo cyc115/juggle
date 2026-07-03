@@ -404,8 +404,8 @@ def _agent_is_non_interactive(agent: dict) -> bool:
 
 _CONTINUE_INSTRUCTION = (
     "You appear paused. Assess your task: if work remains, continue to completion and "
-    "do not wait for input; if everything is complete, run your complete-agent command "
-    "now; if blocked, call complete-agent with 'BLOCKER: <what>'."
+    "do not wait for input; if everything is complete, run your agent complete command "
+    "now; if blocked, call agent complete with 'BLOCKER: <what>'."
 )
 # Escalating backoff (seconds) indexed by prior nudge count (clamped at last entry).
 _NUDGE_BACKOFF_SECS = [0, 5 * 60, 15 * 60, 30 * 60]

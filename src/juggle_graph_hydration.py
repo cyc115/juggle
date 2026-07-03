@@ -57,7 +57,7 @@ def build_hydration(objective: str, task: dict, deps: list[dict]) -> str:
     parts.append(
         "## Completion contract\n"
         "When done, complete with:\n"
-        f"`juggle complete-agent <thread> \"<summary>\" --handoff '<contract>'`\n"
+        f"`juggle agent complete <thread> \"<summary>\" --handoff '<contract>'`\n"
         "The handoff (files touched, interfaces added/changed, key decisions, "
         "follow-ups) is REQUIRED — dependent tasks are hydrated from it."
     )
@@ -100,20 +100,23 @@ def build_topic_hydration(objective: str, topic: dict, deps: list[dict],
     for n in tasks:
         flag = " [VERIFIED — skip]" if n.get("state") == "verified" else ""
         vc = f"\nverify_cmd: {n['verify_cmd']}" if n.get("verify_cmd") else ""
-        rows.append(f"### {n['id']} — {n['title']}{flag}{vc}\n{n['prompt']}")
+        mark = (
+            f"\nMark: `juggle graph mark-task {n['id']} --handoff '<files "
+            f"touched, interfaces changed, key decisions>'` (or `--fail` if "
+            f"you must give up on this task)."
+        )
+        rows.append(f"### {n['id']} — {n['title']}{flag}{vc}\n{n['prompt']}{mark}")
     parts.append(
         "## Tasks — execute SEQUENTIALLY, in this order\n"
         "Per task: TDD (failing test first) → make it pass → run its "
-        "verify_cmd → COMMIT → mark it:\n"
-        "`juggle graph mark-task <task-id> --handoff '<files touched, "
-        "interfaces changed, key decisions>'` (or `--fail` if you must give "
-        "up on the task). Tasks flagged VERIFIED: skip them.\n\n"
+        "verify_cmd → COMMIT → mark it with the task's own `Mark:` command "
+        "below. Tasks flagged VERIFIED: skip them.\n\n"
         + "\n\n".join(rows)
     )
     parts.append(
         "## Finish\nWhen EVERY task above is marked, run "
-        "`juggle complete-agent <thread> \"<summary>\"` — integrate runs ONCE "
-        "for the whole topic. complete-agent REFUSES while tasks are unmarked."
+        "`juggle agent complete <thread> \"<summary>\"` — integrate runs ONCE "
+        "for the whole topic. agent complete REFUSES while tasks are unmarked."
     )
     return "\n\n".join(parts)
 

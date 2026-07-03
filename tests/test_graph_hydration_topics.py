@@ -36,7 +36,8 @@ def test_topic_hydration_contains_contract_and_order():
     assert "schema v1" in text                       # dep TOPIC handoff
     assert text.index("t1") < text.index("t2")       # sequential order preserved
     assert "mark-task" in text                       # per-task completion contract
-    assert "complete-agent" in text                  # topic-level finish
+    assert "agent complete" in text                  # topic-level finish (canonical spelling, 2026-07-03)
+    assert text.index("mark-task t1") < text.index("mark-task t2")  # per-task literal ids
 
 
 def test_verified_task_flagged_for_skip():

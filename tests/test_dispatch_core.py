@@ -122,7 +122,7 @@ def test_send_task_places_source_of_truth_immediately_after_working_directory(
     from dbops import db_topics as tp
 
     monkeypatch.setenv("JUGGLE_WORKTREE_ROOT", str(tmp_path / "wts"))
-    (tmp_path / "wts").mkdir()
+    (tmp_path / "wts").mkdir(exist_ok=True)
 
     import juggle_dispatch_core as _core
     monkeypatch.setattr(_core, "DEFAULT_WORKTREE_ROOT", str(tmp_path / "wts"))
@@ -156,7 +156,7 @@ def test_send_task_omits_source_of_truth_when_topic_has_no_plan_or_spec(
     db, repo, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("JUGGLE_WORKTREE_ROOT", str(tmp_path / "wts"))
-    (tmp_path / "wts").mkdir()
+    (tmp_path / "wts").mkdir(exist_ok=True)
 
     import juggle_dispatch_core as _core
     monkeypatch.setattr(_core, "DEFAULT_WORKTREE_ROOT", str(tmp_path / "wts"))
@@ -169,3 +169,33 @@ def test_send_task_omits_source_of_truth_when_topic_has_no_plan_or_spec(
 
     full_prompt = db.get_agent(agent_id)["last_task"]
     assert "## Source of truth (READ FIRST)" not in full_prompt
+
+
+# ── T-fix-literal-finalize-line: literal thread id + CLI path in prompts ──────
+
+
+def test_send_task_renders_finalize_commands_fully_literal(db, repo, tmp_path, monkeypatch):
+    """Regression pin — incident DG (2026-07-03): a coder agent invoked
+    `juggle agent complete "$THREAD"` (empty thread id) because no literal
+    thread id reached its prompt. The dispatched prompt must bake in the
+    actual thread label and the dispatching repo's CLI path, and must never
+    contain a generic '<thread>'/'$THREAD' placeholder or the deprecated
+    'complete-agent'/'fail-agent' spelling."""
+    monkeypatch.setenv("JUGGLE_WORKTREE_ROOT", str(tmp_path / "wts"))
+    (tmp_path / "wts").mkdir(exist_ok=True)
+
+    import juggle_dispatch_core as _core
+    monkeypatch.setattr(_core, "DEFAULT_WORKTREE_ROOT", str(tmp_path / "wts"))
+    from juggle_dispatch_core import send_task_to_agent
+
+    thread_id = db.create_thread("literal finalize", session_id="")
+    thread_label = db.get_thread(thread_id)["user_label"]
+    agent_id = db.create_agent("coder", "%fake", repo_path=str(repo))
+
+    send_task_to_agent(db, agent_id, thread_id, "do the thing", _mgr=_fake_mgr())
+
+    full_prompt = db.get_agent(agent_id)["last_task"]
+    assert thread_label in full_prompt
+    assert "juggle_cli.py" in full_prompt
+    for placeholder in ("<thread>", "$THREAD", "<THREAD>", "complete-agent", "fail-agent"):
+        assert placeholder not in full_prompt, f"leftover placeholder: {placeholder}"

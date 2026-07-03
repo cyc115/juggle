@@ -13,6 +13,9 @@ import os
 from datetime import datetime, timezone
 
 import juggle_cmd_agents_common as _com
+from juggle_dispatch_literal import (  # noqa: F401 — re-exported for tests
+    literalize_finalize_commands,
+)
 from juggle_graph_dispatch import TASK_ROLE, CapacityError
 
 _log = logging.getLogger("juggle-dispatch-core")
@@ -172,6 +175,14 @@ def send_task_to_agent(
     from juggle_graph_hydration import topic_source_of_truth_for_thread
     _source_of_truth = topic_source_of_truth_for_thread(db, thread_id)
 
+    # Literal finalize rendering (T-fix-literal-finalize-line): resolve the
+    # thread label so finalize/mark commands carry it baked in.
+    thread_wt = db.get_thread(thread_id) if thread_id else None
+    thread_label = (
+        (thread_wt.get("user_label") or thread_wt["id"][:6])
+        if thread_wt else (thread_id or "<thread-unresolved>")
+    )
+
     # Prompt build
     if not skip_template and _role:
         templates = _com._get_settings().get("task_templates", {})
@@ -184,8 +195,9 @@ def send_task_to_agent(
     full_prompt = (
         _com.UNIVERSAL_PREAMBLE + _worktree_context + _source_of_truth + prompt.rstrip()
     )
+    full_prompt = literalize_finalize_commands(full_prompt, thread_label)
     try:
-        full_prompt = adapter.decorate_task(_role, full_prompt)
+        full_prompt = adapter.decorate_task(_role, full_prompt, thread_label=thread_label)
     except Exception:
         pass
 
