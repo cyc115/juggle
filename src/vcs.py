@@ -139,11 +139,33 @@ def get_backend(vcs_type: str | None) -> VCS | None:
     return None
 
 
+_PLUGIN_CACHE: dict[str, tuple[VCS, object]] | None = None
+
+
+def _scanned_plugins() -> dict[str, tuple[VCS, object]]:
+    """Scan ``~/.juggle/vcs_plugins/*.py`` once per process (§2.5.1). Cached
+    for the process lifetime — same lifecycle as ``_BACKEND_CACHE``."""
+    global _PLUGIN_CACHE
+    if _PLUGIN_CACHE is None:
+        from vcs_plugins import load_plugins
+
+        _PLUGIN_CACHE = load_plugins(VCS_PROTOCOL_VERSION)
+    return _PLUGIN_CACHE
+
+
+def _plugin_backend_by_name(name: str) -> VCS | None:
+    """Config-bound resolution: ``vcs: "<name>"`` binds directly to the
+    plugin whose ``BACKEND.name`` matches — skips ``detect()`` entirely."""
+    entry = _scanned_plugins().get(name)
+    return entry[0] if entry else None
+
+
 def _plugin_backend_for(repo: str) -> VCS | None:
     """Seam for out-of-tree VCS plugin resolution (§2.5) — scanned after the
-    builtins miss. Not implemented in Phase 1 (git-only); a later topic wires
-    ``~/.juggle/vcs_plugins/*.py`` loading + fail-loud version checking here.
-    """
+    builtins miss. Consults each loaded plugin's optional ``detect()``."""
+    for backend, detect_fn in _scanned_plugins().values():
+        if detect_fn is not None and detect_fn(repo):
+            return backend
     return None
 
 
@@ -163,7 +185,7 @@ def backend_for(repo: str) -> VCS:
 
     override = get_repo_config(repo).get("vcs")
     if override:
-        backend = get_backend(override) or _plugin_backend_for(repo)
+        backend = get_backend(override) or _plugin_backend_by_name(override)
         if backend is None:
             raise ValueError(f"unknown vcs backend '{override}' configured for repo {repo}")
     else:
