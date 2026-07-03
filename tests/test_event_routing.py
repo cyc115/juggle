@@ -8,9 +8,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dbops import event_kinds as ek
 
 
-def test_fourteen_kinds_defined():
-    """irl-envelope T2 adds integrate_failed + machinery_error to T1a's 12."""
-    assert len(ek.ALL_KINDS) == 14
+def test_fifteen_kinds_defined():
+    """irl-envelope T2 adds integrate_failed + machinery_error to T1a's 12;
+    irl-retry T3 adds repair_exhausted."""
+    assert len(ek.ALL_KINDS) == 15
 
 
 def test_integrate_failed_is_orchestrator_pushable_watchdog_default():
@@ -21,6 +22,11 @@ def test_integrate_failed_is_orchestrator_pushable_watchdog_default():
 def test_machinery_error_is_always_orchestrator_pushable():
     assert ek.handled_by_for_kind(ek.MACHINERY_ERROR) == "orchestrator"
     assert ek.is_pushable(ek.handled_by_for_kind(ek.MACHINERY_ERROR))
+
+
+def test_repair_exhausted_is_orchestrator_pushable():
+    assert ek.handled_by_for_kind(ek.REPAIR_EXHAUSTED) == "orchestrator"
+    assert ek.is_pushable(ek.handled_by_for_kind(ek.REPAIR_EXHAUSTED))
 
 
 def test_every_kind_has_a_handled_by():

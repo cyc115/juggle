@@ -1,7 +1,8 @@
 """Event kind enum + delivery routing (irl-backbone T1a; irl-envelope T2 adds
-``integrate_failed``/``machinery_error``).
+``integrate_failed``/``machinery_error``; irl-retry T3 adds
+``repair_exhausted``).
 
-Every notifications_v2 row now carries a ``kind`` (one of the 14 below) and
+Every notifications_v2 row now carries a ``kind`` (one of the 15 below) and
 a ``handled_by`` tag describing who needs to see it:
 
   * ``watchdog``     — the watchdog already auto-handled this; DB row only,
@@ -30,6 +31,7 @@ AUTOPILOT_DISPATCH = "autopilot_dispatch"
 MANUAL = "manual"
 INTEGRATE_FAILED = "integrate_failed"
 MACHINERY_ERROR = "machinery_error"
+REPAIR_EXHAUSTED = "repair_exhausted"
 
 ALL_KINDS = frozenset(
     {
@@ -47,6 +49,7 @@ ALL_KINDS = frozenset(
         MANUAL,
         INTEGRATE_FAILED,
         MACHINERY_ERROR,
+        REPAIR_EXHAUSTED,
     }
 )
 
@@ -65,11 +68,13 @@ HANDLED_BY = {
     TOPIC_STATUS: "orchestrator",
     MANUAL: "orchestrator",
     # Defaults only — juggle_integrate_envelope.record_refusal always passes
-    # an explicit handled_by (integrate_failed: watchdog for now, T3 will
-    # override once attempt-cap counters exist; machinery_error: always
-    # orchestrator — never auto-repaired).
+    # an explicit handled_by: integrate_failed defaults to watchdog but T3's
+    # retry policy overrides it to repair_exhausted/orchestrator once the
+    # per-signature cap or the 3-total backstop is breached; machinery_error
+    # is always orchestrator — never auto-repaired.
     INTEGRATE_FAILED: "watchdog",
     MACHINERY_ERROR: "orchestrator",
+    REPAIR_EXHAUSTED: "orchestrator",
 }
 
 # handled_by values that are pushed (to a human or the orchestrator) rather
