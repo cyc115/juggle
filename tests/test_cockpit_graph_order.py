@@ -8,7 +8,6 @@ No live TUI, no sleep, no DB.
 """
 from __future__ import annotations
 
-import pytest
 
 from juggle_cockpit_graph_order import (
     ProjectActivity,

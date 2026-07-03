@@ -13,7 +13,13 @@ from rich.table import Table
 from rich.text import Text
 from rich.style import Style
 
-from juggle_cockpit_graph_layout import GraphTask, build_ranks, frontier_visible
+from juggle_cockpit_graph_layout import (
+    GraphTask,
+    build_ranks,
+    dag_is_done,
+    frontier_visible,
+    selectable_units,
+)
 from juggle_cockpit_legend import (
     TASK_STATE_GLYPHS,
     GRAPH_READY_SUFFIX,
@@ -159,6 +165,23 @@ def _flat_selectable(tasks: list[GraphTask]) -> list[GraphTask]:
     return topological_order(tasks, [])
 
 
+def done_summary_line(
+    project_id: str,
+    project_name: str | None,
+    real_tasks: list[GraphTask],
+    *,
+    selected: bool = False,
+) -> Text:
+    """Collapsed one-line summary for a fully-done project (spec 2026-07-03 §3):
+    '✅ <ProjectName> — N/N done'. Reclaims the vertical space its full DAG used;
+    ``selected`` reverses it so it still shows as the cursor target."""
+    done_glyph = TASK_STATE_GLYPHS["verified"]
+    label = project_name or project_id
+    n = len(real_tasks)
+    text = f"{done_glyph} {label} — {n}/{n} done"
+    return Text(text, style=Style(color="green", dim=not selected, reverse=selected))
+
+
 def _graph_section(
     project_id: str,
     tasks: list[GraphTask],
@@ -175,6 +198,15 @@ def _graph_section(
         return [Text(f"{label}: no graph tasks yet", style=Style(dim=True))]
 
     real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
+
+    # Done-collapse: a fully-verified project renders as a single summary line
+    # instead of its full DAG. Its one selectable unit (selectable_units) is the
+    # cursor target, so highlight the line when that unit is selected.
+    if dag_is_done(tasks):
+        units = selectable_units(tasks, edges)
+        selected = bool(units) and sel_id == units[0].id
+        return [done_summary_line(project_id, project_name, real_tasks, selected=selected)]
+
     header = _section_header(project_id, project_name, real_tasks, inner_w, edges)
 
     flat = topological_order(tasks, edges)

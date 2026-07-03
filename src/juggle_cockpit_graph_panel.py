@@ -20,7 +20,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.style import Style
 
-from juggle_cockpit_graph_layout import GraphTask, frontier_visible
+from juggle_cockpit_graph_layout import GraphTask, dag_is_done, frontier_visible, selectable_units
 from juggle_cockpit_legend import graph_inline_legend, TASK_STATE_GLYPHS
 
 # Per-project row/section renderers extracted to juggle_cockpit_graph_rows
@@ -74,6 +74,18 @@ def build_graph_panel(
 
     inner_w_hdr = max(8, width - 4)
     real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
+
+    # Done-collapse (spec 2026-07-03 §3): a fully-verified project renders as a
+    # single '✅ <name> — N/N done' line, matching the multi-panel section.
+    if dag_is_done(tasks):
+        from juggle_cockpit_graph_rows import done_summary_line
+
+        units = selectable_units(tasks, edges)
+        selected = bool(units) and 0 <= selection < len(units)
+        summary = done_summary_line(project_id, project_name, real_tasks, selected=selected)
+        legend = Text(graph_inline_legend(), style=Style(dim=True))
+        return Panel(_Group(summary, legend), title=title, border_style="cyan")
+
     header = _section_header(project_id, project_name, real_tasks, inner_w_hdr, edges)
 
     flat = topological_order(tasks, edges)
@@ -174,9 +186,10 @@ def build_multi_graph_panel(
             project_name=getattr(d, "project_name", None), scroll=scroll,
         )
     inner_w = max(8, width - 4)
-    # Selection iterates the VISIBLE (frontier-pruned) list only, concatenated
-    # across the stacked dags — same order the sections render.
-    flat_all = [n for d in dags for n in frontier_visible(d.tasks, d.edges)[0]]
+    # Selection iterates the navigable units per dag — the frontier-pruned list
+    # for an active project, or the single collapsed unit for a done one — in the
+    # same order (and count) the sections render.
+    flat_all = [n for d in dags for n in selectable_units(d.tasks, d.edges)]
     sel_id = flat_all[selection].id if 0 <= selection < len(flat_all) else None
     parts: list = []
     for i, d in enumerate(dags):

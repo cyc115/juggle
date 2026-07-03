@@ -928,8 +928,8 @@ class CockpitApp(GraphModeMixin, App):
         )
         if not dags:
             return
-        from juggle_cockpit_graph_panel import topological_order
-        flat = [(d, n) for d in dags for n in topological_order(d.tasks, d.edges)]
+        from juggle_cockpit_graph_layout import selectable_units
+        flat = [(d, n) for d in dags for n in selectable_units(d.tasks, d.edges)]
         sel = getattr(self, "_graph_sel", 0)
         pid = flat[sel][0].project_id if 0 <= sel < len(flat) else dags[0].project_id
         from juggle_cockpit_frontier_screen import FrontierScreen
