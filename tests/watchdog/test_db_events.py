@@ -200,7 +200,7 @@ def test_send_task_stores_last_task_and_pane_hash(tmp_path):
         },
     )
     agent = d.get_agent(agent_id)
-    assert agent["last_task"].endswith("do something useful")
+    assert "do something useful" in agent["last_task"]
     assert agent["last_send_task_pane_hash"] is not None
     assert len(agent["last_send_task_pane_hash"]) == 16
     assert agent["last_send_task_at"] is not None

@@ -311,8 +311,11 @@ def test_send_task_error_on_missing_prompt_file(started_db):
     assert "not found" in result.stdout.lower()
 
 
-def test_send_task_prepends_universal_preamble(started_db, tmp_path):
-    """UNIVERSAL_PREAMBLE must be prepended to the task body stored in last_task."""
+def test_send_task_coder_prompt_starts_with_role_header(started_db, tmp_path):
+    """Coder dispatch prompts render via render_agent_prompt (PC2, Agent
+    Prompt Contract v2) — UNIVERSAL_PREAMBLE is no longer prepended for the
+    coder role; its two rules are folded into the PC1 header INVARIANT line
+    and the Guardrails pre-existing-failures bullet instead."""
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
@@ -326,12 +329,14 @@ def test_send_task_prepends_universal_preamble(started_db, tmp_path):
     assert result.returncode == 0
 
     sys.path.insert(0, SRC_DIR)
-    from juggle_cmd_agents import UNIVERSAL_PREAMBLE
     from juggle_db import JuggleDB
 
     db = JuggleDB(str(db_path))
     agent = db.get_agent(agent_id)
-    assert agent["last_task"].startswith(UNIVERSAL_PREAMBLE)
+    assert agent["last_task"].startswith("## Role: Coder")
+    assert "never stop at the prompt" in agent["last_task"]
+    assert "Pre-existing test failures" in agent["last_task"]
+    assert "Do the thing." in agent["last_task"]
     assert "Do the thing." in agent["last_task"]
 
 
@@ -411,7 +416,9 @@ def test_send_message_cli_error_missing_agent(started_db):
 # ── harness gate in coder template ───────────────────────────────────────────
 
 def test_send_task_coder_template_includes_harness_gate(started_db, tmp_path):
-    """send-task with coder role must inject HARNESS GATE into the prompt."""
+    """send-task with coder role must inject the full-suite/quality-gate
+    Finish steps into the prompt (rendered via render_agent_prompt, PC2 —
+    supersedes the old literal 'HARNESS GATE' string template section)."""
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
@@ -426,11 +433,12 @@ def test_send_task_coder_template_includes_harness_gate(started_db, tmp_path):
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
     agent = JuggleDB(str(db_path)).get_agent(agent_id)
-    assert "HARNESS GATE" in agent["last_task"]
+    assert "Full-suite:" in agent["last_task"]
+    assert "Quality gate:" in agent["last_task"]
 
 
 def test_send_task_no_template_bypasses_harness_gate(started_db, tmp_path):
-    """--no-template must skip harness gate injection."""
+    """--no-template must skip prompt rendering entirely."""
     db_path, thread_id = started_db
     with patch.dict(os.environ, {"JUGGLE_TMUX_MOCK_PANE": "%3"}):
         r = run_cli(["agent", "get", thread_id, "--role", "coder"], db_path)
@@ -445,4 +453,4 @@ def test_send_task_no_template_bypasses_harness_gate(started_db, tmp_path):
     sys.path.insert(0, SRC_DIR)
     from juggle_db import JuggleDB
     agent = JuggleDB(str(db_path)).get_agent(agent_id)
-    assert "HARNESS GATE" not in agent["last_task"]
+    assert "Full-suite:" not in agent["last_task"]

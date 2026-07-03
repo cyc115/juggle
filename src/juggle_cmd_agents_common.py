@@ -35,6 +35,11 @@ from juggle_tmux import JuggleTmuxManager
 
 _AGENT_TTL_SECS: int = _get_settings()["agent_idle_ttl_secs"]
 
+# PC2 cutover (2026-07-03, pc2-coder-cutover): no longer prepended for the
+# coder role — juggle_dispatch_core.send_task_to_agent renders coder prompts
+# via render_agent_prompt (juggle_prompt_context), whose header INVARIANT
+# line and Guardrails section carry rules 1/2 respectively. Still prepended
+# for planner/researcher (PC3 sweeps those).
 UNIVERSAL_PREAMBLE = """\
 ## Universal rules (enforced for every agent)
 

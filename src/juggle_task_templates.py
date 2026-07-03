@@ -10,6 +10,14 @@ byte-identically). The coder Verification guidance mandates the FULL suite
 iterations are unbounded until green or a genuine blocker (2026-07-03,
 T-fix-dispatch-plan-spec-provision — the prior "one fix attempt, then STOP"
 cap regressed intent and left real failures unfixed).
+
+PC2 cutover (2026-07-03, pc2-coder-cutover): TASK_TEMPLATES["coder"] is no
+longer read by the dispatch pipeline — juggle_dispatch_core's
+send_task_to_agent renders the coder prompt via render_agent_prompt
+(juggle_prompt_context) instead, so the finalize/lifecycle/harness-gate rules
+it duplicated live in exactly one place. The entry stays defined (byte-
+identical) only for juggle_settings.py's DEFAULTS/doctor-migration schema and
+existing settings-surface tests; planner/researcher are unaffected (PC3).
 """
 
 # Task Templates — prepended to agent prompts by role

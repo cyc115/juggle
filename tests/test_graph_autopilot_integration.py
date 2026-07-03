@@ -154,8 +154,8 @@ def test_diamond_happy_path_full_flow(db):
     stats = gd.graph_tick(db, dispatch_fn=fake)
     assert sorted(stats["dispatched"]) == ["B", "C"]
     assert _states(db)["B"] == "running" and _states(db)["C"] == "running"
-    assert "base API: use foo() from base.py" in fake.prompts["B"]
-    assert "base API: use foo() from base.py" in fake.prompts["C"]
+    assert "base API: use foo() from base.py" in fake.prompts["B"].context
+    assert "base API: use foo() from base.py" in fake.prompts["C"].context
 
     # Fan-in: D waits for BOTH
     _complete_topic(db, "B", handoff="left exposes bar()")
@@ -167,8 +167,8 @@ def test_diamond_happy_path_full_flow(db):
     # Tick 3: D dispatched with BOTH upstream handoffs; leaf completes sans handoff
     stats = gd.graph_tick(db, dispatch_fn=fake)
     assert stats["dispatched"] == ["D"]
-    assert "left exposes bar()" in fake.prompts["D"]
-    assert "right exposes baz()" in fake.prompts["D"]
+    assert "left exposes bar()" in fake.prompts["D"].context
+    assert "right exposes baz()" in fake.prompts["D"].context
     _complete_topic(db, "D", handoff=None)  # no dependents — contract not required
 
     assert _states(db) == {t: "verified" for t in "ABCD"}

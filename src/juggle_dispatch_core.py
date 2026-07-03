@@ -183,19 +183,30 @@ def send_task_to_agent(
         if thread_wt else (thread_id or "<thread-unresolved>")
     )
 
-    # Prompt build
-    if not skip_template and _role:
-        templates = _com._get_settings().get("task_templates", {})
-        template = templates.get(_role, "")
-        if template:
-            qg = _com._get_settings()["agent"].get("quality_gate_skill", "mike:pre-pr")
-            template = template.replace("{quality_gate_skill}", qg)
-            prompt = template + "\n---\n\n" + prompt.rstrip()
+    # Prompt build. Coder: render TASK/LIFECYCLE/GUARDRAILS once via
+    # render_agent_prompt (PC2, Agent Prompt Contract v2) — no separate
+    # UNIVERSAL_PREAMBLE/TASK_TEMPLATES/literalize_finalize_commands pass.
+    # Other roles: unchanged legacy template + literalize path (PC3 sweeps
+    # these later).
+    if not skip_template and _role == "coder":
+        from juggle_dispatch_coder_render import render_coder_dispatch_prompt
 
-    full_prompt = (
-        _com.UNIVERSAL_PREAMBLE + _worktree_context + _source_of_truth + prompt.rstrip()
-    )
-    full_prompt = literalize_finalize_commands(full_prompt, thread_label)
+        full_prompt = _worktree_context + _source_of_truth + render_coder_dispatch_prompt(
+            prompt, thread_wt=thread_wt, agent=agent, thread_label=thread_label,
+        )
+    else:
+        if not skip_template and _role:
+            templates = _com._get_settings().get("task_templates", {})
+            template = templates.get(_role, "")
+            if template:
+                qg = _com._get_settings()["agent"].get("quality_gate_skill", "mike:pre-pr")
+                template = template.replace("{quality_gate_skill}", qg)
+                prompt = template + "\n---\n\n" + prompt.rstrip()
+
+        full_prompt = (
+            _com.UNIVERSAL_PREAMBLE + _worktree_context + _source_of_truth + prompt.rstrip()
+        )
+        full_prompt = literalize_finalize_commands(full_prompt, thread_label)
     try:
         full_prompt = adapter.decorate_task(_role, full_prompt, thread_label=thread_label)
     except Exception:
