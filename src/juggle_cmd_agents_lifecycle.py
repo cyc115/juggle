@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 import juggle_cmd_agents_common as _com
 from dbops import event_kinds as _ek
+from dbops import db_topics as _tp
 
 
 def cmd_get_agent(args):
@@ -143,28 +144,44 @@ def cmd_release_agent(args):
 
     # Reconcile: if the agent's thread is still "background", it was released
     # without completing — mark the thread as failed so it doesn't appear stuck.
+    # EXCEPT (T-fix-release-after-verified-false-alarm, 2026-07-03): a topic
+    # already verified+merged has completed its work — release here is routine
+    # post-completion pool cleanup, not an abandonment. A topic still
+    # 'integrating' is NOT terminal and must keep the loud path.
     if assigned:
         thread = db.get_thread(assigned)
         if thread and thread["state"] == "background":
+            topic = _tp.get_topic_by_thread(db, assigned)
+            topic_terminal = bool(
+                topic and topic["state"] == "verified" and topic.get("merged_sha")
+            )
             label = thread.get("user_label") or thread.get("label") or assigned[:8]
-            db.update_thread(assigned, status="failed")
             with db._connect() as conn:
                 row = conn.execute(
                     "SELECT value FROM session WHERE key = 'session_id'"
                 ).fetchone()
             session_id = row["value"] if row else ""
-            db.add_action_item(
-                thread_id=assigned,
-                message=f"⚠️ [{label}] Agent released without completing — investigate and re-dispatch",
-                type_="failure",
-                priority="high",
-            )
-            db.emit_event(
-                assigned,
-                f"[Topic {label} failed] Agent released without completing.",
-                session_id=session_id,
-                kind=_ek.AGENT_FAILURE,
-            )
+            if topic_terminal:
+                db.emit_event(
+                    assigned,
+                    f"[Topic {label}] Agent released after topic was already verified — routine cleanup.",
+                    session_id=session_id,
+                    kind=_ek.WATCHDOG_RECOVERY,
+                )
+            else:
+                db.update_thread(assigned, status="failed")
+                db.add_action_item(
+                    thread_id=assigned,
+                    message=f"⚠️ [{label}] Agent released without completing — investigate and re-dispatch",
+                    type_="failure",
+                    priority="high",
+                )
+                db.emit_event(
+                    assigned,
+                    f"[Topic {label} failed] Agent released without completing.",
+                    session_id=session_id,
+                    kind=_ek.AGENT_FAILURE,
+                )
 
     print(f"Agent {agent_id[:8]} released.")
 

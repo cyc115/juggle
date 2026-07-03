@@ -49,6 +49,39 @@ def test_release_agent_files_failure_action_item(db):
     assert db.get_thread(tid)["state"] == "failed-exec"
 
 
+def test_release_agent_on_verified_topic_no_false_alarm(db):
+    """(2026-07-03 papercut, T-fix-release-after-verified-false-alarm) Releasing
+    an agent whose bound topic is ALREADY verified+merged is routine post-
+    completion cleanup — it must NOT raise a HIGH 'released without completing'
+    failure action item, nor flip the thread toward failed."""
+    from juggle_cmd_agents import cmd_release_agent
+    from dbops import db_topics as tp
+    from dbops.state_write import write_state
+    from dbops.schema import _now
+
+    tid = db.create_thread("verified-topic", session_id="s")
+    db.update_thread(tid, status="background")
+
+    tp.create_topic(db, topic_id="T-verified", project_id="INBOX", title="T")
+    tp.set_topic_thread(db, "T-verified", tid)
+    tp.set_topic_merged_sha(db, "T-verified", "deadbeef")
+    with db._connect() as conn:
+        write_state(conn, "T-verified", "verified", now=_now(), verified=True)
+        conn.commit()
+
+    agent_id = db.create_agent("coder", "pane-1")
+    db.update_agent(agent_id, status="busy", assigned_thread=tid)
+
+    args = argparse.Namespace(agent_id=agent_id, force=True)
+    cmd_release_agent(args)
+
+    items = db.get_open_action_items()
+    assert not any(
+        "released without completing" in item["message"] for item in items
+    ), f"Expected no false-alarm failure action item, got: {items}"
+    assert db.get_thread(tid)["state"] != "failed-exec"
+
+
 # ---------------------------------------------------------------------------
 # A3: complete-agent role=planner files decision action item
 # ---------------------------------------------------------------------------
