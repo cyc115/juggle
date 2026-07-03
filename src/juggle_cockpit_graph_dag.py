@@ -41,21 +41,13 @@ class GraphDag:
 
 
 def gather_project_activity(conn) -> list[ProjectActivity]:
-    """Build ordering rows for every candidate project purely from the DB.
+    """Ordering rows for every candidate project, derived purely from the DB.
 
-    Candidates = active projects (projects table) ∪ any project referenced by a
-    root graph node (nodes table). Per project we derive:
-
-    - ``is_done`` — has >=1 root topic/task node AND none is non-verified (0 open
-      work). Matches ``frontier_visible``'s fully-done predicate.
-    - ``active_key`` — live agent-activity: max ``last_active_at`` over the
-      project's topics' dispatch-bound conversation nodes, floored by the
-      project's static ``last_active`` (ISO strings compare chronologically).
-    - ``done_key`` — completion recency: max ``verified_at`` over root nodes,
-      floored by ``last_active``.
-
-    Every read is fail-soft (degrades to '' / not-done) so a partial/legacy DB
-    never crashes the cockpit render.
+    Candidates = active projects ∪ any project referenced by a root graph node.
+    ``is_done`` = has root nodes AND none non-verified. ``active_key`` = max
+    conversation ``last_active_at`` over the project's dispatch-bound topics,
+    floored by ``last_active``. ``done_key`` = max ``verified_at``, same floor
+    (ISO strings compare chronologically). Every read is fail-soft.
     """
     try:
         proj_rows = conn.execute(
