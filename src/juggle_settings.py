@@ -75,6 +75,10 @@ DEFAULTS: dict = {
         "notification_ratio": 30,
         "bell": True,
         "desktop_notifications": False,
+        # Graph-panel auto-sort throttle: the ordered project list is frozen for
+        # this many seconds so the panel does not reshuffle on every render.
+        # <=0 recomputes the order every render (test bypass).
+        "graph_sort_interval_seconds": 60,
     },
     # Paths
     "paths": {

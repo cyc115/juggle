@@ -16,7 +16,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from juggle_cockpit_graph_order import (
+    ProjectActivity,
+    OrderCache,
+    order_projects,
+)
+
 ARMED_PROJECT_SETTING = "autopilot_armed_project"  # kept for compat reads
+
+# Live cockpit snapshot cache for the graph-panel order (throttle). Tests never
+# touch this — they inject their own OrderCache into order_projects directly.
+_ORDER_CACHE = OrderCache()
 
 
 @dataclass(frozen=True)
@@ -30,30 +40,101 @@ class GraphDag:
     project_name: "str | None" = None  # human project name for the panel header
 
 
-def _all_project_ids(conn) -> list[str]:
-    """All project ids that have graph work, ordered by last_active DESC then
-    alphabetically. Source is the unified ``nodes`` table (P8 Task 4.2)."""
+def gather_project_activity(conn) -> list[ProjectActivity]:
+    """Build ordering rows for every candidate project purely from the DB.
+
+    Candidates = active projects (projects table) ∪ any project referenced by a
+    root graph node (nodes table). Per project we derive:
+
+    - ``is_done`` — has >=1 root topic/task node AND none is non-verified (0 open
+      work). Matches ``frontier_visible``'s fully-done predicate.
+    - ``active_key`` — live agent-activity: max ``last_active_at`` over the
+      project's topics' dispatch-bound conversation nodes, floored by the
+      project's static ``last_active`` (ISO strings compare chronologically).
+    - ``done_key`` — completion recency: max ``verified_at`` over root nodes,
+      floored by ``last_active``.
+
+    Every read is fail-soft (degrades to '' / not-done) so a partial/legacy DB
+    never crashes the cockpit render.
+    """
     try:
         proj_rows = conn.execute(
-            "SELECT id FROM projects WHERE status='active' "
-            "ORDER BY last_active DESC, id"
+            "SELECT id, last_active FROM projects WHERE status='active'"
         ).fetchall()
-        listed = [r[0] for r in proj_rows]
-        extra: set[str] = set()
-        try:
-            for r in conn.execute(
-                "SELECT DISTINCT project_id FROM nodes "
-                "WHERE kind IN ('topic','task','research') AND parent_id IS NULL "
-                "AND project_id IS NOT NULL"
-            ).fetchall():
-                pid = r[0]
-                if pid and pid not in listed:
-                    extra.add(pid)
-        except Exception:
-            pass
-        return listed + sorted(extra)
     except Exception:
         return []
+    last_active: dict[str, str] = {r[0]: (r[1] or "") for r in proj_rows}
+    candidates: list[str] = list(last_active.keys())
+
+    try:
+        for r in conn.execute(
+            "SELECT DISTINCT project_id FROM nodes "
+            "WHERE kind IN ('topic','task','research') AND parent_id IS NULL "
+            "AND project_id IS NOT NULL"
+        ).fetchall():
+            pid = r[0]
+            if pid and pid not in last_active:
+                last_active[pid] = ""
+                candidates.append(pid)
+    except Exception:
+        pass
+
+    # Root-node aggregates: open (non-verified) count, total, max verified_at.
+    open_count: dict[str, int] = {}
+    root_total: dict[str, int] = {}
+    verified_max: dict[str, str] = {}
+    try:
+        for r in conn.execute(
+            "SELECT project_id, "
+            "SUM(CASE WHEN state != 'verified' THEN 1 ELSE 0 END) AS opn, "
+            "COUNT(*) AS total, MAX(COALESCE(verified_at,'')) AS vmax "
+            "FROM nodes "
+            "WHERE (kind='topic' OR (kind='task' AND parent_id IS NULL)) "
+            "AND project_id IS NOT NULL GROUP BY project_id"
+        ).fetchall():
+            open_count[r[0]] = r[1] or 0
+            root_total[r[0]] = r[2] or 0
+            verified_max[r[0]] = r[3] or ""
+    except Exception:
+        pass
+
+    # Live agent activity: max conversation last_active_at over the project's
+    # topics' dispatch-bound conversation nodes.
+    agent_ts: dict[str, str] = {}
+    try:
+        for r in conn.execute(
+            "SELECT t.project_id AS pid, MAX(COALESCE(c.last_active_at,'')) AS ts "
+            "FROM nodes t "
+            "JOIN node_edges de ON de.node_id = t.id AND de.kind='dispatch' "
+            "JOIN nodes c ON c.id = de.depends_on_id AND c.kind='conversation' "
+            "WHERE t.kind='topic' AND t.project_id IS NOT NULL GROUP BY t.project_id"
+        ).fetchall():
+            if r[0]:
+                agent_ts[r[0]] = r[1] or ""
+    except Exception:
+        pass
+
+    rows: list[ProjectActivity] = []
+    for pid in candidates:
+        la = last_active.get(pid, "")
+        is_done = root_total.get(pid, 0) > 0 and open_count.get(pid, 0) == 0
+        rows.append(
+            ProjectActivity(
+                id=pid,
+                is_done=is_done,
+                active_key=max(agent_ts.get(pid, ""), la),
+                done_key=max(verified_max.get(pid, ""), la),
+            )
+        )
+    return rows
+
+
+def _all_project_ids(conn) -> list[str]:
+    """All candidate project ids in fresh partitioned order (ACTIVE-above-DONE,
+    no throttle). Consumed only by ``load_graph_dags``."""
+    return order_projects(
+        gather_project_activity(conn), now=0.0, interval=0.0, cache=OrderCache()
+    )
 
 
 def _project_name(conn, pid: str) -> "str | None":
@@ -182,10 +263,34 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
                     project_name=_project_name(conn, pid))
 
 
-def load_graph_dags(conn) -> list["GraphDag"]:
-    """Load topic-tier DAGs for ALL active projects with tasks, in priority order."""
+def _sort_interval() -> float:
+    """Snapshot throttle interval (secs) from cockpit.graph_sort_interval_seconds.
+    Fail-soft to the 60s default; <=0 means recompute every render."""
+    try:
+        from juggle_settings import get_settings
+
+        return float(get_settings()["cockpit"]["graph_sort_interval_seconds"])
+    except Exception:
+        return 60.0
+
+
+def load_graph_dags(conn, *, now: "float | None" = None) -> list["GraphDag"]:
+    """Load topic-tier DAGs for ALL active projects with tasks, in sort order.
+
+    ``now`` is the injected monotonic clock. When supplied (live cockpit) the
+    order is throttled through the module snapshot cache at the configured
+    interval so the panel does not reshuffle on every render. When ``None``
+    (tests / ad-hoc callers) the order is recomputed fresh with no throttle.
+    """
+    rows = gather_project_activity(conn)
+    if now is None:
+        ordered = order_projects(rows, now=0.0, interval=0.0, cache=OrderCache())
+    else:
+        ordered = order_projects(
+            rows, now=now, interval=_sort_interval(), cache=_ORDER_CACHE
+        )
     result = []
-    for pid in _all_project_ids(conn):
+    for pid in ordered:
         dag = _load_one(conn, pid)
         if dag is not None:
             result.append(dag)

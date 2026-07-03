@@ -396,7 +396,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
     except Exception:
         notifications = []
 
-    _dags = _load_graph_dags(conn) if load_graph_dag else []
+    _dags = _load_graph_dags(conn, now=time.monotonic()) if load_graph_dag else []
     graph_dag, graph_dags = (_dags[0], _dags) if _dags else (None, None)
 
     from juggle_cockpit_topic_cap import cap_topics, resolve_max_topics  # topics-pane cap
