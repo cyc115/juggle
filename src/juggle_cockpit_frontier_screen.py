@@ -165,7 +165,7 @@ class FrontierScreen(Screen):
         running_ids = [r.id for r in rows if r.kind == "running"]
         meta_by_id = _running_meta(self._db, running_ids)
         width = self.size.width or None
-        body_lines = render_rows(layout, selected_id=selected_id, meta_by_id=meta_by_id, width=width)
+        body_lines = render_rows(layout, edges, selected_id=selected_id, meta_by_id=meta_by_id, width=width)
         footer = render_critical_path_footer(layout, titles)
         self._body_text = "\n".join([header, "─" * 40, *body_lines, "", footer])
         self.query_one("#frontier-body", Static).update(self._body_text)
