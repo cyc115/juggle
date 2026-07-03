@@ -277,18 +277,7 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     from dbops.migration_topic_summary_cache import migrate_46_topic_summary_cache
     migrate_46_topic_summary_cache(conn)
 
-    # Migration 58 (single-writer broker, T-spool): additive spool_journal table —
-    # crash-safe idempotency ledger for the watchdog's spool drain (Task 8). Wired
-    # directly here (Migration 46 precedent): unrelated to the P8 nodes collapse.
-    from dbops.schema_spool import CREATE_SPOOL_JOURNAL
-    try:
-        conn.execute(CREATE_SPOOL_JOURNAL)
-        conn.commit()
-        _log.info("Migration 58 (spool journal): spool_journal table installed")
-    except sqlite3.OperationalError as e:
-        _log.warning("Migration 58 (spool journal) skipped: %s", e)
-
-    # Migrations 59-63: additive nodes columns + notifications_v2.kind/handled_by
-    # (irl-backbone R1) + nodes.fail_envelope (irl-envelope T2).
-    from dbops.migrations_59_63 import apply_migrations_59_63
-    apply_migrations_59_63(conn)
+    # Migrations 58..N (single-writer broker onward): extracted to
+    # migrations_tail (LOC gate) — same rationale as migrations_p8.
+    from dbops.migrations_tail import apply_tail_migrations
+    apply_tail_migrations(conn)

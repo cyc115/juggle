@@ -29,6 +29,7 @@ from juggle_cmd_metrics import cmd_metrics
 from juggle_cmd_research import cmd_research
 from juggle_cmd_db_flush import cmd_db_flush
 from juggle_cmd_add_node import cmd_add_node
+from juggle_cmd_migration import cmd_migration_next
 
 
 def _schedule_dogfood(a):
@@ -47,6 +48,9 @@ MISC_COMMANDS: tuple[Cmd, ...] = (
     Cmd("context", "show", cmd_get_context, aliases=("get-context",),
         help="Print context string"),
     Cmd("db", "init", cmd_init_db, aliases=("init-db",), help="Initialize DB schema"),
+    Cmd("migration", "next", cmd_migration_next,
+        aliases=("migration-next",),
+        help="Reserve and print the next DB-schema migration number"),
     Cmd("agent", "tools", cmd_agent_tools,
         args=(
             Arg("--role", default=None, help="Filter to one role"),

@@ -36,6 +36,11 @@ a fresh one (it prints "will be created on first juggle command"). To stand up a
 real DB for driving the CLI/cockpit manually (NOT needed for tests), use
 `uv run python src/juggle_cli.py db init`, then `doctor` for later migrations.
 
+**Adding a schema migration:** run `juggle migration next` to reserve your
+migration number (DB-atomic, `dbops/migration_seq.py`) — never hand-pick the
+next integer by eyeballing `dbops/migration_*.py` (2026-07-02 duplicate-column
+incident: two concurrent coders picked the same number).
+
 ## Cockpit Development
 
 Use `uv run src/juggle_cli.py cockpit --out` to render the cockpit to stdout for visual inspection and debugging without needing a live tmux session. Always run this after cockpit layout changes to verify rendering.
@@ -65,10 +70,13 @@ Profiles live in `config/viewports.yaml` (7 profiles: 2k_full 240×67, 2k_half 1
 
 # Versioning
 
+`version` in `.claude-plugin/plugin.json` bumps automatically inside `integrate`
+(P1, 2026-07-03) — derived from the landing branch's own `feat:`/`fix:` commit
+prefixes (feat=minor, fix=patch, breaking=major). Do NOT hand-bump it.
+
 After every major implementation:
-1. Bump `version` in `.claude-plugin/plugin.json` (patch = bug/minor, minor = feature)
-2. Commit with `feat:`/`fix:` prefix and version in body
-3. Mark done in `TODO.md` (repo root)
+1. Commit with `feat:`/`fix:` prefix and version in body
+2. Mark done in `TODO.md` (repo root)
 
 # Task Tracking
 
