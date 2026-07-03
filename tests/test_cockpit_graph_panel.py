@@ -338,10 +338,12 @@ async def test_graph_header_shows_project_name_in_app(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_done_project_renders_collapsed_one_line_summary():
-    """PIN: cockpit-graph-autosort (2026-07-03) — a fully-verified project must
-    collapse to a single '✅ <name> — N/N done' line instead of its full DAG,
-    reclaiming vertical space; an active sibling still renders its full grid."""
+def test_done_project_renders_full_dimmed_header_not_checkmark_summary():
+    """PIN: cockpit-done-header (2026-07-03) — a fully-verified project renders
+    the SAME standard header row as an active project ('<id> · <name>  <spine>
+    N/N done') dimmed and sunk below active ones — NOT the old collapsed
+    '✅ <name> — N/N done' summary. The node body stays collapsed (no individual
+    task rows); an active sibling still renders its full grid."""
     from juggle_cockpit_graph_dag import GraphDag
     from juggle_cockpit_graph_panel import build_multi_graph_panel
 
@@ -364,9 +366,12 @@ def test_done_project_renders_collapsed_one_line_summary():
         dags=dags, selection=0, unread=0, width=120, height=40, pan_offset=0
     )
     out = _text(panel, width=120)
-    # Collapsed summary line present…
-    assert "✅ Done Two — 2/2 done" in out
-    # …and the done project's individual task cells are NOT rendered.
+    # Full standard header (id · name + progress counts), NOT the ✅ summary.
+    assert "DONE · Done Two" in out
+    assert "2/2 done" in out
+    assert "✅ Done Two" not in out
+    assert "Done Two — " not in out
+    # Body stays collapsed — the done project's individual task cells are absent.
     assert "zzdone1" not in out
     assert "zzdone2" not in out
     # The active sibling still renders its grid cell.

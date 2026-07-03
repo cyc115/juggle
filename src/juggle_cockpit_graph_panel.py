@@ -75,16 +75,19 @@ def build_graph_panel(
     inner_w_hdr = max(8, width - 4)
     real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
 
-    # Done-collapse (spec 2026-07-03 §3): a fully-verified project renders as a
-    # single '✅ <name> — N/N done' line, matching the multi-panel section.
+    # Done-collapse (cockpit-done-header, 2026-07-03): a fully-verified project
+    # renders its standard header row (dimmed, body collapsed) — same columns as
+    # an active header — matching the multi-panel section.
     if dag_is_done(tasks):
-        from juggle_cockpit_graph_rows import done_summary_line
+        from juggle_cockpit_graph_rows import done_header_line
 
         units = selectable_units(tasks, edges)
         selected = bool(units) and 0 <= selection < len(units)
-        summary = done_summary_line(project_id, project_name, real_tasks, selected=selected)
+        header = done_header_line(
+            project_id, project_name, real_tasks, inner_w_hdr, edges, selected=selected
+        )
         legend = Text(graph_inline_legend(), style=Style(dim=True))
-        return Panel(_Group(summary, legend), title=title, border_style="cyan")
+        return Panel(_Group(header, legend), title=title, border_style="cyan")
 
     header = _section_header(project_id, project_name, real_tasks, inner_w_hdr, edges)
 

@@ -165,21 +165,25 @@ def _flat_selectable(tasks: list[GraphTask]) -> list[GraphTask]:
     return topological_order(tasks, [])
 
 
-def done_summary_line(
+def done_header_line(
     project_id: str,
     project_name: str | None,
     real_tasks: list[GraphTask],
+    inner_w: int,
+    edges: list[tuple[str, str]] | None = None,
     *,
     selected: bool = False,
 ) -> Text:
-    """Collapsed one-line summary for a fully-done project (spec 2026-07-03 §3):
-    '✅ <ProjectName> — N/N done'. Reclaims the vertical space its full DAG used;
-    ``selected`` reverses it so it still shows as the cursor target."""
-    done_glyph = TASK_STATE_GLYPHS["verified"]
-    label = project_name or project_id
-    n = len(real_tasks)
-    text = f"{done_glyph} {label} — {n}/{n} done"
-    return Text(text, style=Style(color="green", dim=not selected, reverse=selected))
+    """Header for a fully-done project — the SAME standard header row as an
+    active project (``_section_header``: '<id> · <name>  <spine>  N/N done, K
+    failed'), only dim-styled with the node BODY collapsed to this one line.
+    Replaces the old '✅ <name> — N/N done' summary (cockpit-done-header,
+    2026-07-03): done projects keep the active header's columns/format so they
+    line up, just dimmed and sunk below active ones. ``selected`` reverses the
+    line (and un-dims it) so it still shows as the cursor target."""
+    header = _section_header(project_id, project_name, real_tasks, inner_w, edges)
+    header.stylize(Style(dim=not selected, reverse=selected))
+    return header
 
 
 def _graph_section(
@@ -199,13 +203,14 @@ def _graph_section(
 
     real_tasks = [n for n in tasks if not getattr(n, "is_mirror", False)]
 
-    # Done-collapse: a fully-verified project renders as a single summary line
-    # instead of its full DAG. Its one selectable unit (selectable_units) is the
-    # cursor target, so highlight the line when that unit is selected.
+    # Done-collapse: a fully-verified project renders as its standard header row
+    # (dimmed, body collapsed) instead of its full DAG. Its one selectable unit
+    # (selectable_units) is the cursor target, so highlight the line when that
+    # unit is selected.
     if dag_is_done(tasks):
         units = selectable_units(tasks, edges)
         selected = bool(units) and sel_id == units[0].id
-        return [done_summary_line(project_id, project_name, real_tasks, selected=selected)]
+        return [done_header_line(project_id, project_name, real_tasks, inner_w, edges, selected=selected)]
 
     header = _section_header(project_id, project_name, real_tasks, inner_w, edges)
 
