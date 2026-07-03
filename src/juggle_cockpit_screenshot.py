@@ -58,17 +58,6 @@ def save_screenshot(
     db._connect = lambda: conn  # noqa: E731
     try:
         state = snapshot(db, load_graph_dag=(graph_mode or graph_full))
-        # snapshot() closes the connection it opens via db._connect() internally
-        # (juggle_cockpit_model.py), so a graph_full meta fetch needs its OWN
-        # fresh connection rather than reusing the now-dead ``conn``.
-        dags = getattr(state, "graph_dags", None) or (
-            [state.graph_dag] if getattr(state, "graph_dag", None) else []
-        )
-        if graph_full:
-            from juggle_cockpit_gitlog_meta import gitlog_meta_for
-            ids = [n.id for d in dags for n in d.tasks if not getattr(n, "is_mirror", False)]
-            db._connect = lambda: open_connection(db.db_path)  # noqa: E731
-            meta = gitlog_meta_for(db, ids)  # opens+closes its own connection
     finally:
         conn.close()
 
@@ -77,13 +66,11 @@ def save_screenshot(
 
     con = Console(record=True, force_terminal=True, width=220, color_system="truecolor")
     if graph_full:
-        from rich.console import Group
-        from juggle_cockpit_gitlog_lines import gitlog_rows, render_gitlog_line
-        from juggle_cockpit_legend import graph_inline_legend
+        # Interim: the full-screen git-log graph view (cockpit-gitlog-view) is
+        # removed pending the Frontier Railroad.
+        from juggle_cockpit_legend import FRONTIER_REBUILD_NOTICE
 
-        rows = gitlog_rows(dags, meta_by_id=meta)
-        con.print(Group(*[render_gitlog_line(r) for r in rows]) if rows else "(no tasks)")
-        con.print(graph_inline_legend())
+        con.print(FRONTIER_REBUILD_NOTICE)
         ext = path.rsplit(".", 1)[-1].lower() if "." in path else "png"
         if ext == "svg":
             con.save_svg(path, title=svg_title)

@@ -916,23 +916,9 @@ class CockpitApp(GraphModeMixin, App):
         self.push_screen(_ProjectArmModal(self._db))
 
     def action_graph_railroad(self) -> None:
-        """G — open the full-screen railroad for the selected task's project."""
-        from juggle_cockpit_model import snapshot as _snapshot
-        try:
-            state = _snapshot(self._db, load_graph_dag=True)
-        except Exception:
-            return
-        dags = getattr(state, "graph_dags", None) or (
-            [state.graph_dag] if getattr(state, "graph_dag", None) else []
-        )
-        if not dags:
-            return
-        from juggle_cockpit_graph_panel import topological_order
-        flat = [(d, n) for d in dags for n in topological_order(d.tasks, d.edges)]
-        sel = getattr(self, "_graph_sel", 0)
-        pid = flat[sel][0].project_id if 0 <= sel < len(flat) else dags[0].project_id
-        from juggle_cockpit_railroad import RailroadScreen
-        self.push_screen(RailroadScreen(dags, pid, self._db))
+        """G — interim: RailroadScreen is removed pending the Frontier Railroad."""
+        from juggle_cockpit_legend import FRONTIER_REBUILD_NOTICE
+        self.notify(FRONTIER_REBUILD_NOTICE, timeout=4)
 
     def on_resize(self, event: events.Resize) -> None:
         from juggle_cockpit_view import pick_breakpoint

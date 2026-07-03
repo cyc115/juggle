@@ -71,6 +71,10 @@ def railroad_glyph(state: str) -> str:
     return RAILROAD_STATE_GLYPHS.get(state, "·")
 
 
+FRONTIER_REBUILD_NOTICE = (
+    "graph view is being rebuilt — coming back as the Frontier Railroad"
+)
+
 NOTIF_KIND_GLYPHS: dict[str, str] = {
     "complete": "⚡",
     "info": "ℹ️",

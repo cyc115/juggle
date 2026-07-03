@@ -1,5 +1,6 @@
-"""Headless verification for cockpit-gitlog-view: `cockpit --out --graph-full`
-and `--screenshot ... --graph-full` (T-cockpit-gitlog-view acceptance)."""
+"""Headless verification for `cockpit --out --graph-full` and `--screenshot
+... --graph-full`: interim notice while cockpit-gitlog-view is rebuilt as the
+Frontier Railroad (2026-07-02)."""
 from datetime import datetime, timezone
 
 
@@ -24,32 +25,23 @@ def _seed(db_path):
     return db
 
 
-def test_render_gitlog_static_shows_row_and_legend(tmp_path):
+def test_render_gitlog_static_shows_rebuild_notice(tmp_path):
     from juggle_cockpit_static import render_gitlog_static
+    from juggle_cockpit_legend import FRONTIER_REBUILD_NOTICE
 
     db_path = str(tmp_path / "juggle.db")
     _seed(db_path)
     text = render_gitlog_static(db_path=db_path)
-    assert "a" in text
-    assert "6db0e75" in text
-    assert "waits on" in text  # graph_inline_legend footer
-
-
-def test_render_gitlog_static_empty_dag_says_no_tasks(tmp_path):
-    from juggle_cockpit_static import render_gitlog_static
-    from juggle_db import JuggleDB
-
-    db_path = str(tmp_path / "juggle.db")
-    JuggleDB(db_path=db_path).init_db()
-    text = render_gitlog_static(db_path=db_path)
-    assert "no tasks" in text
+    assert FRONTIER_REBUILD_NOTICE in text
 
 
 def test_cockpit_out_graph_full_cli(tmp_path):
-    """cockpit --out --graph-full renders the full-screen view via subprocess."""
+    """cockpit --out --graph-full shows the interim notice via subprocess."""
     import subprocess
     import sys
     from pathlib import Path
+
+    from juggle_cockpit_legend import FRONTIER_REBUILD_NOTICE
 
     db_path = str(tmp_path / "juggle.db")
     _seed(db_path)
@@ -59,8 +51,7 @@ def test_cockpit_out_graph_full_cli(tmp_path):
         capture_output=True, text=True, timeout=60,
     )
     assert r.returncode == 0, r.stderr
-    assert "a" in r.stdout
-    assert "6db0e75" in r.stdout
+    assert FRONTIER_REBUILD_NOTICE in r.stdout
 
 
 def test_screenshot_graph_full_writes_svg(tmp_path):

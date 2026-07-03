@@ -251,13 +251,13 @@ COCKPIT_HELP_TABLE: list[dict] = [
                 "action": "graph_railroad",
                 "key": "G",
                 "short": "Rail",
-                "desc": "Open the full-screen dependency railroad for the selected task's project",
+                "desc": "Graph view is being rebuilt as the Frontier Railroad (interim notice)",
             },
             {
                 "action": "gitlog",
                 "key": "l  (in Graph mode)",
                 "short": "Log",
-                "desc": "Open the full-screen git-log graph view of every project's task graph; l again closes",
+                "desc": "Graph view is being rebuilt as the Frontier Railroad (interim notice)",
             },
             {
                 "action": "projects",

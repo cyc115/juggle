@@ -200,17 +200,6 @@ class GraphModeMixin:
         return False
 
     def _open_gitlog_screen(self) -> None:
-        """l — open the full-screen git-log graph view (Surface E, cockpit-
-        gitlog-view). Same key closes (GitlogScreen binds 'l' to dismiss)."""
-        from juggle_cockpit_model import snapshot as _snapshot
-        try:
-            state = _snapshot(self._db, load_graph_dag=True)
-        except Exception:
-            return
-        dags = getattr(state, "graph_dags", None) or (
-            [state.graph_dag] if getattr(state, "graph_dag", None) else []
-        )
-        if not dags:
-            return
-        from juggle_cockpit_gitlog_screen import GitlogScreen
-        self.push_screen(GitlogScreen(dags, self._db))
+        """l — interim: GitlogScreen is removed pending the Frontier Railroad."""
+        from juggle_cockpit_legend import FRONTIER_REBUILD_NOTICE
+        self.notify(FRONTIER_REBUILD_NOTICE, timeout=4)

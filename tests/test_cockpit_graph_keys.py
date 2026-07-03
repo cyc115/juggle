@@ -212,3 +212,27 @@ async def test_arrows_do_not_leak_to_scroll_when_graph_off(tmp_path):
         assert app._active_pane != start_pane
         # selection untouched while off
         assert app._graph_sel == 0
+
+
+@pytest.mark.asyncio
+async def test_l_key_shows_rebuild_notice_not_crash(tmp_path):
+    """Regression pin, carried forward from the removed GitlogScreen's
+    fan-in-convergence IndexError pin (2026-07-02 incident): user-reported
+    live crash — cockpit graph view -> 'l' (gitlog screen) -> IndexError: list
+    assignment index out of range. GitlogScreen (and its lane-allocator core)
+    is now removed outright; this pin asserts the interim notice binding
+    fires without raising, so 'l' can never again crash the cockpit."""
+    from juggle_cockpit import CockpitApp
+    from juggle_cockpit_legend import FRONTIER_REBUILD_NOTICE
+
+    app = CockpitApp(db_path=_armed_db(tmp_path))
+    async with app.run_test(size=(160, 40)) as pilot:
+        await pilot.press("g")
+        await pilot.pause(0.1)
+        assert app._graph_mode is True
+        notified = []
+        app.notify = lambda msg, *a, **k: notified.append(msg)
+        await pilot.press("l")
+        await pilot.pause(0.1)
+        assert notified == [FRONTIER_REBUILD_NOTICE]
+        assert len(app.screen_stack) == 1  # no screen pushed, no crash

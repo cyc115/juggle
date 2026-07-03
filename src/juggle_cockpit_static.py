@@ -96,48 +96,11 @@ def render_static_from_state(state: CockpitState, width: int = 120) -> str:
 
 
 def render_gitlog_static(db_path: str | None = None, width: int = 120) -> str:
-    """Snapshot the live juggle.db and render the full-screen git-log graph view
-    (cockpit-gitlog-view) as plain text. Used by ``cockpit --out --graph-full``
-    and CI health checks — headless verification with no Textual/TUI.
-    """
-    import io
-    import sqlite3 as _sqlite3
-    import sys as _sys
-    from pathlib import Path as _Path
-
-    from rich.console import Console, Group
-
-    _src = _Path(__file__).parent
-    if str(_src) not in _sys.path:
-        _sys.path.insert(0, str(_src))
-
-    from juggle_cockpit_model import snapshot as _snapshot
-    from juggle_cockpit_gitlog_lines import gitlog_rows, render_gitlog_line
-    from juggle_cockpit_gitlog_meta import gitlog_meta_for
-    from juggle_cockpit_legend import graph_inline_legend
-    from juggle_db import JuggleDB
-
-    db = JuggleDB(db_path=db_path)
-    db.init_db()
-    conn = _sqlite3.connect(str(db.db_path))
-    conn.row_factory = _sqlite3.Row
-    db._connect = lambda: conn  # noqa: E731
-    try:
-        state = _snapshot(db, load_graph_dag=True)
-        dags = getattr(state, "graph_dags", None) or (
-            [state.graph_dag] if getattr(state, "graph_dag", None) else []
-        )
-        ids = [n.id for d in dags for n in d.tasks if not getattr(n, "is_mirror", False)]
-        meta = gitlog_meta_for(db, ids)
-        rows = gitlog_rows(dags, meta_by_id=meta)
-    finally:
-        conn.close()
-
-    buf = io.StringIO()
-    con = Console(width=width, file=buf, no_color=True, highlight=False)
-    con.print(Group(*[render_gitlog_line(r) for r in rows]) if rows else "(no tasks)")
-    con.print(graph_inline_legend())
-    return "\n".join(_strip_ansi(ln) for ln in buf.getvalue().splitlines()) + "\n"
+    """Interim: the full-screen git-log graph view (cockpit-gitlog-view) is
+    removed pending the Frontier Railroad. Used by ``cockpit --out
+    --graph-full`` and CI health checks — headless, no Textual/TUI."""
+    from juggle_cockpit_legend import FRONTIER_REBUILD_NOTICE
+    return FRONTIER_REBUILD_NOTICE + "\n"
 
 
 def render_static(db_path: str | None = None, width: int = 120) -> str:
