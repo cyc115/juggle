@@ -70,5 +70,14 @@ def test_every_protocol_method_has_a_conformance_test():
     assert not missing, f"Protocol methods with no conformance coverage: {missing}"
 
 
-# ── Guide-sync hook (extended by the vcs-backend-guide topic) ───────────────
-# def test_every_protocol_method_named_in_the_backend_guide(): ...
+# ── Guide-sync (§7.9) ────────────────────────────────────────────────────────
+
+
+def test_every_protocol_method_named_in_the_backend_guide():
+    """Every Protocol method name appears as a literal substring in the
+    agent-facing guide — a plain grep-for-each-name, cheap and unambiguous.
+    Widening the Protocol without documenting the new method fails here."""
+    guide = (REPO_ROOT / "docs" / "create-your-own-vcs-backend.md").read_text()
+    seam_methods = PROTOCOL_V1_MEMBERS - {"name", "capabilities"}
+    missing = [m for m in sorted(seam_methods) if m not in guide]
+    assert not missing, f"Protocol methods missing from the backend guide: {missing}"
