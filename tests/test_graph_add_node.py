@@ -381,3 +381,144 @@ def test_add_task_no_topic_gets_synthetic_graph_topic(db):
     t = g.get_task(db, "x")
     assert t["topic_id"] == "T-x"
     assert tp.get_topic(db, "T-x") is not None
+
+
+# ── REGRESSION PIN (2026-07-03, incident fr-vf-rails silent wedge) ─────────────
+# add-task into a VERIFIED (terminal) topic must reopen it, else the new task
+# is ready but topic_ready_eligible only considers state='open' topics — the
+# task wedges forever with no dispatch and no notification.
+
+
+def test_add_task_into_verified_topic_reopens_it(db):
+    from dbops import db_topics as tp
+
+    tp.create_topic(db, topic_id="TOP", project_id="INBOX", title="Top")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET state='verified' WHERE id='TOP' AND kind='topic'"
+        )
+        conn.commit()
+    assert tp.get_topic(db, "TOP")["state"] == "verified"
+
+    res = up.add_task(
+        db, "INBOX", task_id="fix-1", title="Fix", prompt="do the fix",
+        deps=[], required_by=[], verify_cmd=None,
+        topic_id="TOP", auto_create_topic=False,
+    )
+    assert res["topic_reopened"] is True
+    assert tp.get_topic(db, "TOP")["state"] == "open"
+    # new task has no deps -> ready immediately, and the topic is now eligible
+    assert res["state"] == "ready"
+    assert "TOP" in tp.topic_ready_eligible(db, "INBOX")
+
+
+def test_add_task_into_failed_verify_topic_reopens_it(db):
+    from dbops import db_topics as tp
+
+    tp.create_topic(db, topic_id="TOP2", project_id="INBOX", title="Top2")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET state='failed-verify' WHERE id='TOP2' AND kind='topic'"
+        )
+        conn.commit()
+
+    res = up.add_task(
+        db, "INBOX", task_id="fix-2", title="Fix2", prompt="do the fix",
+        deps=[], required_by=[], verify_cmd=None,
+        topic_id="TOP2", auto_create_topic=False,
+    )
+    assert res["topic_reopened"] is True
+    assert tp.get_topic(db, "TOP2")["state"] == "open"
+
+
+def test_add_task_into_open_topic_does_not_reopen(db):
+    """DA (a): reopen must be a no-op when the topic is not actually terminal —
+    an already-open/ready topic must not trip the reopen event path."""
+    from dbops import db_topics as tp
+
+    tp.create_topic(db, topic_id="TOP3", project_id="INBOX", title="Top3")
+    assert tp.get_topic(db, "TOP3")["state"] == "open"
+
+    res = up.add_task(
+        db, "INBOX", task_id="fix-3", title="Fix3", prompt="do the fix",
+        deps=[], required_by=[], verify_cmd=None,
+        topic_id="TOP3", auto_create_topic=False,
+    )
+    assert res["topic_reopened"] is False
+    assert tp.get_topic(db, "TOP3")["state"] == "open"
+
+
+def test_add_task_into_running_topic_does_not_reopen(db):
+    """A 'running' topic is actively in-flight, not terminal — add-task must
+    leave it alone (reconcile will re-derive its state from tasks normally)."""
+    from dbops import db_topics as tp
+
+    tp.create_topic(db, topic_id="TOP4", project_id="INBOX", title="Top4")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET state='running' WHERE id='TOP4' AND kind='topic'"
+        )
+        conn.commit()
+
+    res = up.add_task(
+        db, "INBOX", task_id="fix-4", title="Fix4", prompt="do the fix",
+        deps=[], required_by=[], verify_cmd=None,
+        topic_id="TOP4", auto_create_topic=False,
+    )
+    assert res["topic_reopened"] is False
+    assert tp.get_topic(db, "TOP4")["state"] == "running"
+
+
+def test_reconcile_does_not_flip_reopened_topic_back_to_verified(db):
+    """DA (b): once a verified topic is reopened, reconcile must derive 'open'
+    (not 'verified') while the new task is still open — reconcile only reads
+    task states, and the new unverified task must keep it from re-verifying."""
+    from dbops import db_topics as tp
+    from dbops.db_topics_reconcile import reconcile_topic_state
+
+    tp.create_topic(db, topic_id="TOP5", project_id="INBOX", title="Top5")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET state='verified' WHERE id='TOP5' AND kind='topic'"
+        )
+        conn.commit()
+    g.create_task(db, task_id="old", project_id="INBOX", title="Old", prompt="old")
+    g.set_task_topic(db, "old", "TOP5")
+    g.recompute_ready(db, "INBOX")
+    _walk(db, "old", "claim", "dispatch", "integrate_start", "integrate_ok")
+
+    up.add_task(
+        db, "INBOX", task_id="fix-5", title="Fix5", prompt="do the fix",
+        deps=[], required_by=[], verify_cmd=None,
+        topic_id="TOP5", auto_create_topic=False,
+    )
+    assert tp.get_topic(db, "TOP5")["state"] == "open"
+    assert reconcile_topic_state(db, "TOP5") == "open"
+
+
+def test_synthetic_auto_topic_unaffected_by_reopen_logic(db):
+    """DA (c): the synthetic 'T-<id>' auto-topic path is untouched — a freshly
+    auto-created topic is never terminal, so reopen never triggers for it."""
+    _diamond(db)
+    res = up.add_task(
+        db, "INBOX", task_id="y", title="Y", prompt="do y",
+        deps=["a"], required_by=[], verify_cmd=None,
+        topic_id="T-y", auto_create_topic=True,
+    )
+    assert res["topic_reopened"] is False
+
+
+def test_cli_add_task_prints_reopen_notification(db, capsys):
+    """The CLI must surface the reopen visibly (2026-07-03: the incident's
+    root complaint was 'no notification, no action item')."""
+    from dbops import db_topics as tp
+
+    tp.create_topic(db, topic_id="TOPCLI", project_id="INBOX", title="TopCLI")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET state='verified' WHERE id='TOPCLI' AND kind='topic'"
+        )
+        conn.commit()
+    cg.cmd_graph_add_task(_args(db, id="fix-cli", deps=None, topic="TOPCLI"))
+    out = capsys.readouterr().out
+    assert "topic 'TOPCLI' reopened by add-task 'fix-cli'" in out

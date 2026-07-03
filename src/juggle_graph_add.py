@@ -34,6 +34,24 @@ MUTABLE_STATES = frozenset(
     }
 )
 
+# Topic states add-task must REOPEN before attaching a task (T-fix-addtask-
+# reopen-verified-topic, 2026-07-03 incident fr-vf-rails): these are settled/
+# parked terminals excluded from topic_ready_eligible (state='open' only), so a
+# task attached under one of them would otherwise wedge forever with no
+# dispatch and no notification. Excludes active in-flight states (running/
+# dispatching/integrating) — those are already engaged and reconcile
+# re-derives their state normally once the work lands.
+TERMINAL_REOPEN_TOPIC_STATES = frozenset(
+    {
+        "verified",
+        "failed-exec",
+        "failed-integration",
+        "failed-verify",
+        "blocked-failed",
+        "integrated-unlanded",
+    }
+)
+
 
 class AddTaskError(ValueError):
     """Validation/guard failure for a single-task add. Carries a clean message;
@@ -191,7 +209,8 @@ def add_task(
     on the unfinished new task is demoted (recompute_blocked + recompute_ready —
     the sanctioned seams; task_transition stays sole writer).
 
-    Returns {"task_id", "state", "downstream_changed": [{"id","from","to"}]}.
+    Returns {"task_id", "state", "downstream_changed": [{"id","from","to"}],
+    "topic_reopened"}.
     """
     validate_add_task(
         db, project_id, task_id=task_id, title=title, prompt=prompt,
@@ -201,6 +220,7 @@ def add_task(
     live = {n["id"]: n for n in db_graph.list_tasks(db, project_id)}
     before = {n["id"]: n["state"] for n in live.values()}
 
+    topic_reopened = False
     # One transaction for the whole insert INCLUDING the downstream demotion.
     # The demotion must be atomic with the edge write (not a post-commit step):
     # the dispatcher claims any task in state='ready' without re-checking deps,
@@ -210,13 +230,22 @@ def add_task(
     try:
         # G5: create the owning topic FIRST, in this same transaction, so a topic
         # never exists without its first task (no empty-topic dispatch window).
-        if auto_create_topic and topic_id:
+        # Silent-wedge fix (T-fix-addtask-reopen-verified-topic): an EXISTING
+        # topic parked in a terminal state (verified/failed-*/integrated-
+        # unlanded) is reopened in this SAME transaction — else the new task
+        # can never dispatch (topic_ready_eligible requires state='open').
+        if topic_id:
             from dbops import db_topics
-            if db_topics.get_topic(db, topic_id, conn=conn) is None:
-                db_topics.create_topic(
-                    db, topic_id=topic_id, project_id=project_id, title=title,
-                    priority=priority, conn=conn,
-                )
+            existing_topic = db_topics.get_topic(db, topic_id, conn=conn)
+            if existing_topic is None:
+                if auto_create_topic:
+                    db_topics.create_topic(
+                        db, topic_id=topic_id, project_id=project_id,
+                        title=title, priority=priority, conn=conn,
+                    )
+            elif existing_topic["state"] in TERMINAL_REOPEN_TOPIC_STATES:
+                db_topics.topic_transition(db, topic_id, "reopen", conn=conn)
+                topic_reopened = True
         if task_id in live:
             # Re-add of a mutable existing task: reset content + state to open.
             db_graph.update_task_content(
@@ -264,4 +293,5 @@ def add_task(
         "task_id": task_id,
         "state": after.get(task_id, "open"),
         "downstream_changed": downstream_changed,
+        "topic_reopened": topic_reopened,
     }

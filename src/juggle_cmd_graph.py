@@ -202,8 +202,7 @@ def cmd_graph_add_task(args):
     topic_id, auto_topic = resolve_dispatch_topic(
         db, args.project, args.id, getattr(args, "topic", None)
     )
-    # Explicit --priority wins; else a 'fix-' id defaults high so the existing
-    # fix-naming convention gets fix-first dispatch with zero new flags.
+    # Explicit --priority wins; else a 'fix-' id defaults high (fix-first dispatch).
     priority = getattr(args, "priority", None)
     if priority is None:
         priority = FIX_DEFAULT_PRIORITY if args.id.startswith("fix-") else 0
@@ -232,6 +231,8 @@ def cmd_graph_add_task(args):
     if getattr(args, "json_out", False):
         print(json.dumps({"ok": True, **result}))
         return
+    if result.get("topic_reopened"):  # fr-vf-rails silent-wedge fix (2026-07-03)
+        print(f"topic {topic_id!r} reopened by add-task {result['task_id']!r}")
     changed = result["downstream_changed"]
     tail = ""
     if changed:

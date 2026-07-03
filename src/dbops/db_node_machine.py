@@ -67,6 +67,18 @@ _NODE_TRANSITIONS: dict[tuple[str, str], str] = {
     ("blocked-failed",      "archive"): "archived",
     # done → archive only
     ("done", "archive"): "archived",
+    # reopen — topic-only (T-fix-addtask-reopen-verified-topic, 2026-07-03):
+    # add-task into a topic terminal-parked with old work must reopen it, else
+    # a newly attached task can never dispatch (topic_ready_eligible requires
+    # state='open'). 'verified' has no 'reload' entry (task-level reload never
+    # resurrects a verified task — validate_add_task refuses that re-add before
+    # it gets here), so topics get their own event instead of overloading it.
+    ("verified",             "reopen"): "open",
+    ("failed-exec",          "reopen"): "open",
+    ("failed-integration",   "reopen"): "open",
+    ("failed-verify",        "reopen"): "open",
+    ("blocked-failed",       "reopen"): "open",
+    ("integrated-unlanded",  "reopen"): "open",
     # background — conversation agent dispatched in the background (R2-1).
     # Kept DISTINCT from 'running' so the watchdog reaper + cockpit 2a/2b stay correct.
     ("open",       "dispatch_bg"): "background",
@@ -87,7 +99,7 @@ _KIND_LEGAL: dict[str, frozenset[str]] = {
         "integrate_start", "exec_fail",
         "integrate_ok", "integrate_fail", "verify_fail",
         "integrate_submitted", "land_confirmed", "land_fail",
-        "g1_pass",
+        "g1_pass", "reopen",
     }),
     "research": frozenset({
         "deps_ready", "dep_fail", "reload", "archive",
