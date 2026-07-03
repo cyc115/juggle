@@ -290,14 +290,11 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         _log.warning("Migration 58 (spool journal) skipped: %s", e)
 
-    # Migration 59 (fix-priority dispatch ordering): additive nodes.priority
-    # column. Wired here (not apply_recent_migrations) — run_migrations is the
-    # sole runner so every path gets it, matching the Migration 46/58 precedent.
+    # Migrations 59-61: wired directly here (Migration 46/58 precedent) — additive
+    # nodes columns (priority, submitted_rev, pending_merged_sha/_repo).
     from dbops.migration_59_node_priority import migrate_59_node_priority
-    migrate_59_node_priority(conn)
-
     from dbops.migration_60_submitted_rev import migrate_60_submitted_rev
-    migrate_60_submitted_rev(conn)  # Migration 60: additive nodes.submitted_rev
-
     from dbops.migration_61_pending_merged_sha import migrate_61_pending_merged_sha
-    migrate_61_pending_merged_sha(conn)  # Migration 61: additive nodes.pending_merged_sha
+    migrate_59_node_priority(conn)
+    migrate_60_submitted_rev(conn)
+    migrate_61_pending_merged_sha(conn)

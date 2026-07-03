@@ -171,16 +171,10 @@ def set_topic_merged_sha(db, topic_id, merged_sha, conn=None) -> None:
 
 
 def set_topic_pending_merged_sha(db, topic_id, sha, repo=None, conn=None) -> None:
-    """Stash a resolved-but-not-yet-proven-ancestor SHA + the repo it was
-    resolved in (2026-07-02 async-land incident self-heal). ``_record_merged_
-    sha`` writes this whenever it resolves a real object but the ancestry-of-
-    main check fails/is inconclusive, so the candidate survives worktree
-    teardown (which deletes the git branch and clears the thread's worktree
-    fields, including ``main_repo_path``) for reconcile's self-heal to
-    re-check later. ``repo`` is left unchanged (not cleared) when omitted, so
-    clearing the sha alone (on success) doesn't lose the last-known repo. NOT
-    the verified gate (topic_is_merged never reads either column) — writes
-    ONLY nodes.pending_merged_sha[/pending_merged_repo]."""
+    """Stash a resolved-but-not-yet-proven-ancestor SHA (+ its repo) so it
+    survives worktree teardown for reconcile's self-heal to re-check later
+    (2026-07-02 async-land incident). ``repo`` unchanged when omitted. NOT the
+    verified gate — writes ONLY pending_merged_sha[/pending_merged_repo]."""
     now = _now()
     with _cx(db, conn) as c:
         if repo is None:
