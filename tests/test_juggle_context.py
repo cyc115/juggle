@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from juggle_db import JuggleDB
-from juggle_context import ContextBuilder, build_context_string
+from juggle_context import ContextBuilder, build_context_string, render_agent_role_anchor_for
 
 
 @pytest.fixture(autouse=True)
@@ -74,7 +74,6 @@ def test_orchestrator_session_still_gets_dashboard(busy_active_db, monkeypatch):
 # every mark-task/agent-complete against a DB migrated by the newer repo.
 # CLAUDE_PLUGIN_ROOT must never be consulted for the agent-facing CLI path.
 # ---------------------------------------------------------------------------
-from juggle_context import render_agent_role_anchor_for
 
 
 def test_agent_role_anchor_prefers_juggle_repo_root_over_plugin_cache(monkeypatch):

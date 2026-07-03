@@ -157,21 +157,9 @@ def render_agent_role_anchor_for(role: str) -> str:
     if not identity:
         return ""
     from pathlib import Path as _Path
-
     try: _r = _Path(__file__).resolve().parent.parent
     except OSError: _r = _Path(__file__).parent.parent
-    # 2026-07-03 incidents CR + CO: CLAUDE_PLUGIN_ROOT points at whatever
-    # installed-plugin-cache version Claude Code happens to have loaded
-    # (e.g. .../plugins/cache/juggle/juggle/1.93.0) — it is NEVER consulted
-    # here. A stale cache install predates schema migrations the dispatching
-    # orchestrator's repo already ran against the shared DB, so agents using
-    # it hard-fail mark-task/agent-complete with a misleading "DB needs
-    # migration" error. JUGGLE_REPO_ROOT is injected explicitly into every
-    # dispatched agent's env (juggle_harness._env_prefix) with the
-    # dispatching orchestrator's own current repo path — that's the only
-    # trusted source for "which juggle_cli.py agents must call". Falling back
-    # to this module's own __file__-derived repo root only when unset (e.g.
-    # local/non-dispatched invocations).
+    # CLAUDE_PLUGIN_ROOT (plugin-cache path, can be stale) never used here — 2026-07-03 CR+CO.
     plugin_root = os.environ.get("JUGGLE_REPO_ROOT") or str(_r)
     return (
         "--- AGENT ROLE ---\n"
