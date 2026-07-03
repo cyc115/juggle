@@ -78,6 +78,14 @@ After every major implementation:
 1. Commit with `feat:`/`fix:` prefix and version in body
 2. Mark done in `TODO.md` (repo root)
 
+## Landing policy
+Default: verified-green work lands on main by ff-merge — the watchdog does this
+for graph topics; the orchestrator does it for completed ad-hoc topics. main IS
+the integration branch. Do NOT park routine verified work in a PR.
+Open a PR ONLY when the change (a) adds/alters a DB migration, (b) touches an
+external or security surface, or (c) is ambiguous enough to want human eyes.
+This OVERRIDES the global "PRs only — never commit to main" rule for this repo.
+
 # Task Tracking
 
 Track in `TODO.md` (repo root):
