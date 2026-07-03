@@ -600,6 +600,30 @@ def test_integrate_idempotent_missing_worktree_returns_error(git_repo, tmp_path)
     assert "does not exist" in msg.lower() or "nonexistent" in msg.lower()
 
 
+def test_integrate_backend_for_raising_reported_cleanly_not_masked_pin(git_repo, tmp_path):
+    """Regression pin (2026-07-03, irl-envelope T2): _fail's best-effort SHA
+    capture reads the enclosing `backend`/`rebase_onto` locals, which are only
+    assigned once backend_for() succeeds. If backend_for() itself raises, the
+    catch-all except calls _fail() before `backend` is ever bound — without
+    pre-declaring it, that _fail() call crashes with UnboundLocalError,
+    masking the original exception with a confusing, unrelated failure."""
+    from juggle_cmd_integrate import _run_integrate
+
+    wt = _make_worktree(git_repo, str(tmp_path), "BF")
+    _add_commit(wt, "new.py", "z = 3\n", "add new.py")
+    thread = {"id": "t-1", "worktree_path": wt,
+              "worktree_branch": "cyc_BF", "main_repo_path": git_repo}
+    db = _make_db()
+
+    with patch("juggle_cmd_integrate.backend_for", side_effect=RuntimeError("boom")):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            ok, msg = _run_integrate(thread, db)
+
+    assert not ok
+    assert "boom" in msg  # original exception surfaced, not masked
+    db.add_action_item.assert_called_once()
+
+
 # ── cmd_complete_agent routing test ──────────────────────────────────────────
 
 def test_complete_agent_routes_through_run_integrate(git_repo, tmp_path):

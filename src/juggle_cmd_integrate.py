@@ -112,7 +112,11 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         )
         return False, f"Lock acquisition failed: {e}"
 
-    rebase_onto = None  # set at step 2; read (best-effort) by _fail before that
+    # backend/rebase_onto set inside the try block below; pre-declared so _fail
+    # can reference them (best-effort SHA capture) even when it's reached from
+    # the catch-all except (e.g. backend_for() itself raised).
+    backend = None
+    rebase_onto = None
 
     def _fail(
         step: str, reason: str, *, files: list[str] | None = None, log_tail: str = "",
