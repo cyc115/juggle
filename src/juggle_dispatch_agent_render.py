@@ -1,12 +1,14 @@
-"""juggle_dispatch_coder_render — coder-role dispatch prompt render (Agent
-Prompt Contract v2, pc2-coder-cutover: docs/2026-07-03-agent-prompt-contract-
-v2-spec.md).
+"""juggle_dispatch_agent_render — per-role dispatch prompt render (Agent
+Prompt Contract v2, pc2-coder-cutover + pc3-emitters-sweep:
+docs/2026-07-03-agent-prompt-contract-v2-spec.md).
 
-Owns: ``render_coder_dispatch_prompt`` — resolves the dispatch-time fields
+Owns: ``render_agent_dispatch_prompt`` — resolves the dispatch-time fields
 render_agent_prompt needs (thread label, workspace/branch, VCS, repo profile)
 from the thread row + agent dict, wraps a plain-string ad-hoc prompt or a
 ``TopicPromptPayload`` (graph/topic dispatch) into TASK-section data, and
-renders TASK -> LIFECYCLE -> GUARDRAILS once via render_agent_prompt.
+renders TASK -> LIFECYCLE -> GUARDRAILS once via render_agent_prompt for
+``role`` (coder/planner/researcher — PC3 sweeps all three through the same
+renderer).
 Must not own: worktree creation, tmux/pane plumbing, ledger writes
 (juggle_dispatch_core); repo profile resolution rules (juggle_repo_profile);
 the renderer itself (juggle_prompt_context).
@@ -30,13 +32,15 @@ _GENERIC_PROFILE = RepoProfile(
 )
 
 
-def render_coder_dispatch_prompt(prompt, *, thread_wt: dict | None, agent: dict, thread_label: str) -> str:
-    """Render the full coder prompt (TASK/LIFECYCLE/GUARDRAILS) for ``prompt``.
+def render_agent_dispatch_prompt(
+    prompt, *, role: str, thread_wt: dict | None, agent: dict, thread_label: str
+) -> str:
+    """Render the full ``role`` prompt (TASK/LIFECYCLE/GUARDRAILS) for ``prompt``.
 
     ``prompt`` is either a plain str (ad-hoc ``send-task`` dispatch — wrapped
     as a single mark-step-less TaskSpec) or a ``TopicPromptPayload`` (graph/
     topic dispatch — its narrative + TaskSpecs are used as-is, literal
-    per-task ``graph mark-task`` commands included).
+    per-task ``graph mark-task`` commands included for coder).
     """
     if isinstance(prompt, TopicPromptPayload):
         context = prompt.context
@@ -68,4 +72,4 @@ def render_coder_dispatch_prompt(prompt, *, thread_wt: dict | None, agent: dict,
         is_juggle_repo=is_juggle_repo(repo_path) if repo_path else False,
         context=context,
     )
-    return render_agent_prompt(ctx, "coder")
+    return render_agent_prompt(ctx, role)

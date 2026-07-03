@@ -183,16 +183,16 @@ def send_task_to_agent(
         if thread_wt else (thread_id or "<thread-unresolved>")
     )
 
-    # Prompt build. Coder: render TASK/LIFECYCLE/GUARDRAILS once via
-    # render_agent_prompt (PC2, Agent Prompt Contract v2) — no separate
-    # UNIVERSAL_PREAMBLE/TASK_TEMPLATES/literalize_finalize_commands pass.
-    # Other roles: unchanged legacy template + literalize path (PC3 sweeps
-    # these later).
-    if not skip_template and _role == "coder":
-        from juggle_dispatch_coder_render import render_coder_dispatch_prompt
+    # Prompt build. coder/planner/researcher: render TASK/LIFECYCLE/GUARDRAILS
+    # once via render_agent_prompt (PC2 + PC3, Agent Prompt Contract v2) — no
+    # separate UNIVERSAL_PREAMBLE/TASK_TEMPLATES/literalize_finalize_commands
+    # pass. ``--no-template`` (skip_template) is the sole remaining caller of
+    # the legacy path — an explicit opt-out, not an unswept role.
+    if not skip_template and _role in ("coder", "planner", "researcher"):
+        from juggle_dispatch_agent_render import render_agent_dispatch_prompt
 
-        full_prompt = _worktree_context + _source_of_truth + render_coder_dispatch_prompt(
-            prompt, thread_wt=thread_wt, agent=agent, thread_label=thread_label,
+        full_prompt = _worktree_context + _source_of_truth + render_agent_dispatch_prompt(
+            prompt, role=_role, thread_wt=thread_wt, agent=agent, thread_label=thread_label,
         )
     else:
         if not skip_template and _role:

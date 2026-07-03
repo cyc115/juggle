@@ -35,11 +35,14 @@ from juggle_tmux import JuggleTmuxManager
 
 _AGENT_TTL_SECS: int = _get_settings()["agent_idle_ttl_secs"]
 
-# PC2 cutover (2026-07-03, pc2-coder-cutover): no longer prepended for the
-# coder role — juggle_dispatch_core.send_task_to_agent renders coder prompts
-# via render_agent_prompt (juggle_prompt_context), whose header INVARIANT
-# line and Guardrails section carry rules 1/2 respectively. Still prepended
-# for planner/researcher (PC3 sweeps those).
+# PC2/PC3 cutover (2026-07-03, pc2-coder-cutover + pc3-emitters-sweep): no
+# longer prepended for coder/planner/researcher — juggle_dispatch_core.
+# send_task_to_agent renders all three via render_agent_prompt
+# (juggle_prompt_context), whose header INVARIANT line and Guardrails section
+# carry rules 1/2 respectively. juggle_metrics still imports this constant to
+# measure boilerplate bytes in historical (already-dispatched) ledger
+# prompts, and juggle_dispatch_core's fallback path still prepends it for any
+# future role not yet swept onto render_agent_prompt.
 UNIVERSAL_PREAMBLE = """\
 ## Universal rules (enforced for every agent)
 

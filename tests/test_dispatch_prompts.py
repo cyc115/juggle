@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).parent.parent
 
 # Superpowers 6.1.0 skill directory names (no renames affect these — the
@@ -73,7 +75,7 @@ def test_dispatch_prompts_reference_at_least_one_superpowers_skill():
 # resolution) is caught even if the pure renderer stays correct.
 
 
-def _dispatch_coder_prompt(tmp_path, monkeypatch, prompt):
+def _dispatch_prompt(tmp_path, monkeypatch, prompt, role="coder"):
     import subprocess
     import sys as _sys
     from unittest.mock import MagicMock
@@ -99,7 +101,7 @@ def _dispatch_coder_prompt(tmp_path, monkeypatch, prompt):
     db.init_db()
     db.set_active(True)
     thread_id = db.create_thread("t1", session_id="")
-    agent_id = db.create_agent("coder", "%fake", repo_path=str(repo))
+    agent_id = db.create_agent(role, "%fake", repo_path=str(repo))
 
     mgr = MagicMock()
     mgr.verify_pane.return_value = True
@@ -108,6 +110,10 @@ def _dispatch_coder_prompt(tmp_path, monkeypatch, prompt):
 
     _core.send_task_to_agent(db, agent_id, thread_id, prompt, _mgr=mgr)
     return db.get_agent(agent_id)["last_task"]
+
+
+def _dispatch_coder_prompt(tmp_path, monkeypatch, prompt):
+    return _dispatch_prompt(tmp_path, monkeypatch, prompt, role="coder")
 
 
 def test_coder_dispatch_prompt_states_each_previously_duplicated_rule_once(tmp_path, monkeypatch):
@@ -124,6 +130,35 @@ def test_coder_dispatch_prompt_states_each_previously_duplicated_rule_once(tmp_p
 def test_coder_dispatch_prompt_finalize_command_literal_and_singular(tmp_path, monkeypatch):
     full_prompt = _dispatch_coder_prompt(tmp_path, monkeypatch, "Do the thing.")
     assert full_prompt.count('agent complete') == 1
+    assert "complete-agent" not in full_prompt
+    assert "fail-agent" not in full_prompt
+    assert "<thread>" not in full_prompt and "$THREAD" not in full_prompt
+
+
+# ── PC3 (pc3-emitters-sweep): planner/researcher dispatch cutover ─────────────
+
+
+@pytest.mark.parametrize("role", ["planner", "researcher"])
+def test_planner_researcher_dispatch_prompt_states_each_rule_once(tmp_path, monkeypatch, role):
+    full_prompt = _dispatch_prompt(tmp_path, monkeypatch, "Do the thing.", role=role)
+    assert full_prompt.count("never stop at the prompt") == 1
+    assert full_prompt.count("agent complete") == 1
+    assert "## Universal rules (enforced for every agent)" not in full_prompt
+
+
+def test_planner_dispatch_prompt_finalize_command_literal_and_singular(tmp_path, monkeypatch):
+    full_prompt = _dispatch_prompt(tmp_path, monkeypatch, "Do the thing.", role="planner")
+    assert full_prompt.count("agent complete") == 1
+    assert "--open-questions" in full_prompt
+    assert "complete-agent" not in full_prompt
+    assert "fail-agent" not in full_prompt
+    assert "<thread>" not in full_prompt and "$THREAD" not in full_prompt
+
+
+def test_researcher_dispatch_prompt_finalize_command_literal_and_singular(tmp_path, monkeypatch):
+    full_prompt = _dispatch_prompt(tmp_path, monkeypatch, "Do the thing.", role="researcher")
+    assert full_prompt.count("agent complete") == 1
+    assert "--retain" in full_prompt
     assert "complete-agent" not in full_prompt
     assert "fail-agent" not in full_prompt
     assert "<thread>" not in full_prompt and "$THREAD" not in full_prompt
