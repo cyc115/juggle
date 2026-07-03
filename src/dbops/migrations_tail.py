@@ -40,3 +40,7 @@ def apply_tail_migrations(conn: sqlite3.Connection) -> None:
     # Migration 66 (plan/spec provision): nodes.plan_path/spec_path columns.
     from dbops.migration_66_topic_plan_spec import migrate_66_topic_plan_spec
     migrate_66_topic_plan_spec(conn)
+
+    # Migration 67 (graph-node-primitives Phase 1): nodes.cancel_reason column.
+    from dbops.migration_67_cancel_reason import migrate_67_cancel_reason
+    migrate_67_cancel_reason(conn)
