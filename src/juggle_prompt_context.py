@@ -124,25 +124,57 @@ class TopicPromptPayload:
     tasks: tuple[TaskSpec, ...]
 
 
+_ROLE_TITLES = {"coder": "Coder", "planner": "Planner", "researcher": "Researcher"}
+_ROLE_IDENTITY = {
+    "coder": "Implement exactly what is specified — no more. Minimal diff.",
+    "planner": "Produce plans a coder can execute without clarification.",
+    "researcher": "Produce comprehensive, well-structured, cited reports. Never fabricate URLs.",
+}
+
+
+def render_finalize_command(cli_path: str, thread_id: str, *, open_questions: bool = False) -> str:
+    """Canonical, single-spelling finalize command (spec problem #1: the
+    finalize command was spelled 3 ways across prompt emitters). Every
+    emitter that needs a literal finalize command — the renderer's own
+    LIFECYCLE section, the AGENT ROLE anchor (juggle_context_anchor) — calls
+    this instead of building the string itself."""
+    if open_questions:
+        return f'{cli_path} agent complete {thread_id} "<summary>" --open-questions \'<json>\''
+    return f'{cli_path} agent complete {thread_id} "<summary>" --retain "<key findings>"'
+
+
+def render_fail_command(cli_path: str, thread_id: str) -> str:
+    return f'{cli_path} agent fail {thread_id} "<error>"'
+
+
+_SUPPORTED_ROLES = {"coder", "planner", "researcher"}
+
+
 def render_agent_prompt(ctx: PromptContext, role: str) -> str:
     """Pure renderer: TASK -> LIFECYCLE -> GUARDRAILS, strict order (spec)."""
-    if role != "coder":
+    if role not in _SUPPORTED_ROLES:
         raise ValueError(
-            f"render_agent_prompt: unsupported role {role!r} (PC1 covers 'coder' only)"
+            f"render_agent_prompt: unsupported role {role!r} "
+            f"(supported: {sorted(_SUPPORTED_ROLES)})"
         )
+    lifecycle = {
+        "coder": _render_lifecycle_section,
+        "planner": _render_lifecycle_section_planner,
+        "researcher": _render_lifecycle_section_researcher,
+    }[role](ctx)
     sections = [
-        _render_header(ctx),
+        _render_header(ctx, role),
         _render_task_section(ctx),
-        _render_lifecycle_section(ctx),
-        _render_guardrails_section(ctx),
+        lifecycle,
+        _render_guardrails_section(ctx, role),
     ]
     return "\n\n".join(sections) + "\n"
 
 
-def _render_header(ctx: PromptContext) -> str:
+def _render_header(ctx: PromptContext, role: str) -> str:
     return (
-        "## Role: Coder\n\n"
-        "Implement exactly what is specified — no more. Minimal diff.\n\n"
+        f"## Role: {_ROLE_TITLES[role]}\n\n"
+        f"{_ROLE_IDENTITY[role]}\n\n"
         "INVARIANT: this run ends by calling the finalize command in "
         "LIFECYCLE — never stop at the prompt to wait for guidance."
     )
@@ -213,36 +245,78 @@ def _render_lifecycle_section(ctx: PromptContext) -> str:
         lines.append(f"{step}. Version bump: per {ctx.profile.version_bump_policy}.")
         step += 1
 
-    lines.append(
-        f'{step}. Finalize: `{ctx.cli_path} agent complete {ctx.thread_id} '
-        '"<summary>" --retain "<key findings>"`'
-    )
+    lines += _render_finish_tail(ctx, "coder", step)
+    return "\n".join(lines)
 
-    lines += [
+
+def _render_finish_tail(ctx: PromptContext, role: str, step: int) -> list[str]:
+    """Finalize + failure-path + escape-hatch lines, shared by every role's
+    LIFECYCLE section — the ONE place these rules are stated (spec: finalize
+    spelled once, failure path stated once)."""
+    lines = [
+        f"{step}. Finalize: `{render_finalize_command(ctx.cli_path, ctx.thread_id, open_questions=(role == 'planner'))}`",
         "",
         "If verify stays red after honest attempts, finalize with PARTIAL or "
         "BLOCKER in the summary instead of forcing green.",
-        f'If a mark-task or finalize call itself errors, immediately run '
-        f'`{ctx.cli_path} agent fail {ctx.thread_id} "<error>"` — never silently retry.',
+        f"If a mark-task or finalize call itself errors, immediately run "
+        f"`{render_fail_command(ctx.cli_path, ctx.thread_id)}` — never silently retry.",
     ]
-
     if ctx.is_juggle_repo:
         lines += [
             "",
             "Escape hatch: if mark-task or finalize refuses due to a defect "
             "YOUR change fixes, rerun it via the workspace CLI "
             f"(`uv run {ctx.workspace_path}/src/juggle_cli.py ...`) and record "
-            "that override in --retain.",
+            "that override in the finalize call's summary.",
         ]
+    return lines
 
+
+def _render_lifecycle_section_planner(ctx: PromptContext) -> str:
+    lines = [
+        "## Lifecycle",
+        "",
+        "1. Produce the plan — every step must be verifiable by an agent "
+        "(deterministic command + expected output).",
+        "2. Batch unresolved questions into --open-questions; do not ask "
+        "interactively.",
+        "3. Include a devil's-advocate section: weakest assumption per fix "
+        "+ failure mode + mitigation.",
+        "4. Open the plan in Obsidian after writing.",
+        "",
+    ]
+    lines += _render_finish_tail(ctx, "planner", 5)
     return "\n".join(lines)
 
 
-def _render_guardrails_section(ctx: PromptContext) -> str:
-    return "\n".join(
-        [
-            "## Guardrails",
-            "",
+def _render_lifecycle_section_researcher(ctx: PromptContext) -> str:
+    lines = [
+        "## Lifecycle",
+        "",
+        "1. Cite sources with URLs and retrieval dates.",
+        "2. Distinguish facts from opinions.",
+        "3. Cross-reference at least 2 sources for key claims.",
+        "",
+    ]
+    lines += _render_finish_tail(ctx, "researcher", 4)
+    return "\n".join(lines)
+
+
+def _render_guardrails_section(ctx: PromptContext, role: str) -> str:
+    if role == "planner":
+        bullets = [
+            "- Write the plan file only — never implement.",
+            "- No research beyond what's needed to ground the plan in real code.",
+            "- Never modify AGENTS.md, CLAUDE.md, or .codegraph files.",
+        ]
+    elif role == "researcher":
+        bullets = [
+            "- Research only — no implementation, no code changes.",
+            "- Stay within the research topic; no tangent deep-dives.",
+            "- Never modify AGENTS.md, CLAUDE.md, or .codegraph files.",
+        ]
+    else:
+        bullets = [
             "- Scope: only touch files directly related to the task — no "
             "refactoring, cleanup, or bonus work; never modify AGENTS.md, "
             "CLAUDE.md, or .codegraph files.",
@@ -259,4 +333,4 @@ def _render_guardrails_section(ctx: PromptContext) -> str:
             "Committed increments survive an interrupted or crashed run; a "
             "half-baked or errored final state should not be committed.",
         ]
-    )
+    return "\n".join(["## Guardrails", ""] + bullets)

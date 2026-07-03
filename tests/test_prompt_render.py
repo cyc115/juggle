@@ -191,7 +191,7 @@ def test_multiple_tasks_each_get_lifecycle_steps_one_through_five():
 
 def test_unsupported_role_raises():
     with pytest.raises(ValueError):
-        render_agent_prompt(_juggle_ctx(), "planner")
+        render_agent_prompt(_juggle_ctx(), "reviewer")
 
 
 # ── PC2 extensions: context narrative, verified flag, optional mark step ──────
@@ -230,3 +230,71 @@ def test_task_without_mark_step_omits_mark_line():
     rendered = render_agent_prompt(ctx, "coder")
     assert "graph mark-task" not in rendered
     assert "Run its verify_cmd" not in rendered
+
+
+# ── PC3: planner/researcher emitters sweep ─────────────────────────────────
+
+
+@pytest.mark.parametrize("role", ["planner", "researcher"])
+@pytest.mark.parametrize("ctx", ALL_CTXS, ids=["juggle-repo-git", "foreign-repo-unbound-vcs"])
+def test_planner_researcher_render_task_lifecycle_guardrails_in_order(ctx, role):
+    rendered = render_agent_prompt(ctx, role)
+    task_pos = rendered.index("## Task")
+    lifecycle_pos = rendered.index("## Lifecycle")
+    guardrails_pos = rendered.index("## Guardrails")
+    assert task_pos < lifecycle_pos < guardrails_pos
+
+
+def test_planner_finalize_command_uses_open_questions_exactly_once():
+    ctx = _juggle_ctx()
+    rendered = render_agent_prompt(ctx, "planner")
+    canonical = f"{ctx.cli_path} agent complete {ctx.thread_id} \"<summary>\" --open-questions '<json>'"
+    assert rendered.count(canonical) == 1
+    assert "--retain" not in rendered
+    assert "complete-agent" not in rendered
+
+
+def test_researcher_finalize_command_uses_retain_exactly_once():
+    ctx = _juggle_ctx()
+    rendered = render_agent_prompt(ctx, "researcher")
+    canonical = f'{ctx.cli_path} agent complete {ctx.thread_id} "<summary>" --retain "<key findings>"'
+    assert rendered.count(canonical) == 1
+    assert "--open-questions" not in rendered
+    assert "complete-agent" not in rendered
+
+
+@pytest.mark.parametrize("role", ["planner", "researcher"])
+def test_planner_researcher_zero_unbound_placeholders(role):
+    rendered = render_agent_prompt(_juggle_ctx(), role)
+    found = set(re.findall(r"<[^<>\n]+>", rendered))
+    allowed = ALLOWED_PLACEHOLDERS | {"<json>"}
+    assert found <= allowed, f"unbound placeholders leaked: {found - allowed}"
+    assert "{" not in rendered and "}" not in rendered
+
+
+def test_render_finalize_command_is_the_single_owner_of_the_literal_string():
+    from juggle_prompt_context import render_finalize_command
+
+    assert render_finalize_command("juggle", "T-1") == (
+        'juggle agent complete T-1 "<summary>" --retain "<key findings>"'
+    )
+    assert render_finalize_command("juggle", "T-1", open_questions=True) == (
+        "juggle agent complete T-1 \"<summary>\" --open-questions '<json>'"
+    )
+
+
+# ── PC3 hygiene pin: no emitter builds a finalize command by string concat
+# outside the renderer (spec #1: 3 spellings caused a hard failure). ─────────
+
+_ALLOWED_FINALIZE_BUILDER_FILES = {"juggle_prompt_context.py", "juggle_dispatch_literal.py"}
+
+
+def test_no_emitter_builds_finalize_command_by_string_concat_outside_renderer():
+    offenders = []
+    for path in sorted(SRC.glob("*.py")):
+        if path.name in _ALLOWED_FINALIZE_BUILDER_FILES:
+            continue
+        for lineno, line in enumerate(path.read_text().splitlines(), start=1):
+            if "agent complete" in line and "{" in line:
+                offenders.append(f"{path.name}:{lineno}: {line.strip()}")
+    assert not offenders, "finalize command built outside the renderer:\n" + "\n".join(offenders)

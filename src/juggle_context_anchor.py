@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 
 from juggle_db import JuggleDB
+from juggle_prompt_context import render_finalize_command
 from juggle_settings import get_settings as _get_settings
 
 
@@ -77,10 +78,11 @@ def render_agent_role_anchor_for(role: str, thread_label: str | None = None) -> 
     if not thread_label:
         thread_label = _lookup_thread_label_for_pane(os.environ.get("TMUX_PANE", ""))
     thread_part = thread_label or "<thread-unresolved>"
+    cli_path = f"python3 {plugin_root}/src/juggle_cli.py"
     return (
         "--- AGENT ROLE ---\n"
         f"ROLE: {role}. {identity}\n"
-        f'COMPLETION: python3 {plugin_root}/src/juggle_cli.py agent complete {thread_part} "<summary>" --retain "<key finding>"'
+        f"COMPLETION: {render_finalize_command(cli_path, thread_part)}"
     )
 
 
