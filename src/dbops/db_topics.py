@@ -39,7 +39,7 @@ _TOPIC_ONLY = "kind='topic'"
 _TOPIC_SELECT = (
     "SELECT id, project_id, title, objective, state, "
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' "
-    "LIMIT 1) AS thread_id, merged_sha, handoff, diffstat, "
+    "LIMIT 1) AS thread_id, merged_sha, submitted_rev, handoff, diffstat, "
     f"verified_at, priority, created_at, updated_at FROM nodes WHERE {_TOPIC_ONLY}"
 )
 
@@ -165,6 +165,19 @@ def set_topic_merged_sha(db, topic_id, merged_sha, conn=None) -> None:
         c.execute(
             "UPDATE nodes SET merged_sha=?, updated_at=? WHERE id=? AND kind='topic'",
             (merged_sha, now, topic_id),
+        )
+
+
+def set_topic_submitted_rev(db, topic_id, submitted_rev, conn=None) -> None:
+    """Record the async-land ticket/rev (SPEC §7.2: opaque, never format-
+    validated) for a topic sitting in 'integrated-unlanded'. Writes ONLY
+    nodes.submitted_rev — mirrors set_topic_merged_sha, but this is NOT the
+    verified gate (topic_is_merged never reads it)."""
+    now = _now()
+    with _cx(db, conn) as c:
+        c.execute(
+            "UPDATE nodes SET submitted_rev=?, updated_at=? WHERE id=? AND kind='topic'",
+            (submitted_rev, now, topic_id),
         )
 
 

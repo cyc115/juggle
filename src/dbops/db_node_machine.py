@@ -42,9 +42,17 @@ _NODE_TRANSITIONS: dict[tuple[str, str], str] = {
     ("running", "archive"):          "archived",
     # integrating
     ("integrating", "integrate_ok"):    "verified",
+    ("integrating", "integrate_submitted"): "integrated-unlanded",
     ("integrating", "integrate_fail"):  "failed-integration",
     ("integrating", "verify_fail"):     "failed-verify",
     ("integrating", "archive"):         "archived",
+    # integrated-unlanded (async-land, SPEC §5.1/§5.2): tests-green and submitted
+    # to an async land queue (Sapling/git-pr) but not yet an ancestor of trunk.
+    # Sits BELOW verified — must never set merged_sha (graph_guards.topic_is_merged
+    # stays the sole verified⟺merged gate; the land-poller re-checks and promotes).
+    ("integrated-unlanded", "land_confirmed"): "verified",
+    ("integrated-unlanded", "land_fail"):      "failed-integration",
+    ("integrated-unlanded", "archive"):        "archived",
     # verified
     ("verified", "g1_pass"):  "done",
     ("verified", "archive"):  "archived",
@@ -78,6 +86,7 @@ _KIND_LEGAL: dict[str, frozenset[str]] = {
         "dispatch", "stale_reset",
         "integrate_start", "exec_fail",
         "integrate_ok", "integrate_fail", "verify_fail",
+        "integrate_submitted", "land_confirmed", "land_fail",
         "g1_pass",
     }),
     "research": frozenset({

@@ -295,3 +295,9 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     # sole runner so every path gets it, matching the Migration 46/58 precedent.
     from dbops.migration_59_node_priority import migrate_59_node_priority
     migrate_59_node_priority(conn)
+
+    # Migration 60 (async-land unlanded-state): additive nodes.submitted_rev
+    # column. Wired here (not apply_recent_migrations), matching the Migration
+    # 59 precedent — run_migrations is the sole runner so every path gets it.
+    from dbops.migration_60_submitted_rev import migrate_60_submitted_rev
+    migrate_60_submitted_rev(conn)

@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS nodes (
   diffstat        TEXT,
   verified_at     TEXT,
   merged_sha      TEXT,
+  submitted_rev   TEXT,
 
   -- Agent tracking
   agent_task_id           TEXT,

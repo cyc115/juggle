@@ -12,7 +12,12 @@ or the derive-and-sync reconcile (db_topics_reconcile).
 
 from __future__ import annotations
 
-from dbops.db_topics import get_topic, set_topic_handoff, topic_transition
+from dbops.db_topics import (
+    get_topic,
+    set_topic_handoff,
+    set_topic_submitted_rev,
+    topic_transition,
+)
 
 _ADVANCE_TO_INTEGRATING = {
     "open": ("deps_ready", "claim", "dispatch", "integrate_start"),
@@ -24,19 +29,28 @@ _ADVANCE_TO_INTEGRATING = {
 
 
 def mark_topic_completion(db, topic_id, *, integrate_ok, verify_ok=True,
-                          handoff=None) -> str:
+                          handoff=None, submitted_rev=None) -> str:
     """Topic twin of db_graph.mark_completion: walk legally to 'integrating',
     apply the outcome. verified-means-MERGED holds at topic level (spec §2.3).
 
-    Idempotent for the success path: if the topic is already 'verified', return
-    'verified' without raising. Prevents a task stuck at 'running' when an
-    out-of-band integrate + a racing complete-agent both succeed (2026-06-11 bug I).
+    ``submitted_rev`` (SPEC §5.1/§5.2): pass the ticket/rev when the caller
+    knows integrate only SUBMITTED the work to an async land queue (push_mode
+    ="pr" or an async_land-capable backend) rather than landing it
+    synchronously — the topic goes to 'integrated-unlanded' instead of racing
+    the (fail-closed) verified gate, and merged_sha is never set. Omit (None)
+    for the synchronous git-direct path, which keeps the pre-existing
+    integrate_ok -> verified edge unchanged.
+
+    Idempotent for the success paths: if the topic is already 'verified'/
+    'integrated-unlanded' and integrate_ok, return that state without raising.
+    Prevents a task stuck at 'running' when an out-of-band integrate + a
+    racing complete-agent both succeed (2026-06-11 bug I).
     """
     topic = get_topic(db, topic_id)
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
-    if topic["state"] == "verified" and integrate_ok:
-        return "verified"
+    if integrate_ok and topic["state"] in ("verified", "integrated-unlanded"):
+        return topic["state"]
     if topic["state"] not in _ADVANCE_TO_INTEGRATING:
         raise ValueError(
             f"cannot mark completion: topic {topic_id!r} in terminal state "
@@ -50,6 +64,9 @@ def mark_topic_completion(db, topic_id, *, integrate_ok, verify_ok=True,
         return topic_transition(db, topic_id, "integrate_fail")
     if not verify_ok:
         return topic_transition(db, topic_id, "verify_fail")
+    if submitted_rev:
+        set_topic_submitted_rev(db, topic_id, submitted_rev)
+        return topic_transition(db, topic_id, "integrate_submitted")
     return topic_transition(db, topic_id, "integrate_ok")
 
 
