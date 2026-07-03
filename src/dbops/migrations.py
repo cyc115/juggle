@@ -298,3 +298,8 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     migrate_59_node_priority(conn)
     migrate_60_submitted_rev(conn)
     migrate_61_pending_merged_sha(conn)
+
+    # Migration 62 (irl-backbone R1, event funnel): additive
+    # notifications_v2.kind/handled_by columns, defaults 'legacy'/''.
+    from dbops.migration_62_event_kind_routing import migrate_62_event_kind_routing
+    migrate_62_event_kind_routing(conn)

@@ -18,17 +18,33 @@ class NotificationsMixin:
     # Notifications v2
     # ---------------------------------------------------------------
 
-    def add_notification_v2(self, thread_id, message: str, session_id: str) -> int:
-        """Insert a notifications_v2 row. Returns new id."""
+    def emit_event(
+        self,
+        thread_id,
+        message: str,
+        session_id: str,
+        kind: str = "legacy",
+        handled_by: str = "",
+    ) -> int:
+        """Insert a notifications_v2 row tagged with kind/handled_by. Returns new id."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
             cur = conn.execute(
-                "INSERT INTO notifications_v2 (thread_id, message, created_at, session_id) "
-                "VALUES (?, ?, ?, ?)",
-                (thread_id, message, now, session_id),
+                "INSERT INTO notifications_v2 "
+                "(thread_id, message, created_at, session_id, kind, handled_by) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (thread_id, message, now, session_id, kind, handled_by),
             )
             conn.commit()
             return cur.lastrowid
+
+    def add_notification_v2(self, thread_id, message: str, session_id: str) -> int:
+        """Insert a notifications_v2 row. Returns new id.
+
+        Routes through emit_event() with kind='legacy' — behavior-preserving
+        seam for callers not yet converted to real kinds (see T1a).
+        """
+        return self.emit_event(thread_id, message, session_id)
 
     def get_notifications_for_session(self, session_id: str) -> list[dict]:
         with self._connect() as conn:
