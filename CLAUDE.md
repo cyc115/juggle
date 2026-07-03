@@ -61,6 +61,7 @@ Profiles live in `config/viewports.yaml` (7 profiles: 2k_full 240×67, 2k_half 1
 - **Simple ≠ MVP.** Production quality, minimal new concepts.
 - **Reliability.** Explicit state, deterministic code paths, fail-loud errors.
 - **Integration pipeline = detect, refuse, preserve.** (2026-07-03, from 24h failure analysis: 16/46 integrations hard-failed; every resolver was an agent.) The deterministic integrate pipeline never resolves failures — it detects them precisely, refuses loudly (fail-closed), and preserves the branch/worktree for repair. Resolution is agent work; proofs, gates, and state transitions remain code.
+- **Triage ladder: watchdog = playbooks, orchestrator = judgment, user = values.** The watchdog autonomously triages any event with a deterministic playbook (routine repair dispatch, nudges, orphan recovery, self-heal, doctor) and never wakes the orchestrator for them (DB row only). Events needing judgment (machinery errors, unclassifiable failures, breadcrumb-less wedges, exhausted repairs, cross-topic patterns) push the orchestrator immediately. Only credentials, irreversible actions, and product forks escalate to the user. A watchdog-handled event converts to an orchestrator push only when its handling fails.
 
 # Versioning
 
