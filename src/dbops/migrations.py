@@ -288,13 +288,7 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         _log.warning("Migration 58 (spool journal) skipped: %s", e)
 
-    # Migrations 59-62: wired directly here (Migration 46/58 precedent) — additive
-    # nodes columns + notifications_v2.kind/handled_by (irl-backbone R1).
-    from dbops.migration_59_node_priority import migrate_59_node_priority
-    from dbops.migration_60_submitted_rev import migrate_60_submitted_rev
-    from dbops.migration_61_pending_merged_sha import migrate_61_pending_merged_sha
-    from dbops.migration_62_event_kind_routing import migrate_62_event_kind_routing
-    migrate_59_node_priority(conn)
-    migrate_60_submitted_rev(conn)
-    migrate_61_pending_merged_sha(conn)
-    migrate_62_event_kind_routing(conn)
+    # Migrations 59-63: additive nodes columns + notifications_v2.kind/handled_by
+    # (irl-backbone R1) + nodes.fail_envelope (irl-envelope T2).
+    from dbops.migrations_59_63 import apply_migrations_59_63
+    apply_migrations_59_63(conn)

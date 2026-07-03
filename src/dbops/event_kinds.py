@@ -1,6 +1,7 @@
-"""Event kind enum + delivery routing (irl-backbone T1a).
+"""Event kind enum + delivery routing (irl-backbone T1a; irl-envelope T2 adds
+``integrate_failed``/``machinery_error``).
 
-Every notifications_v2 row now carries a ``kind`` (one of the 12 below) and
+Every notifications_v2 row now carries a ``kind`` (one of the 14 below) and
 a ``handled_by`` tag describing who needs to see it:
 
   * ``watchdog``     — the watchdog already auto-handled this; DB row only,
@@ -27,6 +28,8 @@ TASK_STATUS = "task_status"
 TOPIC_STATUS = "topic_status"
 AUTOPILOT_DISPATCH = "autopilot_dispatch"
 MANUAL = "manual"
+INTEGRATE_FAILED = "integrate_failed"
+MACHINERY_ERROR = "machinery_error"
 
 ALL_KINDS = frozenset(
     {
@@ -42,6 +45,8 @@ ALL_KINDS = frozenset(
         TOPIC_STATUS,
         AUTOPILOT_DISPATCH,
         MANUAL,
+        INTEGRATE_FAILED,
+        MACHINERY_ERROR,
     }
 )
 
@@ -59,6 +64,12 @@ HANDLED_BY = {
     TASK_STATUS: "orchestrator",
     TOPIC_STATUS: "orchestrator",
     MANUAL: "orchestrator",
+    # Defaults only — juggle_integrate_envelope.record_refusal always passes
+    # an explicit handled_by (integrate_failed: watchdog for now, T3 will
+    # override once attempt-cap counters exist; machinery_error: always
+    # orchestrator — never auto-repaired).
+    INTEGRATE_FAILED: "watchdog",
+    MACHINERY_ERROR: "orchestrator",
 }
 
 # handled_by values that are pushed (to a human or the orchestrator) rather

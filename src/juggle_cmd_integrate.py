@@ -14,6 +14,12 @@ from juggle_integrate_lock import (  # noqa: F401 — re-exported for callers
     acquire_repo_lock,
     release_repo_lock,
 )
+from juggle_integrate_envelope import (
+    FailContext, STEP_DIRTY_WORKTREE, STEP_EMPTY_BRANCH, STEP_NO_MAIN_BRANCH,
+    STEP_REBASE_CONFLICT, STEP_SUBMIT_FAILED, STEP_TEST_FAILURE, STEP_UNEXPECTED,
+    record_refusal, resolve_attempt_shas,
+)
+from juggle_integrate_diffstat import capture_diffstat
 
 
 def _graph_task_for_thread(db, thread_uuid: str) -> dict | None:
@@ -106,13 +112,18 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         )
         return False, f"Lock acquisition failed: {e}"
 
-    def _fail(reason: str) -> tuple[bool, str]:
-        db.add_action_item(
-            thread_id=thread_uuid,
-            message=f"⚠️ integrate failed [{worktree_branch}]: {reason}",
-            type_="manual_step",
-            priority="high",
+    rebase_onto = None  # set at step 2; read (best-effort) by _fail before that
+
+    def _fail(
+        step: str, reason: str, *, files: list[str] | None = None, log_tail: str = "",
+    ) -> tuple[bool, str]:
+        trunk_sha, head_sha = resolve_attempt_shas(backend, main_repo_path, worktree_path, rebase_onto)
+        ctx = FailContext(
+            db=db, thread_id=thread_uuid, worktree_branch=worktree_branch,
+            worktree_path=worktree_path, task=task, files=files or [],
+            log_tail=log_tail, trunk_at_attempt=trunk_sha, head_at_attempt=head_sha,
         )
+        record_refusal(step, reason, ctx)
         release_repo_lock(lock_path)
         return False, reason
 
@@ -126,9 +137,11 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         if dirty:
             n = len(dirty)
             return _fail(
+                STEP_DIRTY_WORKTREE,
                 f"integrate refused: uncommitted changes in {worktree_path} "
                 f"({n} file(s)). Commit what should merge, or discard, then retry.\n"
-                f"Files:\n" + "\n".join(dirty)
+                f"Files:\n" + "\n".join(dirty),
+                files=dirty,
             )
 
         # ── 1. Refresh (non-fatal for repos without remotes) ──────────────────
@@ -145,7 +158,7 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         else:
             rebase_onto = backend.trunk(main_repo_path)
         if rebase_onto is None:
-            return _fail("Cannot determine main branch (no main/master ref found)")
+            return _fail(STEP_NO_MAIN_BRANCH, "Cannot determine main branch (no main/master ref found)")
 
         # ── 3. G2: Empty-branch guard ──────────────────────────────────────────
         if not backend.has_changes(worktree_path, since=rebase_onto):
@@ -156,9 +169,10 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             # empty branch and the worktree cleanup deleted uncommitted files).
             # Refuse loudly so the agent can investigate and decide.
             return _fail(
+                STEP_EMPTY_BRANCH,
                 f"integrate refused: nothing to merge on {worktree_branch} "
                 f"(0 commits ahead of {rebase_onto}). "
-                f"Commit your work, or call complete-agent with ⚠️ PARTIAL/BLOCKER."
+                f"Commit your work, or call complete-agent with ⚠️ PARTIAL/BLOCKER.",
             )
 
         # ── 4. Update the worktree onto the rebase target ──────────────────────
@@ -168,12 +182,14 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         if not upd.ok:
             conflict_files = "\n".join(upd.conflicts) if upd.conflicts else "(see git status)"
             return _fail(
+                STEP_REBASE_CONFLICT,
                 f"Rebase conflict on {worktree_branch} onto {rebase_onto}.\n"
                 f"Conflicting files:\n{conflict_files}\n"
                 f"Branch preserved at {worktree_path}. "
                 f"Sequence this thread after the one writing those files, "
                 f"or resolve manually and re-run `juggle integrate`.\n"
-                f"NOTE: semantic line-conflicts are not auto-resolved — this is expected behavior."
+                f"NOTE: semantic line-conflicts are not auto-resolved — this is expected behavior.",
+                files=upd.conflicts or [],
             )
 
         # ── 5. Run the FULL test suite (only when test_cmd set AND push != none) ─
@@ -186,18 +202,10 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             from juggle_integrate_fullsuite import run_test_cmd_full
             _ok, _reason = run_test_cmd_full(test_cmd, worktree_path, worktree_branch)
             if not _ok:
-                return _fail(_reason)
+                return _fail(STEP_TEST_FAILURE, _reason, log_tail=_reason)
 
-        # ── 5b. Graph-task diffstat capture (pre-merge, DA M4) — only cheap
-        # moment: integrate deletes the branch+worktree on success. Best-effort.
-        if task:
-            try:
-                from dbops import db_graph
-                diffstat = backend.describe_changes(worktree_path, since=rebase_onto)
-                if diffstat:
-                    db_graph.set_task_diffstat(db, task["id"], diffstat)
-            except Exception:
-                pass  # diffstat is best-effort hydration enrichment, never a gate
+        # ── 5b. Graph-task diffstat capture (pre-merge, DA M4) ─────────────────
+        capture_diffstat(db, backend, task, worktree_path, rebase_onto)
 
         # ── 6/7. Submit (mode-dependent: pr → queue, direct/none → direct) ────
         # push_mode=="none" maps to submit(mode="direct", push=False) — local
@@ -211,7 +219,7 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             push=(push_mode == "direct"),
         )
         if result.status == "failed":
-            return _fail(result.detail)
+            return _fail(STEP_SUBMIT_FAILED, result.detail, log_tail=result.detail)
 
         if result.status == "submitted":
             # PR mode: worktree removed, branch ref left for the PR — main
@@ -248,7 +256,7 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         return True, f"Integrated {worktree_branch} → {local_main} (push_mode={push_mode})"
 
     except Exception as e:
-        return _fail(f"Unexpected error during integrate: {e}")
+        return _fail(STEP_UNEXPECTED, f"Unexpected error during integrate: {e}", log_tail=str(e))
 
 
 # ── CLI imports needed by cmd_integrate ──────────────────────────────────────

@@ -84,6 +84,14 @@ CREATE TABLE IF NOT EXISTS nodes (
   -- column order provenance-identical between fresh and migrated DBs.
   priority                INTEGER NOT NULL DEFAULT 0,
 
+  -- Fail envelope (irl-envelope T2): JSON classification of the most recent
+  -- `juggle integrate` refusal for this task (class/reason/attempt/handled_by
+  -- — see juggle_integrate_envelope.classify). Task-only in practice;
+  -- Migration 63 appends it to already-migrated DBs, so it is placed LAST
+  -- (before the CHECK) to keep `SELECT *` column order provenance-identical
+  -- between fresh and migrated DBs.
+  fail_envelope           TEXT,
+
   -- Kind discriminator (P8 M2): ONE wide table holds every kind (NOT split
   -- per-kind). This CHECK enforces that verify_cmd — the execution-only column —
   -- is carried ONLY by a kind='task' node, so a conversation/topic/research/

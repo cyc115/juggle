@@ -18,7 +18,6 @@ from contextlib import contextmanager
 
 from dbops.schema import _now
 from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
-from dbops.dispatch_edge import bind_dispatch_thread
 from dbops.state_write import cas_state, write_state
 
 
@@ -72,7 +71,7 @@ _TASK_SELECT = (
     "SELECT id, project_id, title, objective AS prompt, verify_cmd, state, "
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' LIMIT 1) AS thread_id, "
     "parent_id AS topic_id, handoff, diffstat, verified_at, "
-    "verify_retries, verify_failure, priority, created_at, updated_at "
+    "verify_retries, verify_failure, priority, fail_envelope, created_at, updated_at "
     "FROM nodes WHERE kind='task'"
 )
 
@@ -146,66 +145,6 @@ def update_task_content(
             "UPDATE nodes SET title=?, objective=?, verify_cmd=?, updated_at=? "
             "WHERE id=? AND kind='task'",
             (title, prompt, verify_cmd, now, task_id),
-        )
-
-
-def set_task_thread(db, task_id: str, thread_id) -> None:
-    """Bind the dispatch thread as a typed kind='dispatch' node_edge (P8 M1/Q2;
-    thread_id=None unbinds). The legacy graph_tasks.thread_id write was cut
-    (P8 c4-write-cut)."""
-    now = _now()
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE nodes SET updated_at=? WHERE id=? AND kind='task'",
-            (now, task_id),
-        )
-        bind_dispatch_thread(conn, task_id, thread_id)
-        conn.commit()
-
-
-def set_task_handoff(db, task_id: str, handoff: str) -> None:
-    now = _now()
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE nodes SET handoff=?, updated_at=? WHERE id=? AND kind='task'",
-            (handoff, now, task_id),
-        )
-        conn.commit()
-
-
-def bump_verify_retry(db, task_id: str, failure: str | None) -> None:
-    """Verify-fallback: increment the bounded-retry counter and store the prior
-    verify_cmd failure output (for fresh-re-dispatch prompt injection). Never
-    writes state — the caller resets the task via task_transition."""
-    now = _now()
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE nodes SET verify_retries = COALESCE(verify_retries, 0) + 1, "
-            "verify_failure=?, updated_at=? WHERE id=? AND kind='task'",
-            (failure, now, task_id),
-        )
-        conn.commit()
-
-
-def set_task_diffstat(db, task_id: str, diffstat: str) -> None:
-    """Pre-merge diffstat captured by integrate (hydration enrichment)."""
-    now = _now()
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE nodes SET diffstat=?, updated_at=? WHERE id=? AND kind='task'",
-            (diffstat, now, task_id),
-        )
-        conn.commit()
-
-
-def set_task_topic(db, task_id: str, topic_id, conn=None) -> None:
-    """Assign a task to its topic — writes the authoritative nodes.parent_id
-    (get_task maps parent_id→topic_id). The legacy graph_tasks.topic_id write was
-    cut (P8 c4-write-cut)."""
-    with _cx(db, conn) as c:
-        c.execute(
-            "UPDATE nodes SET parent_id=? WHERE id=? AND kind='task'",
-            (topic_id, task_id),
         )
 
 
@@ -290,4 +229,12 @@ from dbops.db_graph_marking import (  # noqa: E402,F401
     mark_exec_failed,
     propagate_failure,
     recompute_blocked,
+)
+from dbops.db_graph_setters import (  # noqa: E402,F401
+    bump_verify_retry,
+    set_task_diffstat,
+    set_task_fail_envelope,
+    set_task_handoff,
+    set_task_thread,
+    set_task_topic,
 )
