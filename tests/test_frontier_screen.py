@@ -107,8 +107,8 @@ async def test_wave_bands_and_critical_rail_render(tmp_path):
         assert isinstance(screen, FrontierScreen)
         text = screen._body_text
         assert "wave 1" in text and "wave 2" in text
-        assert "can start in parallel" in text
-        assert "critical path" in text
+        assert "possible" in text and "slots free" in text
+        assert "critical rail" in text
         assert screen._layout.critical_path  # a chain exists (root -> wide -> tail)
 
 

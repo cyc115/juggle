@@ -16,9 +16,12 @@ from textual.screen import Screen
 from textual.widgets import Static
 
 from juggle_cockpit_graph_layout import GraphTask
-from juggle_cockpit_node_detail import node_detail_text
+from juggle_cockpit_node_detail import node_detail_text, topic_detail_text
 from juggle_frontier_layout import build_frontier_layout
-from juggle_frontier_render import render_critical_path_footer, render_rows
+from juggle_frontier_rails import style
+from juggle_frontier_render import (
+    render_critical_path_footer, render_legend_footer, render_rows,
+)
 
 _SELECTABLE_KINDS = ("running", "ready", "blocked", "failed")
 # Narrow-viewport degradation (fr-smoke, 2026-07-02): below this screen
@@ -139,8 +142,8 @@ class FrontierScreen(Screen):
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="frontier-rows"):
-            yield Static("Frontier Railroad", id="frontier-body", markup=False)
-        yield Static("(loading)", id="frontier-detail", markup=False)
+            yield Static("Frontier Railroad", id="frontier-body", markup=True)
+        yield Static("(loading)", id="frontier-detail", markup=True)
 
     def on_mount(self) -> None:
         self._rebuild()
@@ -159,18 +162,24 @@ class FrontierScreen(Screen):
         selected_id = rows[self._sel].id if rows else None
         titles = {t.id: t.title for t in tasks}
 
-        header = f"Frontier Railroad — {self._dag.project_name or self._dag.project_id}"
+        header_text = f"Frontier Railroad — {self._dag.project_name or self._dag.project_id}"
         if self._drill_topic_id:
-            header += f" / {self._drill_topic_id}"
+            header_text += f" / {self._drill_topic_id}"
+        header = style(header_text, None, bold=True)
         running_ids = [r.id for r in rows if r.kind == "running"]
         meta_by_id = _running_meta(self._db, running_ids)
         width = self.size.width or None
         body_lines = render_rows(layout, edges, selected_id=selected_id, meta_by_id=meta_by_id, width=width)
-        footer = render_critical_path_footer(layout, titles)
-        self._body_text = "\n".join([header, "─" * 40, *body_lines, "", footer])
+        footers = [render_critical_path_footer(layout, titles), render_legend_footer()]
+        self._body_text = "\n".join([header, "─" * 40, *body_lines, "", *footers])
         self.query_one("#frontier-body", Static).update(self._body_text)
 
-        self._detail_text = node_detail_text(self._db, selected_id) if selected_id else "(no tasks)"
+        if not selected_id:
+            self._detail_text = "(no tasks)"
+        elif self._drill_topic_id is None:
+            self._detail_text = topic_detail_text(self._db, selected_id)
+        else:
+            self._detail_text = node_detail_text(self._db, selected_id)
         detail = self.query_one("#frontier-detail", Static)
         detail.update(self._detail_text)
         detail.display = (self.size.height == 0 or self.size.height >= MIN_DETAIL_PANE_HEIGHT)

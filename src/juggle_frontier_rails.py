@@ -19,6 +19,16 @@ RED = "red3"
 _NODE_KINDS = ("running", "ready", "blocked", "failed")
 
 
+def style(text, color: "str | None" = None, *, bold: bool = False) -> str:
+    """Wrap ``text`` in Rich markup for ``color``/bold, escaping any literal
+    ``[``/``]`` it contains first (task ids like "[CR]" in freeform DB text
+    must never be misread as markup once callers switch to markup=True
+    widgets). The single escaping seam for the whole Frontier Railroad."""
+    escaped = str(text).replace("[", "\\[")
+    styles = " ".join(s for s in (color, "bold" if bold else None) if s)
+    return f"[{styles}]{escaped}[/]" if styles else escaped
+
+
 @dataclass(frozen=True)
 class RailCell:
     char: str
