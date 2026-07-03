@@ -190,13 +190,15 @@ def test_build_hydration_contains_objective_handoffs_prompt_contract():
         {"id": "auth", "title": "Auth", "handoff": None},
     ]
     out = gd.build_hydration("Ship the autopilot.", task, deps)
-    assert "Ship the autopilot." in out
-    assert "migration 35 adds graph tables" in out
-    assert "### schema — Add schema" in out  # dep section: id then title
-    assert "(no handoff recorded)" in out  # dep without handoff degrades loudly
-    assert "Implement the API on top of the schema." in out
-    assert "uv run pytest tests/test_api.py -q" in out
-    assert "--handoff" in out  # completion contract instruction
+    assert "Ship the autopilot." in out.context
+    assert "migration 35 adds graph tables" in out.context
+    assert "### schema — Add schema" in out.context  # dep section: id then title
+    assert "(no handoff recorded)" in out.context  # dep without handoff degrades loudly
+    assert len(out.tasks) == 1
+    assert out.tasks[0].body == "Implement the API on top of the schema."
+    assert out.tasks[0].verify_cmd == "uv run pytest tests/test_api.py -q"
+    # Completion contract (--handoff/--retain) is rendered centrally by
+    # juggle_dispatch_core via render_agent_prompt — not this pure builder.
 
 
 def test_hydration_uses_topic_handoff_not_junk(db):
@@ -215,7 +217,7 @@ def test_hydration_uses_topic_handoff_not_junk(db):
 
     (_, prompt, topic_id), = fake.calls
     assert topic_id == "b"
-    assert "real handoff content" in prompt
+    assert "real handoff content" in prompt.context
 
 
 # ── graph_tick orchestration ───────────────────────────────────────────────────

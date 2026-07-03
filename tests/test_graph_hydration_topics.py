@@ -27,22 +27,24 @@ def _tasks():
 
 
 def test_topic_hydration_contains_contract_and_order():
-    text = build_topic_hydration(
+    payload = build_topic_hydration(
         "Proj objective", _topic(),
         deps=[{"id": "db", "title": "DB", "handoff": "schema v1", "diffstat": None}],
         tasks=_tasks(),
     )
-    assert "Proj objective" in text and "Login e2e." in text
-    assert "schema v1" in text                       # dep TOPIC handoff
-    assert text.index("t1") < text.index("t2")       # sequential order preserved
-    assert "mark-task" in text                       # per-task completion contract
-    assert "agent complete" in text                  # topic-level finish (canonical spelling, 2026-07-03)
-    assert text.index("mark-task t1") < text.index("mark-task t2")  # per-task literal ids
+    assert "Proj objective" in payload.context and "Login e2e." in payload.context
+    assert "schema v1" in payload.context             # dep TOPIC handoff
+    assert [t.id for t in payload.tasks] == ["t1", "t2"]  # sequential order preserved
+    assert payload.tasks[0].verify_cmd == "pytest tests -q"
+    # Lifecycle/finalize (mark-task, agent complete) is rendered centrally by
+    # juggle_dispatch_core via render_agent_prompt — not this pure builder
+    # (PC2, Agent Prompt Contract v2).
 
 
 def test_verified_task_flagged_for_skip():
-    text = build_topic_hydration("", _topic(), deps=[], tasks=_tasks())
-    assert "VERIFIED — skip" in text and "t2" in text
+    payload = build_topic_hydration("", _topic(), deps=[], tasks=_tasks())
+    t2 = next(t for t in payload.tasks if t.id == "t2")
+    assert t2.verified is True
 
 
 # ── T-fix-dispatch-plan-spec-provision: Source of truth (READ FIRST) section ───
