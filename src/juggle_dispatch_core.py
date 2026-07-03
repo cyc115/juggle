@@ -162,7 +162,6 @@ def send_task_to_agent(
 
     if _role in ("coder", "planner") and thread_wt:
         thread_label_wt = thread_wt.get("user_label") or thread_wt["id"][:6]
-
         # Explicit CLI overrides: persist then reload
         if worktree_path_override:
             db.update_thread(
@@ -182,8 +181,10 @@ def send_task_to_agent(
         existing_wt = (thread_wt.get("worktree_path") or "").strip()
 
         if not existing_wt and repo_path_wt and not allow_main:
+            from juggle_stack_base import topic_id_for_thread
             ok_wt, wt_path_new, branch_new, msg_wt = _com._create_worktree(
-                repo_path_wt, thread_label_wt, DEFAULT_WORKTREE_ROOT)
+                repo_path_wt, thread_label_wt, DEFAULT_WORKTREE_ROOT,
+                db=db, topic_id=topic_id_for_thread(db, thread_id))
             if ok_wt:
                 db.update_thread(
                     thread_id,

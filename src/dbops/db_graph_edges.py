@@ -9,7 +9,12 @@ from __future__ import annotations
 
 
 def replace_edges(db, task_id: str, dep_ids: list[str], conn=None) -> None:
-    """Replace the full dependency list of ``task_id`` in ``node_edges``."""
+    """Replace the full dependency list of ``task_id`` in ``node_edges``.
+
+    Self-loop guard (FACTS §B nuance, 2026-07-02): a self-edge (task_id ==
+    dep_id) would otherwise INSERT OR IGNORE fine, silently corrupting degree
+    queries that assume acyclicity — dropped here, at the single writer.
+    """
     from dbops.db_graph import _cx
 
     with _cx(db, conn) as c:
@@ -18,7 +23,7 @@ def replace_edges(db, task_id: str, dep_ids: list[str], conn=None) -> None:
         c.executemany(
             "INSERT OR IGNORE INTO node_edges (node_id, depends_on_id, kind) "
             "VALUES (?,?,'dep')",
-            [(task_id, dep) for dep in dep_ids],
+            [(task_id, dep) for dep in dep_ids if dep != task_id],
         )
 
 

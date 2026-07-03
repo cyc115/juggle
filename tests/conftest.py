@@ -133,7 +133,7 @@ def _guard_worktree_under_tmp(tmp_path, monkeypatch):
     _orig_create = _wt._create_worktree
     _tmp_resolved = tmp_path.resolve()
 
-    def _guarded_create(repo_path, thread_label, worktree_root):
+    def _guarded_create(repo_path, thread_label, worktree_root, **kwargs):
         try:
             root_resolved = Path(worktree_root).resolve()
         except OSError:
@@ -147,7 +147,7 @@ def _guard_worktree_under_tmp(tmp_path, monkeypatch):
                 f"which is NOT under this test's tmp_path ({tmp_path}). Pass "
                 "worktree_root=str(tmp_path) so the checkout cannot leak into /tmp."
             )
-        return _orig_create(repo_path, thread_label, worktree_root)
+        return _orig_create(repo_path, thread_label, worktree_root, **kwargs)
 
     # Patch the definition module and every module that re-exports the symbol,
     # so both ``from juggle_cmd_agents_worktree import _create_worktree`` and the

@@ -124,6 +124,16 @@ def test_edges_replace_and_get(db):
     assert g.get_deps(db, "c") == ["a"]
 
 
+def test_replace_edges_drops_self_loop(db):
+    """2026-07-02 (stack-base-resolver, FACTS §B nuance): a self-edge
+    (node_id == depends_on_id) must never be written — it would otherwise
+    INSERT OR IGNORE fine and silently corrupt degree queries that assume
+    acyclicity."""
+    _mk(db, "a")
+    g.replace_edges(db, "a", ["a"])
+    assert g.get_deps(db, "a") == []
+
+
 def test_set_thread_and_handoff_do_not_touch_state(db):
     _mk(db, "n1")
     g.set_task_thread(db, "n1", "thread-uuid")

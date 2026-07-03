@@ -135,7 +135,15 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         backend.refresh(main_repo_path)
 
         # ── 2. Determine rebase target ─────────────────────────────────────────
-        rebase_onto = backend.trunk(main_repo_path)
+        # Stack-relative base (SPEC §4): a topic-bound thread rebases onto its
+        # DERIVED dep topics' base (trunk when landed, dep tip when unlanded)
+        # instead of always trunk — the second of the two stack_base insertion
+        # points (the first is dispatch's create_workspace base).
+        if task and task.get("topic_id"):
+            from juggle_stack_base import stack_base
+            rebase_onto = stack_base(db, task["topic_id"], main_repo_path, backend)
+        else:
+            rebase_onto = backend.trunk(main_repo_path)
         if rebase_onto is None:
             return _fail("Cannot determine main branch (no main/master ref found)")
 

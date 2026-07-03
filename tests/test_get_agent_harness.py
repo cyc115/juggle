@@ -130,7 +130,7 @@ def test_send_task_auto_create_uses_agent_repo_not_cwd(tmp_path):
 
     create_calls = []
 
-    def fake_create(repo, label, worktree_root="/tmp"):
+    def fake_create(repo, label, worktree_root="/tmp", **kwargs):
         create_calls.append(repo)
         return False, "", "", "mock"
 

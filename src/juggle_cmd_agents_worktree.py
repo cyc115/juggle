@@ -90,7 +90,8 @@ def _main_worktree_root(repo_path: str) -> str:
 
 
 def _create_worktree(
-    repo_path: str, thread_label: str, worktree_root: str
+    repo_path: str, thread_label: str, worktree_root: str,
+    *, db=None, topic_id: str | None = None,
 ) -> tuple[bool, str, str, str]:
     """Create an isolated git worktree for a thread.
 
@@ -103,6 +104,13 @@ def _create_worktree(
     tmp_path, accumulating 100+ orphaned dangling worktrees (2026-06-20). The
     production default now lives at the call site (``DEFAULT_WORKTREE_ROOT`` in
     juggle_dispatch_core), never here, so a parameter-less call fails loudly.
+
+    ``db``/``topic_id`` (both optional, both-or-neither): when the thread is
+    bound to a topic, the base is resolved via ``juggle_stack_base.stack_base``
+    (H2 fix — forks the topic's stack-relative base, not the source repo's
+    implicit HEAD). Without a topic binding, base falls back to
+    ``backend.resolve(repo_path)`` — today's implicit-HEAD behavior, preserved
+    verbatim for callers outside the topic/task-DAG flow.
     """
     repo_path = _main_worktree_root(repo_path)
     basename = Path(repo_path).name
@@ -117,10 +125,11 @@ def _create_worktree(
         backend = backend_for(repo_path)
     except Exception as e:
         return False, "", "", f"git worktree add failed: {e}"
-    # Base = the source repo's current HEAD (today's implicit behavior,
-    # preserved verbatim — the H2 latent-bug fix is a separate follow-up topic
-    # that threads a stack-relative base through this same param).
-    base = backend.resolve(repo_path)
+    if db is not None and topic_id is not None:
+        from juggle_stack_base import stack_base
+        base = stack_base(db, topic_id, repo_path, backend)
+    else:
+        base = backend.resolve(repo_path)
     result = backend.create_workspace(repo_path, branch, worktree_path, base=base)
     if not result.ok:
         return False, "", "", f"git worktree add failed: {result.detail}"
