@@ -308,9 +308,8 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
         pass
 
     # Watchdog-daemon reaper (2026-06-20 leak): reap orphans + global daemon cap.
-    # ONLY the sanctioned prod daemon polices the system-wide (pgrep) table — a
-    # non-prod daemon must never SIGTERM a process it did not spawn (2026-07-01
-    # isolation: test daemons killed the live prod watchdog via the cap). Fail-safe.
+    # ONLY the sanctioned prod daemon polices the system-wide (pgrep) table (2026-07-01
+    # isolation: a non-prod daemon must never SIGTERM a process it did not spawn).
     try:
         from juggle_reaper import reap_watchdog_daemons_tick
         from juggle_watchdog_singleton import is_prod_db
@@ -319,11 +318,12 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     except Exception:
         _log.exception("Watchdog: daemon reaper tick failed — continuing")
 
-    # Graph claim-dispatch tick (autopilot Phase 2): SOLE dispatcher for armed
-    # projects' ready tasks (DA B4/M1). Guarded so a tick bug never downs the daemon.
+    # Graph claim-dispatch tick (autopilot Phase 2, DA B4/M1) — guarded so a bug never downs the daemon.
     try:
         from juggle_graph_dispatch import graph_tick
         graph_tick(db, mgr)
+        from juggle_graph_repair import run_tick_sweeps  # T1c: TTL + notif reconcile
+        run_tick_sweeps(db)
     except Exception:
         _log.exception("Watchdog: graph dispatch tick failed — continuing")
     from juggle_topic_reconcile import tick_sweep as _ts  # F5 conversation-topic sweep
