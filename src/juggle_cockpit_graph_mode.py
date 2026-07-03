@@ -200,6 +200,22 @@ class GraphModeMixin:
         return False
 
     def _open_gitlog_screen(self) -> None:
-        """l — interim: GitlogScreen is removed pending the Frontier Railroad."""
-        from juggle_cockpit_legend import FRONTIER_REBUILD_NOTICE
-        self.notify(FRONTIER_REBUILD_NOTICE, timeout=4)
+        """l — open the Frontier Railroad (full-screen, ONE surface replacing
+        the removed GitlogScreen + RailroadScreen) for the selected task's
+        project."""
+        from juggle_cockpit_model import snapshot as _snapshot
+        try:
+            state = _snapshot(self._db, load_graph_dag=True)
+        except Exception:
+            return
+        dags = getattr(state, "graph_dags", None) or (
+            [state.graph_dag] if getattr(state, "graph_dag", None) else []
+        )
+        if not dags:
+            return
+        from juggle_cockpit_graph_layout import frontier_visible
+        flat = [(d, n) for d in dags for n in frontier_visible(d.tasks, d.edges)[0]]
+        sel = getattr(self, "_graph_sel", 0)
+        pid = flat[sel][0].project_id if 0 <= sel < len(flat) else dags[0].project_id
+        from juggle_cockpit_frontier_screen import FrontierScreen
+        self.push_screen(FrontierScreen(dags, pid, self._db))

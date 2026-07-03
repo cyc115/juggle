@@ -67,21 +67,18 @@ def test_C_binding_present():
 
 
 @pytest.mark.asyncio
-async def test_uppercase_G_key_shows_rebuild_notice(tmp_path):
-    """RailroadScreen is removed pending the Frontier Railroad (2026-07-02) —
-    `G` must still be reachable (literal uppercase binding) and now shows the
-    interim rebuild notice instead of pushing a screen."""
+async def test_uppercase_G_key_opens_frontier_screen(tmp_path):
+    """RailroadScreen is replaced by the Frontier Railroad (2026-07-02) — `G`
+    must still be reachable (literal uppercase binding) and opens the same
+    FrontierScreen as 'l' (muscle memory)."""
     from juggle_cockpit import CockpitApp
-    from juggle_cockpit_legend import FRONTIER_REBUILD_NOTICE
+    from juggle_cockpit_frontier_screen import FrontierScreen
 
     app = CockpitApp(db_path=_armed_db(tmp_path))
     async with app.run_test(size=(160, 40)) as pilot:
-        notified = []
-        app.notify = lambda msg, *a, **k: notified.append(msg)
         await pilot.press("G")
         await pilot.pause(0.15)
-        assert notified == [FRONTIER_REBUILD_NOTICE]
-        assert len(app.screen_stack) == 1  # no screen pushed, no crash
+        assert isinstance(app.screen, FrontierScreen)
 
 
 @pytest.mark.asyncio
