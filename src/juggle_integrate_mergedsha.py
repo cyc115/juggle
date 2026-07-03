@@ -19,8 +19,15 @@ def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
     Guard (2026-06-16 phantom-SHA fix): SHA must be an ancestor of the
     canonical main (``origin/<main>`` after fetch; fallback to local main) —
     ``is_ancestor`` is fail-closed on a nonexistent object, subsuming the
-    former standalone ``cat-file -e`` existence check. A phantom or unmerged
-    SHA is silently skipped — merged_sha is left NULL so the gate stays closed.
+    former standalone ``cat-file -e`` existence check. A phantom SHA is
+    silently skipped outright — merged_sha is left NULL so the gate stays
+    closed. A SHA that resolved to a real object but failed the ancestry check
+    (2026-07-02 async-land incident: the check can transiently miss a just-
+    pushed commit) is stashed on ``pending_merged_sha`` instead of dropped —
+    worktree teardown (right after this call, in ``_run_integrate``) deletes
+    the git branch and clears the thread's worktree fields, so this is the
+    only surviving breadcrumb reconcile's self-heal can re-check later
+    (``dbops.db_topics_reconcile._heal_merged_sha``).
     """
     try:
         from dbops import db_topics
@@ -40,6 +47,7 @@ def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
                 "_record_merged_sha: cannot resolve canonical main in %s — skipping",
                 repo,
             )
+            db_topics.set_topic_pending_merged_sha(db, topic["id"], sha, repo=repo)
             return
         if not backend.is_ancestor(repo, sha, canonical):
             import logging
@@ -47,8 +55,10 @@ def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
                 "_record_merged_sha: %s is NOT an ancestor of %s in %s — skipping",
                 sha, canonical, repo,
             )
+            db_topics.set_topic_pending_merged_sha(db, topic["id"], sha, repo=repo)
             return
 
         db_topics.set_topic_merged_sha(db, topic["id"], sha)
+        db_topics.set_topic_pending_merged_sha(db, topic["id"], None)
     except Exception:
         pass

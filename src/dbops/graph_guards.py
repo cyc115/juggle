@@ -90,7 +90,11 @@ def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
 def _resolve_topic_repo(db, topic: dict) -> str:
     """Resolve the repo that holds ``main`` for this topic's merged_sha check.
 
-    Primary: the bound thread's main_repo_path. Fallback: juggle's own repo —
+    Primary: the bound thread's main_repo_path. Next: the topic's own
+    ``pending_merged_repo`` breadcrumb (2026-07-02 async-land incident) — the
+    repo a resolved-but-unproven SHA was recorded in, which survives
+    ``_run_integrate`` clearing the thread's fields on success (and is correct
+    for ANY repo, not just juggle's own). Last resort: juggle's own repo —
     integrate clears main_repo_path on success, but a recorded merged_sha for a
     self-repo topic must still be checkable afterward (and on orphan recovery).
     """
@@ -103,6 +107,9 @@ def _resolve_topic_repo(db, topic: dict) -> str:
         repo = (thread.get("main_repo_path") or "").strip()
         if repo:
             return repo
+    pending_repo = (topic.get("pending_merged_repo") or "").strip()
+    if pending_repo:
+        return pending_repo
     try:
         from juggle_cli_common import SRC_DIR
         return str(Path(SRC_DIR).parent.resolve())

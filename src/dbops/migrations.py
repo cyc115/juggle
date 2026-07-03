@@ -298,3 +298,6 @@ def run_migrations(conn: sqlite3.Connection) -> None:
 
     from dbops.migration_60_submitted_rev import migrate_60_submitted_rev
     migrate_60_submitted_rev(conn)  # Migration 60: additive nodes.submitted_rev
+
+    from dbops.migration_61_pending_merged_sha import migrate_61_pending_merged_sha
+    migrate_61_pending_merged_sha(conn)  # Migration 61: additive nodes.pending_merged_sha

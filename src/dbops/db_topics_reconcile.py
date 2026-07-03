@@ -46,8 +46,20 @@ def _heal_merged_sha(db, topic: dict) -> bool:
     provably an ancestor of main, records it. Returns True only when a real
     ancestor sha was written — reconcile NEVER verifies without one (verified ⟺
     merged). Never raises.
+
+    Incident (2026-07-02, async-land): the branch-name lookup above is USELESS
+    once ``_run_integrate`` has already finished — its own success path deletes
+    the git branch (``remove_workspace``) and clears the thread's worktree
+    fields (finalize) in the SAME call that could have left merged_sha NULL, so
+    this self-heal ran immediately afterward with nothing left to resolve.
+    Falls back to the topic's ``pending_merged_sha`` (a durable breadcrumb
+    ``_record_merged_sha`` stashes whenever it resolves a real object but can't
+    immediately prove ancestry — see ``juggle_integrate_mergedsha``) and
+    re-checks ITS ancestry against current canonical main; promotes it on
+    success. This is the ONLY path that can recover a topic whose branch is
+    already gone.
     """
-    from dbops.db_topics import set_topic_merged_sha
+    from dbops.db_topics import set_topic_merged_sha, set_topic_pending_merged_sha
     from dbops.graph_guards import (
         _resolve_topic_repo, resolve_branch_sha, sha_is_ancestor,
     )
@@ -61,16 +73,23 @@ def _heal_merged_sha(db, topic: dict) -> bool:
             except Exception:
                 thread = {}
         branch = (thread.get("worktree_branch") or "").strip()
-        if not branch:
-            return False
         repo = (thread.get("main_repo_path") or "").strip() or _resolve_topic_repo(db, topic)
         if not repo:
             return False
-        sha = resolve_branch_sha(repo, branch)
-        if not sha or not sha_is_ancestor(repo, sha):
-            return False
-        set_topic_merged_sha(db, topic["id"], sha)
-        return True
+
+        sha = resolve_branch_sha(repo, branch) if branch else ""
+        if sha and sha_is_ancestor(repo, sha):
+            set_topic_merged_sha(db, topic["id"], sha)
+            return True
+
+        pending = (topic.get("pending_merged_sha") or "").strip()
+        pending_repo = (topic.get("pending_merged_repo") or "").strip() or repo
+        if pending and pending_repo and sha_is_ancestor(pending_repo, pending):
+            set_topic_merged_sha(db, topic["id"], pending)
+            set_topic_pending_merged_sha(db, topic["id"], None, repo=pending_repo)
+            return True
+
+        return False
     except Exception:
         return False
 

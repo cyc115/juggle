@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS nodes (
   verified_at     TEXT,
   merged_sha      TEXT,
   submitted_rev   TEXT,
+  pending_merged_sha  TEXT,
+  pending_merged_repo TEXT,
 
   -- Agent tracking
   agent_task_id           TEXT,
