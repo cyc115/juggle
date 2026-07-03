@@ -1016,3 +1016,93 @@ def test_integrate_two_branches_modifying_graphify_out_no_conflict_pin(git_repo,
     assert ok1, f"first integrate failed: {msg1}"
     assert ok2, f"graphify-out rebase conflict blocked the second integrate: {msg2}"
     assert (Path(git_repo) / "real2.py").exists()
+
+
+# ── Version bump (P1, 2026-07-03) ───────────────────────────────────────────
+
+def _add_plugin_json(repo_path: str, version: str = "1.0.0") -> None:
+    import json
+    plugin_dir = Path(repo_path) / ".claude-plugin"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "plugin.json").write_text(json.dumps({"name": "juggle", "version": version}))
+    subprocess.run(["git", "-C", repo_path, "add", ".claude-plugin/plugin.json"],
+                    check=True, capture_output=True)
+    subprocess.run(["git", "-C", repo_path, "commit", "-m", "chore: seed plugin.json"],
+                    check=True, capture_output=True)
+
+
+def test_integrate_direct_mode_bumps_version_before_push(git_repo_with_remote, tmp_path):
+    """A landed feat: branch bumps plugin.json and pushes the bump with it —
+    the bump commit rides the same push, no separate publish step needed."""
+    from juggle_cmd_integrate import _run_integrate
+
+    local, remote = git_repo_with_remote
+    _add_plugin_json(local, version="1.0.0")
+    subprocess.run(["git", "-C", local, "push", "origin", "main"], check=True, capture_output=True)
+
+    wt = _make_worktree(local, str(tmp_path), "VB")
+    _add_commit(wt, "feat.py", "y = 2\n", "feat: add feature")
+
+    thread = {"id": "t-1", "worktree_path": wt,
+               "worktree_branch": "cyc_VB", "main_repo_path": local}
+    db = _make_db()
+
+    with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "direct", "test_cmd": ""}):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok, msg = _run_integrate(thread, db)
+
+    assert ok, msg
+    import json
+    remote_plugin = subprocess.run(
+        ["git", "-C", remote, "show", "main:.claude-plugin/plugin.json"],
+        capture_output=True, text=True,
+    ).stdout
+    assert json.loads(remote_plugin)["version"] == "1.1.0"
+    remote_log = subprocess.run(
+        ["git", "-C", remote, "log", "--oneline", "-2"],
+        capture_output=True, text=True,
+    ).stdout
+    assert "bump to 1.1.0" in remote_log
+    assert "feat: add feature" in remote_log
+
+
+def test_integrate_two_parallel_branches_land_with_two_bumps_pin(git_repo_with_remote, tmp_path):
+    """Pin: sequential integrates of two independently-branched feat: worktrees
+    each bump the version once — no collision, no stale-version reuse."""
+    from juggle_cmd_integrate import _run_integrate
+
+    local, remote = git_repo_with_remote
+    _add_plugin_json(local, version="1.0.0")
+    subprocess.run(["git", "-C", local, "push", "origin", "main"], check=True, capture_output=True)
+
+    wt1 = _make_worktree(local, str(tmp_path), "PB1")
+    _add_commit(wt1, "one.py", "a = 1\n", "feat: branch one")
+    wt2 = _make_worktree(local, str(tmp_path), "PB2")
+    _add_commit(wt2, "two.py", "b = 2\n", "feat: branch two")
+
+    db = _make_db()
+    cfg = {"push_mode": "direct", "test_cmd": ""}
+    with patch("juggle_cmd_integrate.get_repo_config", return_value=cfg):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok1, msg1 = _run_integrate(
+                    {"id": "t-pb1", "worktree_path": wt1, "worktree_branch": "cyc_PB1",
+                     "main_repo_path": local}, db)
+                ok2, msg2 = _run_integrate(
+                    {"id": "t-pb2", "worktree_path": wt2, "worktree_branch": "cyc_PB2",
+                     "main_repo_path": local}, db)
+
+    assert ok1, f"first integrate failed: {msg1}"
+    assert ok2, f"second integrate failed: {msg2}"
+    import json
+    remote_plugin = subprocess.run(
+        ["git", "-C", remote, "show", "main:.claude-plugin/plugin.json"],
+        capture_output=True, text=True,
+    ).stdout
+    assert json.loads(remote_plugin)["version"] == "1.2.0"
+    remote_log = subprocess.run(
+        ["git", "-C", remote, "log", "--oneline"],
+        capture_output=True, text=True,
+    ).stdout
+    assert remote_log.count("bump to") == 2, remote_log

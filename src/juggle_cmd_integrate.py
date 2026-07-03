@@ -211,6 +211,19 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         # ── 5b. Graph-task diffstat capture (pre-merge, DA M4) ─────────────────
         capture_diffstat(db, backend, task, worktree_path, rebase_onto)
 
+        # ── 5c. Version bump (P1, 2026-07-03) ──────────────────────────────────
+        # Derived from THIS branch's own commit prefixes (feat→minor,
+        # fix→patch, breaking→major), applied on the worktree AFTER the
+        # diffstat snapshot above (so the bump commit is never attributed to
+        # the task's own diff) and BEFORE submit's ff-merge+push. The worktree
+        # was already rebased onto rebase_onto (step 4, current main tip), so
+        # plugin.json here already reflects any bump serialized ahead of us
+        # under the repo-wide integrate lock — the resulting main history is
+        # identical to bumping after the merge. No-op for repos without
+        # .claude-plugin/plugin.json or with no feat:/fix:/breaking commits.
+        from juggle_version_bump import apply_version_bump
+        apply_version_bump(worktree_path, since=rebase_onto)
+
         # ── 6/7. Submit (mode-dependent: pr → queue, direct/none → direct) ────
         # push_mode=="none" maps to submit(mode="direct", push=False) — local
         # merge only, no publish; the git-mechanics expression of "none" lives
