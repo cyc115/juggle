@@ -9,6 +9,19 @@ from juggle_cockpit_legend import railroad_glyph
 
 _ROW_GLYPHS = {"running": "◐", "ready": "◇", "blocked": "○", "failed": "✗"}
 
+# Narrow-viewport degradation thresholds (fr-smoke, 2026-07-02): agent info is
+# the first thing dropped from a running row's meta, titles are truncated
+# only once the pane is narrower still.
+WIDTH_HIDE_AGENT = 100
+WIDTH_TRUNCATE_TITLE = 60
+_MIN_TITLE_LEN = 8
+
+
+def _truncate(text: str, width: "int | None") -> str:
+    if width is None or width >= WIDTH_TRUNCATE_TITLE or len(text) <= _MIN_TITLE_LEN:
+        return text
+    return text[: max(_MIN_TITLE_LEN - 1, 1)] + "…"
+
 
 def _gutter(lane: int, lane_count: int, on_critical: bool) -> str:
     """Forward-dependency rail prefix: one column per lane, the row's own
@@ -35,24 +48,39 @@ def render_fold_summary(row) -> str:
     return f"z  …wave {row.wave} folded ({row.parallel_count} nodes) — z expands"
 
 
-def render_node_row(row, lane_count: int, *, selected: bool, elapsed: "str | None" = None) -> str:
+def render_node_row(
+    row, lane_count: int, *, selected: bool, meta: "dict | None" = None,
+    width: "int | None" = None,
+) -> str:
+    """``meta`` (running rows only): {"elapsed": "12m", "agent": "coder·sonnet"}.
+    ``width`` drives narrow-viewport degradation — agent info drops first
+    (below WIDTH_HIDE_AGENT), then the title truncates (below
+    WIDTH_TRUNCATE_TITLE)."""
     cursor = "▶" if selected else " "
     gutter = _gutter(row.lane, lane_count, row.on_critical_path)
     glyph = _ROW_GLYPHS.get(row.kind) or railroad_glyph(row.state)
+    title = _truncate(row.title, width)
     detail = ""
-    if row.kind == "running" and elapsed:
-        detail = f"  {elapsed}"
+    if row.kind == "running" and meta:
+        parts = [p for p in (meta.get("elapsed"),) if p]
+        if meta.get("agent") and (width is None or width >= WIDTH_HIDE_AGENT):
+            parts.append(meta["agent"])
+        if parts:
+            detail = "  " + "  ".join(parts)
     elif row.kind == "blocked" and row.blocked_on:
         detail = f"  waits on {', '.join(row.blocked_on)}"
     counts = ""
     if row.tasks_done is not None and row.tasks_total is not None:
         counts = f"  {row.tasks_done}/{row.tasks_total}"
-    return f"{cursor}{gutter}{glyph} {row.title}{counts}{detail}"
+    return f"{cursor}{gutter}{glyph} {title}{counts}{detail}"
 
 
-def render_rows(layout, *, selected_id: "str | None" = None, elapsed_by_id: "dict | None" = None) -> list[str]:
+def render_rows(
+    layout, *, selected_id: "str | None" = None, meta_by_id: "dict | None" = None,
+    width: "int | None" = None,
+) -> list[str]:
     """Render the full body: trunk stub + every layout row in order."""
-    elapsed_by_id = elapsed_by_id or {}
+    meta_by_id = meta_by_id or {}
     lines = [render_trunk_stub(layout.anchor_count)]
     for row in layout.rows:
         if row.kind == "wave-band":
@@ -63,7 +91,8 @@ def render_rows(layout, *, selected_id: "str | None" = None, elapsed_by_id: "dic
             lines.append(render_node_row(
                 row, layout.lane_count,
                 selected=(row.id == selected_id),
-                elapsed=elapsed_by_id.get(row.id),
+                meta=meta_by_id.get(row.id),
+                width=width,
             ))
     return lines
 

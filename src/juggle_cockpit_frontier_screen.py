@@ -21,6 +21,50 @@ from juggle_frontier_layout import build_frontier_layout
 from juggle_frontier_render import render_critical_path_footer, render_rows
 
 _SELECTABLE_KINDS = ("running", "ready", "blocked", "failed")
+# Narrow-viewport degradation (fr-smoke, 2026-07-02): below this screen
+# height the bottom node-detail pane collapses entirely so the railroad body
+# keeps the space; width-based row degradation lives in juggle_frontier_render.
+MIN_DETAIL_PANE_HEIGHT = 12
+
+
+def _fmt_elapsed(dispatched_at: "str | None", now=None) -> "str | None":
+    if not dispatched_at:
+        return None
+    from datetime import datetime, timezone
+
+    try:
+        started = datetime.fromisoformat(dispatched_at)
+    except ValueError:
+        return None
+    now = now or datetime.now(timezone.utc)
+    minutes = max(0, int((now - started).total_seconds() // 60))
+    return f"{minutes}m"
+
+
+def _running_meta(db, ids: list) -> dict:
+    """{"id": {"elapsed": "12m", "agent": "coder·sonnet"}} for running rows,
+    from the latest agent_runs row per id — same source the removed
+    GitLogMeta read, kept minimal (no merged_sha/verified_at; those apply to
+    verified nodes, which the trunk stub already collapses)."""
+    ids = [i for i in dict.fromkeys(ids)]
+    if not ids:
+        return {}
+    ph = ",".join("?" * len(ids))
+    with db._connect() as conn:
+        rows = conn.execute(
+            "SELECT COALESCE(task_id, topic_id) AS nid, role, model, dispatched_at, "
+            "id AS run_id FROM agent_runs "
+            f"WHERE task_id IN ({ph}) OR topic_id IN ({ph}) ORDER BY id DESC",
+            [*ids, *ids],
+        ).fetchall()
+    latest: dict = {}
+    for r in rows:
+        latest.setdefault(r["nid"], r)
+    out = {}
+    for nid, r in latest.items():
+        agent = "·".join(p for p in (r["role"], r["model"]) if p) or None
+        out[nid] = {"elapsed": _fmt_elapsed(r["dispatched_at"]), "agent": agent}
+    return out
 
 
 def _task_edges_among(db, ids: set) -> list[tuple[str, str]]:
@@ -101,6 +145,9 @@ class FrontierScreen(Screen):
     def on_mount(self) -> None:
         self._rebuild()
 
+    def on_resize(self, event) -> None:
+        self._rebuild()
+
     def _rebuild(self) -> None:
         tasks, edges = self._tier_tasks_edges()
         free_slots = _free_agent_slots(self._db)
@@ -115,13 +162,18 @@ class FrontierScreen(Screen):
         header = f"Frontier Railroad — {self._dag.project_name or self._dag.project_id}"
         if self._drill_topic_id:
             header += f" / {self._drill_topic_id}"
-        body_lines = render_rows(layout, selected_id=selected_id)
+        running_ids = [r.id for r in rows if r.kind == "running"]
+        meta_by_id = _running_meta(self._db, running_ids)
+        width = self.size.width or None
+        body_lines = render_rows(layout, selected_id=selected_id, meta_by_id=meta_by_id, width=width)
         footer = render_critical_path_footer(layout, titles)
         self._body_text = "\n".join([header, "─" * 40, *body_lines, "", footer])
         self.query_one("#frontier-body", Static).update(self._body_text)
 
         self._detail_text = node_detail_text(self._db, selected_id) if selected_id else "(no tasks)"
-        self.query_one("#frontier-detail", Static).update(self._detail_text)
+        detail = self.query_one("#frontier-detail", Static)
+        detail.update(self._detail_text)
+        detail.display = (self.size.height == 0 or self.size.height >= MIN_DETAIL_PANE_HEIGHT)
 
     def action_cursor_down(self) -> None:
         self._sel += 1

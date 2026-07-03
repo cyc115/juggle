@@ -54,6 +54,12 @@ def _fixture_20_node(db_path):
         _project(conn, "P", "Proj")
         _topic(conn, "anchor", "P", "Anchor", state="verified")
         _topic(conn, "fan-root", "P", "Fan Root", state="ready")
+        _topic(conn, "runner", "P", "Runner", state="running")
+        conn.execute(
+            "INSERT INTO agent_runs(thread_id, topic_id, role, model, "
+            "input_prompt, dispatched_at, status) VALUES(?,?,?,?,?,?,?)",
+            ("th-fixture", "runner", "coder", "sonnet", "do it", _now(), "dispatched"),
+        )
         for i in range(15):
             _topic(conn, f"w{i}", "P", f"Wide {i}", state="open")
             _edge(conn, f"w{i}", "fan-root")
@@ -176,7 +182,8 @@ async def test_wave_fold_hides_rows_behind_summary(tmp_path):
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = app.screen
-        await pilot.press("j")  # move onto wave 1
+        await pilot.press("j")  # fan-root -> runner (still wave 0)
+        await pilot.press("j")  # runner -> first wave-1 row
         await pilot.pause()
         assert screen._selectable(screen._layout)[screen._sel].wave == 1
         await pilot.press("z")
@@ -236,6 +243,58 @@ async def test_detail_pane_updates_on_navigation(tmp_path):
         await pilot.press("j")
         await pilot.pause()
         assert screen._detail_text != first_detail
+
+
+@pytest.mark.asyncio
+async def test_running_row_shows_agent_meta_wide_hides_it_narrow(tmp_path):
+    """Narrow-viewport degradation (fr-smoke): agent info is the first thing
+    dropped from a running row at reduced width; elapsed stays."""
+    from textual.app import App
+    from juggle_cockpit_frontier_screen import FrontierScreen
+
+    db = _fixture_20_node(str(tmp_path / "juggle.db"))
+    dags = _dags(db)
+
+    class _Harness(App):
+        def on_mount(self):
+            self.push_screen(FrontierScreen(dags, "P", db))
+
+    app = _Harness()
+    async with app.run_test(size=(160, 40)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert "coder·sonnet" in screen._body_text
+        assert "0m" in screen._body_text
+
+    app2 = _Harness()
+    async with app2.run_test(size=(60, 40)) as pilot:
+        await pilot.pause()
+        screen2 = app2.screen
+        assert "coder·sonnet" not in screen2._body_text
+        assert "0m" in screen2._body_text
+
+
+@pytest.mark.asyncio
+async def test_detail_pane_collapses_on_short_viewport(tmp_path):
+    from textual.app import App
+    from juggle_cockpit_frontier_screen import FrontierScreen, MIN_DETAIL_PANE_HEIGHT
+
+    db = _fixture_20_node(str(tmp_path / "juggle.db"))
+    dags = _dags(db)
+
+    class _Harness(App):
+        def on_mount(self):
+            self.push_screen(FrontierScreen(dags, "P", db))
+
+    app_tall = _Harness()
+    async with app_tall.run_test(size=(120, MIN_DETAIL_PANE_HEIGHT + 5)) as pilot:
+        await pilot.pause()
+        assert app_tall.screen.query_one("#frontier-detail").display is True
+
+    app_short = _Harness()
+    async with app_short.run_test(size=(120, MIN_DETAIL_PANE_HEIGHT - 2)) as pilot:
+        await pilot.pause()
+        assert app_short.screen.query_one("#frontier-detail").display is False
 
 
 @pytest.mark.asyncio
