@@ -52,16 +52,20 @@ def _segments(layout, lane_cap: int) -> list[tuple[str, str | None]]:
     n = len(nodes)
     while i < n:
         node = nodes[i]
-        segs.append((railroad_glyph(node.state), _STATE_COLORS.get(node.state)))
+        # A connector inherits its UPSTREAM (left) node's colour (spec 2026-07-03
+        # §2) so the rail reads as progress-flow — green up to the last-done node,
+        # active colour at the frontier, neutral-grey ahead.
+        up_colour = _STATE_COLORS.get(node.state)
+        segs.append((railroad_glyph(node.state), up_colour))
         if compress and node.fan_out > 1:
-            segs.append((f"┬⧉{node.fan_out}", None))
+            segs.append((f"┬⧉{node.fan_out}", up_colour))
             i += 1 + node.fan_out          # skip the collapsed parallel fan
             if i < n:
-                segs.append(("─", None))   # reconnect to the continuation
+                segs.append(("─", up_colour))   # reconnect to the continuation
             continue
         i += 1
         if i < n:
-            segs.append((_connector(node, nodes[i]), None))
+            segs.append((_connector(node, nodes[i]), up_colour))
     return segs
 
 

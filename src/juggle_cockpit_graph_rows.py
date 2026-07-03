@@ -35,19 +35,29 @@ from juggle_graph_status import counts_from_states, format_progress
 _CELL_WIDTH = 26
 _MAX_COLS = 4
 
+# Richer-state palette (spec 2026-07-03): one distinct 256-colour named index per
+# lifecycle state (the old palette collapsed 3 states onto yellow + 4 onto red).
+# Colour is REDUNDANT reinforcement only — glyph SHAPE (TASK_STATE_GLYPHS /
+# RAILROAD_STATE_GLYPHS) stays the primary, colourblind-safe signal. Named 256
+# indices degrade to 16-colour gracefully; not truecolor. `cancelled` ships its
+# state via gp-spine (topic GP) — harmless here until then (rendered dim, below).
 _STATE_COLORS: dict[str, str] = {
-    "verified": "green",
-    "ready": "cyan",
-    "running": "yellow",
-    "dispatching": "yellow",
-    "integrating": "yellow",
-    "integrated-unlanded": "blue",
-    "open": "grey50",
-    "failed-exec": "red",
-    "failed-integration": "red",
-    "failed-verify": "red",
-    "blocked-failed": "red",
+    "verified": "green3",               # 40  — done
+    "ready": "cyan1",                   # 51  — queued / next up
+    "dispatching": "deep_sky_blue2",    # 38  — spinning up
+    "running": "gold1",                 # 220 — executing (warm)
+    "integrating": "dodger_blue1",      # 33  — landing
+    "integrated-unlanded": "medium_purple",  # 104 — merged-not-landed
+    "open": "grey62",                   # 247 — not-ready neutral
+    "cancelled": "grey37",              # 59  — pruned/inert (rendered dim)
+    "blocked-failed": "orange3",        # 172 — blocked (amber)
+    "failed-verify": "red1",            # 196 — verify fail
+    "failed-exec": "red3",              # 160 — crash
+    "failed-integration": "magenta3",   # 164 — merge fail
 }
+
+# States drawn dim on top of their colour — inert/pruned nodes recede.
+_DIM_STATES = frozenset({"cancelled"})
 
 _RUNNING_STATES = ("running", "dispatching", "integrating", "integrated-unlanded")
 
@@ -153,7 +163,7 @@ def _cell_text(
     label = f"{prefix}{name}{suffix}"
     style = Style(
         color="grey50" if is_mirror else _STATE_COLORS.get(task.state, "white"),
-        dim=is_mirror,
+        dim=is_mirror or task.state in _DIM_STATES,
         bold=(not is_mirror and task.state in _RUNNING_STATES),
         reverse=selected,
     )

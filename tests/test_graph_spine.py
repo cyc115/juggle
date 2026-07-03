@@ -1,6 +1,7 @@
 """Surface-D dependency spine (T3, 2026-06-30 graph railroad)."""
 from juggle_cockpit_graph_lanes import assign_lanes
-from juggle_cockpit_graph_spine import spine_plain
+from juggle_cockpit_graph_spine import spine_plain, _segments
+from juggle_cockpit_graph_rows import _STATE_COLORS
 from juggle_cockpit_graph_layout import GraphTask
 
 
@@ -33,3 +34,13 @@ def test_never_exceeds_width():
     s = spine_plain(L, width=30, lane_cap=6)
     assert len(s) <= 30
     assert "⧉" in s or "…" in s   # compressed
+
+
+def test_connector_inherits_upstream_colour():
+    """spec 2026-07-03 §2: each rail connector is coloured by its UPSTREAM (left)
+    node's state → the rail reads as progress-flow, not a monochrome dim line."""
+    L = assign_lanes([_t("a", "verified"), _t("b", "running")], [("b", "a")])
+    segs = _segments(L, lane_cap=6)
+    # [ (●, verified-colour), (─, upstream=verified-colour), (◐, running-colour) ]
+    conn = next(s for s in segs if s[0] in ("─", "┬", "┴"))
+    assert conn[1] == _STATE_COLORS["verified"]
