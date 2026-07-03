@@ -6,26 +6,20 @@ tables (P8 Task 4.2) — ONLY when graph mode is active
 module under its LOC budget. Read-only; degrades to None / [] on projects with no
 task nodes.
 
-Topic tier (R5/R9): DAG tasks are TOPICS, edges are derived topic deps, task
-counts per topic are attached as tasks_done/tasks_total on GraphTask. The flat
-task list per topic is stored in GraphDag.member_tasks for the detail modal.
-
-P7: per-project arming is removed — all projects with tasks are shown.
+Topic tier (R5/R9): DAG tasks are TOPICS, edges derived topic deps, per-topic
+task counts on GraphTask, member_tasks per topic for the detail modal. P7:
+per-project arming removed — all projects with tasks are shown.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from juggle_cockpit_graph_order import (
-    ProjectActivity,
-    OrderCache,
-    order_projects,
-)
+from juggle_cockpit_graph_order import ProjectActivity, OrderCache, order_projects
 
 ARMED_PROJECT_SETTING = "autopilot_armed_project"  # kept for compat reads
 
-# Live cockpit snapshot cache for the graph-panel order (throttle). Tests never
-# touch this — they inject their own OrderCache into order_projects directly.
+# Live cockpit snapshot cache for the graph-panel order (throttle). Tests inject
+# their own OrderCache into order_projects, so this global is never shared.
 _ORDER_CACHE = OrderCache()
 
 
@@ -38,6 +32,14 @@ class GraphDag:
     edges: list[tuple[str, str]]  # (topic_id, dep_topic_id)
     member_tasks: "dict | None" = field(default=None, compare=False)  # topic_id → list[dict]
     project_name: "str | None" = None  # human project name for the panel header
+
+
+def _norm_ts(ts: "str | None") -> str:
+    """Fold a stored timestamp to 'YYYY-MM-DD HH:MM' so keys compare
+    chronologically. The DB mixes isoformat ('T' separator, projects.last_active)
+    with strftime (space, conversation/verify); 'T'(0x54) > ' '(0x20) would
+    misorder same-minute rows. All UTC, so truncating to the minute is safe."""
+    return (ts or "").replace("T", " ")[:16]
 
 
 def gather_project_activity(conn) -> list[ProjectActivity]:
@@ -90,8 +92,7 @@ def gather_project_activity(conn) -> list[ProjectActivity]:
     except Exception:
         pass
 
-    # Live agent activity: max conversation last_active_at over the project's
-    # topics' dispatch-bound conversation nodes.
+    # Live agent activity: max conversation last_active_at over dispatch-bound topics.
     agent_ts: dict[str, str] = {}
     try:
         for r in conn.execute(
@@ -108,14 +109,18 @@ def gather_project_activity(conn) -> list[ProjectActivity]:
 
     rows: list[ProjectActivity] = []
     for pid in candidates:
-        la = last_active.get(pid, "")
+        la = _norm_ts(last_active.get(pid, ""))
+        agent = _norm_ts(agent_ts.get(pid, ""))
+        verified = _norm_ts(verified_max.get(pid, ""))
         is_done = root_total.get(pid, 0) > 0 and open_count.get(pid, 0) == 0
         rows.append(
             ProjectActivity(
                 id=pid,
                 is_done=is_done,
-                active_key=max(agent_ts.get(pid, ""), la),
-                done_key=max(verified_max.get(pid, ""), la),
+                # Agent-activity if any conversation ran, else last_active (spec
+                # FALLBACK not max — a recent creation ts never outranks active work).
+                active_key=agent or la,
+                done_key=max(verified, la),
             )
         )
     return rows

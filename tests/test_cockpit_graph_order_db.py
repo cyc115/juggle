@@ -90,3 +90,23 @@ def test_load_graph_dags_orders_active_by_recency(db):
     dags = load_graph_dags(db._connect())
     pids = [d.project_id for d in dags]
     assert pids.index("NEW") < pids.index("OLD")
+
+
+def test_active_key_normalizes_mixed_timestamp_formats(db):
+    """PIN: cockpit-graph-autosort (2026-07-03) — projects.last_active is stored
+    isoformat ('2026-07-03T09:00...', a 'T' separator) while conversation/verify
+    timestamps use a space. Raw string compare puts 'T' (0x54) after ' ' (0x20),
+    so a chronologically EARLIER T-format project would wrongly outrank a LATER
+    space-format one at the same date. gather_project_activity must normalize so
+    the later project ranks first regardless of source format."""
+    # EARLY is 09:00 in isoformat (T); LATE is 10:00 space-format — LATE is later.
+    _project(db, "EARLY", "2026-07-03T09:00:00+00:00")
+    _project(db, "LATE", "2026-07-03 10:00")
+    for pid in ("EARLY", "LATE"):
+        tp.create_topic(db, topic_id=f"{pid}-t", project_id=pid, title="t")
+        g.create_task(db, task_id=f"{pid}-x", project_id=pid, title="x", prompt="p")
+        g.set_task_topic(db, f"{pid}-x", f"{pid}-t")
+        _set_topic_state(db, f"{pid}-t", "running")
+    dags = load_graph_dags(db._connect())
+    pids = [d.project_id for d in dags]
+    assert pids.index("LATE") < pids.index("EARLY")
