@@ -106,7 +106,7 @@ def test_pending_leaves_topic_unlanded(db, tmp_path, monkeypatch):
 
     stats = lp.poll_unlanded_topics(db, "INBOX")
 
-    assert stats["pending"] == ["T2"]
+    assert stats["still_unlanded"] == ["T2"]
     assert tp.get_topic(db, "T2")["state"] == "integrated-unlanded"
 
 
@@ -124,7 +124,7 @@ def test_landed_but_not_yet_ancestor_stays_pending(db, tmp_path, monkeypatch):
 
     stats = lp.poll_unlanded_topics(db, "INBOX")
 
-    assert stats["pending"] == ["T8"]
+    assert stats["still_unlanded"] == ["T8"]
     assert stats["errors"] == []
     topic = tp.get_topic(db, "T8")
     assert topic["state"] == "integrated-unlanded"
@@ -214,5 +214,5 @@ def test_ignores_topics_not_in_unlanded_state(db, tmp_path, monkeypatch):
 
     stats = lp.poll_unlanded_topics(db, "INBOX")
 
-    assert stats == {"landed": [], "pending": [], "timed_out": [], "errors": []}
+    assert stats == {"landed": [], "still_unlanded": [], "timed_out": [], "errors": []}
     assert fake.calls == []

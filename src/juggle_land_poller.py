@@ -5,7 +5,7 @@ their VCS backend's ``land_status`` and promotes/times-out accordingly:
   * landed  -> record merged_sha, transition 'land_confirmed' (the UNCHANGED
     topic_is_merged gate re-verifies ancestry — see dbops.graph_guards),
     then deferred workspace teardown.
-  * pending -> leave; retried next tick.
+  * still unlanded -> leave; retried next tick.
   * past JUGGLE_LAND_TIMEOUT_H -> 'land_fail' + a HIGH action item.
 
 Must not own: the verified gate (dbops.graph_guards.topic_is_merged, reused
@@ -84,7 +84,7 @@ def poll_unlanded_topics(db, project_id: str) -> dict:
     """Sweep 'integrated-unlanded' topics for one project. Never raises — one
     bad topic must not stop the sweep (matches the orphan-reconcile precedent
     in juggle_graph_dispatch.graph_tick)."""
-    stats = {"landed": [], "pending": [], "timed_out": [], "errors": []}
+    stats = {"landed": [], "still_unlanded": [], "timed_out": [], "errors": []}
     topics = [t for t in db_topics.list_topics(db, project_id)
               if t["state"] == "integrated-unlanded"]
     for topic in topics:
@@ -107,7 +107,7 @@ def poll_unlanded_topics(db, project_id: str) -> dict:
                     # yet fetched) — topic_transition RAISES rather than
                     # returning a non-'verified' state, so this must be caught
                     # explicitly. Stays 'integrated-unlanded', retried next tick.
-                    stats["pending"].append(tid)
+                    stats["still_unlanded"].append(tid)
                     continue
                 _teardown_topic_workspace(db, topic, repo)
                 stats["landed"].append(tid)
@@ -134,7 +134,7 @@ def poll_unlanded_topics(db, project_id: str) -> dict:
                 )
                 stats["timed_out"].append(tid)
             else:
-                stats["pending"].append(tid)
+                stats["still_unlanded"].append(tid)
         except Exception:
             _log.exception("land poller: unexpected error on topic %s", tid)
             stats["errors"].append(tid)
