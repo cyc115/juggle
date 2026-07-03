@@ -243,6 +243,11 @@ def _make_in_memory_db():
           type TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'normal',
           created_at TEXT NOT NULL, dismissed_at TEXT
         );
+        CREATE TABLE node_edges (
+          node_id TEXT NOT NULL, depends_on_id TEXT NOT NULL,
+          kind TEXT NOT NULL DEFAULT 'dep',
+          PRIMARY KEY (node_id, depends_on_id)
+        );
         CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         INSERT INTO settings(key, value) VALUES('thread_auto_archive_ttl_secs', '86400');
         CREATE TABLE session (key TEXT PRIMARY KEY, value TEXT NOT NULL);
