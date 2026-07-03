@@ -60,6 +60,7 @@ Profiles live in `config/viewports.yaml` (7 profiles: 2k_full 240×67, 2k_half 1
 - **Lightweight orchestrator.** Reuse DB tables, CLI patterns, tmux primitives before new abstractions. Cut to simplest viable approach.
 - **Simple ≠ MVP.** Production quality, minimal new concepts.
 - **Reliability.** Explicit state, deterministic code paths, fail-loud errors.
+- **Integration pipeline = detect, refuse, preserve.** (2026-07-03, from 24h failure analysis: 16/46 integrations hard-failed; every resolver was an agent.) The deterministic integrate pipeline never resolves failures — it detects them precisely, refuses loudly (fail-closed), and preserves the branch/worktree for repair. Resolution is agent work; proofs, gates, and state transitions remain code.
 
 # Versioning
 
