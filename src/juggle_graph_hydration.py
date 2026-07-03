@@ -118,6 +118,45 @@ def build_topic_hydration(objective: str, topic: dict, deps: list[dict],
     return "\n\n".join(parts)
 
 
+def build_source_of_truth_section(topic: dict | None) -> str:
+    """'## Source of truth (READ FIRST)' section (T-fix-dispatch-plan-spec-
+    provision, 2026-07-03): tells a dispatched agent which plan/spec file its
+    tasks implement — the GAP this fixes is that plan/spec references never
+    reached dispatch prompts (they lived only in the file-level spec preamble,
+    which the loader discarded). Pure; returns "" when the topic has neither
+    path (self-contained fix tasks) so no dangling section is emitted."""
+    if not topic:
+        return ""
+    plan_path = (topic.get("plan_path") or "").strip()
+    spec_path = (topic.get("spec_path") or "").strip()
+    lines = []
+    if plan_path:
+        lines.append(
+            f"{len(lines) + 1}. Read {plan_path} IN FULL — your tasks implement "
+            "its sections; follow its files/seams/pins exactly."
+        )
+    if spec_path:
+        lines.append(f"{len(lines) + 1}. Consult {spec_path} when intent is unclear.")
+    if not lines:
+        return ""
+    return "## Source of truth (READ FIRST)\n" + "\n".join(lines) + "\n\n---\n\n"
+
+
+def topic_source_of_truth_for_thread(db, thread_id: str | None) -> str:
+    """DB wrapper: the bound topic's Source-of-truth section, or "" if the
+    thread has no topic (bare/conversation threads). Best-effort — never
+    breaks dispatch (matches the ledger-write convention in dispatch_core)."""
+    if not thread_id:
+        return ""
+    from dbops import db_topics
+
+    try:
+        topic = db_topics.get_topic_by_thread(db, thread_id)
+    except Exception:
+        return ""
+    return build_source_of_truth_section(topic)
+
+
 def hydrate_for_topic(db, project_id: str, topic: dict) -> str:
     """DB wrapper: dep-topic rows + topo-ordered tasks → build_topic_hydration."""
     from dbops import db_topics

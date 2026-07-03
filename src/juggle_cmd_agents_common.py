@@ -39,7 +39,7 @@ UNIVERSAL_PREAMBLE = """\
 ## Universal rules (enforced for every agent)
 
 1. Your task ENDS with a `complete-agent` or `fail-agent` Bash call. NEVER stop at the input prompt and wait for guidance — either complete with results, complete with BLOCKER, or complete with --open-questions JSON.
-2. Pre-existing test failures (failures present on the base commit) are NOT your concern — document in --retain and proceed.
+2. Pre-existing test failures (failures present on the base commit) ARE your concern — proactively FIX them during the run unless the task says otherwise, and note them in --retain.
 
 ---
 

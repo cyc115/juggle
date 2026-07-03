@@ -36,3 +36,7 @@ def apply_tail_migrations(conn: sqlite3.Connection) -> None:
     # Migration 65 (P3, irl-prevention): nodes.rebase_nudge_sent column.
     from dbops.migration_65_rebase_nudge import migrate_65_rebase_nudge
     migrate_65_rebase_nudge(conn)
+
+    # Migration 66 (plan/spec provision): nodes.plan_path/spec_path columns.
+    from dbops.migration_66_topic_plan_spec import migrate_66_topic_plan_spec
+    migrate_66_topic_plan_spec(conn)

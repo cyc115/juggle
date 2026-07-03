@@ -153,19 +153,21 @@ def test_coder_template_includes_incremental_commit_guidance():
             f"incremental-commit guidance leaked into the {role} template"
         )
 
-def test_coder_template_mandates_full_suite_once_no_subset():
-    """Regression (2026-06-20): coder agents zombie-looped — burned 100k-330k
+def test_coder_template_mandates_full_suite_unbounded_reruns_no_subset():
+    """Regression (2026-06-20), REVISED 2026-07-03 (T-fix-dispatch-plan-spec-
+    provision, user directive): coder agents zombie-looped — burned 100k-330k
     tokens each — by launching the suite as a BACKGROUND job and polling it
     forever, never calling complete-agent. The earlier mitigation deselected a
     quarantine list; the 2026-06-20 user directive REPLACED that with "always
-    run the FULL test suite, never a subset". The coder template MUST now tell
+    run the FULL test suite, never a subset". The coder template MUST tell
     agents to: (1) run the FULL suite (no subset, no --deselect), (2) run it
-    ONCE, synchronously (no background-poll, no re-run loop) with a HARD-bounded
-    fix-and-re-run cycle (one fix attempt, then STOP), and (3) end by calling
-    complete-agent/fail-agent. The template must NOT carry any --deselect /
-    quarantine routing (that would contradict the full-suite directive).
-    Pinned on the in-repo DEFAULT so the rule ships with the code and cannot be
-    lost to a missing/overriding user config.
+    synchronously (no background-poll job) but re-run/re-fix AS MANY TIMES AS
+    NEEDED until green or a genuine blocker (2026-07-03: the prior one-fix-
+    attempt-then-STOP cap regressed intent and left real failures unfixed),
+    and (3) end by calling complete-agent/fail-agent. The template must NOT
+    carry any --deselect / quarantine routing (that would contradict the
+    full-suite directive). Pinned on the in-repo DEFAULT so the rule ships
+    with the code and cannot be lost to a missing/overriding user config.
     """
     from juggle_settings import DEFAULTS
 
@@ -188,10 +190,16 @@ def test_coder_template_mandates_full_suite_once_no_subset():
             f"coder template still deselects {qt} — contradicts full-suite directive"
         )
 
-    # (2) Run-once / synchronous / anti-loop language.
-    assert "once" in low, "guidance must say run the verification suite ONCE"
+    # (2) Synchronous / anti-background-loop language, but UNBOUNDED re-run/re-fix.
     assert "background" in low and "poll" in low, (
         "guidance must forbid backgrounding the suite and polling it"
+    )
+    assert "as many times as needed" in low or "until green" in low, (
+        "guidance must allow unbounded re-run/re-fix cycles (2026-07-03 directive)"
+    )
+    assert "one fix attempt" not in low and "one green run = done" not in low, (
+        "guidance must NOT hard-cap fix attempts at one (2026-07-03 directive "
+        "replaced the 2026-06-20 hard cap)"
     )
 
     # (3) Must terminate via the completion verbs (P9 G1: 'agent complete' /
@@ -200,12 +208,10 @@ def test_coder_template_mandates_full_suite_once_no_subset():
         "Verification guidance must require ending on agent complete/agent fail"
     )
 
-    # (I2) The fix-and-re-run cycle must be HARD-bounded (one attempt, then
-    #      stop) — not an open-ended "re-run once per fix" that loops forever.
-    assert "second" in low and ("partial" in low or "blocker" in low), (
-        "anti-loop guidance must hard-stop after one fix attempt "
-        "(no second fix; bail to PARTIAL/BLOCKER) — DA I2"
-    )
+    # STOP is still reserved for a genuine blocker, and iteration count must be
+    # reported so unbounded re-runs stay observable (2026-07-03 directive).
+    assert "blocker" in low, "guidance must still define a genuine-blocker STOP condition"
+    assert "iteration count" in low, "guidance must require reporting the iteration count"
 
     # Coder-only: the verify guidance must NOT leak into the planner/researcher
     # templates (they don't run the suite).

@@ -106,3 +106,66 @@ def test_send_task_reuses_existing_worktree(db, repo, tmp_path, monkeypatch):
 
     thread = db.get_thread(thread_id)
     assert thread["worktree_path"] == str(existing_wt)
+
+
+# ── T-fix-dispatch-plan-spec-provision: Source of truth section placement ─────
+
+
+def test_send_task_places_source_of_truth_immediately_after_working_directory(
+    db, repo, tmp_path, monkeypatch
+):
+    """A topic with plan_path/spec_path bound to the dispatch thread must surface
+    a '## Source of truth (READ FIRST)' section right after '## Working
+    Directory' — before the role template — so a coder reads it before anything
+    else (2026-07-03 GAP: plan/spec references previously never reached dispatch
+    prompts)."""
+    from dbops import db_topics as tp
+
+    monkeypatch.setenv("JUGGLE_WORKTREE_ROOT", str(tmp_path / "wts"))
+    (tmp_path / "wts").mkdir()
+
+    import juggle_dispatch_core as _core
+    monkeypatch.setattr(_core, "DEFAULT_WORKTREE_ROOT", str(tmp_path / "wts"))
+    from juggle_dispatch_core import send_task_to_agent
+
+    thread_id = db.create_thread("t3", session_id="")
+    agent_id = db.create_agent("coder", "%fake", repo_path=str(repo))
+
+    tp.create_topic(db, topic_id="T-plan", project_id="INBOX", title="T")
+    tp.set_topic_thread(db, "T-plan", thread_id)
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET plan_path=?, spec_path=? WHERE id='T-plan'",
+            ("plan/2026-07-03-x.md", "docs/2026-07-03-x-spec.md"),
+        )
+        conn.commit()
+
+    send_task_to_agent(db, agent_id, thread_id, "do the thing", _mgr=_fake_mgr())
+
+    full_prompt = db.get_agent(agent_id)["last_task"]
+    assert "## Working Directory" in full_prompt
+    assert "## Source of truth (READ FIRST)" in full_prompt
+    assert "plan/2026-07-03-x.md" in full_prompt
+    wd_idx = full_prompt.index("## Working Directory")
+    sot_idx = full_prompt.index("## Source of truth (READ FIRST)")
+    role_idx = full_prompt.index("## Role: Coder")
+    assert wd_idx < sot_idx < role_idx
+
+
+def test_send_task_omits_source_of_truth_when_topic_has_no_plan_or_spec(
+    db, repo, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("JUGGLE_WORKTREE_ROOT", str(tmp_path / "wts"))
+    (tmp_path / "wts").mkdir()
+
+    import juggle_dispatch_core as _core
+    monkeypatch.setattr(_core, "DEFAULT_WORKTREE_ROOT", str(tmp_path / "wts"))
+    from juggle_dispatch_core import send_task_to_agent
+
+    thread_id = db.create_thread("t4", session_id="")
+    agent_id = db.create_agent("coder", "%fake", repo_path=str(repo))
+
+    send_task_to_agent(db, agent_id, thread_id, "do the thing", _mgr=_fake_mgr())
+
+    full_prompt = db.get_agent(agent_id)["last_task"]
+    assert "## Source of truth (READ FIRST)" not in full_prompt

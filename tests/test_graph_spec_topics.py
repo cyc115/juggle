@@ -135,6 +135,90 @@ def test_add_task_no_topic_on_topic_project_succeeds(db, tmp_path):
     assert g.get_task(db, "t3") is not None
 
 
+# ── T-fix-dispatch-plan-spec-provision: plan:/spec: as first-class fields ──────
+
+PLAN_SPEC_FILE_LEVEL = """\
+plan: plan/2026-07-03-example.md
+spec: docs/2026-07-03-example-spec.md
+## topic auth: Authentication
+Build login end-to-end.
+
+### t1: DB schema
+Create users table.
+"""
+
+PLAN_SPEC_TOPIC_OVERRIDE = """\
+plan: plan/2026-07-03-example.md
+spec: docs/2026-07-03-example-spec.md
+## topic auth: Authentication
+plan: plan/2026-07-03-auth-only.md
+Build login end-to-end.
+
+### t1: DB schema
+Create users table.
+
+## topic ui: Frontend
+### u1: Login form
+Render the form.
+"""
+
+PLAN_SPEC_NONE = """\
+## topic auth: Authentication
+Build login end-to-end.
+
+### t1: DB schema
+Create users table.
+"""
+
+
+def test_parse_topics_spec_file_level_plan_and_spec():
+    topics = parse_topics_spec(PLAN_SPEC_FILE_LEVEL)
+    assert topics[0]["plan_path"] == "plan/2026-07-03-example.md"
+    assert topics[0]["spec_path"] == "docs/2026-07-03-example-spec.md"
+
+
+def test_parse_topics_spec_topic_level_overrides_file_level():
+    topics = parse_topics_spec(PLAN_SPEC_TOPIC_OVERRIDE)
+    auth, ui = topics
+    assert auth["plan_path"] == "plan/2026-07-03-auth-only.md"  # topic override
+    assert auth["spec_path"] == "docs/2026-07-03-example-spec.md"  # file-level fallback
+    assert ui["plan_path"] == "plan/2026-07-03-example.md"  # inherits file-level
+    assert ui["spec_path"] == "docs/2026-07-03-example-spec.md"
+
+
+def test_parse_topics_spec_no_plan_or_spec_leaves_paths_empty():
+    topics = parse_topics_spec(PLAN_SPEC_NONE)
+    assert not topics[0].get("plan_path")
+    assert not topics[0].get("spec_path")
+
+
+def test_load_topic_spec_stores_plan_and_spec_path_on_topic(db, tmp_path):
+    cg.cmd_project_graph_load(_load_args(tmp_path, db, PLAN_SPEC_FILE_LEVEL))
+    topic = db_topics.get_topic(db, "auth")
+    assert topic["plan_path"] == "plan/2026-07-03-example.md"
+    assert topic["spec_path"] == "docs/2026-07-03-example-spec.md"
+
+
+def test_add_task_plan_spec_flags_set_on_new_synthetic_topic(db, tmp_path):
+    cg.cmd_graph_add_task(_add_args(
+        db, id="y", plan="plan/2026-07-03-y.md", spec="docs/2026-07-03-y-spec.md",
+    ))
+    topic = db_topics.get_topic(db, "T-y")
+    assert topic["plan_path"] == "plan/2026-07-03-y.md"
+    assert topic["spec_path"] == "docs/2026-07-03-y-spec.md"
+
+
+def test_add_task_plan_spec_flags_do_not_override_existing(db, tmp_path):
+    cg.cmd_project_graph_load(_load_args(tmp_path, db, PLAN_SPEC_FILE_LEVEL))
+    cg.cmd_graph_add_task(_add_args(
+        db, id="t2", deps="t1", topic="auth",
+        plan="plan/should-not-apply.md", spec="docs/should-not-apply.md",
+    ))
+    topic = db_topics.get_topic(db, "auth")
+    assert topic["plan_path"] == "plan/2026-07-03-example.md"
+    assert topic["spec_path"] == "docs/2026-07-03-example-spec.md"
+
+
 def test_add_task_with_topic_assigns_it(db, tmp_path):
     cg.cmd_project_graph_load(_load_args(tmp_path, db, TOPIC_SPEC))
     cg.cmd_graph_add_task(_add_args(db, id="t3", deps="t1", topic="auth"))

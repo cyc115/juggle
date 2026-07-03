@@ -156,72 +156,21 @@ def send_task_to_agent(
     else:
         is_new = False
 
-    # ── Worktree auto-create (coder/planner only) ─────────────────────────────
-    thread_wt = db.get_thread(thread_id) if thread_id else None
-    _worktree_context = ""
+    # Worktree auto-create (coder/planner only) + '## Working Directory' section.
+    from juggle_dispatch_worktree_context import build_worktree_context
+    _worktree_context = build_worktree_context(
+        db, role=_role, agent=agent, pane_id=pane_id, thread_id=thread_id,
+        allow_main=allow_main, worktree_path_override=worktree_path_override,
+        worktree_branch_override=worktree_branch_override,
+        main_repo_override=main_repo_override,
+        default_worktree_root=DEFAULT_WORKTREE_ROOT,
+    )
 
-    if _role in ("coder", "planner") and thread_wt:
-        thread_label_wt = thread_wt.get("user_label") or thread_wt["id"][:6]
-        # Explicit CLI overrides: persist then reload
-        if worktree_path_override:
-            db.update_thread(
-                thread_id,
-                worktree_path=worktree_path_override,
-                worktree_branch=worktree_branch_override or thread_wt.get("worktree_branch"),
-                main_repo_path=main_repo_override or (agent.get("repo_path") or "").strip(),
-            )
-            thread_wt = db.get_thread(thread_id)
-
-        # Worktree base resolution (reject-filtered ~/.claude / plugin dir).
-        from juggle_repo_binding import resolve_worktree_base
-        repo_path_wt = resolve_worktree_base(
-            main_repo_override, agent.get("repo_path"),
-            thread_wt.get("main_repo_path"), pane_id)
-
-        existing_wt = (thread_wt.get("worktree_path") or "").strip()
-
-        if not existing_wt and repo_path_wt and not allow_main:
-            from juggle_stack_base import topic_id_for_thread
-            ok_wt, wt_path_new, branch_new, msg_wt = _com._create_worktree(
-                repo_path_wt, thread_label_wt, DEFAULT_WORKTREE_ROOT,
-                db=db, topic_id=topic_id_for_thread(db, thread_id))
-            if ok_wt:
-                db.update_thread(
-                    thread_id,
-                    worktree_path=wt_path_new,
-                    worktree_branch=branch_new,
-                    main_repo_path=repo_path_wt,
-                )
-                thread_wt = db.get_thread(thread_id)
-                existing_wt = wt_path_new
-                _log.info("[juggle] %s", msg_wt)
-            else:
-                _log.warning("[juggle] WARNING: worktree auto-create failed: %s", msg_wt)
-
-        if not existing_wt and repo_path_wt and not allow_main:
-            raise RuntimeError(
-                f"cannot dispatch {_role} task without an isolated worktree "
-                f"(repo={repo_path_wt}). Worktree auto-create failed. "
-                f"Use allow_main=True to override (bypass is logged)."
-            )
-
-        if allow_main and repo_path_wt:
-            _log.warning(
-                "[juggle] WARNING: allow_main used for %s on %s (thread %s) — "
-                "main-worktree guard bypassed.",
-                _role, repo_path_wt, thread_label_wt,
-            )
-
-        if existing_wt:
-            branch_label_wt = (thread_wt.get("worktree_branch") or "") if thread_wt else ""
-            _worktree_context = (
-                f"## Working Directory\n"
-                f"This task runs in an isolated worktree. "
-                f"cd into it before any git or file operations:\n"
-                f"```bash\ncd {existing_wt}\n```\n"
-                f"Branch: `{branch_label_wt}`\n\n---\n\n"
-            )
-    # ── End worktree ──────────────────────────────────────────────────────────
+    # '## Source of truth' section (T-fix-dispatch-plan-spec-provision):
+    # immediately after Working Directory, before the role template, so it's
+    # the first thing a coder reads about WHAT to build.
+    from juggle_graph_hydration import topic_source_of_truth_for_thread
+    _source_of_truth = topic_source_of_truth_for_thread(db, thread_id)
 
     # Prompt build
     if not skip_template and _role:
@@ -232,7 +181,9 @@ def send_task_to_agent(
             template = template.replace("{quality_gate_skill}", qg)
             prompt = template + "\n---\n\n" + prompt.rstrip()
 
-    full_prompt = _com.UNIVERSAL_PREAMBLE + _worktree_context + prompt.rstrip()
+    full_prompt = (
+        _com.UNIVERSAL_PREAMBLE + _worktree_context + _source_of_truth + prompt.rstrip()
+    )
     try:
         full_prompt = adapter.decorate_task(_role, full_prompt)
     except Exception:

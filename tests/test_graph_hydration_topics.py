@@ -7,7 +7,10 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from juggle_graph_hydration import build_topic_hydration  # noqa: E402
+from juggle_graph_hydration import (  # noqa: E402
+    build_source_of_truth_section,
+    build_topic_hydration,
+)
 
 
 def _topic():
@@ -39,3 +42,28 @@ def test_topic_hydration_contains_contract_and_order():
 def test_verified_task_flagged_for_skip():
     text = build_topic_hydration("", _topic(), deps=[], tasks=_tasks())
     assert "VERIFIED — skip" in text and "t2" in text
+
+
+# ── T-fix-dispatch-plan-spec-provision: Source of truth (READ FIRST) section ───
+
+
+def test_source_of_truth_section_with_both_paths():
+    section = build_source_of_truth_section(
+        {"plan_path": "plan/2026-07-03-x.md", "spec_path": "docs/2026-07-03-x-spec.md"}
+    )
+    assert "## Source of truth (READ FIRST)" in section
+    assert "Read plan/2026-07-03-x.md IN FULL" in section
+    assert "Consult docs/2026-07-03-x-spec.md when intent is unclear" in section
+    assert section.index("plan/2026-07-03-x.md") < section.index("docs/2026-07-03-x-spec.md")
+
+
+def test_source_of_truth_section_plan_only():
+    section = build_source_of_truth_section({"plan_path": "plan/2026-07-03-x.md", "spec_path": ""})
+    assert "Read plan/2026-07-03-x.md IN FULL" in section
+    assert "Consult" not in section
+
+
+def test_source_of_truth_section_omitted_when_neither_path():
+    assert build_source_of_truth_section({"plan_path": "", "spec_path": ""}) == ""
+    assert build_source_of_truth_section(None) == ""
+    assert build_source_of_truth_section({}) == ""

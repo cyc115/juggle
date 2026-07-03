@@ -103,12 +103,22 @@ def cmd_project_graph_load(args):
             if et is None:
                 db_topics.create_topic(
                     db, topic_id=t["id"], project_id=args.project,
-                    title=t["title"], objective=t.get("objective", ""), conn=conn,
+                    title=t["title"], objective=t.get("objective", ""),
+                    plan_path=t.get("plan_path") or None,
+                    spec_path=t.get("spec_path") or None, conn=conn,
                 )
-            elif et["state"] not in db_graph.PROTECTED_STATES:
-                conn.execute(
-                    "UPDATE nodes SET title=?, objective=? WHERE id=? AND kind='topic'",
-                    (t["title"], t.get("objective", ""), t["id"]),
+            else:
+                if et["state"] not in db_graph.PROTECTED_STATES:
+                    conn.execute(
+                        "UPDATE nodes SET title=?, objective=? WHERE id=? AND kind='topic'",
+                        (t["title"], t.get("objective", ""), t["id"]),
+                    )
+                # The spec file is the source of truth for plan/spec on reload,
+                # regardless of protected state — re-pointing a doc reference is
+                # not a task-content change (T-fix-dispatch-plan-spec-provision).
+                db_topics.set_topic_plan_spec(
+                    db, t["id"], plan_path=t.get("plan_path") or None,
+                    spec_path=t.get("spec_path") or None, force=True, conn=conn,
                 )
         for n in tasks:
             prev = existing.get(n["id"])

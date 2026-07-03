@@ -9,7 +9,7 @@ locking (busy_timeout, set on every connection by ``juggle_db_connect``) plus a
 single atomic ``UPDATE ... RETURNING`` serializes reservations.
 
 BOOTSTRAP is one past the highest migration file that exists at the time this
-module is authored (65) — a plain hand-picked number, same as every migration
+module is authored (66) — a plain hand-picked number, same as every migration
 before the allocator existed (chicken-egg, ack'd in the plan's DA log).
 """
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import sqlite3
 
-BOOTSTRAP_NEXT = 66
+BOOTSTRAP_NEXT = 67
 
 CREATE_MIGRATION_SEQ = """
 CREATE TABLE IF NOT EXISTS migration_seq (

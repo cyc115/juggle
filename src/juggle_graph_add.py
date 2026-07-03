@@ -18,6 +18,12 @@ from __future__ import annotations
 
 from dbops import db_graph
 from juggle_graph_upsert import find_cycle, lint_verify_cmd
+# Re-exported (2026-07-03 LOC-gate extraction) so `from juggle_graph_add import
+# resolve_dispatch_topic, record_surfacing_conversation` keeps working.
+from juggle_graph_add_surfacing import (  # noqa: F401
+    record_surfacing_conversation,
+    resolve_dispatch_topic,
+)
 
 
 # Mutable states an EXISTING task touched by a new edge (a --required-by target
@@ -56,50 +62,6 @@ TERMINAL_REOPEN_TOPIC_STATES = frozenset(
 class AddTaskError(ValueError):
     """Validation/guard failure for a single-task add. Carries a clean message;
     the CLI maps it to a nonzero exit with no partial insert."""
-
-
-def resolve_dispatch_topic(
-    db, project_id: str, task_id: str, requested_topic: str | None
-) -> tuple[str, bool]:
-    """Resolve the graph-topic that will OWN (and thus dispatch) a new task.
-
-    DEFAULT-DISPATCHABLE (2026-06-30 orphan-task dispatch gap): a task must ALWAYS
-    live under a kind='topic' node — topics are the watchdog dispatch unit, so a
-    parentless task is an undispatchable orphan that silently stalls its project.
-    Rules, returning ``(topic_id, auto_create)`` — NEVER ``None``:
-      * ``requested_topic`` names a REAL graph-topic → use it verbatim (False).
-      * ``requested_topic`` missing, OR names a NON-graph-topic node (e.g. a
-        kind='conversation' thread) → synthesize ``'T-<task-id>'`` and flag it
-        for auto-create (True). A conversation owner is thus recorded only as the
-        human-facing thread; the DISPATCH home is always a graph-topic.
-    """
-    from dbops import db_topics
-
-    if requested_topic and db_topics.get_topic(db, requested_topic) is not None:
-        return requested_topic, False
-    return f"T-{task_id}", True
-
-
-def record_surfacing_conversation(db, topic_id: str, requested_topic) -> None:
-    """Bind an existing descriptive conversation as ``topic_id``'s dispatch thread.
-
-    Dedup defect F (2026-07-01): ``add-task --topic <conversation>`` synthesizes a
-    'T-<id>' graph-topic home (resolve_dispatch_topic), but the human conversation
-    the user named must stay the SINGLE surfacing row — graph_tick reuses this
-    binding instead of minting a "[T-<id>]" mirror. ``requested_topic`` (UUID or
-    slug) resolving to no conversation is left untouched. Never raises."""
-    from dbops import db_topics
-
-    if not requested_topic:
-        return
-    try:
-        conv = db.get_thread(requested_topic) or db.get_thread_by_user_label(
-            requested_topic
-        )
-        if conv is not None:
-            db_topics.set_topic_thread(db, topic_id, conv["id"])
-    except Exception:
-        pass  # a bad --topic never fails the already-committed add
 
 
 def validate_add_task(
@@ -193,6 +155,8 @@ def add_task(
     topic_id: str | None = None,
     auto_create_topic: bool = False,
     priority: int = 0,
+    plan_path: str | None = None,
+    spec_path: str | None = None,
 ) -> dict:
     """Validated, atomic, guarded insert of ONE task into a live graph.
 
@@ -241,11 +205,18 @@ def add_task(
                 if auto_create_topic:
                     db_topics.create_topic(
                         db, topic_id=topic_id, project_id=project_id,
-                        title=title, priority=priority, conn=conn,
+                        title=title, priority=priority,
+                        plan_path=plan_path, spec_path=spec_path, conn=conn,
                     )
-            elif existing_topic["state"] in TERMINAL_REOPEN_TOPIC_STATES:
-                db_topics.topic_transition(db, topic_id, "reopen", conn=conn)
-                topic_reopened = True
+            else:
+                if existing_topic["state"] in TERMINAL_REOPEN_TOPIC_STATES:
+                    db_topics.topic_transition(db, topic_id, "reopen", conn=conn)
+                    topic_reopened = True
+                # first-set-wins (T-fix-dispatch-plan-spec-provision): never
+                # clobbers a plan/spec `graph load` already recorded.
+                db_topics.set_topic_plan_spec(
+                    db, topic_id, plan_path=plan_path, spec_path=spec_path, conn=conn,
+                )
         if task_id in live:
             # Re-add of a mutable existing task: reset content + state to open.
             db_graph.update_task_content(

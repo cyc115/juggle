@@ -30,6 +30,26 @@ _HEADING_RE = re.compile(r"^##\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
 _FIELD_RE = re.compile(r"^[-*\s]*\bdeps\s*:\s*(.*)$")
 _TOPIC_HEADING_RE = re.compile(r"^##\s+topic\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
 _TASK_HEADING_RE = re.compile(r"^###\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$")
+# T-fix-dispatch-plan-spec-provision: optional 'plan: <path>' / 'spec: <path>'
+# metadata lines — file-level preamble (above the first heading) or per-topic
+# (topic override wins; falls back to file-level).
+_PLAN_SPEC_RE = re.compile(r"^\s*(plan|spec)\s*:\s*(\S.*?)\s*$", re.I)
+
+
+def _preamble_plan_spec(text: str) -> tuple[str, str]:
+    """Scan lines before the first heading of any kind for file-level
+    'plan: <path>' / 'spec: <path>' metadata. Pure; never raises."""
+    plan_path = spec_path = ""
+    for line in text.splitlines():
+        if line.startswith("##"):
+            break
+        m = _PLAN_SPEC_RE.match(line)
+        if m:
+            if m.group(1).lower() == "plan":
+                plan_path = m.group(2)
+            else:
+                spec_path = m.group(2)
+    return plan_path, spec_path
 
 # verify_cmd lint — FULL RELAX (2026-06-30, user decision): shell operators
 # (`&& ; | > < ` `` ` `` `$()` backticks) and any executable are now permitted.
@@ -164,10 +184,11 @@ def parse_topics_spec(text: str) -> list[dict]:
     heading forms gets a '_mixed' marker for validate_topics to reject
     (parse never raises; validation reports).
     """
+    file_plan, file_spec = _preamble_plan_spec(text)
     if not any(_TOPIC_HEADING_RE.match(line) for line in text.splitlines()):
         return [
             {"id": f"T-{n['id']}", "title": n["title"], "objective": "",
-             "tasks": [n]}
+             "tasks": [n], "plan_path": file_plan, "spec_path": file_spec}
             for n in parse_graph_spec(text)
         ]
     topics: list[dict] = []
@@ -195,11 +216,12 @@ def parse_topics_spec(text: str) -> list[dict]:
         tm = _TOPIC_HEADING_RE.match(line)
         if tm:
             _flush_topic()
-            current_topic = {"id": tm.group(1), "title": tm.group(2), "tasks": []}
+            current_topic = {"id": tm.group(1), "title": tm.group(2), "tasks": [],
+                             "plan_path": "", "spec_path": ""}
             obj, body = [], []
             continue
         if current_topic is None:
-            continue  # preamble
+            continue  # file-level preamble (plan/spec captured by _preamble_plan_spec)
         if _HEADING_RE.match(line):
             # flat `## x:` heading inside a topic spec — mixed form, reject later
             current_topic["_mixed"] = True
@@ -216,8 +238,17 @@ def parse_topics_spec(text: str) -> list[dict]:
             value = fm.group(1).strip()
             current_task["deps"] = [d.strip() for d in value.split(",") if d.strip()]
             continue
+        if current_task is None:
+            pm = _PLAN_SPEC_RE.match(line)
+            if pm:
+                key = "plan_path" if pm.group(1).lower() == "plan" else "spec_path"
+                current_topic[key] = pm.group(2)
+                continue
         (body if current_task is not None else obj).append(line)
     _flush_topic()
+    for t in topics:
+        t["plan_path"] = t.get("plan_path") or file_plan
+        t["spec_path"] = t.get("spec_path") or file_spec
     return topics
 
 

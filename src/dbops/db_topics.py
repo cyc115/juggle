@@ -22,6 +22,7 @@ from dbops.schema import _now
 from dbops.db_graph import _cx
 from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
 from dbops.state_write import cas_state, write_state
+from dbops.db_topics_plan_spec import set_topic_plan_spec  # noqa: F401 (re-exported)
 
 # Topic/task discriminator (P8 M2): a topic is its OWN kind='topic' node
 # (Migration 53 promoted every graph_topics member; create_topic writes kind='topic'
@@ -39,9 +40,8 @@ _TOPIC_ONLY = "kind='topic'"
 _TOPIC_SELECT = (
     "SELECT id, project_id, title, objective, state, "
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' "
-    "LIMIT 1) AS thread_id, merged_sha, submitted_rev, "
-    "pending_merged_sha, pending_merged_repo, "
-    "handoff, diffstat, "
+    "LIMIT 1) AS thread_id, merged_sha, submitted_rev, pending_merged_sha, "
+    "pending_merged_repo, handoff, diffstat, plan_path, spec_path, "
     f"verified_at, priority, created_at, updated_at FROM nodes WHERE {_TOPIC_ONLY}"
 )
 
@@ -89,21 +89,23 @@ def topic_transition(db, topic_id: str, event: str, conn=None) -> str:
 
 
 def create_topic(
-    db, *, topic_id, project_id, title, objective="", priority: int = 0, conn=None
+    db, *, topic_id, project_id, title, objective="", priority: int = 0,
+    plan_path: str | None = None, spec_path: str | None = None, conn=None,
 ) -> None:
     """Insert a topic as an authoritative kind='topic' node (parent_id NULL =
-    topic-tier). The kind discriminator (P8 M2) is what separates topics from bare
-    tasks. Writes ONLY nodes — the legacy graph_topics INSERT was cut
-    (P8 c4-write-cut). ``priority`` (default 0) lifts a fix/defect topic ahead in
-    the ready-dispatch interleave."""
+    topic-tier). Writes ONLY nodes — the legacy graph_topics INSERT was cut
+    (P8 c4-write-cut). ``priority`` lifts a fix/defect topic ahead in the
+    ready-dispatch interleave; ``plan_path``/``spec_path`` feed the
+    dispatch-prompt 'Source of truth' section."""
     now = _now()
     with _cx(db, conn) as c:
         c.execute(
             "INSERT OR IGNORE INTO nodes (id, kind, title, objective, state, "
-            "project_id, parent_id, priority, created_at, updated_at) "
-            "VALUES (?, 'topic', ?, ?, 'open', ?, NULL, ?, ?, ?)",
-            (topic_id, title, objective, project_id, priority, now, now),
+            "project_id, parent_id, priority, plan_path, spec_path, created_at, updated_at) "
+            "VALUES (?, 'topic', ?, ?, 'open', ?, NULL, ?, ?, ?, ?, ?)",
+            (topic_id, title, objective, project_id, priority, plan_path, spec_path, now, now),
         )
+
 
 
 def get_topic(db, topic_id, conn=None) -> dict | None:

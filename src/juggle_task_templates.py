@@ -5,8 +5,11 @@ Extracted from juggle_settings.py (2026-06-20, architecture-gate: settings.py
 exceeded its LOC budget). The single source of truth for the per-role preamble
 strings; imported back into ``DEFAULTS["task_templates"]`` so the runtime
 structure is unchanged (``DEFAULTS["task_templates"]["coder"]`` etc. resolve
-byte-identically). The coder Verification guidance now mandates the FULL
-suite ONCE (no subset, no --deselect) per the 2026-06-20 directive.
+byte-identically). The coder Verification guidance mandates the FULL suite
+(no subset, no --deselect) per the 2026-06-20 directive; re-run/re-fix
+iterations are unbounded until green or a genuine blocker (2026-07-03,
+T-fix-dispatch-plan-spec-provision — the prior "one fix attempt, then STOP"
+cap regressed intent and left real failures unfixed).
 """
 
 # Task Templates — prepended to agent prompts by role
@@ -17,22 +20,25 @@ TASK_TEMPLATES: dict[str, str] = {
         "### TDD Discipline\n"
         "1. Write failing tests FIRST — confirm they FAIL before implementation\n"
         "2. Implement the minimum code to pass tests\n"
-        "3. Run the FULL suite (foreground, ONCE) per the Verification section — fix regressions in YOUR files\n"
+        "3. Run the FULL suite (foreground) per the Verification section — fix regressions in YOUR files\n"
         "4. Run pre-pr quality gate ({quality_gate_skill}) before completion\n\n"
         "### Verification\n"
-        "Self-verify with the FULL suite ONCE, synchronously (foreground/blocking). "
+        "Self-verify with the FULL suite, synchronously (foreground/blocking). "
         "Use the helper `juggle verify` (runs the whole suite — no subset, no "
         "deselect), or run it by hand:\n"
         "`uv run pytest -q`\n"
-        "Do NOT launch the suite as a background job and poll it; do NOT re-run it "
-        "in a loop. One green run = done. If it is red because of YOUR changed "
-        "files, make ONE fix attempt and re-run once; if STILL red, STOP and "
-        "call agent complete with PARTIAL/BLOCKER — do NOT attempt a second "
-        "fix, and never re-run in a loop. Your task ENDS by calling "
-        "agent complete/agent fail — never sit waiting on a background job.\n\n"
+        "Do NOT launch the suite as a background job and poll it. Re-run and "
+        "re-fix as many times as needed until green — do not stop at a single "
+        "attempt. Only STOP and call agent complete with PARTIAL/BLOCKER if you "
+        "hit a genuine blocker (not fixable with available information/time). "
+        "Report the iteration count (how many verify/fix cycles you ran) in "
+        "your completion summary. Your task ENDS by calling agent complete/"
+        "agent fail — never sit waiting on a background job.\n\n"
         "### Completion Protocol\n"
         "When finished, call: juggle agent complete <thread> \"<summary>\" --retain \"<key finding>\"\n"
-        "Pre-existing test failures are NOT your concern — document in --retain and proceed.\n"
+        "Pre-existing test failures ARE your concern — proactively fix them "
+        "during the run unless the task says otherwise, and note them in "
+        "--retain.\n"
         "Integration is watchdog-owned — never run the integrate command yourself; "
         "the watchdog integrates automatically once you call agent complete.\n"
         "If finalization (agent complete / mark-task) errors, immediately call "
@@ -47,7 +53,7 @@ TASK_TEMPLATES: dict[str, str] = {
         "These per-step commits are expected even though a half-baked or errored FINAL state should not be committed (see the Terminal Checklist).\n\n"
         "HARNESS GATE: run the repo's harness smoke suite "
         "(trading-edge: `uv run pytest -m pilot`; "
-        "juggle: `juggle verify` (FULL suite ONCE — see Verification) + doctor --dry-run on a tmp DB) "
+        "juggle: `juggle verify` (FULL suite — see Verification) + doctor --dry-run on a tmp DB) "
         "and paste the suite summary line in your completion result. "
         "Completion without harness evidence is invalid.\n\n"
         "### Terminal Checklist (REQUIRED before agent complete)\n"
