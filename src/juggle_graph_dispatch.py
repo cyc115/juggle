@@ -179,6 +179,7 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     from juggle_graph_hydration import hydrate_for_topic
     from juggle_graph_scheduler import interleave_ready
     from juggle_graph_status import IN_FLIGHT_STATES
+    from juggle_land_poller import poll_unlanded_topics
 
     stats: dict = {"dispatched": [], "swept": [], "deferred": [], "errors": [],
                    "reconciled": []}
@@ -201,6 +202,13 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     for pid in all_projects:
         try:
             stats["swept"] += sweep_stale_topic_claims(db, pid)
+            # Land-poller sweep (SPEC §5.3): re-check integrated-unlanded topics
+            # BEFORE the ready-set scan — a promotion this tick (land_confirmed
+            # -> verified) can unblock a derived dependent's readiness the same
+            # tick via recompute_topic_ready below.
+            polled = poll_unlanded_topics(db, pid)
+            for k, v in polled.items():
+                stats.setdefault(f"land_{k}", []).extend(v)
             db_topics.recompute_topic_ready(db, pid)
             topics = db_topics.list_topics(db, pid)
         except Exception:
@@ -209,7 +217,16 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
             )
             continue
         ready_by_project[pid] = [t for t in topics if t["state"] == "ready"]
-        in_flight[pid] = sum(1 for t in topics if t["state"] in IN_FLIGHT_STATES)
+        # Capacity audit (SPEC §7.5): 'integrated-unlanded' counts toward the
+        # display/progress aggregate (juggle_graph_status.IN_FLIGHT_STATES) but
+        # must NOT weigh dispatch fairness or hold a thread slot here — its
+        # agent was already released at complete-agent time, so it consumes no
+        # capacity. Exclude it from THIS in_flight count explicitly rather than
+        # relying on IN_FLIGHT_STATES staying capacity-shaped forever.
+        in_flight[pid] = sum(
+            1 for t in topics
+            if t["state"] in IN_FLIGHT_STATES and t["state"] != "integrated-unlanded"
+        )
 
     for pid, topic in interleave_ready(ready_by_project, in_flight, all_projects):
         tid = topic["id"]
