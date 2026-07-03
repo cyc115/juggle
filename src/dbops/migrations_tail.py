@@ -32,3 +32,7 @@ def apply_tail_migrations(conn: sqlite3.Connection) -> None:
     # Migration 64 (P2, irl-prevention): migration_seq allocator table.
     from dbops.migration_64_migration_seq import migrate_64_migration_seq
     migrate_64_migration_seq(conn)
+
+    # Migration 65 (P3, irl-prevention): nodes.rebase_nudge_sent column.
+    from dbops.migration_65_rebase_nudge import migrate_65_rebase_nudge
+    migrate_65_rebase_nudge(conn)

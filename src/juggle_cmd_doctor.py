@@ -10,6 +10,7 @@ from pathlib import Path
 # the LOC/architecture gate). Re-exported here for the historical call/patch
 # surface (juggle_cmd_doctor._migrate_config used by tests + cmd_doctor).
 from juggle_doctor_migrations import _migrate_config  # noqa: F401
+from juggle_doctor_snapshot import snapshot_db, prune_old_snapshots  # noqa: F401
 
 
 # Home-default config/backup locations. These double as the module-level
@@ -179,6 +180,20 @@ def cmd_doctor(args) -> int:
         # schema already looks current. Each migration self-guards against
         # duplicate-column errors.
         if not dry:
+            # P3 (2026-07-03): snapshot BEFORE any migration touches the live
+            # file — an unattended (watchdog-run) migration becomes
+            # auto-revertible. Fail-closed: abort the ENTIRE migration when
+            # the snapshot itself fails, never proceed unsnapshotted.
+            try:
+                snap = snapshot_db(str(DB_PATH))
+                print(f"db: pre-migration snapshot -> {snap}")
+                pruned = prune_old_snapshots(str(DB_PATH))
+                if pruned:
+                    print(f"db: pruned {len(pruned)} snapshot(s) older than 7d")
+            except Exception as e:
+                print(f"db: ABORTED — pre-migration snapshot failed: {e}")
+                return 1
+
             # selfheal-v2 P1 (spec §6): quiesce the watchdog before any rebuild so
             # no writer races the error_events table swap (Migration 45).
             # stop_watchdog is a no-op if none is running; the 30s backstop

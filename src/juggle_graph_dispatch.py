@@ -180,9 +180,9 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     from juggle_graph_hydration import hydrate_for_topic
     from juggle_graph_scheduler import interleave_ready
     from juggle_land_poller import poll_unlanded_topics
+    from juggle_watchdog_rebase_nudge import sweep_rebase_nudges, clear_rebase_nudge
 
-    stats: dict = {"dispatched": [], "swept": [], "deferred": [], "errors": [],
-                   "reconciled": []}
+    stats: dict = {"dispatched": [], "swept": [], "deferred": [], "errors": [], "reconciled": []}
     # Reconcile orphaned in-flight task nodes BEFORE the ready-set scan (R1 wedge,
     # 2026-06-30): a kind='task' node stuck in {dispatching, running, integrating}
     # with a NULL/dead dispatch thread is healed off the wedge so it re-enters the
@@ -192,6 +192,7 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
         stats["reconciled"] = reconcile_orphaned_inflight(db)
     except Exception:
         _log.exception("graph tick: orphan reconcile failed — continuing")
+    stats["rebase_nudged"] = sweep_rebase_nudges(db, mgr) if mgr else []  # P3
     # Default-armed filter: drop disarmed projects (snapshot once per tick).
     # Empty disarmed set → unchanged list (behaviour-identical to drive-all).
     all_projects = select_armed(_all_project_ids(db), get_disarmed_projects(db))
@@ -288,6 +289,7 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
                 continue
             _dispatch_fails.pop(fail_key, None)
             db_topics.topic_transition(db, tid, "dispatch")  # → running
+            clear_rebase_nudge(db, tid)  # fresh running episode → nudge gate reopens
             db.emit_event(
                 thread_id=thread_id, session_id=_session_id(db), kind=_ek.AUTOPILOT_DISPATCH,
                 message=f"⬢ autopilot dispatched topic {tid} — {topic['title']}",
