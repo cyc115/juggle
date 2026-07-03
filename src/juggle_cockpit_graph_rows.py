@@ -35,6 +35,7 @@ _STATE_COLORS: dict[str, str] = {
     "running": "yellow",
     "dispatching": "yellow",
     "integrating": "yellow",
+    "integrated-unlanded": "blue",
     "open": "grey50",
     "failed-exec": "red",
     "failed-integration": "red",
@@ -42,7 +43,7 @@ _STATE_COLORS: dict[str, str] = {
     "blocked-failed": "red",
 }
 
-_RUNNING_STATES = ("running", "dispatching", "integrating")
+_RUNNING_STATES = ("running", "dispatching", "integrating", "integrated-unlanded")
 
 
 def _badge_segment(unread: int) -> str:

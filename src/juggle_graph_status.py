@@ -15,7 +15,11 @@ from __future__ import annotations
 FAILED_STATES = ("failed-exec", "failed-integration", "failed-verify")
 # dispatching/integrating are transient execution states — fold into "running"
 # for display so operators see "in flight", not scheduler internals.
-IN_FLIGHT_STATES = ("dispatching", "running", "integrating")
+# integrated-unlanded (SPEC §5.4) is display-only here — it counts for progress
+# but graph_tick's OWN capacity/fairness in_flight count excludes it explicitly
+# (juggle_graph_dispatch.graph_tick, SPEC §7.5): its agent was already released
+# at complete-agent time, so it holds no thread slot.
+IN_FLIGHT_STATES = ("dispatching", "running", "integrating", "integrated-unlanded")
 
 INJECTION_BUDGET = 500  # HARD cap on injected graph status (DA m4)
 _ELLIPSIS = "…"
