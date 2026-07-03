@@ -376,6 +376,108 @@ def test_heal_merged_sha_never_guesses_branch_from_label(db, tmp_path):
     assert t.get_topic(db, "T1")["merged_sha"] is None
 
 
+def _set_node_worktree_branch(db, node_id, branch):
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET worktree_branch=? WHERE id=?", (branch, node_id)
+        )
+        conn.commit()
+
+
+def test_heal_merged_sha_heals_from_topics_own_recorded_branch(db, tmp_path):
+    """The topic's OWN durably-recorded worktree_branch (nodes.worktree_branch,
+    stamped once at worktree creation) is provable proof — heal must stamp it
+    when the branch tip is genuinely an ancestor of main."""
+    from dbops import db_topics_reconcile as tr
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def _git(*a):
+        return subprocess.run(["git", "-C", str(repo), *a], check=True,
+                              capture_output=True, text=True)
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.email", "t@t.t")
+    _git("config", "user.name", "T")
+    (repo / "f.txt").write_text("base\n")
+    _git("add", ".")
+    _git("commit", "-qm", "base")
+    _git("checkout", "-q", "-b", "cyc_ES")
+    (repo / "f.txt").write_text("es work\n")
+    _git("add", ".")
+    _git("commit", "-qm", "es work")
+    _git("checkout", "-q", "main")
+    _git("merge", "-q", "--no-ff", "cyc_ES", "-m", "merge cyc_ES")
+
+    pid = _mk_project(db)
+    _mk_topic(db, "T1", pid, state="integrating")
+    _mk_task(db, "n1", pid, "T1", state="verified")
+    thread_id = db.create_thread(topic="w", session_id="sessH")
+    db.update_thread(thread_id, main_repo_path=str(repo))
+    t.set_topic_thread(db, "T1", thread_id)
+    _set_node_worktree_branch(db, "T1", "cyc_ES")
+
+    healed = tr._heal_merged_sha(db, t.get_topic(db, "T1"))
+
+    assert healed is True
+    assert t.get_topic(db, "T1")["merged_sha"]
+
+
+def test_heal_merged_sha_never_misattributes_reused_thread_sibling_merge(db, tmp_path):
+    """Incident regression pin (2026-07-03, T-T-fix-literal-finalize-line):
+    the topic's OWN recorded branch (cyc_ES) was NEVER merged, but the shared
+    dispatch thread was later reused/rebound so its live worktree_branch field
+    reflects a SIBLING topic's already-merged branch (trunk tip). Healing must
+    read the topic's own recorded branch ONLY — never the thread's live field
+    — so it must NOT stamp the sibling's merge as this topic's proof."""
+    from dbops import db_topics_reconcile as tr
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def _git(*a):
+        return subprocess.run(["git", "-C", str(repo), *a], check=True,
+                              capture_output=True, text=True)
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.email", "t@t.t")
+    _git("config", "user.name", "T")
+    (repo / "f.txt").write_text("base\n")
+    _git("add", ".")
+    _git("commit", "-qm", "base")
+
+    # T1's own branch: committed, NEVER merged.
+    _git("checkout", "-q", "-b", "cyc_ES")
+    (repo / "f.txt").write_text("es work\n")
+    _git("add", ".")
+    _git("commit", "-qm", "es work")
+    _git("checkout", "-q", "main")
+
+    pid = _mk_project(db)
+    _mk_topic(db, "T1", pid, state="integrating")
+    _mk_task(db, "n1", pid, "T1", state="verified")
+    thread_id = db.create_thread(topic="w", session_id="sessH")
+    db.update_thread(thread_id, main_repo_path=str(repo), worktree_branch="cyc_ES")
+    t.set_topic_thread(db, "T1", thread_id)
+    _set_node_worktree_branch(db, "T1", "cyc_ES")
+
+    # Sibling topic reuses the SAME dispatch thread and genuinely merges —
+    # the thread's live worktree_branch now reflects the sibling's work.
+    _git("checkout", "-q", "-b", "cyc_OTHER")
+    (repo / "g.txt").write_text("other\n")
+    _git("add", ".")
+    _git("commit", "-qm", "other work")
+    _git("checkout", "-q", "main")
+    _git("merge", "-q", "--no-ff", "cyc_OTHER", "-m", "merge cyc_OTHER")
+    db.update_thread(thread_id, worktree_branch="cyc_OTHER")
+
+    healed = tr._heal_merged_sha(db, t.get_topic(db, "T1"))
+
+    assert healed is False, "must never heal from a sibling topic's merged branch"
+    assert t.get_topic(db, "T1")["merged_sha"] is None
+
+
 def test_reconcile_integrating_with_live_agent_not_advanced(db):
     """An 'integrating' topic with a LIVE bound agent is still in progress — the
     integrate is genuinely running, not orphaned. Do NOT advance to verified."""

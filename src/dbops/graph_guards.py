@@ -88,6 +88,31 @@ def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
     return backend.is_ancestor(repo, sha, main)
 
 
+def thread_solely_bound_to(db, thread_id: str, topic_id: str) -> bool:
+    """True iff ``thread_id`` is dispatch-bound to ``topic_id`` and to no
+    OTHER node (T-fix-backfill-sha-misattribution). dispatch_edge only
+    enforces "a node binds exactly one thread", never the reverse — a
+    conversation thread reused as the dispatch home for a second, unrelated
+    topic leaves BOTH topics' edges live, so its ``worktree_branch`` reflects
+    whichever last dispatched through it. Only when exactly one topic (this
+    one) is bound is the thread's live branch field still trustworthy as a
+    fallback for a topic with no durably-recorded ``worktree_branch`` of its
+    own. Fail-closed on any error."""
+    if not thread_id or not topic_id:
+        return False
+    try:
+        with db._connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT node_id FROM node_edges "
+                "WHERE kind='dispatch' AND depends_on_id=?",
+                (thread_id,),
+            ).fetchall()
+        node_ids = {r[0] for r in rows}
+        return node_ids == {topic_id}
+    except Exception:
+        return False
+
+
 def _resolve_topic_repo(db, topic: dict) -> str:
     """Resolve the repo that holds ``main`` for this topic's merged_sha check.
 

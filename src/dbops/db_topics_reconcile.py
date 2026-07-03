@@ -38,30 +38,42 @@ def _heal_merged_sha(db, topic: dict) -> bool:
     commit → merged_sha left NULL and the topic wedged at 'integrating'; reconcile
     then re-derived 'integrating' through the same NULL-sha gate forever.
 
-    Resolves the topic's branch (thread ``worktree_branch`` ONLY — never guessed
-    from the thread's label, which is a rotating wheel-slug identifier with no
-    relation to git branch naming and can collide with an unrelated stray branch
-    left over from some other past dispatch, 2026-07-01 hotfix) and repo (thread
-    ``main_repo_path``, else juggle's own repo) and, IFF the branch tip is
-    provably an ancestor of main, records it. Returns True only when a real
-    ancestor sha was written — reconcile NEVER verifies without one (verified ⟺
-    merged). Never raises.
+    Resolves the topic's branch and, IFF the branch tip is provably an
+    ancestor of main, records it. Returns True only when a real ancestor sha
+    was written — reconcile NEVER verifies without one (verified ⟺ merged).
+    Never raises.
 
-    Incident (2026-07-02, async-land): the branch-name lookup above is USELESS
-    once ``_run_integrate`` has already finished — its own success path deletes
-    the git branch (``remove_workspace``) and clears the thread's worktree
-    fields (finalize) in the SAME call that could have left merged_sha NULL, so
-    this self-heal ran immediately afterward with nothing left to resolve.
-    Falls back to the topic's ``pending_merged_sha`` (a durable breadcrumb
-    ``_record_merged_sha`` stashes whenever it resolves a real object but can't
-    immediately prove ancestry — see ``juggle_integrate_mergedsha``) and
-    re-checks ITS ancestry against current canonical main; promotes it on
-    success. This is the ONLY path that can recover a topic whose branch is
-    already gone.
+    Branch source (T-fix-backfill-sha-misattribution, 2026-07-03 incident):
+    PREFERS the topic's OWN durably-recorded ``worktree_branch`` (stamped
+    once, at worktree creation, by
+    ``juggle_cmd_agents_worktree._create_worktree`` — never guessed from the
+    thread's rotating wheel-slug label, 2026-07-01 hotfix). Only when that is
+    unset does it fall back to the bound thread's live ``worktree_branch``,
+    and ONLY when ``graph_guards.thread_solely_bound_to`` proves that thread
+    is not ALSO the dispatch home of some OTHER topic — dispatch_edge only
+    enforces "a node binds exactly one thread", not the reverse, so a
+    conversation thread reused as a second topic's dispatch home leaves BOTH
+    topics' edges live and its field reflects whichever dispatched through it
+    MOST RECENTLY (confirmed incident: T-T-fix-literal-finalize-line was
+    healed to merged_sha=733f18b, the trunk tip landed by a sibling topic
+    sharing its dispatch thread, while its own branch cyc_ES was never
+    merged). Repo is still resolved via the bound thread's ``main_repo_path``
+    (else juggle's own repo) — only the repo *location*, never ownership proof.
+
+    Incident (2026-07-02, async-land): once ``_run_integrate`` has finished,
+    its own success path deletes the git branch (``remove_workspace``) and
+    clears the thread's worktree fields (finalize), which could have left
+    merged_sha NULL with nothing left to resolve. Falls back to the topic's
+    ``pending_merged_sha`` (a durable breadcrumb ``_record_merged_sha``
+    stashes whenever it resolves a real object but can't immediately prove
+    ancestry — see ``juggle_integrate_mergedsha``) and re-checks ITS ancestry
+    against current canonical main; promotes it on success. This is the ONLY
+    path that can recover a topic whose branch is already gone.
     """
     from dbops.db_topics import set_topic_merged_sha, set_topic_pending_merged_sha
     from dbops.graph_guards import (
         _resolve_topic_repo, resolve_branch_sha, sha_is_ancestor,
+        thread_solely_bound_to,
     )
 
     try:
@@ -72,7 +84,9 @@ def _heal_merged_sha(db, topic: dict) -> bool:
                 thread = db.get_thread(thread_id) or {}
             except Exception:
                 thread = {}
-        branch = (thread.get("worktree_branch") or "").strip()
+        branch = (topic.get("worktree_branch") or "").strip()
+        if not branch and thread_id and thread_solely_bound_to(db, thread_id, topic["id"]):
+            branch = (thread.get("worktree_branch") or "").strip()
         repo = (thread.get("main_repo_path") or "").strip() or _resolve_topic_repo(db, topic)
         if not repo:
             return False

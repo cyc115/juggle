@@ -177,13 +177,20 @@ def find_unmerged_completed_topics(db) -> list[dict]:
 
 
 def _topic_branch(db, node: dict) -> str:
-    """The agent branch bound to this node (nodes.worktree_branch), or '' if none."""
+    """The topic's OWN durably-recorded branch (nodes.worktree_branch);
+    falls back to the bound thread's live branch ONLY when that thread is
+    proven to not ALSO be some OTHER topic's dispatch home (T-fix-backfill-
+    sha-misattribution, 2026-07-03 incident — a reused/shared thread's live
+    field reflects whichever topic dispatched through it MOST RECENTLY, not
+    necessarily this one; see ``dbops.graph_guards.thread_solely_bound_to``).
+    """
+    from dbops.graph_guards import thread_solely_bound_to
+
     branch = (node.get("worktree_branch") or "").strip()
     if branch:
         return branch
-    # Fallback: the bound thread's branch (kind='dispatch' node_edge → thread).
     thread_id = _dispatch_thread(db, node["id"])
-    if thread_id:
+    if thread_id and thread_solely_bound_to(db, thread_id, node["id"]):
         thread = db.get_thread(thread_id) or {}
         return (thread.get("worktree_branch") or "").strip()
     return ""

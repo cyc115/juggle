@@ -117,8 +117,18 @@ def _create_worktree(
     worktree_path = str(Path(worktree_root) / f"juggle-{basename}-{thread_label}")
     branch = f"cyc_{thread_label}"
 
+    def _record_topic_branch() -> None:
+        # T-fix-backfill-sha-misattribution: stamp the topic's OWN, durable
+        # worktree_branch here — the single moment a topic's branch identity
+        # is established — so later merged-sha proof never has to fall back
+        # to a dispatch thread's live (reusable) worktree_branch field.
+        if db is not None and topic_id is not None:
+            from dbops.db_topics_worktree_branch import set_topic_worktree_branch
+            set_topic_worktree_branch(db, topic_id, branch)
+
     if Path(worktree_path).exists():
         _register_worktree_trust(worktree_path)
+        _record_topic_branch()
         return True, worktree_path, branch, f"Worktree already exists: {worktree_path}"
 
     try:
@@ -133,6 +143,7 @@ def _create_worktree(
     result = backend.create_workspace(repo_path, branch, worktree_path, base=base)
     if not result.ok:
         return False, "", "", f"git worktree add failed: {result.detail}"
+    _record_topic_branch()
 
     # Symlink .venv for immediate test runs — skip silently when absent
     main_venv = Path(repo_path) / ".venv"

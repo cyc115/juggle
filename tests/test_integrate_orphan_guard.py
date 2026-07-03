@@ -237,6 +237,9 @@ def test_reconcile_stamps_merged_sha_for_out_of_band_merge(tmp_path):
     tid = _bind_thread(db, repo=repo, branch=branch)
     _seed_topic(db, "T1", ["verified"], state="integrating",
                 thread_id=tid, merged_sha=None)
+    # T-fix-backfill-sha-misattribution: proof requires the topic's OWN
+    # durably-recorded branch (nodes.worktree_branch), not the bound thread's.
+    _bind_node_branch(db, "T1", repo=repo, branch=branch)
 
     # Before the fix this re-fires every tick; after it, the work is recognised
     # as already-on-main and reconciled.
@@ -266,6 +269,7 @@ def test_flag_auto_reconciles_before_alerting(tmp_path):
     tid = _bind_thread(db, repo=repo, branch=branch)
     _seed_topic(db, "T1", ["verified"], state="integrating",
                 thread_id=tid, merged_sha=None)
+    _bind_node_branch(db, "T1", repo=repo, branch=branch)
 
     assert orphan_guard.flag_unmerged_completed_topics(db) == []
     assert get_topic(db, "T1")["state"] == "verified"
@@ -294,9 +298,78 @@ def test_reconcile_skips_truly_unmerged_branch(tmp_path):
     tid = _bind_thread(db, repo=repo, branch="cyc_X")
     _seed_topic(db, "T1", ["verified"], state="integrating",
                 thread_id=tid, merged_sha=None)
+    _bind_node_branch(db, "T1", repo=repo, branch="cyc_X")
 
     assert orphan_guard.reconcile_out_of_band_merges(db) == []
     assert [t["id"] for t in orphan_guard.find_unmerged_completed_topics(db)] == ["T1"]
+
+
+# --- sha misattribution: shared/reused dispatch thread -----------------------
+#
+# Incident (2026-07-03, T-T-fix-literal-finalize-line): that topic was verified
+# with merged_sha=733f18b — the trunk tip landed by an ENTIRELY DIFFERENT
+# topic's merge — while its own branch (cyc_ES) was never merged. Both topics'
+# dispatch edges pointed at the same conversation thread (a reused/shared
+# "surfacing" thread — dispatch_edge.bind_dispatch_thread enforces "a node
+# binds exactly one thread", NOT the reverse). Reading the branch to prove off
+# the THREAD's current (mutable, last-writer-wins) worktree_branch field is
+# therefore not proof of any specific topic's own commits — only the topic's
+# OWN recorded ``nodes.worktree_branch`` is.
+
+
+def test_reconcile_never_misattributes_shared_thread_other_topics_merge(tmp_path):
+    """Two topics share one dispatch thread. T1's own branch (cyc_ES) is never
+    merged; T2 later reuses the SAME thread and genuinely merges its branch,
+    overwriting the thread's worktree_branch to point at T2's (now-merged) tip.
+    Reconciling T1 must NEVER stamp T2's merged commit as T1's proof — T1 has
+    no durably-recorded worktree_branch of its own, so it must stay unmerged
+    and surface as a completed-but-unmerged orphan."""
+    from dbops import orphan_guard
+    from dbops.db_topics import get_topic
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "f.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+
+    # T1's own work: cyc_ES, committed but NEVER merged.
+    _git(repo, "checkout", "-b", "cyc_ES")
+    (repo / "f.txt").write_text("ES work")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "ES work")
+    _git(repo, "checkout", "main")
+
+    db = _make_db(tmp_path)
+    shared_tid = _bind_thread(db, repo=repo, branch="cyc_ES")
+    _seed_topic(db, "T1", ["verified"], state="integrating",
+                thread_id=shared_tid, merged_sha=None)
+
+    # T2 ALSO binds to the SAME thread (dispatch_edge only enforces "a node
+    # binds exactly one thread", not the reverse) and its branch genuinely
+    # lands on main — the thread's worktree_branch now reflects T2's work.
+    _seed_topic(db, "T2", ["verified"], state="integrating",
+                thread_id=shared_tid, merged_sha=None)
+    _git(repo, "checkout", "-b", "cyc_OTHER")
+    (repo / "g.txt").write_text("other work")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "other work")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "cyc_OTHER", "-m", "merge cyc_OTHER")
+    db.update_thread(shared_tid, worktree_branch="cyc_OTHER")
+
+    reconciled = orphan_guard.reconcile_out_of_band_merges(db)
+
+    assert reconciled == [], "T1 must never be stamped from a sibling topic's merged branch"
+    assert get_topic(db, "T1")["merged_sha"] is None
+    assert get_topic(db, "T1")["state"] != "verified"
+    # T2 is also unproven (its own branch isn't durably recorded and its
+    # thread is now shared) — both surface as unmerged orphans, neither
+    # silently mis-verified.
+    assert {t["id"] for t in orphan_guard.find_unmerged_completed_topics(db)} == {"T1", "T2"}
 
 
 # --- grace period / agent-liveness guard (2026-07-02) -------------------------
