@@ -192,3 +192,41 @@ def test_multiple_tasks_each_get_lifecycle_steps_one_through_five():
 def test_unsupported_role_raises():
     with pytest.raises(ValueError):
         render_agent_prompt(_juggle_ctx(), "planner")
+
+
+# ── PC2 extensions: context narrative, verified flag, optional mark step ──────
+
+
+def test_context_narrative_rendered_in_task_section_before_tasks():
+    ctx = _juggle_ctx()
+    ctx = PromptContext(**{**ctx.__dict__, "context": "## Project objective\nShip it."})
+    rendered = render_agent_prompt(ctx, "coder")
+    assert "Ship it." in rendered
+    assert rendered.index("Ship it.") < rendered.index("## Lifecycle")
+
+
+def test_verified_task_flagged_and_skip_note_shown():
+    ctx = _foreign_ctx()
+    tasks = (
+        TaskSpec(id="w1", title="Add widget validation", verify_cmd="npm test",
+                 body="Validate.", verified=True),
+        TaskSpec(id="w2", title="Wire validation", verify_cmd="npm run test:api",
+                 body="Wire it."),
+    )
+    ctx = PromptContext(**{**ctx.__dict__, "tasks": tasks})
+    rendered = render_agent_prompt(ctx, "coder")
+    assert "w1 — Add widget validation [VERIFIED — skip]" in rendered
+    assert "Tasks flagged VERIFIED: skip them" in rendered
+    assert "w2 — Wire validation [VERIFIED — skip]" not in rendered
+
+
+def test_task_without_mark_step_omits_mark_line():
+    ctx = _foreign_ctx()
+    tasks = (
+        TaskSpec(id="ad-hoc", title="Task", verify_cmd="", body="Do the thing.",
+                 has_mark_step=False),
+    )
+    ctx = PromptContext(**{**ctx.__dict__, "tasks": tasks})
+    rendered = render_agent_prompt(ctx, "coder")
+    assert "graph mark-task" not in rendered
+    assert "Run its verify_cmd" not in rendered

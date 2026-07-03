@@ -24,12 +24,23 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TaskSpec:
-    """One task in the topic/task graph, fully resolved (no placeholders)."""
+    """One task in the topic/task graph, fully resolved (no placeholders).
+
+    ``verified``: PC2 — already-integrated task, flagged "[VERIFIED — skip]"
+    in the TASK section (rendered, not silently dropped, so the agent sees
+    the full task list). ``has_mark_step``: PC2 — False for a synthetic
+    ad-hoc task with no graph task id to mark (juggle_dispatch_core's
+    template-free ``send-task`` path); the Lifecycle section then omits the
+    literal ``graph mark-task`` step, which would otherwise reference a
+    nonexistent task id.
+    """
 
     id: str
     title: str
     verify_cmd: str
     body: str
+    verified: bool = False
+    has_mark_step: bool = True
 
 
 @dataclass(frozen=True)
@@ -95,6 +106,22 @@ class PromptContext:
     vcs: VcsInfo
     profile: RepoProfile
     is_juggle_repo: bool = False
+    context: str | None = None
+    """PC2 — free-text narrative (project objective, upstream topic
+    handoffs) rendered at the top of the TASK section, above the per-task
+    loop. None for single ad-hoc dispatches with no graph context."""
+
+
+@dataclass(frozen=True)
+class TopicPromptPayload:
+    """PC2 — carries a topic/task dispatch prompt's TASK-section content
+    (narrative + resolved TaskSpecs) from the pure hydration builders
+    (juggle_graph_hydration) to the dispatch-time renderer
+    (juggle_dispatch_core), which fills in the thread/workspace/vcs/profile
+    fields only known at send time and calls render_agent_prompt."""
+
+    context: str | None
+    tasks: tuple[TaskSpec, ...]
 
 
 def render_agent_prompt(ctx: PromptContext, role: str) -> str:
@@ -127,32 +154,40 @@ def _render_task_section(ctx: PromptContext) -> str:
         lines.append(f"Plan: {ctx.plan_path}")
     if ctx.spec_path:
         lines.append(f"Spec: {ctx.spec_path}")
+    if ctx.context:
+        lines += ["", ctx.context]
+    if any(task.verified for task in ctx.tasks):
+        lines += ["", "Tasks flagged VERIFIED: skip them."]
     for task in ctx.tasks:
-        lines += [
-            "",
-            f"### {task.id} — {task.title}",
-            task.body,
-            "",
-            f"Verify: `{task.verify_cmd}`",
-            "Acceptance:",
-            f"- [ ] `{task.verify_cmd}` passes",
-        ]
+        flag = " [VERIFIED — skip]" if task.verified else ""
+        lines += ["", f"### {task.id} — {task.title}{flag}", task.body]
+        if task.verify_cmd:
+            lines += [
+                "",
+                f"Verify: `{task.verify_cmd}`",
+                "Acceptance:",
+                f"- [ ] `{task.verify_cmd}` passes",
+            ]
     return "\n".join(lines)
 
 
 def _render_lifecycle_section(ctx: PromptContext) -> str:
     lines = ["## Lifecycle"]
     for task in ctx.tasks:
-        lines += [
-            "",
-            f"### {task.id} — {task.title}",
-            "1. Write a failing test first — confirm it FAILS before implementing.",
-            "2. Implement the minimum code to make it pass.",
-            f"3. Run its verify_cmd: `{task.verify_cmd}`",
-            f"4. Commit the unit ({ctx.vcs.commit_verb} on {ctx.vcs.workspace_noun} `{ctx.branch}`).",
-            f"5. Mark: `{ctx.cli_path} graph mark-task {task.id} --handoff "
-            "'<files touched, interfaces changed, key decisions>'`",
-        ]
+        steps = ["Write a failing test first — confirm it FAILS before implementing.",
+                  "Implement the minimum code to make it pass."]
+        if task.verify_cmd:
+            steps.append(f"Run its verify_cmd: `{task.verify_cmd}`")
+        steps.append(
+            f"Commit the unit ({ctx.vcs.commit_verb} on {ctx.vcs.workspace_noun} `{ctx.branch}`)."
+        )
+        if task.has_mark_step:
+            steps.append(
+                f"Mark: `{ctx.cli_path} graph mark-task {task.id} --handoff "
+                "'<files touched, interfaces changed, key decisions>'`"
+            )
+        lines += ["", f"### {task.id} — {task.title}"]
+        lines += [f"{i}. {step}" for i, step in enumerate(steps, start=1)]
 
     step = 6
     lines += ["", "### Finish (once, after the last task)"]
@@ -213,6 +248,9 @@ def _render_guardrails_section(ctx: PromptContext) -> str:
             "CLAUDE.md, or .codegraph files.",
             "- Never touch the shared production DB, and never run a DB "
             "migration from agent context.",
+            "- Pre-existing test failures (present on the base commit) ARE "
+            "your concern — proactively fix them unless the task says "
+            "otherwise, and note them in --retain.",
             "- Integration is watchdog-owned — never run the integrate "
             "command yourself.",
             f"- Commit incrementally: {ctx.vcs.commit_verb} each completed, "
