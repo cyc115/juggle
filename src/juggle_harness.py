@@ -16,11 +16,24 @@ Selection (config under ``agent`` in ``~/.juggle/config.json``):
 are unchanged.
 """
 
+from pathlib import Path
+
 from juggle_settings import DEFAULTS, get_settings
 
 # Concrete adapters self-register here, from their own modules — imported at the
 # bottom of this file so a plain ``import juggle_harness`` wires them up.
 _ADAPTERS: dict = {}
+
+# The dispatching orchestrator's OWN current repo root (this module's
+# __file__, resolved once at import time) — never the installed-plugin-cache
+# path a spawned agent's Claude Code process may separately resolve
+# CLAUDE_PLUGIN_ROOT to. Injected into every dispatched agent's env as
+# JUGGLE_REPO_ROOT so juggle_context.render_agent_role_anchor_for's COMPLETION
+# line always calls back into the SAME juggle_cli.py the orchestrator itself
+# is running — eliminating the agent/orchestrator CLI-version skew behind
+# 2026-07-03 incidents CR + CO (stale plugin-cache CLI vs. a DB migrated by a
+# newer repo raised a misleading "DB needs migration" failure).
+_ORCHESTRATOR_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 
 
 def register_adapter(type_name: str, cls) -> None:
@@ -33,17 +46,17 @@ def _env_prefix(env: dict | None, env_unset, role: str | None, audit: bool) -> s
     """Build the shared ``env ...`` command prefix.
 
     Two layers: juggle exports its identity vars (``JUGGLE_IS_AGENT=1`` plus
-    ``JUGGLE_AGENT_ROLE`` / ``JUGGLE_AGENT_AUDIT`` when applicable) so hooks and
-    telemetry can attribute the agent regardless of harness; then the harness's
-    own ``env`` dict is applied on top — it can set OR override **any** variable
-    for the launched process (overriding the inherited environment, and the
-    juggle defaults too if a harness deliberately lists them). ``env_unset``
-    scrubs inherited vars via ``-u``. So the environment is fully overridable
-    per harness while the defaults stay correct for harnesses that don't touch
-    them.
+    ``JUGGLE_AGENT_ROLE`` / ``JUGGLE_AGENT_AUDIT`` / ``JUGGLE_REPO_ROOT`` when
+    applicable) so hooks and telemetry can attribute the agent regardless of
+    harness; then the harness's own ``env`` dict is applied on top — it can
+    set OR override **any** variable for the launched process (overriding the
+    inherited environment, and the juggle defaults too if a harness
+    deliberately lists them). ``env_unset`` scrubs inherited vars via ``-u``.
+    So the environment is fully overridable per harness while the defaults
+    stay correct for harnesses that don't touch them.
 
     Order: ``env -u <unset...> JUGGLE_IS_AGENT=1 [JUGGLE_AGENT_ROLE=..]
-    [JUGGLE_AGENT_AUDIT=1] <harness env...>``.
+    [JUGGLE_AGENT_AUDIT=1] JUGGLE_REPO_ROOT=.. <harness env...>``.
     """
     parts = ["env"]
     for name in env_unset or ():
@@ -53,6 +66,7 @@ def _env_prefix(env: dict | None, env_unset, role: str | None, audit: bool) -> s
         merged["JUGGLE_AGENT_ROLE"] = role
     if audit:
         merged["JUGGLE_AGENT_AUDIT"] = "1"
+    merged["JUGGLE_REPO_ROOT"] = _ORCHESTRATOR_REPO_ROOT
     merged.update(env or {})  # harness env is authoritative — fully overridable
     for k, v in merged.items():
         parts.append(f"{k}={v}")

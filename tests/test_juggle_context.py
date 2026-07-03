@@ -65,6 +65,39 @@ def test_orchestrator_session_still_gets_dashboard(busy_active_db, monkeypatch):
     assert "Q&A history" in ctx
 
 
+# ---------------------------------------------------------------------------
+# 2026-07-03 incidents CR + CO: the AGENT ROLE anchor's COMPLETION line pinned
+# CLAUDE_PLUGIN_ROOT (the installed-plugin-cache path, e.g.
+# ~/.claude/plugins/cache/juggle/juggle/1.93.0) ahead of JUGGLE_REPO_ROOT (the
+# dispatching orchestrator's own, current-version repo, injected explicitly
+# into every dispatched agent's env). A stale cache install then hard-failed
+# every mark-task/agent-complete against a DB migrated by the newer repo.
+# CLAUDE_PLUGIN_ROOT must never be consulted for the agent-facing CLI path.
+# ---------------------------------------------------------------------------
+from juggle_context import render_agent_role_anchor_for
+
+
+def test_agent_role_anchor_prefers_juggle_repo_root_over_plugin_cache(monkeypatch):
+    monkeypatch.setenv(
+        "CLAUDE_PLUGIN_ROOT",
+        "/Users/mikechen/.claude/plugins/cache/juggle/juggle/1.93.0",
+    )
+    monkeypatch.setenv("JUGGLE_REPO_ROOT", "/Users/mikechen/github/juggle")
+    anchor = render_agent_role_anchor_for("coder")
+    assert "/Users/mikechen/github/juggle/src/juggle_cli.py" in anchor
+    assert "plugins/cache" not in anchor
+
+
+def test_agent_role_anchor_ignores_plugin_cache_even_when_repo_root_unset(monkeypatch):
+    monkeypatch.setenv(
+        "CLAUDE_PLUGIN_ROOT",
+        "/Users/mikechen/.claude/plugins/cache/juggle/juggle/1.93.0",
+    )
+    monkeypatch.delenv("JUGGLE_REPO_ROOT", raising=False)
+    anchor = render_agent_role_anchor_for("coder")
+    assert "plugins/cache" not in anchor
+
+
 @pytest.fixture
 def active_db(tmp_path):
     db = JuggleDB(str(tmp_path / "test.db"))

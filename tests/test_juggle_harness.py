@@ -8,7 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import juggle_harness
-from juggle_harness import TemplateHarnessAdapter, get_adapter
+from juggle_harness import TemplateHarnessAdapter, get_adapter, _ORCHESTRATOR_REPO_ROOT
 from harnesses.claude import ClaudeCodeAdapter
 
 
@@ -51,6 +51,7 @@ def test_claude_build_launch_command_matches_legacy():
         cmd = adapter.build_launch_command(role="coder", model="sonnet", audit=False)
     assert cmd == (
         "env -u CLAUDE_PLUGIN_DATA JUGGLE_IS_AGENT=1 JUGGLE_AGENT_ROLE=coder "
+        f"JUGGLE_REPO_ROOT={_ORCHESTRATOR_REPO_ROOT} "
         "claude --dangerously-skip-permissions --model sonnet --settings /tmp/coder.json"
     )
     mock_overlay.assert_called_once_with("coder")
@@ -120,7 +121,10 @@ def _codex_cfg():
 def test_template_build_launch_command():
     adapter = get_adapter("coder", agent_cfg=_codex_cfg())
     cmd = adapter.build_launch_command(role="coder", model="gpt-5", audit=False)
-    assert cmd == "env JUGGLE_IS_AGENT=1 JUGGLE_AGENT_ROLE=coder codex -m gpt-5 --sandbox ro"
+    assert cmd == (
+        "env JUGGLE_IS_AGENT=1 JUGGLE_AGENT_ROLE=coder "
+        f"JUGGLE_REPO_ROOT={_ORCHESTRATOR_REPO_ROOT} codex -m gpt-5 --sandbox ro"
+    )
 
 
 def test_template_markers_from_config():

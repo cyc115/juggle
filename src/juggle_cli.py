@@ -286,8 +286,9 @@ def main():
         args.func(args)
     except Exception as e:
         from juggle_selfheal import record_error
+        from dbops.graph_guards import diagnose_agent_db_error
         record_error(e, "juggle_cli.main", {"argv": sys.argv})
-        print(f"Error: {e}")
+        print(f"Error: {diagnose_agent_db_error(e)}")
         sys.exit(1)
 
 

@@ -261,6 +261,49 @@ def test_agent_init_db_paths_consistent_regardless_of_init_flag(monkeypatch, tmp
 
 
 # ---------------------------------------------------------------------------
+# G2 follow-up — 2026-07-03 incidents CR + CO: agents never migrate the shared
+# DB (G2 above), so ANY "no such table/column" OperationalError an agent hits
+# against it is CLI/DB version skew, never a real migration need. The raw
+# sqlite3 message ("no such table: graph_tasks") led an agent to confidently
+# misdiagnose it as "DB is pre-Migration-39" and self-report an unrecoverable
+# failure. diagnose_agent_db_error rewrites the message to name the true
+# cause (a stale agent-context CLI) instead.
+# ---------------------------------------------------------------------------
+
+def test_diagnose_rewrites_missing_table_error_in_agent_context(monkeypatch):
+    monkeypatch.delenv("JUGGLE_ORCHESTRATOR", raising=False)
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    monkeypatch.setenv("JUGGLE_REPO_ROOT", "/Users/mikechen/github/juggle")
+    exc = __import__("sqlite3").OperationalError("no such table: graph_tasks")
+    msg = gg.diagnose_agent_db_error(exc)
+    assert "stale" in msg.lower()
+    assert "/Users/mikechen/github/juggle/src/juggle_cli.py" in msg
+    assert "DB needs migration" not in msg
+    assert "pre-Migration" not in msg
+
+
+def test_diagnose_leaves_non_schema_errors_untouched_in_agent_context(monkeypatch):
+    monkeypatch.delenv("JUGGLE_ORCHESTRATOR", raising=False)
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    exc = __import__("sqlite3").OperationalError("database is locked")
+    assert gg.diagnose_agent_db_error(exc) == "database is locked"
+
+
+def test_diagnose_leaves_orchestrator_errors_untouched(monkeypatch):
+    monkeypatch.setenv("JUGGLE_ORCHESTRATOR", "1")
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+    exc = __import__("sqlite3").OperationalError("no such table: graph_tasks")
+    assert gg.diagnose_agent_db_error(exc) == "no such table: graph_tasks"
+
+
+def test_diagnose_passes_through_non_operational_errors(monkeypatch):
+    monkeypatch.delenv("JUGGLE_ORCHESTRATOR", raising=False)
+    monkeypatch.setenv("JUGGLE_IS_AGENT", "1")
+    exc = ValueError("no such table: graph_tasks")
+    assert gg.diagnose_agent_db_error(exc) == "no such table: graph_tasks"
+
+
+# ---------------------------------------------------------------------------
 # G3 — claimable invariant (no empty/blocked topic promoted to ready)
 # ---------------------------------------------------------------------------
 

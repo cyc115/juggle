@@ -19,6 +19,7 @@ parsing. Pure predicates + one raising assertion.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from vcs import backend_for
@@ -196,3 +197,41 @@ def assert_migration_allowed(db_path) -> None:
             f"agent/worktree context (JUGGLE_IS_AGENT/worktree cwd). Only the "
             f"orchestrator migrates the shared DB; agents use an isolated DB."
         )
+
+
+_MISSING_SCHEMA_RE = re.compile(r"no such (table|column)", re.IGNORECASE)
+
+
+def diagnose_agent_db_error(exc: BaseException) -> str:
+    """Rewrite a misleading 'DB needs migration' diagnosis for agent contexts.
+
+    G2 (above) means an agent NEVER migrates the shared DB, so a
+    ``sqlite3.OperationalError`` about a missing table/column hit from an
+    agent context cannot mean "the DB is behind" — assert_migration_allowed
+    already forbids that agent from being the one to fix it. It can only mean
+    the agent is running a juggle_cli.py OLDER than the schema the shared DB
+    was migrated to. 2026-07-03 incidents CR + CO: agents on the stale
+    installed-plugin-cache CLI hit exactly this and self-diagnosed "DB is
+    pre-Migration-39" — backwards, and it burned two topics. Returns the
+    corrected message string (never raises); non-agent contexts and
+    non-schema errors pass through unchanged.
+    """
+    import sqlite3
+
+    text = str(exc)
+    if not isinstance(exc, sqlite3.OperationalError):
+        return text
+    if not is_agent_context():
+        return text
+    if not _MISSING_SCHEMA_RE.search(text):
+        return text
+
+    repo_root = os.environ.get("JUGGLE_REPO_ROOT") or str(
+        Path(__file__).resolve().parent.parent.parent
+    )
+    return (
+        f"{text} — your CLI is stale (installed-plugin-cache path is behind "
+        f"the shared DB's schema); re-run via {repo_root}/src/juggle_cli.py "
+        f"instead. NOT a sign the schema is missing anything — agents never "
+        f"run schema changes against the shared DB (G2)."
+    )
