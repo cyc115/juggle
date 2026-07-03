@@ -107,6 +107,38 @@ def test_find_unknown_keys_ignores_freeform_harnesses():
     assert cdoc.find_unknown_keys(cfg, DEFAULTS) == []
 
 
+def test_find_unknown_keys_ignores_freeform_agents_by_role():
+    """BUG (2026-07-03): agents.by_role is a DYNAMIC role-name map (coder/
+    planner/researcher/...) shipped 2026-06-30 for per-role model/effort
+    config — it IS current schema, not a typo. Role keys underneath must not
+    be flagged as unknown."""
+    cfg = {
+        "agents": {
+            "by_role": {
+                "coder": {"model": "sonnet", "effort": "high"},
+                "planner": {"model": "opus"},
+            }
+        }
+    }
+    assert cdoc.find_unknown_keys(cfg, DEFAULTS) == []
+
+
+def test_find_unknown_keys_flags_typo_inside_agents_by_role_value():
+    """Regression pin: a genuine typo in a role's VALUE schema (model/effort)
+    still warns — freeform only applies to the role-name keys, not their
+    contents."""
+    cfg = {"agents": {"by_role": {"coder": {"modle": "sonnet"}}}}
+    unknown = cdoc.find_unknown_keys(cfg, DEFAULTS)
+    assert "agents.by_role.coder.modle" in unknown
+
+
+def test_find_unknown_keys_malformed_by_role_does_not_crash():
+    """A malformed agents.by_role (not a dict) must not raise — just skip it,
+    same tolerance as everywhere else in this scanner."""
+    cfg = {"agents": {"by_role": "oops"}}
+    assert cdoc.find_unknown_keys(cfg, DEFAULTS) == []
+
+
 def test_find_unknown_keys_skips_inert_paths():
     """Inert keys live IN DEFAULTS, so the unknown scan must not see them; they
     are reported via the inert channel only (no double counting)."""

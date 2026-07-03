@@ -54,6 +54,16 @@ FREEFORM_PATHS: set[str] = {
     "task_templates",
 }
 
+# ── dynamic-key dicts with a fixed value schema ────────────────────────────────
+# Like FREEFORM_PATHS, the immediate children are arbitrary (role names), but
+# unlike FREEFORM_PATHS each child's VALUE is itself schema-checked against a
+# fixed shape — a typo inside a role's config (e.g. "modle") must still warn.
+# agents.by_role[role] -> {model, effort} (2026-06-30 per-role model/effort
+# config, cascade documented in juggle_settings.DEFAULTS["agents"]).
+ROLE_VALUE_SCHEMA_PATHS: dict[str, dict] = {
+    "agents.by_role": {"model": None, "effort": None},
+}
+
 
 def _path_present(cfg: dict, dotted: str) -> bool:
     """True if `dotted` resolves to an existing key in `cfg` (value may be null)."""
@@ -74,6 +84,9 @@ def find_unknown_keys(cfg: dict, defaults: dict) -> list[str]:
         no double counting).
       * A path in FREEFORM_PATHS is not descended into (its children are all
         valid user-defined keys).
+      * A path in ROLE_VALUE_SCHEMA_PATHS has dynamic child keys (role names),
+        but each child's own keys are checked against the fixed value schema —
+        a typo inside a role's config still reports as unknown.
       * Recurse only where BOTH cfg[k] and defaults[k] are dicts. A value-type
         mismatch (dict where defaults has a scalar, etc.) is out of scope — only
         keys entirely absent from defaults are reported.
@@ -86,6 +99,13 @@ def find_unknown_keys(cfg: dict, defaults: dict) -> list[str]:
         for key, val in c.items():
             path = f"{prefix}.{key}" if prefix else key
             if path in INERT_KEYS:
+                continue
+            if path in ROLE_VALUE_SCHEMA_PATHS:
+                value_schema = ROLE_VALUE_SCHEMA_PATHS[path]
+                if isinstance(val, dict):
+                    for role, role_cfg in val.items():
+                        if isinstance(role_cfg, dict):
+                            walk(role_cfg, value_schema, f"{path}.{role}")
                 continue
             if key not in d:
                 unknown.append(path)
