@@ -13,6 +13,7 @@ Two fail-closed guards applied to EVERY test:
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -23,8 +24,49 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 _PROD_DB = (Path.home() / ".claude" / "juggle" / "juggle.db").resolve()
 
 
+@pytest.fixture(scope="session")
+def _initialized_db_template(tmp_path_factory):
+    """Build the initialized schema ONCE per pytest session (per xdist worker).
+
+    `init_db()` is ~19ms of pure DDL + schema migrations — no per-test-unique
+    wall-clock/UUID seeding (verified: it only CREATEs tables/indexes and runs
+    deterministic migrations; tests asserting on DB contents build their OWN DB
+    via the `db`/`juggle_db` fixtures). So the initialized file is identical for
+    every test and can be materialized once and byte-copied per test
+    (`shutil.copyfile` ~0.21ms) instead of re-running init_db() ~3659 times.
+
+    Built on a SESSION-tmp path (never prod), so it never trips the prod-DB
+    guard (this session fixture resolves BEFORE the per-test `_connect` guard is
+    installed, so it uses the real unguarded `_connect` — harmless, the target is
+    a tmp path regardless). Under xdist `-n auto`, `tmp_path_factory` is
+    per-worker, so each worker builds its own template independently.
+
+    MIGRATION AUTHORS: this optimization assumes `init_db()` (DDL + the migration
+    runner) seeds NO wall-clock/UUID value that a test reads off the DEFAULT
+    autouse DB. If you ever add a migration that INSERTs a `now()`/uuid row, that
+    value would freeze at session-start here — either keep such rows out of
+    init_db or revert this fixture to a per-test `init_db()`.
+    """
+    from juggle_db import JuggleDB
+
+    template = tmp_path_factory.mktemp("db-template") / "juggle-template.db"
+    JuggleDB(str(template)).init_db()
+    # Fold the WAL sidecar into the main file so a plain copy is self-contained.
+    # `with self._connect()` inside init_db only manages the transaction, not the
+    # close, so a `-wal` may still linger — TRUNCATE-checkpoint here guarantees
+    # the single-file template captures the full initialized schema.
+    from juggle_db_connect import open_connection
+
+    conn = open_connection(str(template))
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+    finally:
+        conn.close()
+    return template
+
+
 @pytest.fixture(autouse=True)
-def _isolate_db_from_prod(tmp_path, monkeypatch):
+def _isolate_db_from_prod(tmp_path, monkeypatch, _initialized_db_template):
     # 1. Redirect the default DB path at this test's temp dir, and initialize it
     #    so any `get_db()` / bare `JuggleDB()` with no explicit path resolves to
     #    a WORKING isolated DB (never the production DB).
@@ -51,7 +93,10 @@ def _isolate_db_from_prod(tmp_path, monkeypatch):
     monkeypatch.setattr(JuggleDB, "_connect", _guarded_connect)
 
     # Pre-initialize the isolated DB so default get_db() handles are usable.
-    JuggleDB(str(temp_db)).init_db()
+    # Byte-copy the session template into THIS test's own tmp_path instead of
+    # re-running init_db() (~19ms → ~0.21ms). Each test still gets its OWN db
+    # file under its OWN tmp_path — copies never share a handle.
+    shutil.copyfile(_initialized_db_template, temp_db)
     yield
 
 
