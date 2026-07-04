@@ -156,7 +156,15 @@ def fail_graph_task(db, thread_uuid, session_id, reason=None):
     task path for legacy task-bound threads.
     """
     from dbops import db_graph
+    from juggle_agent_reap import fail_thread_run_backstop
     from juggle_cmd_agents_graph_topics import fail_graph_topic
+
+    # Stamp the thread's newest open ledger run 'failed', atomically with the
+    # topic/task→failed transition (fix-agent-runs-completion-status): the complete
+    # path records 'completed' via close_thread_run_backstop, but terminal failure
+    # left the run stuck 'dispatched' forever so `juggle runs` misreported a dead
+    # run as in flight. Best-effort, no-op when no 'dispatched' run remains.
+    fail_thread_run_backstop(db, thread_uuid, reason)
 
     if fail_graph_topic(db, thread_uuid, session_id, reason):
         return

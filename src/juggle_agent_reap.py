@@ -77,3 +77,16 @@ def close_thread_run_backstop(db, thread_uuid, output) -> None:
         db.close_run(thread_uuid, output=output, diffstat=None, status="completed")
     except Exception:
         pass
+
+
+def fail_thread_run_backstop(db, thread_uuid, error) -> None:
+    """Failure twin of close_thread_run_backstop (fix-agent-runs-completion-status):
+    stamp the thread's NEWEST open ledger run 'failed' when an agent dies
+    unrecoverably. ``close_run`` keys by thread_id and no-ops when no 'dispatched'
+    run remains, so this is safe to call unconditionally on the terminal-failure
+    path. Best-effort; never raises — a ledger miss must not break failure
+    handling."""
+    try:
+        db.close_run(thread_uuid, output=error, diffstat=None, status="failed")
+    except Exception:
+        pass
