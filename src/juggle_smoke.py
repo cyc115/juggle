@@ -75,8 +75,11 @@ def check_overflow(grid: list[str], cols: int) -> dict:
     """
     violations: list[str] = []
     for i, line in enumerate(grid):
-        if len(line) > cols:
-            violations.append(f"row {i}: len={len(line)} > cols={cols}: {line[:40]!r}…")
+        # Trailing whitespace has no visible width — a padded line (common in
+        # non-pyte --out renders) must not count as overflow.
+        width = len(line.rstrip())
+        if width > cols:
+            violations.append(f"row {i}: len={width} > cols={cols}: {line[:40]!r}…")
     return {"pass": len(violations) == 0, "violations": violations}
 
 

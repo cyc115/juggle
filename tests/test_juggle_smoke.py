@@ -158,6 +158,22 @@ def test_check_overflow_long_line_fails():
     assert any("5" in v for v in result["violations"])
 
 
+def test_check_overflow_ignores_trailing_whitespace():
+    """A line whose visible content fits but is right-padded past `cols` must pass.
+
+    Non-pyte renders (e.g. cockpit --out) can emit lines padded with trailing
+    spaces beyond the column budget. Trailing whitespace has no visible width, so
+    overflow must be measured on the stripped line — else a footer like
+    "q Quit" padded to 120 cols false-fails an 80-col viewport.
+    """
+    from juggle_smoke import check_overflow
+
+    grid = ["q Quit".ljust(120)]  # 14 chars content, 120 raw len, 80-col budget
+    result = check_overflow(grid, 80)
+    assert result["pass"] is True
+    assert result["violations"] == []
+
+
 def test_check_overflow_empty_grid_passes():
     """Edge case: an empty grid (no rows) has no lines to overflow → clean pass.
 
