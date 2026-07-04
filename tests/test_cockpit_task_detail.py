@@ -496,6 +496,40 @@ def test_task_node_has_no_learnings_section():
     assert "Learnings" not in "\n".join(modal._lines())
 
 
+def test_learnings_section_renders_dim_live():
+    """Acceptance evidence: mounting a topic modal with learnings actually
+    renders a dim '#node-learnings' widget carrying the 'node-id: text' lines."""
+    import asyncio
+
+    import pytest
+    pytest.importorskip("textual", reason="textual not installed")
+    from textual.app import App
+    from textual.widgets import Label, Static
+
+    from juggle_cockpit_modals import _NodeDetailModal
+
+    class _BaseApp(App):
+        def compose(self):
+            yield Label("base")
+
+    async def _drive():
+        topic = _make_topic("AO", title="My Topic")
+        learnings = [{"node_id": "FE1", "text": "form stays controlled", "completed_at": 1}]
+        modal = _NodeDetailModal.from_conversation(topic, {"learnings": learnings})
+        async with _BaseApp().run_test() as pilot:
+            await pilot.app.push_screen(modal)
+            await pilot.pause(0.05)
+            w = modal.query_one("#node-learnings", Static)
+            rendered = w.render()
+            text = rendered.plain if hasattr(rendered, "plain") else str(rendered)
+            assert "Learnings:" in text
+            assert "FE1: form stays controlled" in text
+            # dim styling applied to the block (Textual lowers style→Content span)
+            assert "dim" in repr(rendered)
+
+    asyncio.run(_drive())
+
+
 def test_node_detail_modal_shows_recent():
     """A topic modal renders the recent activity list when provided in extra."""
     from juggle_cockpit_modals import _NodeDetailModal

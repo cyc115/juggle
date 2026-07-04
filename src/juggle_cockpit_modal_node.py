@@ -109,31 +109,20 @@ class _NodeDetailModal(ModalScreen):
         from juggle_cockpit_view import TASK_STATE_GLYPHS
 
         n = self._node
+        common = [
+            f"state    {n.get('state', '')}",
+            f"deps     {', '.join(self._deps) if self._deps else '(none)'}",
+            f"thread   {n.get('thread_id') or '(unbound)'}",
+            f"verify   {n.get('verify_cmd') or '(none)'}",
+        ]
         if self._is_topic:
-            title = n.get("title") or "(none)"
-            out = [
-                f"Topic [{self._label}] - {title}",
-                "─" * 40,
-                f"state    {n.get('state', '')}",
-                f"deps     {', '.join(self._deps) if self._deps else '(none)'}",
-                f"thread   {n.get('thread_id') or '(unbound)'}",
-                f"verify   {n.get('verify_cmd') or '(none)'}",
-            ]
+            out = [f"Topic [{self._label}] - {n.get('title') or '(none)'}", "─" * 40] + common
             if n.get("task_state"):
                 out.append(f"task     {n.get('task_state')}")
-            agent = self._summary_ctx.get("agent")
-            if agent:
-                out.append(f"agent    {agent}")
+            if self._summary_ctx.get("agent"):
+                out.append(f"agent    {self._summary_ctx['agent']}")
         else:
-            out = [
-                f"Task {n.get('id', '?')}",
-                "─" * 40,
-                f"title    {n.get('title', '')}",
-                f"state    {n.get('state', '')}",
-                f"deps     {', '.join(self._deps) if self._deps else '(none)'}",
-                f"thread   {n.get('thread_id') or '(unbound)'}",
-                f"verify   {n.get('verify_cmd') or '(none)'}",
-            ]
+            out = [f"Task {n.get('id', '?')}", "─" * 40, f"title    {n.get('title', '')}"] + common
         if self._tasks:
             out += ["", "tasks:"]
             for t in self._tasks:
@@ -154,21 +143,10 @@ class _NodeDetailModal(ModalScreen):
         return out
 
     def _learnings_lines(self) -> list[str]:
-        """Member-task learnings for a TOPIC — one ``node-id: text`` line each.
-
-        Items are pre-fetched into ``summary_ctx['learnings']`` by the 'i'-key
-        handler via ``db_graph.read_learnings`` (gl-cockpit-info reuses that
-        reader — no duplicate SQL here). Section omitted when the topic has no
-        non-empty learnings; never rendered for task nodes."""
-        if not self._is_topic:
-            return []
-        items = self._summary_ctx.get("learnings") or []
-        if not items:
-            return []
-        out = ["", "Learnings:"]
-        for it in items:
-            out.append(f"{it.get('node_id', '')}: {it.get('text', '')}")
-        return out
+        """Topic member-task learnings — one 'node-id: text' line each (gl-cockpit-info,
+        reuses read_learnings items from summary_ctx; omitted when none / task node)."""
+        items = (self._summary_ctx.get("learnings") or []) if self._is_topic else []
+        return ["", "Learnings:"] + [f"{i.get('node_id', '')}: {i.get('text', '')}" for i in items] if items else []
 
     def _raw_body_lines(self) -> list[str]:
         """Fallback body when an LLM summary is unavailable (topic nodes)."""

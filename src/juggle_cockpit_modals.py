@@ -509,6 +509,13 @@ def build_summary_ctx(db, thread_id: str | None) -> dict:
         ]
     except Exception:
         pass
+    # gl-cockpit-info: member-task learnings for the topic modal's Learnings
+    # section — reuse the graph learnings reader (no duplicate SQL).
+    try:
+        from dbops import db_graph as _lg
+        ctx["learnings"] = _lg.read_learnings(db, topic_id=thread_id)["items"]
+    except Exception:
+        pass
     return ctx
 
 
