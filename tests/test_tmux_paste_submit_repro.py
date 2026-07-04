@@ -21,6 +21,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -140,3 +141,100 @@ def test_paste_submit_100pct(tmp_path):
     )
     for (prompt, _jit), payload in zip(plan, payloads):
         assert payload.decode() == prompt, "paste payload mangled (LF->CR or split)"
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-03 DA %6852 paste-without-submit — structural stuck-detection pins.
+#
+# The paste-mechanic test above proves ONE C-m submits cleanly. This incident is
+# the OTHER half: the C-m is swallowed under load, the box holds a collapsed-paste
+# placeholder whose literal wording ("paste again to expand") is NOT enumerated,
+# and the agent process is alive-but-idle. Old detection scored that as submitted
+# ("agent process alive" == success) and the 5× C-m retry never fired — a silent
+# ~36-min wedge that bit 3× on 2026-07-03. These pins drive the STRUCTURAL fix:
+# readiness marker + a non-blank input-box line == stuck, and success requires a
+# positive marker OR a demonstrably empty box (never "process alive").
+# ---------------------------------------------------------------------------
+
+# A ready input box holding the NEW (unenumerated) collapsed-paste placeholder,
+# with no submission/active marker. The footer carries the "shift+tab to cycle"
+# readiness marker; the box interior line is │-framed content.
+_STUCK_NEW_PLACEHOLDER = (
+    "╭────────────────────────────────────────────────╮\n"
+    "│ ❯ paste again to expand                        │\n"
+    "╰────────────────────────────────────────────────╯\n"
+    "  accept edits on (shift+tab to cycle)\n"
+)
+
+
+@pytest.fixture
+def _mgr():
+    from juggle_tmux import JuggleTmuxManager
+
+    return JuggleTmuxManager(session_name="juggle-test")
+
+
+def test_wait_for_submission_structural_stuck_unenumerated_placeholder_2026_07_03(
+    _mgr, monkeypatch
+):
+    """2026-07-03 DA %6852 paste-without-submit, placeholder marker gap (bit 3×).
+
+    A NEW collapsed-paste placeholder under a ready box, agent process ALIVE but
+    idle at the prompt, must NOT be scored submitted. Only STRUCTURAL detection
+    (readiness marker + non-blank input-box line) catches the unenumerated string.
+
+    Pre-fix: not enumerated → not stuck → the side-effect confirmer falls back to
+    "agent process alive" → returns True (the silent wedge). Post-fix: False.
+    """
+    import juggle_tmux
+
+    monkeypatch.setattr(juggle_tmux, "_pane_has_juggle_agent_env", lambda _pid: True)
+    with (
+        patch.object(
+            _mgr,
+            "_run_tmux",
+            return_value=MagicMock(stdout=_STUCK_NEW_PLACEHOLDER, returncode=0),
+        ),
+        patch("time.sleep"),
+    ):
+        result = _mgr.wait_for_submission(
+            "%6852", "implement the feature now", timeout=3, max_enter_retries=0
+        )
+
+    assert result is False, (
+        "unenumerated collapsed-paste placeholder under a ready box (agent alive "
+        "but idle) must NOT be scored submitted — 'process alive' is not proof"
+    )
+
+
+def test_wait_for_submission_structural_stuck_retries_then_marker_2026_07_03(_mgr):
+    """Same 2026-07-03 placeholder gap: while STRUCTURALLY stuck the C-m retry MUST
+    fire (pre-fix the stuck test was enumerated-only so it never did), and a
+    submission marker on a later poll resolves the wedge to True."""
+    outputs = iter(
+        [
+            _STUCK_NEW_PLACEHOLDER,
+            _STUCK_NEW_PLACEHOLDER,
+            "✻ Working… (esc to interrupt)\n",
+        ]
+    )
+    enter_calls: list = []
+
+    def fake_run(*args):
+        if args[0] == "capture-pane":
+            return MagicMock(stdout=next(outputs), returncode=0)
+        if args[0] == "send-keys":
+            enter_calls.append(args)
+        return MagicMock(stdout="", returncode=0)
+
+    with patch.object(_mgr, "_run_tmux", side_effect=fake_run), patch("time.sleep"):
+        result = _mgr.wait_for_submission(
+            "%6852", "implement the feature now", timeout=10, max_enter_retries=5
+        )
+
+    assert result is True
+    assert len(enter_calls) >= 1, (
+        "structural stuck must fire the C-m retry (pre-fix: 0 retries, "
+        "enumerated-only detection missed the new placeholder)"
+    )
+    assert enter_calls[0][-1] == "C-m"

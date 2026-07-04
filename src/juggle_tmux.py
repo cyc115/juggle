@@ -41,6 +41,13 @@ from juggle_spawn_readiness import (  # noqa: E402
 _DETECT_TAIL_LINES = 10  # lines of scrollback tail used for submission/stuck detection
 _PROMPT_HEAD_CHARS = 40
 
+# Structural paste-without-submit detection (2026-07-03) lives in
+# juggle_paste_submit (LOC gate); imported here for wait_for_submission.
+from juggle_paste_submit import (  # noqa: E402
+    input_box_has_content as _input_box_has_content,
+    input_box_stuck as _input_box_stuck,
+)
+
 
 class JuggleTmuxManager:
     def __init__(self, session_name: str | None = None):
@@ -270,7 +277,7 @@ class JuggleTmuxManager:
             pasted_prompt.strip().split("\n", 1)[0] if pasted_prompt.strip() else ""
         )
         head = first_line[:_PROMPT_HEAD_CHARS]
-        _, submission_markers = _harness_markers()
+        ready_markers, submission_markers = _harness_markers()
         active_pattern = _active_status_pattern()
 
         retries = 0
@@ -290,15 +297,9 @@ class JuggleTmuxManager:
             # (c) queued-messages indicator — prompt landed, agent is mid-turn
             if "Press up to edit queued messages" in bottom:
                 return True
-            stuck = (
-                "[Pasted text" in bottom
-                or "-- INSERT --" in bottom
-                or (head and head in bottom)
-                or any(
-                    line.strip().startswith(("❯ ", "> ")) and len(line.strip()) > 2
-                    for line in bottom.splitlines()
-                )
-            )
+            # Structural stuck: enumerated hints + readiness-marker-and-non-empty-box
+            # fallback (2026-07-03 'paste again to expand' marker gap).
+            stuck = _input_box_stuck(bottom, head, ready_markers)
             # (b) input box clear AND activity markers — agent already consumed prompt
             if not stuck and any(m in bottom for m in _ACTIVITY_MARKERS):
                 return True
@@ -319,16 +320,19 @@ class JuggleTmuxManager:
         """Side-effect confirmation that a prompt was submitted, after the
         marker-poll loop timed out.
 
-        Positive evidence (any of):
-          * a submission/activity marker has since rendered, OR
-          * the input box no longer holds our prompt (it was consumed/submitted)
-            AND a live JUGGLE_IS_AGENT process is present in the pane.
+        POSITIVE success contract (2026-07-03): submission is proven ONLY by
+          * a submission/activity marker (incl. the structural active-status
+            line) having since rendered, OR
+          * a DEMONSTRABLY empty input box — a readiness marker is drawn AND the
+            box holds no content.
 
-        A box still holding unsubmitted input ("[Pasted text" placeholder, the
-        prompt head, an INSERT-mode banner, or a non-empty ❯/> line) is NEVER
-        rescued — that is a genuine stuck-at-prompt, returns False.
+        A box still holding unsubmitted input (any enumerated placeholder OR the
+        structural "readiness marker + non-blank box line") returns False — a
+        genuine stuck-at-prompt. A live agent PROCESS is NOT proof of submission
+        (the incident: an idle-at-prompt agent is alive yet never submitted), so
+        that fallback is gone.
         """
-        _, submission_markers = _harness_markers()
+        ready_markers, submission_markers = _harness_markers()
         active_pattern = _active_status_pattern()
         result = self._run_tmux(
             "capture-pane", "-p", "-t", pane_id, "-S", f"-{_DETECT_TAIL_LINES}"
@@ -338,20 +342,13 @@ class JuggleTmuxManager:
         active_hit = active_pattern and re.search(active_pattern, bottom)
         if any(m in bottom for m in submission_markers + _ACTIVITY_MARKERS) or active_hit:
             return True
-        stuck = (
-            "[Pasted text" in bottom
-            or "-- INSERT --" in bottom
-            or (head and head in bottom)
-            or any(
-                line.strip().startswith(("❯ ", "> ")) and len(line.strip()) > 2
-                for line in bottom.splitlines()
-            )
-        )
-        if stuck:
+        if _input_box_stuck(bottom, head, ready_markers):
             return False
-        # Input box cleared but no markers yet — corroborate with a live agent
-        # process so an empty/dead pane is not mistaken for a successful submit.
-        return _pane_has_juggle_agent_env(pane_id)
+        # No stuck text. Success ONLY if the box is demonstrably empty (readiness
+        # marker drawn, no content) — never "agent process alive".
+        return any(m in bottom for m in ready_markers) and not _input_box_has_content(
+            bottom
+        )
 
     def _paste_buffer(self, pane_id: str, src_path: str, buf_name: str | None = None) -> None:
         """Paste a temp file into a pane via a tmux buffer (shared by send_task /

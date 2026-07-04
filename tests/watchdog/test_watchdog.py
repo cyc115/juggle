@@ -188,6 +188,128 @@ def test_classify_stuck_not_triggered_without_hash():
     assert state == "quiet"
 
 
+def test_classify_unsubmitted_fast_sweep_2026_07_03():
+    """2026-07-03 paste-submit fast-sweep backstop.
+
+    A busy agent whose pane tail is byte-identical to the post-dispatch snapshot
+    (last_send_task_pane_hash), no execution markers, must be flagged
+    'unsubmitted' at SECONDS scale — below the coarse 60s 'stuck' floor — so the
+    watchdog can auto-Enter fast instead of the ~36-min coarse backstop.
+    """
+    from juggle_watchdog import classify_pane_state, _hash_tail
+
+    content = (
+        "╭─────────────────────────╮\n"
+        "│ ❯ paste again to expand │\n"
+        "╰─────────────────────────╯"
+    )
+    pane_hash = _hash_tail(content)
+    state, key = classify_pane_state(
+        content=content,
+        prev_content=content,
+        stalled_for=12.0,  # well under the 60s coarse stuck floor
+        threshold=300.0,
+        last_send_task_pane_hash=pane_hash,
+        secs_since_dispatch=12.0,
+    )
+    assert state == "unsubmitted"
+    assert key is None
+
+
+def test_classify_fast_sweep_not_before_floor_2026_07_03():
+    """Fast-sweep must NOT fire in the first few seconds after dispatch (the TUI
+    render is still settling) — below the seconds floor it stays 'quiet'."""
+    from juggle_watchdog import classify_pane_state, _hash_tail
+
+    content = "╭───╮\n│ x │\n╰───╯"
+    pane_hash = _hash_tail(content)
+    state, _ = classify_pane_state(
+        content=content,
+        prev_content=content,
+        stalled_for=3.0,
+        threshold=300.0,
+        last_send_task_pane_hash=pane_hash,
+        secs_since_dispatch=3.0,
+    )
+    assert state == "quiet"
+
+
+def test_classify_fast_sweep_not_triggered_with_execution_markers_2026_07_03():
+    """Even past the seconds floor, a pane showing execution markers is genuinely
+    working — never 'unsubmitted'."""
+    from juggle_watchdog import classify_pane_state, _hash_tail
+
+    content = "╭───╮\n│ x │\n╰───╯\n✻ Thinking…"
+    pane_hash = _hash_tail(content)
+    state, _ = classify_pane_state(
+        content=content,
+        prev_content=content,
+        stalled_for=12.0,
+        threshold=300.0,
+        last_send_task_pane_hash=pane_hash,
+        secs_since_dispatch=12.0,
+    )
+    assert state != "unsubmitted"
+
+
+def test_fast_sweep_ladder_resend_then_repaste_2026_07_03():
+    """2026-07-03 fast-sweep ladder: rung 1 resends Enter (watchdog-routed); rung 2
+    sends Escape + re-pastes the task. Keyed by dispatch hash so a fresh dispatch
+    restarts the ladder without an explicit reset."""
+    from unittest.mock import MagicMock
+    import juggle_paste_submit as ps
+    from dbops import event_kinds as ek
+
+    ps._ATTEMPTS.clear()
+    agent = {
+        "id": "AGENT123", "assigned_thread": "T1", "last_task": "do the work",
+        "last_send_task_pane_hash": "abc123",
+    }
+    db, mgr = MagicMock(), MagicMock()
+
+    # Rung 1 — resend Enter.
+    ps.handle_unsubmitted(db, mgr, agent, "%6852", "sess")
+    keys = [c.args for c in mgr._run_tmux.call_args_list]
+    assert ("send-keys", "-t", "%6852", "C-m") in keys
+    assert ps._ATTEMPTS["AGENT123:abc123"] == 1
+    assert db.emit_event.call_args.kwargs["kind"] == ek.DISPATCH_FAILED
+    assert db.emit_event.call_args.kwargs["handled_by"] == "watchdog"
+
+    # Rung 2 — Escape + re-paste (verified send_message succeeds).
+    mgr.reset_mock()
+    db.reset_mock()
+    ps.handle_unsubmitted(db, mgr, agent, "%6852", "sess")
+    keys = [c.args for c in mgr._run_tmux.call_args_list]
+    assert ("send-keys", "-t", "%6852", "Escape") in keys
+    mgr.send_message.assert_called_once_with("%6852", "do the work")
+    assert "AGENT123:abc123" not in ps._ATTEMPTS
+    assert db.emit_event.call_args.kwargs["handled_by"] == "watchdog"
+
+
+def test_fast_sweep_ladder_escalates_loud_when_repaste_fails_2026_07_03():
+    """When Escape + re-paste still fails, escalate LOUD — DISPATCH_FAILED routed
+    to the orchestrator (triage-ladder escalation), not a silent watchdog row."""
+    from unittest.mock import MagicMock
+    import juggle_paste_submit as ps
+    from dbops import event_kinds as ek
+
+    ps._ATTEMPTS.clear()
+    agent = {
+        "id": "AG", "assigned_thread": "T1", "last_task": "task body",
+        "last_send_task_pane_hash": "h9",
+    }
+    ps._ATTEMPTS["AG:h9"] = 1  # already at rung 2
+    db, mgr = MagicMock(), MagicMock()
+    mgr.send_message.side_effect = RuntimeError("still stuck")
+
+    ps.handle_unsubmitted(db, mgr, agent, "%6852", "sess")
+
+    ev = db.emit_event.call_args
+    assert ev.kwargs["kind"] == ek.DISPATCH_FAILED
+    assert ev.kwargs["handled_by"] == "orchestrator"
+    assert "AG:h9" not in ps._ATTEMPTS
+
+
 # --- Threshold ---
 
 

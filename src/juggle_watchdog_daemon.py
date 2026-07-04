@@ -17,9 +17,11 @@ import signal
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import daemon_pidfile
+import juggle_paste_submit as _paste_submit
 from dbops import event_kinds as _ek
 from juggle_db import JuggleDB, DB_PATH
 from juggle_settings import get_settings
@@ -212,7 +214,6 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
         last_activity_at_str = agent.get("last_activity_at")
         if last_activity_at_str:
             try:
-                from datetime import datetime, timezone
                 last_dt = datetime.fromisoformat(last_activity_at_str)
                 if last_dt.tzinfo is None:
                     last_dt = last_dt.replace(tzinfo=timezone.utc)
@@ -231,20 +232,22 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
             threshold=threshold,
             last_send_task_pane_hash=agent.get("last_send_task_pane_hash"),
             last_send_task_at=agent.get("last_send_task_at"),
+            secs_since_dispatch=_paste_submit.secs_since(agent.get("last_send_task_at"), now_ts),
         )
 
         if state == "working":
             write_snapshot(agent_id, content, snapshot_dir)
-            from datetime import datetime, timezone
             db.update_agent(agent_id, last_activity_at=datetime.now(timezone.utc).isoformat())
             _enter_sent.pop(agent_id, None)
 
         elif state == "prompt":
             handle_prompt(db, mgr, agent, pane_id, key or "")
             write_snapshot(agent_id, content, snapshot_dir)
-            from datetime import datetime, timezone
             db.update_agent(agent_id, last_activity_at=datetime.now(timezone.utc).isoformat())
             _enter_sent.pop(agent_id, None)
+
+        elif state == "unsubmitted":  # 2026-07-03 paste-submit fast-sweep ladder
+            _paste_submit.handle_unsubmitted(db, mgr, agent, pane_id, session_id)
 
         elif state == "stuck":
             enter_count = _enter_sent.get(agent_id, 0)

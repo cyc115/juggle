@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from dbops import event_kinds as _ek
+from juggle_paste_submit import is_unsubmitted as _is_unsubmitted  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Re-exports from split modules (keep all juggle_watchdog.X patch targets alive)
@@ -236,16 +237,15 @@ def classify_pane_state(
     *,
     last_send_task_pane_hash: str | None = None,
     last_send_task_at: object = _NO_DISPATCH_INFO,
+    secs_since_dispatch: float | None = None,
 ) -> tuple[str, str | None]:
     """Classify agent pane state. Returns (state, key_to_send).
 
-    States: working | crashed | prompt | stuck | quiet | stalled | awaiting_dispatch
-    Classification order (most specific first).
-
-    Pass ``last_send_task_at=None`` to signal the agent has never been dispatched;
-    the function returns ``awaiting_dispatch`` instead of ``stalled`` so the
-    watchdog does not recover agents the orchestrator hasn't sent a task to yet.
-    When ``last_send_task_at`` is omitted the old behaviour is preserved.
+    States (most specific first): working | crashed | prompt | unsubmitted |
+    stuck | quiet | stalled | awaiting_dispatch. ``last_send_task_at=None`` ⇒
+    never dispatched ⇒ ``awaiting_dispatch`` (omit for old behaviour).
+    ``secs_since_dispatch`` drives the 2026-07-03 paste-submit fast-sweep
+    (``juggle_paste_submit.is_unsubmitted``); None ⇒ off.
     """
     if content is None:
         return "crashed", None
@@ -264,6 +264,11 @@ def classify_pane_state(
     )
     if any(last_nonempty.endswith(suffix) for suffix in _SHELL_SUFFIXES):
         return "crashed", None
+
+    # Fast-sweep (2026-07-03) before working/60s-stuck: an unchanged pane never submitted.
+    if _is_unsubmitted(last_send_task_pane_hash, secs_since_dispatch,
+                       _hash_tail(content), _has_execution_markers(tail)):
+        return "unsubmitted", None
 
     if content != prev_content:
         return "working", None
