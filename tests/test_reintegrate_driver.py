@@ -221,6 +221,76 @@ def test_reintegrate_skips_topic_with_live_busy_agent(tmp_path):
     assert get_topic(db, "T1")["state"] == "integrating"   # left untouched
 
 
+def _record_completion(db, thread_id, agent_id):
+    """Simulate the durable completion ledger row a spool-applied agent_complete
+    leaves: a dispatched agent_runs row closed with status='completed'."""
+    db.insert_agent_run(
+        thread_id=thread_id, input_prompt="do the thing", agent_id=agent_id,
+        role="coder", model="claude", harness="claude", project_id=None,
+        topic_id=None, task_id=None,
+    )
+    db.close_run(thread_id, output="done", diffstat=None, status="completed")
+
+
+def test_reintegrate_redrives_bound_agent_with_recorded_completion(tmp_path):
+    """Escape hatch (2026-07-03/04 integrate-wedge #2, RC2 of 4): a topic bound to
+    a live busy agent whose completion IS already recorded must NOT be skipped —
+    the inline complete-time gate died, the agent will never release, so the sweep
+    must re-drive (spawn a detached integrate) rather than deadlock forever."""
+    import juggle_graph_reintegrate as ri
+
+    repo = _repo(tmp_path)
+    wt = _worktree(repo, tmp_path, "EC")
+    (Path(wt) / "feat.py").write_text("y = 2\n")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-m", "feat")
+
+    db = _make_db(tmp_path)
+    tid = db.create_thread(topic="feat", session_id="s")
+    db.update_thread(tid, worktree_path=wt, worktree_branch="cyc_EC",
+                     main_repo_path=repo)
+    _seed_topic_with_thread(db, "T1", tid, repo, "cyc_EC")
+    agent_id = db.create_agent(role="coder", pane_id="pEC")
+    assert db.cas_assign_agent(agent_id, tid)   # still bound + busy
+    _record_completion(db, tid, agent_id)       # ...but completion IS recorded
+
+    with patch("juggle_graph_reintegrate._spawn_detached_integrate",
+               return_value=_AliveProc()) as spawn:
+        driven = ri.sweep_reintegrate(db, ["INBOX"])
+
+    spawn.assert_called_once()   # bound agent is NON-blocking once completion recorded
+    assert "T1" in driven
+
+
+def test_reintegrate_still_skips_bound_agent_without_completion(tmp_path):
+    """Companion pin (RC2): a bound busy agent with NO recorded completion is
+    still treated as blocking — it may genuinely be mid-finalize, so never
+    re-drive under it."""
+    import juggle_graph_reintegrate as ri
+    from dbops.db_topics import get_topic
+
+    repo = _repo(tmp_path)
+    wt = _worktree(repo, tmp_path, "NC")
+    (Path(wt) / "feat.py").write_text("y = 2\n")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-m", "feat")
+
+    db = _make_db(tmp_path)
+    tid = db.create_thread(topic="feat", session_id="s")
+    db.update_thread(tid, worktree_path=wt, worktree_branch="cyc_NC",
+                     main_repo_path=repo)
+    _seed_topic_with_thread(db, "T1", tid, repo, "cyc_NC")
+    agent_id = db.create_agent(role="coder", pane_id="pNC")
+    assert db.cas_assign_agent(agent_id, tid)   # bound + busy, NO completion
+
+    with patch("juggle_graph_reintegrate._spawn_detached_integrate") as spawn:
+        driven = ri.sweep_reintegrate(db, ["INBOX"])
+
+    spawn.assert_not_called()
+    assert "T1" not in driven
+    assert get_topic(db, "T1")["state"] == "integrating"   # left untouched
+
+
 def test_reintegrate_tick_runs_gate_off_thread_within_budget(tmp_path):
     """Regression pin (T-fix-reintegrate-offtick): a candidate needing a full
     integrate must NOT run the gate inline on the tick — the tick only selects +

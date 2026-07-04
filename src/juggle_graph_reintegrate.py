@@ -49,6 +49,9 @@ REINTEGRATE_BACKOFF_SECS = 300
 # (pre-flight refusals — lock timeout, mis-bind), escalate to failed-integration
 # so the topic never re-drives forever.
 MAX_REINTEGRATE_ATTEMPTS = 3
+# Escape-hatch backstop (integrate-wedge #2, RC2): a bound agent with NO recorded
+# completion, stale past this generous threshold, is a presumed-dead finalize.
+REINTEGRATE_STALE_BOUND_SECS = 1800  # 30 min
 
 # Per-topic backoff state, keyed by (db_path, topic_id). Reset via reset_backoff.
 _backoff: dict[tuple[str, str], dict] = {}
@@ -123,6 +126,34 @@ def _has_live_bound_agent(db, thread_id: str | None) -> bool:
         return False
 
 
+def _completion_recorded(db, thread_id: str | None) -> bool:
+    """True iff the agent_runs ledger records a completion for this thread's
+    NEWEST run — not "any" (RC3 parity), so a prior dispatch can't mask an open re-dispatch."""
+    if not thread_id:
+        return False
+    try:
+        runs = db.get_runs(thread_id=thread_id, limit=1)
+    except Exception:
+        return False
+    return bool(runs) and runs[0].get("status") == "completed"
+
+
+def _bound_agent_blocks(db, topic: dict, thread_id: str | None, now: datetime) -> bool:
+    """A live bound agent normally blocks re-drive (may be mid-finalize). Escape
+    hatches (integrate-wedge #2, RC2), for when the inline gate died so the agent
+    never releases: RECORDED completion → NON-blocking; else stale → re-drive."""
+    if not _has_live_bound_agent(db, thread_id):
+        return False
+    if _completion_recorded(db, thread_id):
+        return False
+    if _secs_since(topic.get("updated_at"), now) >= REINTEGRATE_STALE_BOUND_SECS:
+        _log.warning("reintegrate: topic %s bound + no completion, stale > %ds — "
+                     "presuming dead finalize, re-driving", topic.get("id"),
+                     REINTEGRATE_STALE_BOUND_SECS)
+        return False
+    return True
+
+
 def _real_commits_ahead(thread: dict) -> bool:
     """True iff the topic's worktree exists and has committed work ahead of trunk
     — genuine unmerged work (not an empty branch / lost worktree; orphan-guarded)."""
@@ -187,7 +218,7 @@ def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str |
     thread_id = topic.get("thread_id")
     if not thread_id:
         return None  # unbound — worktree gone; orphan guard surfaces it
-    if _has_live_bound_agent(db, thread_id):
+    if _bound_agent_blocks(db, topic, thread_id, now):
         return None  # owning agent may still be finalizing — never re-drive under it
 
     # 3. A detached integrate may still be running its gate — never re-spawn /
