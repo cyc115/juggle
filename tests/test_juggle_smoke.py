@@ -270,6 +270,21 @@ def test_check_chrome_present_footer_with_trailing_blank_rows_passes():
     assert result["reason"] == ""
 
 
+def test_check_chrome_present_empty_grid_fails():
+    """Edge case: an empty grid (body not yet painted) has no header/footer rows.
+
+    check_chrome_present must take its empty-grid early return — a distinct
+    "empty grid" verdict — rather than sliding into the marker scan on []
+    (which would report a misleading "header MISSING, footer MISSING").
+    Regression pin for the content-free 'w0' wide smoke node.
+    """
+    from juggle_smoke import check_chrome_present
+
+    result = check_chrome_present([])
+    assert result["pass"] is False
+    assert result["reason"] == "empty grid"
+
+
 # ── heuristic: check_truncation ───────────────────────────────────────────────
 
 
