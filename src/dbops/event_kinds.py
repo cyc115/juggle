@@ -39,6 +39,15 @@ RUNNING_ORPHAN = "running_orphan"
 # tick rolled up learnings written since the last per-project watermark — the
 # orchestrator triages them (commands/start.md). Routing derived, not manual.
 LEARNINGS_ROLLUP = "learnings_rollup"
+# loop-entity V1 Phase 5 (2026-07-04): a scheduled loop's iteration failed (any
+# failed/wedged iteration — NOT only a breaker trip) or the failure circuit-breaker
+# tripped and paused the loop. A loop failure is machinery / unclassifiable /
+# exhausted-repairs, which per the CLAUDE.md triage ladder pushes the orchestrator
+# IMMEDIATELY (not a watchdog-only playbook). The loop is a NEW event SOURCE triaged
+# under the CURRENT self-heal/triage implementation — routing is derived (no manual
+# handled_by), same mechanism as MACHINERY_ERROR / REPAIR_EXHAUSTED / LEARNINGS_ROLLUP.
+LOOP_ITERATION_FAILED = "loop_iteration_failed"
+LOOP_PAUSED = "loop_paused"
 
 ALL_KINDS = frozenset(
     {
@@ -61,6 +70,8 @@ ALL_KINDS = frozenset(
         DISPATCH_FAILED,
         RUNNING_ORPHAN,
         LEARNINGS_ROLLUP,
+        LOOP_ITERATION_FAILED,
+        LOOP_PAUSED,
     }
 )
 
@@ -100,6 +111,10 @@ HANDLED_BY = {
     # gl-rollup: the orchestrator reads/triages the rolled-up learnings — the
     # judgment step of the triage ladder. Derived routing (no manual handled_by).
     LEARNINGS_ROLLUP: "orchestrator",
+    # loop-entity Phase 5: a loop iteration failure / breaker pause is machinery
+    # judgment — the orchestrator triages it immediately (derived routing).
+    LOOP_ITERATION_FAILED: "orchestrator",
+    LOOP_PAUSED: "orchestrator",
 }
 
 # handled_by values that are pushed (to a human or the orchestrator) rather

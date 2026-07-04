@@ -84,6 +84,62 @@ class LoopsMixin:
                 raise ValueError(f"loop not found: {loop_id!r}")
             return row[0]
 
+    def advance_next_run_cas(self, loop_id: str, *, expected, new: str) -> int:
+        """Compare-and-swap the loop's ``next_run`` (mirrors dbops.state_write.cas_state).
+
+        ``UPDATE ... WHERE next_run IS <expected>`` — advances the timer to ``new``
+        ONLY if it still reads ``expected``. Returns the rowcount (0 = lost race /
+        already advanced this window). Phase 5 advances next_run BEFORE instantiating
+        the iteration so a crash between fire and advance can never double-fire
+        (critique §Axis-7b): the winning tick owns the window; any concurrent/retried
+        tick reads the moved next_run and loses the CAS (rowcount 0)."""
+        with self._connect() as conn:
+            if expected is None:
+                cur = conn.execute(
+                    "UPDATE loops SET next_run = ?, updated_at = ? "
+                    "WHERE id = ? AND next_run IS NULL",
+                    (new, _now(), loop_id),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE loops SET next_run = ?, updated_at = ? "
+                    "WHERE id = ? AND next_run = ?",
+                    (new, _now(), loop_id, expected),
+                )
+            conn.commit()
+            return cur.rowcount
+
+    def bump_consecutive_failures(self, loop_id: str) -> int:
+        """Atomically increment and return the loop's consecutive-failure count
+        (UPDATE...RETURNING, same pattern as advance_run_seq). The circuit-breaker
+        trips when this reaches ``max_consecutive_failures``."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "UPDATE loops SET consecutive_failures = consecutive_failures + 1, "
+                "updated_at = ? WHERE id = ? RETURNING consecutive_failures",
+                (_now(), loop_id),
+            ).fetchone()
+            conn.commit()
+            if row is None:
+                raise ValueError(f"loop not found: {loop_id!r}")
+            return row[0]
+
+    def reset_consecutive_failures(self, loop_id: str) -> None:
+        """Zero the consecutive-failure counter (a good iteration clears it — the
+        breaker trips on CONSECUTIVE failures only)."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE loops SET consecutive_failures = 0, updated_at = ? WHERE id = ?",
+                (_now(), loop_id),
+            )
+            conn.commit()
+
+    def pause_loop(self, loop_id: str) -> None:
+        """Set status='paused' (circuit-breaker trip). A paused loop is inert —
+        list_active_loops excludes it, so fire_due_loops never fires it again until
+        the orchestrator resumes it."""
+        self.set_loop_status(loop_id, "paused")
+
     def set_loop_status(self, loop_id: str, status: str) -> None:
         with self._connect() as conn:
             conn.execute(

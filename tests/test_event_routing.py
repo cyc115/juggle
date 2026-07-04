@@ -8,12 +8,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dbops import event_kinds as ek
 
 
-def test_nineteen_kinds_defined():
+def test_kinds_defined():
     """irl-envelope T2 adds integrate_failed + machinery_error to T1a's 12;
     irl-retry T3 adds repair_exhausted; irl-repair T4 adds repair_dispatched;
     df-monitor-dispatch adds dispatch_failed + running_orphan; gl-rollup adds
-    learnings_rollup."""
-    assert len(ek.ALL_KINDS) == 19
+    learnings_rollup; loop-entity Phase 5 adds loop_iteration_failed + loop_paused."""
+    assert len(ek.ALL_KINDS) == 21
+
+
+def test_loop_failure_kinds_route_orchestrator():
+    """loop-entity Phase 5 (2026-07-04): a loop iteration failure / breaker pause
+    pushes the orchestrator immediately (derived routing, pushable) — a loop failure
+    is machinery/judgment per the CLAUDE.md triage ladder, never DB-row-only."""
+    for kind in (ek.LOOP_ITERATION_FAILED, ek.LOOP_PAUSED):
+        assert ek.handled_by_for_kind(kind) == "orchestrator"
+        assert ek.is_pushable(ek.handled_by_for_kind(kind))
 
 
 def test_dispatch_failure_kinds_default_watchdog_overridable_to_orchestrator():

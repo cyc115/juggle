@@ -25,3 +25,12 @@ def run_graph_and_loop_ticks(db, mgr, session_id: str) -> None:
         run_tick_sweeps(db)
     except Exception:
         _log.exception("Watchdog: graph dispatch tick failed — continuing")
+
+    # Loop-fire tick (loop-entity Phase 5): fire every due active loop (CAS-safe,
+    # overlap-skip, circuit-breaker). Guarded so a loop bug never downs the tick.
+    try:
+        from juggle_loop_fire import fire_due_loops
+
+        fire_due_loops(db, session_id)
+    except Exception:
+        _log.exception("Watchdog: loop-fire tick failed — continuing")
