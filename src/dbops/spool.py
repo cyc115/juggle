@@ -23,6 +23,7 @@ class SpoolEvent:
     args: dict = field(default_factory=dict)
     created_at: str = ""
     path: Path | None = None  # set by read_pending; None for freshly-written events
+    attempts: int = 0  # failed-drain retries so far (bump_attempts); 0 for fresh events
 
 
 def _utc_ts() -> str:
@@ -64,10 +65,28 @@ def read_pending(spool_dir: Path) -> list[SpoolEvent]:
                 args=payload.get("args", {}),
                 created_at=payload.get("created_at", ""),
                 path=path,
+                attempts=payload.get("attempts", 0),
             ))
         except (json.JSONDecodeError, KeyError, OSError):
             continue
     return events
+
+
+def bump_attempts(event_path: Path, attempts: int) -> None:
+    """Rewrite a pending event file in place with an updated retry counter,
+    keeping it in the pending dir (same filename → same drain order) so a
+    transiently-unappliable event (e.g. target row not yet created) retries on
+    a later drain instead of dead-lettering. Atomic tmp+rename; best-effort —
+    a rewrite failure leaves the prior file, at worst re-retrying at the same
+    count."""
+    try:
+        payload = json.loads(event_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return
+    payload["attempts"] = attempts
+    tmp_path = event_path.with_name(f".{event_path.name}.tmp")
+    tmp_path.write_text(json.dumps(payload))
+    os.rename(tmp_path, event_path)  # atomic on the same filesystem
 
 
 def move_to_dead(spool_dir: Path, event_path: Path, reason: str) -> None:

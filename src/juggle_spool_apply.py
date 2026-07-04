@@ -9,10 +9,12 @@ verbatim from juggle_cmd_agents*/juggle_cmd_graph — no reimplementation).
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import logging
 from datetime import datetime, timezone
 
-from dbops.spool import SpoolEvent, read_pending, move_to_dead
+from dbops.spool import SpoolEvent, bump_attempts, read_pending, move_to_dead
 from juggle_spool_dead import (
     file_dead_letter_action_items,
     maybe_file_dead_backlog_reminder,
@@ -31,10 +33,18 @@ def _journal_state(db, uuid: str) -> str | None:
 
 
 def _journal_insert_applying(db, uuid: str, event_type: str) -> None:
+    # UPSERT to 'applying' (not INSERT OR IGNORE): a retried event already has a
+    # 'failed' row from its prior attempt, but this attempt is about to run the
+    # handler again, so the row MUST read 'applying' for the duration — else a
+    # process crash mid-retry leaves 'failed' and the next drain blind-retries a
+    # handler whose non-transactional side effects may be half-applied. Only
+    # None/'failed' rows reach here (the 'applied'/'superseded'/'applying' guards
+    # in apply_event short-circuit first), so overwriting is always correct.
     with db._connect() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO spool_journal(uuid, event_type, applied_at, outcome) "
-            "VALUES (?, ?, ?, 'applying')",
+            "INSERT INTO spool_journal(uuid, event_type, applied_at, outcome) "
+            "VALUES (?, ?, ?, 'applying') "
+            "ON CONFLICT(uuid) DO UPDATE SET outcome='applying', applied_at=excluded.applied_at",
             (uuid, event_type, datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
@@ -205,33 +215,14 @@ def apply_event(db, event: SpoolEvent) -> tuple[bool, str]:
         return True, f"superseded {event.type} {event.uuid}: {superseded}"
 
     _journal_insert_applying(db, event.uuid, event.type)
+    cap = io.StringIO()
     try:
-        a = event.args
-        if event.type == "record_error":
-            # Arg keys match _spool_error_event (juggle_selfheal.py): the
-            # captured context rides under 'command_args' (a JSON string), NOT
-            # 'context' — reading the wrong key would silently drop it.
-            db.dedup_or_insert_error(
-                signature_hash=a["signature_hash"],
-                error_class=a.get("error_class", "A"),
-                exc_type=a.get("exc_type"), traceback=a.get("traceback"),
-                entrypoint=a.get("entrypoint"),
-                command_args=a.get("command_args", "{}"),
-            )
-        elif event.type == "record_orchestration_error":
-            # Class B mirror of record_error (T-spool-06b): the captured tool
-            # input rides under 'command_args' (a JSON string); surface/juggle_ref
-            # carry the offending tool reference for triage.
-            db.dedup_or_insert_error(
-                signature_hash=a["signature_hash"],
-                error_class=a.get("error_class", "B"),
-                exc_type=a.get("exc_type"), traceback=a.get("traceback"),
-                entrypoint=a.get("entrypoint"),
-                command_args=a.get("command_args", "{}"),
-                surface=a.get("surface"), juggle_ref=a.get("juggle_ref"),
-            )
-        else:
-            _dispatch(event)
+        # Capture the handler's own stdout/stderr so a failure's "Error: … not
+        # found" line survives into the returned message (→ dead_reason / the
+        # retry classifier) instead of being swallowed to daemon stdout, leaving
+        # only an opaque "code=1" (2026-07-04 incident).
+        with contextlib.redirect_stdout(cap), contextlib.redirect_stderr(cap):
+            _apply_body(db, event)
         _journal_set_outcome(db, event.uuid, "applied")
         return True, f"applied {event.type} {event.uuid}"
     except BaseException as exc:  # BaseException: replayed cmd_* handlers use
@@ -242,7 +233,60 @@ def apply_event(db, event: SpoolEvent) -> tuple[bool, str]:
         kind = type(exc).__name__
         detail = f"code={exc.code}" if isinstance(exc, SystemExit) else str(exc)
         _log.exception("spool apply failed for %s (%s): %s", event.uuid, event.type, kind)
-        return False, f"{kind} during replay of {event.type}: {detail}"
+        handler_msg = cap.getvalue().strip().replace("\n", " ")
+        base = f"{kind} during replay of {event.type}: {detail}"
+        return False, (f"{base} — {handler_msg}" if handler_msg else base)
+
+
+def _apply_body(db, event: SpoolEvent) -> None:
+    """The write itself: record_error/record_orchestration_error inline, every
+    other type via _dispatch. Extracted from apply_event so the exception +
+    output-capture boundary stays a thin wrapper (no behavior change)."""
+    a = event.args
+    if event.type == "record_error":
+        # Arg keys match _spool_error_event (juggle_selfheal.py): the
+        # captured context rides under 'command_args' (a JSON string), NOT
+        # 'context' — reading the wrong key would silently drop it.
+        db.dedup_or_insert_error(
+            signature_hash=a["signature_hash"],
+            error_class=a.get("error_class", "A"),
+            exc_type=a.get("exc_type"), traceback=a.get("traceback"),
+            entrypoint=a.get("entrypoint"),
+            command_args=a.get("command_args", "{}"),
+        )
+    elif event.type == "record_orchestration_error":
+        # Class B mirror of record_error (T-spool-06b): the captured tool
+        # input rides under 'command_args' (a JSON string); surface/juggle_ref
+        # carry the offending tool reference for triage.
+        db.dedup_or_insert_error(
+            signature_hash=a["signature_hash"],
+            error_class=a.get("error_class", "B"),
+            exc_type=a.get("exc_type"), traceback=a.get("traceback"),
+            entrypoint=a.get("entrypoint"),
+            command_args=a.get("command_args", "{}"),
+            surface=a.get("surface"), juggle_ref=a.get("juggle_ref"),
+        )
+    else:
+        _dispatch(event)
+
+
+# A not-found precondition (target thread/task absent) is the handler's FIRST
+# check and side-effect-free, and is often TRANSIENT: the target row is created
+# moments earlier by another context and lands on a LATER drain (2026-07-04
+# incident T-fix-spool-drain-systemexit — every dead-lettered event applied
+# cleanly on manual `juggle spool replay`, i.e. once its target had appeared).
+# Retry such an event in-order for a bounded number of drains instead of
+# dead-lettering on the first; a genuinely-missing target still dead-letters
+# once the attempts exhaust. Detection keys on the handler's own captured
+# message ("… not found" / "no thread …") — a CONTRADICTION (illegal graph
+# transition, missing required arg) lacks those markers and dead-letters at once.
+_RETRY_MAX_ATTEMPTS = 3
+_TRANSIENT_MISSING_MARKERS = ("not found", "no thread")
+
+
+def _is_transient_missing(msg: str) -> bool:
+    m = (msg or "").lower()
+    return any(marker in m for marker in _TRANSIENT_MISSING_MARKERS)
 
 
 def drain_spool(db) -> dict:
@@ -251,7 +295,7 @@ def drain_spool(db) -> dict:
     Applied files are removed by unlink (the file itself is the at-least-once
     signal; spool_journal is the idempotency backstop for the rare case a file
     survives a successful apply, e.g. a crash between apply and unlink)."""
-    stats = {"applied": 0, "skipped_dup": 0, "superseded": 0, "dead": 0}
+    stats = {"applied": 0, "skipped_dup": 0, "superseded": 0, "retried": 0, "dead": 0}
     dead: list[tuple[str, str, str, str]] = []  # (thread_id, uuid, type, msg)
     for event in read_pending(spool_dir()):
         ok, msg = apply_event(db, event)
@@ -264,6 +308,14 @@ def drain_spool(db) -> dict:
                 stats["applied"] += 1
             if event.path is not None:
                 event.path.unlink(missing_ok=True)
+        elif _is_transient_missing(msg) and event.attempts + 1 < _RETRY_MAX_ATTEMPTS:
+            # Target transiently absent — leave the file pending (bump its retry
+            # counter) so a later drain retries it once the row appears, rather
+            # than dead-lettering a valid event on the first tick. Bounded: it
+            # dead-letters below once attempts reach _RETRY_MAX_ATTEMPTS.
+            stats["retried"] += 1
+            if event.path is not None:
+                bump_attempts(event.path, event.attempts + 1)
         else:
             stats["dead"] += 1
             if event.path is not None:

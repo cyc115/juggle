@@ -87,12 +87,26 @@ def test_contradicting_fail_event_on_verified_task_still_dead_letters(db, spool)
 
 
 def test_genuine_missing_task_error_still_dead_letters(db, spool):
-    """PIN: a mark event for a task that does not exist is a genuine handler
-    failure — never masqueraded as superseded."""
+    """PIN: a mark event for a task that does not exist is never masqueraded as
+    superseded — it eventually dead-letters loudly. Since a missing target is
+    often TRANSIENT (T-fix-spool-drain-systemexit), the drain now RETRIES it
+    in-order for a bounded number of ticks first; a genuinely-absent task still
+    dead-letters once the retries exhaust."""
+    from juggle_spool_apply import _RETRY_MAX_ATTEMPTS
+
     write_event(spool, "graph_mark_task", "agent-1", "",
                 {"task_id": "no-such-task", "fail": False, "handoff": None})
 
-    stats = drain_spool(db)
+    # First drains retry (not dead) while the task stays absent.
+    first = drain_spool(db)
+    assert first["dead"] == 0
+    assert first["retried"] == 1
+    assert len(list((spool / "dead").glob("*.json"))) == 0
 
-    assert stats["dead"] == 1
+    dead = 0
+    for _ in range(_RETRY_MAX_ATTEMPTS + 1):
+        dead = drain_spool(db)["dead"]
+        if dead:
+            break
+    assert dead == 1
     assert len(list((spool / "dead").glob("*.json"))) == 1
