@@ -244,7 +244,7 @@ def unblock_topic_dependents(db, project_id: str) -> None:
     failed, and nothing but a spec reload ever reversed that — so a landed-then-
     lifted topic left its dependents dead. Fixpoint over the DAG (failed roots are
     fixed during the loop → terminates). Fail-soft: never raises into the caller."""
-    from dbops.db_topics import list_topics, recompute_topic_ready
+    from dbops.db_topics import list_topics, recompute_topic_ready, topic_transition
 
     try:
         changed = True
