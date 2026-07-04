@@ -108,3 +108,6 @@ from juggle_cmd_graph_ops import (  # noqa: E402,F401
 from juggle_cmd_graph_show import cmd_graph_show  # noqa: E402,F401
 # graph cancel-node (mutator) — own module (Phase5, LOC-gate: graph_ops full).
 from juggle_cmd_graph_cancel import cmd_graph_cancel_node  # noqa: E402,F401
+
+# graph learnings (READ) — token-light nodes.learnings reader (gl-learnings-cmd).
+from juggle_cmd_graph_learnings import cmd_graph_learnings  # noqa: E402,F401

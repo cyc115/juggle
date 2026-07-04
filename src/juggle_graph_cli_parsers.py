@@ -20,8 +20,8 @@ def register_graph_parsers(subparsers) -> None:
     """
     from juggle_cmd_graph import (
         cmd_graph_add_task, cmd_graph_cancel_node, cmd_graph_learn,
-        cmd_graph_mark_task, cmd_graph_reconcile, cmd_graph_show,
-        cmd_project_graph_load,
+        cmd_graph_learnings, cmd_graph_mark_task, cmd_graph_reconcile,
+        cmd_graph_show, cmd_project_graph_load,
     )
 
     p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
@@ -133,3 +133,16 @@ def register_graph_parsers(subparsers) -> None:
     _cn.add_argument("--json", dest="json_out", action="store_true",
                      help="Machine-readable output (compact)")
     _cn.set_defaults(func=cmd_graph_cancel_node)
+
+    # graph learnings (READ): token-light nodes.learnings reader, 3 scopes.
+    _ln = _g2s.add_parser(
+        "learnings",
+        help="Read persisted node learnings (node-id / --topic / --project scope)",
+    )
+    _ln_scope = _ln.add_mutually_exclusive_group(required=True)
+    _ln_scope.add_argument("node_id", nargs="?", help="Single node (task) id")
+    _ln_scope.add_argument("--topic", help="All tasks in a topic")
+    _ln_scope.add_argument("--project", help="All tasks in a project")
+    _ln.add_argument("--json", dest="json_out", action="store_true",
+                     help="Machine-readable output")
+    _ln.set_defaults(func=cmd_graph_learnings)

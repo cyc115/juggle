@@ -186,6 +186,43 @@ def list_tasks(db, project_id: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def read_learnings(db, *, node_id=None, topic_id=None, project_id=None) -> dict:
+    """Reader backing ``juggle graph learnings`` and the cockpit topic-info panel
+    (gl-cockpit-info reuses this — no duplicate SQL).
+
+    Exactly ONE scope kwarg. Returns::
+
+        {"items": [{"node_id", "text", "completed_at"}, …],
+         "nodes": N, "with_learnings": M}
+
+    ``items`` are the task nodes in scope whose ``learnings`` (Migration 70) is
+    non-blank, in completion order (verified nodes by ``verified_at``, then any
+    still-unverified by ``created_at``/id). ``nodes`` (N) counts ALL task nodes in
+    scope; ``M == len(items)``. A node-id scope over a missing/non-task node yields
+    ``nodes=0`` — the caller decides whether that is an error (the CLI exits 1)."""
+    if node_id is not None:
+        where, params = "AND id=?", (node_id,)
+    elif topic_id is not None:
+        where, params = "AND parent_id=?", (topic_id,)
+    elif project_id is not None:
+        where, params = "AND project_id=?", (project_id,)
+    else:
+        raise ValueError("read_learnings requires a node_id, topic_id, or project_id")
+    with db._connect() as conn:
+        n_nodes = conn.execute(
+            f"SELECT COUNT(*) FROM nodes WHERE kind='task' {where}", params
+        ).fetchone()[0]
+        rows = conn.execute(
+            "SELECT id AS node_id, learnings AS text, verified_at AS completed_at "
+            f"FROM nodes WHERE kind='task' {where} "
+            "AND learnings IS NOT NULL AND TRIM(learnings) != '' "
+            "ORDER BY verified_at IS NULL, verified_at, created_at, id",
+            params,
+        ).fetchall()
+    items = [dict(r) for r in rows]
+    return {"items": items, "nodes": n_nodes, "with_learnings": len(items)}
+
+
 # Dependency-edge CRUD (node_edges) extracted to db_graph_edges (LOC gate);
 # re-exported below so ``from dbops.db_graph import get_deps`` keeps working.
 
