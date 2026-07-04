@@ -30,6 +30,13 @@ HEARTBEAT_INTERVAL_SECS = 30.0
 # the holder heartbeats; a live pid with a dead heartbeat is not a real holder.
 PHANTOM_HEARTBEAT_MULTIPLE = 10.0
 
+# An UNPARSEABLE lock (pid <= 0) is either a racer caught in the µs window
+# between the O_CREAT|O_EXCL create and the pid write, or a crashed writer's
+# empty corpse. Wait out this grace so a live writer can finish (stealing a
+# half-written lock would let writer + stealer both hold it — a phantom-holder
+# variant of the 2026-07-04 outage), then steal a persistently-corrupt one.
+CORRUPT_LOCK_GRACE_SECS = 5.0
+
 # Global serialized integrate lock (#5038, 2026-07-01 integrate storm): EVERY
 # integrate — autopilot or not — BLOCKS on the per-repo merge queue with this
 # generous safety valve. It is NOT a normal-path deadline: waiters queue behind
@@ -129,6 +136,9 @@ def acquire_repo_lock(
     lock another believed it won).
 
     Steal rules for an existing lock:
+    - an unparseable/empty lock (pid <= 0: a racer mid-write or a crashed
+      corpse) → wait out ``CORRUPT_LOCK_GRACE_SECS`` so a live writer can finish
+      (never steal a half-written lock — that double-holds), then steal;
     - dead holder pid → steal;
     - a lockfile recording THIS process's own pid that we never verified
       ownership of (no live heartbeat) → poisoned self-hold; remove and retry
@@ -146,6 +156,7 @@ def acquire_repo_lock(
     deadline = time.monotonic() + timeout_secs
     my_pid = os.getpid()
     phantom_threshold = heartbeat_interval * PHANTOM_HEARTBEAT_MULTIPLE
+    corrupt_since: float | None = None  # when we first saw an unparseable lock
 
     while True:
         # (a) Atomic exclusive create — the ONLY way to become the holder.
@@ -164,6 +175,27 @@ def acquire_repo_lock(
         # Lock exists — decide whether to steal, wait, or fail.
         existing_pid, lock_ts = _read_lock(lock_path)
         lock_age = time.time() - lock_ts
+
+        # Unparseable/empty lock: a racer mid-write or a crashed corpse. Do NOT
+        # treat pid<=0 as a dead holder and steal it instantly — that would
+        # steal a half-written lock and double-hold. Wait out CORRUPT_LOCK_GRACE
+        # (a live writer finishes in µs); steal only if it stays corrupt.
+        if existing_pid <= 0:
+            now = time.monotonic()
+            if corrupt_since is None:
+                corrupt_since = now
+            if now - corrupt_since < CORRUPT_LOCK_GRACE_SECS and now < deadline:
+                time.sleep(0.05)
+                continue
+            _log.error(
+                "acquire_repo_lock: clearing corrupt/empty lock %s (no valid pid "
+                "after %.1fs) [2026-07-04 phantom-holder]",
+                lock_path, now - corrupt_since,
+            )
+            lock_path.unlink(missing_ok=True)
+            corrupt_since = None
+            continue
+        corrupt_since = None  # a valid pid appeared — reset the grace window
 
         if not _pid_alive(existing_pid):
             lock_path.unlink(missing_ok=True)  # dead PID — steal

@@ -175,11 +175,18 @@ c. **Phantom detection for waiters.** A live-pid lock whose timestamp is stale
    refines DA M2's "never steal a live pid": that rule assumed the holder
    heartbeats; a live pid with a dead heartbeat is by construction NOT mid-gate.
 
+Atomic create opens a µs window between the O_EXCL create and the pid write
+where a racer could read the file EMPTY. Stealing a half-written lock would
+double-hold, so an unparseable lock (`pid <= 0`) is given a
+`CORRUPT_LOCK_GRACE_SECS` grace (a live writer finishes in µs) and only stolen
+if it stays corrupt — never instantly.
+
 **Regression pins:** `tests/test_integrate.py` —
 `test_lock_concurrent_acquirers_one_wins_no_phantom_holder` (multiprocessing
 hammer: winner's own pid always recorded),
 `test_lock_self_pid_unverified_is_recovered_not_waited_on`,
-`test_lock_live_pid_stale_heartbeat_is_stolen`, and the refined
+`test_lock_live_pid_stale_heartbeat_is_stolen`,
+`test_lock_empty_midwrite_not_stolen_no_double_hold`, and the refined
 `test_lock_live_holder_is_never_stolen_pin` (fresh heartbeat → never stolen).
 
 ---

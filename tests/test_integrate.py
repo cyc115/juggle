@@ -177,6 +177,42 @@ def test_lock_live_holder_is_never_stolen_pin(tmp_path):
         holder.wait()
 
 
+def test_lock_empty_midwrite_not_stolen_no_double_hold(tmp_path):
+    """Regression pin (2026-07-04 phantom-holder outage): with O_CREAT|O_EXCL
+    acquisition there is a µs window between creating the lockfile and writing
+    the pid into it. A concurrent acquirer that reads the file EMPTY in that
+    window must NOT treat pid==0 as a dead holder and steal it — stealing a
+    half-written lock lets the writer and the stealer both hold it (a
+    phantom-holder variant). The acquirer waits out the write, then treats the
+    now-live holder normally (here: waits, then times out on the live pid)."""
+    import threading
+    from juggle_cmd_integrate import acquire_repo_lock
+    from juggle_integrate_lock import _read_lock
+
+    holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        lock_file = tmp_path / "midwrite.lock"
+        lock_file.write_text("")  # created but pid not yet written (mid-write)
+
+        def finish_write():
+            time.sleep(0.15)
+            lock_file.write_text(f"{holder.pid}\n{time.time()}\n")
+
+        writer = threading.Thread(target=finish_write)
+        writer.start()
+        try:
+            with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
+                with pytest.raises(RuntimeError, match="Cannot acquire lock"):
+                    acquire_repo_lock("/repo", timeout_secs=0.8, heartbeat_interval=30)
+        finally:
+            writer.join()
+        pid, _ = _read_lock(lock_file)
+        assert pid == holder.pid, "half-written lock was stolen (double-hold risk)"
+    finally:
+        holder.kill()
+        holder.wait()
+
+
 def test_lock_holder_heartbeats_lockfile_while_held(tmp_path):
     """DA M2: the holder refreshes the lockfile timestamp periodically during
     long operations (e.g. test_cmd), so observers can tell it is live."""
