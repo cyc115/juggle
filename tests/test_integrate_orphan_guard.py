@@ -276,6 +276,67 @@ def test_flag_auto_reconciles_before_alerting(tmp_path):
     assert db.get_open_action_items() == []
 
 
+def test_reconcile_auto_clears_stale_unmerged_escalation(tmp_path):
+    """Regression (2026-07-03/04 integrate-wedge #2 follow-up): the watchdog
+    files a HIGH 'completed but UNMERGED' item; when the merge subsequently
+    lands, reconcile must auto-ack THAT exact item. Unrelated open items are
+    untouched. (Incident: T-gp-cancel merged to main yet item 5308 stayed open.)
+    """
+    from datetime import datetime, timedelta, timezone
+    from dbops import orphan_guard
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "f.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "cyc_X")
+    (repo / "f.txt").write_text("work")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "work")  # cyc_X ahead of main, NOT merged yet
+    _git(repo, "checkout", "main")
+
+    db = _make_db(tmp_path)
+    tid = _bind_thread(db, repo=repo, branch="cyc_X")
+    _seed_topic(db, "T1", ["verified"], state="integrating",
+                thread_id=tid, merged_sha=None)
+    _bind_node_branch(db, "T1", repo=repo, branch="cyc_X")
+    # Grace elapsed + no busy agent → genuine orphan; flag files the HIGH item.
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    _stamp_child_verified_at(db, "T1-t0", iso_ts=stale)
+
+    assert orphan_guard.flag_unmerged_completed_topics(db) == ["T1"]
+    unmerged_item = next(
+        i for i in db.get_open_action_items()
+        if "T1" in i["message"] and i["priority"] == "high"
+    )
+
+    # An unrelated open item that must NOT be cleared by the auto-ack.
+    other_id = db.add_action_item(
+        thread_id="thr-other", message="unrelated work", type_="manual_step"
+    )
+
+    # The merge lands out-of-band (what item 5308's fix never noticed).
+    _git(repo, "merge", "--no-ff", "cyc_X", "-m", "merge cyc_X")
+
+    assert orphan_guard.reconcile_out_of_band_merges(db) == ["T1"]
+
+    open_ids = {i["id"] for i in db.get_open_action_items()}
+    assert unmerged_item["id"] not in open_ids, "stale UNMERGED item must be auto-acked"
+    assert other_id in open_ids, "unrelated open item must be untouched"
+
+    # INFO notification recorded for the cleared escalation.
+    with db._connect() as c:
+        note = c.execute(
+            "SELECT message FROM notifications_v2 "
+            "WHERE message LIKE '%auto-cleared stale unmerged escalation%'"
+        ).fetchone()
+    assert note is not None, "an INFO notification must be emitted for the auto-clear"
+
+
 def test_reconcile_skips_truly_unmerged_branch(tmp_path):
     """A branch NOT reachable from main is a genuine orphan — never reconciled,
     still flagged."""

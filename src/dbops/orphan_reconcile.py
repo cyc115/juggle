@@ -40,7 +40,8 @@ def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
     from dbops import db_topics
     from dbops.migration_parent_relink import reconcile_node_parentage
     from dbops.orphan_guard import (
-        _node_repo, _topic_branch, find_unmerged_completed_topics,
+        _node_repo, _topic_branch, clear_stale_unmerged_escalations,
+        find_unmerged_completed_topics,
     )
 
     reconcile_node_parentage(db)
@@ -66,6 +67,12 @@ def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
         # Re-derive the topic state from its member tasks (idempotent on verified).
         try:
             db_topics.reconcile_topic_state(db, node["id"])
+        except Exception:
+            pass
+        # The merge has landed → auto-ack any stale completed-but-UNMERGED
+        # escalation previously filed for this topic (2026-07-04 autoclear fix).
+        try:
+            clear_stale_unmerged_escalations(db, node["id"])
         except Exception:
             pass
         reconciled.append(node["id"])
