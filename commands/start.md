@@ -15,7 +15,9 @@ Arm monitor immediately:
 ```
 Monitor: ${CLAUDE_PLUGIN_ROOT}/scripts/juggle-agent-monitor
 ```
-Each line is one pushable event (`handled_by` = orchestrator/user). Completion lines keep the back-compat format: `[LABEL] researcher: <title>` → "Review ready — [LABEL]: <title>" | `[LABEL] coder/planner: <title>` → "[LABEL] done — <title>". Other kinds (task/topic status, violations, manual notify) print their message text as-is. More than 3 same-kind events in one poll coalesce into a single summary line. Retrieve result and surface to user.
+Each line is one pushable event (`handled_by` = orchestrator/user). Completion lines keep the back-compat format: `[LABEL] researcher: <title>` → "Review ready — [LABEL]: <title>" | `[LABEL] coder/planner: <title>` → "[LABEL] done — <title>". Other kinds (task/topic status, violations, manual notify, `learnings_rollup`) print their message text as-is. More than 3 same-kind events in one poll coalesce into a single summary line. Retrieve result and surface to user.
+
+A `learnings_rollup` line (`⬢ learnings rollup (<project>): N new learning(s) to triage`, followed by `<node-id>: <text>` lines) is orchestrator-owned — triage it, see **Learnings-rollup triage** below.
 
 Auto-create Topic A from first substantive message: `thread create "<label>"`
 
@@ -112,6 +114,14 @@ Coordinates only — Edit/Write/NotebookEdit blocked by hook. File opens via `/j
 **Proactive failure investigation:** Errors, stalls, orphaned threads, broken invariants → investigate and root-cause autonomously without asking permission. Gate only before applying the fix: present root cause + proposed change, then proceed.
 
 **DA findings:** 🔴 needs user input → `action create`; 🟡 auto-resolved → note inline.
+
+**Learnings-rollup triage:** On a `learnings_rollup` monitor line, triage **each** learning (judgment is yours). Per learning, pick one:
+- **(a) feature seed** — a gap/idea worth building → `superpowers:brainstorming` → plan → `graph add-task` under the project.
+- **(b) project convention** — a durable rule for this repo → add to its repo `CLAUDE.md`.
+- **(c) globally applicable** — cross-project working rule → add to global `~/.claude/CLAUDE.md`.
+- **(d) too specific** — leave it in the DB (still hydrates future deps; dropping costs nothing).
+
+Pull broader context first if a learning is terse: `graph learnings --topic <t>` / `--project <p>`. No auto-codification — (b)/(c) edits are your judgment, not automatic.
 
 **Code review:** Always background agent, never inline.
 
