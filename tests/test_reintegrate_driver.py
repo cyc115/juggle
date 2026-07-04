@@ -12,16 +12,23 @@ This pins the level-triggered re-integrate sweep (k8s reconcile + Restart=
 on-failure): observed git state is the oracle.
   * LANDED (incl. rebased, via the two-tier oracle) → heal merged_sha, advance
     to 'verified', NEVER re-merge.
-  * non-landed + real commits ahead + no live bound agent → idempotently re-run
-    integrate; a real failure → fail_envelope + 'failed-integration' (repair
-    sweep owns it thereafter).
+  * non-landed + real commits ahead + no live bound agent → spawn a DETACHED
+    integrate subprocess (never run the ~7-min full-suite gate inline on the
+    watchdog tick — that trips the tickguard budget and livelocks the daemon);
+    the subprocess's outcome reconciles on a LATER tick (landed → verified;
+    failed → fail_envelope → 'failed-integration', repair sweep owns it).
   * a topic with a live busy bound agent is never touched (it may be
     mid-finalize).
+
+T-fix-reintegrate-offtick regression pins (2026-07-03): the tick must SELECT +
+SPAWN only, never block on the gate; a subprocess killed mid-gate (tickguard
+daemon restart) is retried on a later tick and eventually lands.
 """
 from __future__ import annotations
 
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -44,6 +51,24 @@ def _no_backoff():
          patch.object(ri, "REINTEGRATE_BACKOFF_SECS", 0):
         yield
     ri.reset_backoff()
+
+
+class _AliveProc:
+    """Stand-in for a detached integrate subprocess still running the gate."""
+    def poll(self):
+        return None
+
+
+class _DoneProc:
+    """Stand-in for a detached integrate subprocess that exited cleanly."""
+    def poll(self):
+        return 0
+
+
+class _KilledProc:
+    """Stand-in for a subprocess the tickguard daemon restart killed mid-gate."""
+    def poll(self):
+        return -9
 
 
 def _make_db(tmp_path):
@@ -74,9 +99,36 @@ def _worktree(repo, root, label):
     return wt
 
 
-def test_reintegrate_lands_wedged_topic(tmp_path):
-    """The incident case: integrating topic, real unmerged commit, no live agent
-    → the driver re-runs integrate, the work merges, topic → verified."""
+def _integrate_patches(tmp_path):
+    """The three side-effect stubs a real _run_integrate needs in a test repo."""
+    return (
+        patch("juggle_cmd_integrate.get_repo_config",
+              return_value={"push_mode": "none", "test_cmd": ""}),
+        patch("juggle_integrate_lock._get_lock_path",
+              return_value=tmp_path / "t.lock"),
+        patch("juggle_cmd_integrate._restart_juggle_daemons"),
+    )
+
+
+def _spawn_runs_integrate_inline(tmp_path):
+    """Fake _spawn_detached_integrate: run the gate synchronously (simulating the
+    detached subprocess running to completion) and return a finished proc.
+
+    Mirrors what the real detached CLI `integrate` does — merge the git work but
+    leave the topic in 'integrating' for the driver's next-tick reconcile."""
+    def _spawn(thread, db):
+        from juggle_cmd_integrate import _run_integrate
+        p1, p2, p3 = _integrate_patches(tmp_path)
+        with p1, p2, p3:
+            _run_integrate(thread, db)
+        return _DoneProc()
+    return _spawn
+
+
+def test_reintegrate_spawns_then_lands_on_later_tick(tmp_path):
+    """The incident case, now OFF the tick: sweep 1 SPAWNS a detached integrate
+    (topic still 'integrating'); the merge lands; a LATER sweep reconciles the
+    landed git state → 'verified'. The gate never runs inline on the tick."""
     import juggle_graph_reintegrate as ri
     from dbops.db_topics import get_topic
 
@@ -92,25 +144,26 @@ def test_reintegrate_lands_wedged_topic(tmp_path):
                      main_repo_path=repo)
     _seed_topic_with_thread(db, "T1", tid, repo, "cyc_AB")
 
-    with patch("juggle_cmd_integrate.get_repo_config",
-               return_value={"push_mode": "none", "test_cmd": ""}), \
-         patch("juggle_integrate_lock._get_lock_path",
-               return_value=tmp_path / "t.lock"), \
-         patch("juggle_cmd_integrate._restart_juggle_daemons"):
-        driven = ri.sweep_reintegrate(db, ["INBOX"])
+    with patch("juggle_graph_reintegrate._spawn_detached_integrate",
+               side_effect=_spawn_runs_integrate_inline(tmp_path)):
+        driven1 = ri.sweep_reintegrate(db, ["INBOX"])
+        # Tick 1: spawned only — reconcile-to-verified is a LATER tick's job.
+        assert "T1" in driven1
+        assert (Path(repo) / "feat.py").exists()   # subprocess merged to main
+        assert not Path(wt).exists()               # worktree cleaned up
 
-    assert "T1" in driven
+        driven2 = ri.sweep_reintegrate(db, ["INBOX"])
+
+    assert "T1" in driven2
     assert get_topic(db, "T1")["state"] == "verified"
     assert (get_topic(db, "T1")["merged_sha"] or "").strip()
-    assert (Path(repo) / "feat.py").exists()   # merged to main
-    assert not Path(wt).exists()               # worktree cleaned up
 
 
 def test_reintegrate_never_re_merges_rebased_landing(tmp_path):
     """Amendment blind spot: a topic whose branch already landed via REBASE
     (equivalent commit on main under a different sha, branch tip NOT an ancestor)
-    must heal to verified WITHOUT calling _run_integrate — re-merging would
-    duplicate the commit / raise a spurious conflict."""
+    must heal to verified WITHOUT spawning integrate — re-merging would duplicate
+    the commit / raise a spurious conflict."""
     import juggle_graph_reintegrate as ri
     from dbops.db_topics import get_topic
 
@@ -132,7 +185,7 @@ def test_reintegrate_never_re_merges_rebased_landing(tmp_path):
                      main_repo_path=repo)
     _seed_topic_with_thread(db, "T1", tid, repo, "cyc_RB")
 
-    with patch("juggle_graph_reintegrate._run_integrate") as spy:
+    with patch("juggle_graph_reintegrate._spawn_detached_integrate") as spy:
         driven = ri.sweep_reintegrate(db, ["INBOX"])
 
     spy.assert_not_called()   # landed → NEVER re-merge
@@ -142,7 +195,7 @@ def test_reintegrate_never_re_merges_rebased_landing(tmp_path):
 
 def test_reintegrate_skips_topic_with_live_busy_agent(tmp_path):
     """A topic whose dispatch thread still has a live busy agent may be
-    mid-finalize — the driver must not re-run integrate under it."""
+    mid-finalize — the driver must not spawn integrate under it."""
     import juggle_graph_reintegrate as ri
     from dbops.db_topics import get_topic
 
@@ -160,7 +213,7 @@ def test_reintegrate_skips_topic_with_live_busy_agent(tmp_path):
     agent_id = db.create_agent(role="coder", pane_id="p1")
     assert db.cas_assign_agent(agent_id, tid)   # busy on the topic's thread
 
-    with patch("juggle_graph_reintegrate._run_integrate") as spy:
+    with patch("juggle_graph_reintegrate._spawn_detached_integrate") as spy:
         driven = ri.sweep_reintegrate(db, ["INBOX"])
 
     spy.assert_not_called()
@@ -168,10 +221,117 @@ def test_reintegrate_skips_topic_with_live_busy_agent(tmp_path):
     assert get_topic(db, "T1")["state"] == "integrating"   # left untouched
 
 
-def test_reintegrate_routes_real_failure_to_failed_integration(tmp_path):
-    """A genuine integrate failure (rebase conflict) → topic 'failed-integration'
-    with a fail_envelope, so the existing repair sweep picks it up. Never left
-    silently wedged in 'integrating'."""
+def test_reintegrate_tick_runs_gate_off_thread_within_budget(tmp_path):
+    """Regression pin (T-fix-reintegrate-offtick): a candidate needing a full
+    integrate must NOT run the gate inline on the tick — the tick only selects +
+    spawns and returns immediately, well within the 90s tickguard budget, even
+    if the integrate gate itself would take minutes."""
+    import juggle_graph_reintegrate as ri
+
+    repo = _repo(tmp_path)
+    wt = _worktree(repo, tmp_path, "SL")
+    (Path(wt) / "feat.py").write_text("y = 2\n")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-m", "feat")
+
+    db = _make_db(tmp_path)
+    tid = db.create_thread(topic="feat", session_id="s")
+    db.update_thread(tid, worktree_path=wt, worktree_branch="cyc_SL",
+                     main_repo_path=repo)
+    _seed_topic_with_thread(db, "T1", tid, repo, "cyc_SL")
+
+    def _slow_gate(*a, **k):
+        time.sleep(30)   # would blow the tickguard budget if run inline
+        return True, "ok"
+
+    with patch("juggle_cmd_integrate._run_integrate",
+               side_effect=_slow_gate) as gate, \
+         patch("juggle_graph_reintegrate._spawn_detached_integrate",
+               return_value=_AliveProc()) as spawn:
+        t0 = time.monotonic()
+        driven = ri.sweep_reintegrate(db, ["INBOX"])
+        elapsed = time.monotonic() - t0
+
+    assert "T1" in driven          # candidate selected + spawned
+    spawn.assert_called_once()     # gate handed OFF to a detached subprocess
+    assert gate.call_count == 0    # gate NEVER run inline on the tick
+    assert elapsed < 5.0           # nowhere near the 90s tickguard budget
+
+
+def test_reintegrate_skips_respawn_while_prior_integrate_in_flight(tmp_path):
+    """Single-flight: while a spawned detached integrate is still running the
+    gate, a later tick must NOT spawn a second one (nor count it / fail it) —
+    its outcome reconciles on a still-later tick."""
+    import juggle_graph_reintegrate as ri
+
+    repo = _repo(tmp_path)
+    wt = _worktree(repo, tmp_path, "IF")
+    (Path(wt) / "feat.py").write_text("y = 2\n")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-m", "feat")
+
+    db = _make_db(tmp_path)
+    tid = db.create_thread(topic="feat", session_id="s")
+    db.update_thread(tid, worktree_path=wt, worktree_branch="cyc_IF",
+                     main_repo_path=repo)
+    _seed_topic_with_thread(db, "T1", tid, repo, "cyc_IF")
+
+    with patch("juggle_graph_reintegrate._spawn_detached_integrate",
+               return_value=_AliveProc()) as spawn:
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 1: spawns
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 2: in flight → no re-spawn
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 3: still in flight → no re-spawn
+
+    spawn.assert_called_once()
+
+
+def test_reintegrate_killed_mid_gate_is_retried_and_lands(tmp_path):
+    """Regression pin (T-fix-reintegrate-offtick): a detached integrate the
+    tickguard daemon restart killed mid-gate (nothing merged, proc dead) is
+    re-spawned on a later tick and eventually lands → 'verified'."""
+    import juggle_graph_reintegrate as ri
+    from dbops.db_topics import get_topic
+
+    repo = _repo(tmp_path)
+    wt = _worktree(repo, tmp_path, "KM")
+    (Path(wt) / "feat.py").write_text("y = 2\n")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-m", "feat")
+
+    db = _make_db(tmp_path)
+    tid = db.create_thread(topic="feat", session_id="s")
+    db.update_thread(tid, worktree_path=wt, worktree_branch="cyc_KM",
+                     main_repo_path=repo)
+    _seed_topic_with_thread(db, "T1", tid, repo, "cyc_KM")
+
+    calls = {"n": 0}
+
+    def _spawn(thread, db):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _KilledProc()   # killed mid-gate — nothing merged
+        from juggle_cmd_integrate import _run_integrate
+        p1, p2, p3 = _integrate_patches(tmp_path)
+        with p1, p2, p3:
+            _run_integrate(thread, db)   # retry completes the merge
+        return _DoneProc()
+
+    with patch("juggle_graph_reintegrate._spawn_detached_integrate",
+               side_effect=_spawn):
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 1: spawn#1 killed
+        assert get_topic(db, "T1")["state"] == "integrating"
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 2: dead → respawn#2 merges
+        assert get_topic(db, "T1")["state"] == "integrating"
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 3: reconcile → verified
+
+    assert calls["n"] == 2   # retried exactly once after the kill
+    assert get_topic(db, "T1")["state"] == "verified"
+
+
+def test_reintegrate_routes_failed_subprocess_to_failed_integration(tmp_path):
+    """A detached integrate that FAILED (rebase conflict → fail_envelope written,
+    but subprocess exited without landing) is routed to 'failed-integration' on a
+    later tick, so the existing repair sweep picks it up."""
     import juggle_graph_reintegrate as ri
     from dbops.db_topics import get_topic
 
@@ -191,12 +351,11 @@ def test_reintegrate_routes_real_failure_to_failed_integration(tmp_path):
                      main_repo_path=repo)
     _seed_topic_with_thread(db, "T1", tid, repo, "cyc_CF")
 
-    with patch("juggle_cmd_integrate.get_repo_config",
-               return_value={"push_mode": "none", "test_cmd": ""}), \
-         patch("juggle_integrate_lock._get_lock_path",
-               return_value=tmp_path / "t.lock"), \
-         patch("juggle_cmd_integrate._restart_juggle_daemons"):
-        ri.sweep_reintegrate(db, ["INBOX"])
+    with patch("juggle_graph_reintegrate._spawn_detached_integrate",
+               side_effect=_spawn_runs_integrate_inline(tmp_path)):
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 1: spawn → conflict → fail_envelope
+        assert get_topic(db, "T1")["state"] == "integrating"   # not yet routed
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 2: fail_envelope → route
 
     topic = get_topic(db, "T1")
     assert topic["state"] == "failed-integration"

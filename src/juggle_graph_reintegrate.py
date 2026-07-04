@@ -1,14 +1,13 @@
 """juggle_graph_reintegrate — the watchdog re-integrate driver (integrate-wedge fix 1).
 
-Incident (2026-07-03 integrate-wedge RCA): the only merge-lander
-(complete-agent → ``_run_integrate``) runs ONCE, inline. A single miss wedged a
-topic in ``state='integrating'`` FOREVER — graph_tick re-dispatches only 'ready'
-topics, the repair sweep needs a ``fail_envelope`` (none was written), and
-orphan-reconcile skips a topic bound to a busy agent. Three topics sat wedged
-1–1.5 h with real unmerged work and zero visible action.
+Incident (2026-07-03 integrate-wedge RCA): the only merge-lander (complete-agent
+→ ``_run_integrate``) runs ONCE, inline. A single miss wedged a topic in
+``state='integrating'`` FOREVER — graph_tick re-dispatches only 'ready' topics,
+the repair sweep needs a ``fail_envelope`` (none written), and orphan-reconcile
+skips a topic bound to a busy agent. Three topics sat wedged 1–1.5 h.
 
 This module is the missing durable reconcile-repair path: a LEVEL-TRIGGERED
-sweep (the Kubernetes controller / systemd ``Restart=on-failure`` shape — see
+sweep (k8s controller / systemd ``Restart=on-failure`` shape — see
 research/2026-07-03-watchdog-reconciliation-patterns.md) run every watchdog tick.
 Observed git state is the oracle:
 
@@ -17,25 +16,24 @@ Observed git state is the oracle:
   'verified' via reconcile. NEVER re-merge (re-merging rebased work duplicates
   commits / raises a spurious conflict — the amendment's blind spot).
 * non-landed + real commits ahead + NO live bound agent + backoff elapsed →
-  idempotently re-run ``_run_integrate``; on a real failure the topic goes
-  'failed-integration' (its ``fail_envelope`` routes it to the existing repair
-  sweep).
-* Forget (k8s ``workqueue.Forget``): once a topic leaves 'integrating' (→
-  verified on landing, → failed-integration on failure) its per-topic backoff
-  state is dropped so the driver never hot-loops on it.
+  spawn a DETACHED ``juggle integrate`` subprocess. The gate NEVER runs inline
+  on the tick — that was the 2026-07-03 livelock (the ~7-min gate blew the 90s
+  tickguard budget → 'hang suspected' daemon restart killed it mid-run → retry
+  next boot → 5 restarts in 12min, zero merges). The detached process survives a
+  daemon restart (``start_new_session``); the per-repo integrate lock + heartbeat
+  serialize it (single-flight). Its outcome reconciles on a LATER tick: landed →
+  'verified'; a real failure wrote a ``fail_envelope`` → 'failed-integration'.
+* Forget (k8s ``workqueue.Forget``): once a topic leaves 'integrating' its
+  per-topic backoff state is dropped so the driver never hot-loops on it.
 
 Must not own: the topic state machine (dbops.db_topics), the merge mechanics
-(juggle_cmd_integrate._run_integrate), or the dispatch claim loop
-(juggle_graph_dispatch) — it only re-drives and reconciles.
+(juggle_cmd_integrate), or the dispatch claim loop — it only re-drives + reconciles.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-
-# Imported at module scope so tests can patch juggle_graph_reintegrate._run_integrate.
-from juggle_cmd_integrate import _run_integrate
 
 _log = logging.getLogger("juggle-graph-reintegrate")
 
@@ -94,11 +92,26 @@ def _backoff_elapsed(db, topic_id: str, now: datetime) -> bool:
     return last is None or (now - last).total_seconds() >= REINTEGRATE_BACKOFF_SECS
 
 
-def _record_attempt(db, topic_id: str, now: datetime) -> int:
-    st = _backoff.setdefault(_key(db, topic_id), {"attempts": 0, "last_attempt": None})
+def _record_attempt(db, topic_id: str, now: datetime, proc=None) -> int:
+    st = _backoff.setdefault(
+        _key(db, topic_id), {"attempts": 0, "last_attempt": None, "proc": None}
+    )
     st["attempts"] += 1
     st["last_attempt"] = now
+    st["proc"] = proc  # the detached integrate we just spawned (single-flight guard)
     return st["attempts"]
+
+
+def _spawn_alive(db, topic_id: str) -> bool:
+    """True iff the detached integrate last spawned for this topic is still running."""
+    st = _backoff.get(_key(db, topic_id))
+    proc = st.get("proc") if st else None
+    if proc is None:
+        return False
+    try:
+        return proc.poll() is None
+    except Exception:
+        return False
 
 
 def _has_live_bound_agent(db, thread_id: str | None) -> bool:
@@ -111,9 +124,8 @@ def _has_live_bound_agent(db, thread_id: str | None) -> bool:
 
 
 def _real_commits_ahead(thread: dict) -> bool:
-    """True iff the topic's worktree exists and has committed work ahead of
-    trunk — genuine unmerged work to integrate (not an empty branch / lost
-    worktree, which the orphan guard surfaces instead)."""
+    """True iff the topic's worktree exists and has committed work ahead of trunk
+    — genuine unmerged work (not an empty branch / lost worktree; orphan-guarded)."""
     from pathlib import Path
     from vcs import backend_for
 
@@ -131,17 +143,65 @@ def _real_commits_ahead(thread: dict) -> bool:
         return False
 
 
+def _spawn_detached_integrate(thread: dict, db):
+    """Spawn ``juggle integrate <thread>`` DETACHED; return its handle (None on
+    spawn failure). NEVER blocks the tick. ``start_new_session`` detaches it from
+    the watchdog's process group so a tickguard daemon restart can't kill the gate
+    mid-run (the 2026-07-03 livelock); the per-repo integrate lock + heartbeat
+    serialize it (single-flight) even across a restart. ``JUGGLE_ORCHESTRATOR=1``
+    marks it watchdog-owned so the integrate guard permits the call."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    thread_id = (thread.get("id") or "").strip()
+    repo = (thread.get("main_repo_path") or "").strip()
+    if not thread_id or not repo:
+        return None
+
+    cli = str(Path(__file__).resolve().parent / "juggle_cli.py")
+    env = os.environ.copy()
+    env["JUGGLE_ORCHESTRATOR"] = "1"  # integrate is watchdog-owned; this IS the watchdog
+    db_path = getattr(db, "db_path", None)
+    if db_path:
+        env["JUGGLE_DB_PATH"] = str(db_path)
+
+    # Detached-process output → a durable log (the incident was diagnosed from
+    # watchdog-spawn.log); fall back to DEVNULL if the dir is unwritable.
+    logf = subprocess.DEVNULL
+    try:
+        log_dir = Path(db_path).parent if db_path else Path(repo)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        logf = open(log_dir / "reintegrate-spawn.log", "ab")
+    except OSError:
+        pass
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, cli, "integrate", thread_id], cwd=repo, env=env,
+            start_new_session=True, stdin=subprocess.DEVNULL, stdout=logf, stderr=logf,
+        )
+    except Exception:
+        _log.exception("reintegrate: failed to spawn detached integrate for %s", thread_id)
+        return None
+    finally:
+        if logf is not subprocess.DEVNULL:
+            logf.close()  # child dup'd the fd
+    return proc
+
+
 def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str | None:
-    """Reconcile-and-maybe-re-drive one 'integrating' topic. Returns the topic
-    id if it was healed/driven/routed this pass, else None. Never raises."""
+    """Reconcile one 'integrating' topic and, if wedged, spawn a DETACHED
+    integrate (the gate NEVER runs inline). Returns the topic id if it was
+    healed / spawned / routed this pass, else None. Never raises."""
     from dbops.db_topics import get_topic, reconcile_topic_state
     from juggle_cmd_agents_graph_topics import mark_graph_topic
 
     tid = topic["id"]
 
-    # 1. Level-triggered heal: git reality is the oracle. reconcile re-derives
-    #    the topic from its tasks via the two-tier _heal_merged_sha — a LANDED
-    #    (incl. rebased) topic stamps merged_sha and advances to 'verified'.
+    # 1. Level-triggered heal (git reality is the oracle): a LANDED (incl.
+    #    rebased) topic stamps merged_sha → 'verified'. Runs FIRST so a just-
+    #    landed topic wins over a redundant integrate's spurious empty-branch env.
     try:
         state = reconcile_topic_state(db, tid)
     except Exception:
@@ -154,12 +214,37 @@ def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str |
         _forget(db, tid)  # moved to a failure verdict elsewhere — repair owns it
         return None
 
-    # 2. Still 'integrating' and NOT landed → consider re-driving integrate.
+    # 2. Still 'integrating' and NOT landed.
     thread_id = topic.get("thread_id")
     if not thread_id:
         return None  # unbound — worktree gone; orphan guard surfaces it
     if _has_live_bound_agent(db, thread_id):
         return None  # owning agent may still be finalizing — never re-drive under it
+
+    # 3. A detached integrate may still be running its gate — never re-spawn /
+    #    count / fail it in flight (its outcome reconciles on a later tick).
+    if _spawn_alive(db, tid):
+        return None
+
+    # 4. A prior detached attempt finished WITHOUT landing → route to
+    #    'failed-integration' (repair sweep) on a real fail_envelope or the
+    #    soft-failure backstop (never re-spawn forever).
+    refreshed = get_topic(db, tid) or {}
+    st = _backoff.get(_key(db, tid))
+    attempts = st["attempts"] if st else 0
+    if refreshed.get("fail_envelope") or attempts >= MAX_REINTEGRATE_ATTEMPTS:
+        try:
+            mark_graph_topic(db, thread_id, False, None, session_id)
+        except Exception:
+            _log.exception("reintegrate: failed to route %s to failed-integration", tid)
+            return None
+        _forget(db, tid)
+        _log.warning("reintegrate: topic %s exhausted/failed re-integrate → "
+                     "failed-integration", tid)
+        return tid
+
+    # 5. No in-flight integrate, no envelope, attempts remain → spawn a fresh
+    #    DETACHED integrate (grace + backoff gate the cadence).
     if not _grace_elapsed(topic, now) or not _backoff_elapsed(db, tid, now):
         return None
     try:
@@ -169,35 +254,13 @@ def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str |
     if not _real_commits_ahead(thread):
         return None  # empty branch / lost worktree — not this driver's job
 
-    attempts = _record_attempt(db, tid, now)
-    ok, msg = _run_integrate(thread, db)
-    if ok:
-        try:
-            reconcile_topic_state(db, tid)
-        except Exception:
-            _log.exception("reintegrate: post-success reconcile failed for %s", tid)
-        _forget(db, tid)
-        _log.info("reintegrate: re-drove wedged topic %s → landed", tid)
-        return tid
-
-    # 3. Failure. Route to 'failed-integration' (→ repair sweep) when integrate
-    #    wrote a real fail_envelope, or when the soft-failure backstop is hit.
-    #    Otherwise (pre-flight refusal, no envelope) leave it 'integrating' and
-    #    back off for a later retry.
-    refreshed = get_topic(db, tid) or {}
-    if refreshed.get("fail_envelope") or attempts >= MAX_REINTEGRATE_ATTEMPTS:
-        try:
-            mark_graph_topic(db, thread_id, False, None, session_id)
-        except Exception:
-            _log.exception("reintegrate: failed to route %s to failed-integration", tid)
-            return None
-        _forget(db, tid)
-        _log.warning("reintegrate: topic %s failed re-integrate → failed-integration: %s",
-                     tid, msg)
-        return tid
-    _log.info("reintegrate: soft re-integrate refusal for %s (attempt %d) — backing off: %s",
-              tid, attempts, msg)
-    return None
+    proc = _spawn_detached_integrate(thread, db)
+    if proc is None:
+        return None
+    n = _record_attempt(db, tid, now, proc)
+    _log.info("reintegrate: spawned detached integrate for wedged topic %s (attempt %d)",
+              tid, n)
+    return tid
 
 
 def run_reintegrate_tick(db) -> list[str]:
