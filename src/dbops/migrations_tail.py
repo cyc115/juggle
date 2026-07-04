@@ -44,3 +44,7 @@ def apply_tail_migrations(conn: sqlite3.Connection) -> None:
     # Migration 67 (graph-node-primitives Phase 1): nodes.cancel_reason column.
     from dbops.migration_67_cancel_reason import migrate_67_cancel_reason
     migrate_67_cancel_reason(conn)
+
+    # Migration 70 (graph-node learnings primitive): nodes.learnings column.
+    from dbops.migration_70_node_learnings import migrate_70_node_learnings
+    migrate_70_node_learnings(conn)
