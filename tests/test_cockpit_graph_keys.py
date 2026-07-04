@@ -215,17 +215,16 @@ async def test_arrows_do_not_leak_to_scroll_when_graph_off(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_l_key_opens_frontier_screen_without_crash(tmp_path):
+async def test_l_key_opens_plan_screen_without_crash(tmp_path):
     """Regression pin, carried forward from the removed GitlogScreen's
     fan-in-convergence IndexError pin (2026-07-02 incident): user-reported
-    live crash — cockpit graph view -> 'l' (gitlog screen) -> IndexError: list
-    assignment index out of range. GitlogScreen (and its lane-allocator core)
-    is now removed outright, replaced by the Frontier Railroad
-    (juggle_frontier_layout, bounds-safety re-pinned in
-    tests/test_frontier_layout.py); this pin asserts 'l' opens the new screen
-    without raising."""
+    live crash — cockpit graph view -> 'l' -> IndexError: list assignment index
+    out of range. Since the plan-view rebind (2026-07-02), 'l' opens the Plan
+    view (juggle_plan_render, bounds-safety pinned in tests/test_plan_screen.py
+    + tests/test_plan_viewports.py); the old Frontier Railroad moved to 'L'.
+    This pin asserts 'l' opens the new screen without raising."""
     from juggle_cockpit import CockpitApp
-    from juggle_cockpit_frontier_screen import FrontierScreen
+    from juggle_cockpit_plan_screen import PlanScreen
 
     app = CockpitApp(db_path=_armed_db(tmp_path))
     async with app.run_test(size=(160, 40)) as pilot:
@@ -234,4 +233,4 @@ async def test_l_key_opens_frontier_screen_without_crash(tmp_path):
         assert app._graph_mode is True
         await pilot.press("l")
         await pilot.pause(0.15)
-        assert isinstance(app.screen, FrontierScreen)
+        assert isinstance(app.screen, PlanScreen)
