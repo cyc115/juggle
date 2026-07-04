@@ -229,6 +229,67 @@ async def test_enter_opens_topic_detail(tmp_path):
         assert not isinstance(app.screen, PlanScreen)
 
 
+def _armed_cockpit_db(tmp_path):
+    """Armed single-project DB for CockpitApp key-routing tests."""
+    from juggle_db import JuggleDB
+    from dbops import db_graph as g
+    from juggle_graph_dispatch import ARMED_PROJECT_KEY
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+    with db._connect() as conn:
+        _project(conn, "P", "Proj")
+        conn.commit()
+    g.create_task(db, task_id="n1", project_id="P", title="One", prompt="do 1")
+    db.set_setting(ARMED_PROJECT_KEY, "P")
+    return db_path
+
+
+def test_help_table_documents_l_plan_and_L_railroad():
+    """The ? help/legend must reflect the rebind: l → Plan view, L → railroad."""
+    from juggle_cockpit_modals import build_help_content
+
+    entries = [e for g in build_help_content() for e in g["entries"]]
+    by_key = {e["key"]: e for e in entries}
+    l_entry = next((e for k, e in by_key.items() if k.startswith("l ")), None)
+    L_entry = next((e for k, e in by_key.items() if k.startswith("L ")), None)
+    assert l_entry and "Plan" in l_entry["desc"]
+    assert L_entry and "Railroad" in L_entry["desc"]
+
+
+@pytest.mark.asyncio
+async def test_graph_lowercase_l_opens_plan_screen(tmp_path):
+    """In Graph mode, `l` opens the new PlanScreen (the railroad moved to L)."""
+    from juggle_cockpit import CockpitApp
+    from juggle_cockpit_plan_screen import PlanScreen
+
+    app = CockpitApp(db_path=_armed_cockpit_db(tmp_path))
+    async with app.run_test(size=(160, 40)) as pilot:
+        await pilot.press("g")
+        await pilot.pause(0.1)
+        await pilot.press("l")
+        await pilot.pause(0.15)
+        assert isinstance(app.screen, PlanScreen)
+
+
+@pytest.mark.asyncio
+async def test_graph_uppercase_L_opens_frontier_railroad(tmp_path):
+    """Literal uppercase `L` (NOT shift+l — the 2026-07-02 lesson) opens the
+    old Frontier railroad from Graph mode."""
+    from juggle_cockpit import CockpitApp
+    from juggle_cockpit_frontier_screen import FrontierScreen
+
+    app = CockpitApp(db_path=_armed_cockpit_db(tmp_path))
+    async with app.run_test(size=(160, 40)) as pilot:
+        await pilot.press("g")
+        await pilot.pause(0.1)
+        await pilot.press("L")
+        await pilot.pause(0.15)
+        assert isinstance(app.screen, FrontierScreen)
+
+
 @pytest.mark.asyncio
 async def test_tab_cycles_projects(tmp_path):
     db = _fixture_20_node(str(tmp_path / "juggle.db"))

@@ -298,7 +298,11 @@ async def test_detail_pane_collapses_on_short_viewport(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_l_and_G_both_open_frontier_screen(tmp_path):
+async def test_L_and_G_both_open_frontier_screen(tmp_path):
+    """Post plan-view rebind (2026-07-02): the Frontier railroad moved to `L`
+    (uppercase, literal — the shift+letter lesson); `G` still opens it for
+    muscle memory. Lowercase `l` now opens the Plan view (see
+    tests/test_plan_screen.py)."""
     from juggle_cockpit import CockpitApp
     from juggle_cockpit_frontier_screen import FrontierScreen
     from dbops import db_graph as g
@@ -319,7 +323,7 @@ async def test_l_and_G_both_open_frontier_screen(tmp_path):
     async with app.run_test(size=(160, 40)) as pilot:
         await pilot.press("g")
         await pilot.pause(0.1)
-        await pilot.press("l")
+        await pilot.press("L")
         await pilot.pause(0.15)
         assert isinstance(app.screen, FrontierScreen)
         await pilot.press("q")

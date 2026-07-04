@@ -187,7 +187,15 @@ class GraphModeMixin:
                 event.stop()
                 event.prevent_default()
                 return True
+        # l → new Plan view (layered future DAG); L → old Frontier railroad.
+        # Bind the LITERAL uppercase "L" (2026-07-02 shift+letter lesson — most
+        # terminals deliver Shift+L as "L", never a "shift+l" event).
         if k == "l":
+            self._open_plan_screen()
+            event.stop()
+            event.prevent_default()
+            return True
+        if k == "L":
             self._open_gitlog_screen()
             event.stop()
             event.prevent_default()
@@ -199,23 +207,40 @@ class GraphModeMixin:
             return True
         return False
 
-    def _open_gitlog_screen(self) -> None:
-        """l — open the Frontier Railroad (full-screen, ONE surface replacing
-        the removed GitlogScreen + RailroadScreen) for the selected task's
-        project."""
+    def _selected_project_and_dags(self):
+        """(dags, project_id-of-selection) or (None, None) — shared by the l/L
+        full-screen launchers so they open on the project under the cursor."""
         from juggle_cockpit_model import snapshot as _snapshot
         try:
             state = _snapshot(self._db, load_graph_dag=True)
         except Exception:
-            return
+            return None, None
         dags = getattr(state, "graph_dags", None) or (
             [state.graph_dag] if getattr(state, "graph_dag", None) else []
         )
         if not dags:
-            return
+            return None, None
         from juggle_cockpit_graph_layout import selectable_units
         flat = [(d, n) for d in dags for n in selectable_units(d.tasks, d.edges)]
         sel = getattr(self, "_graph_sel", 0)
         pid = flat[sel][0].project_id if 0 <= sel < len(flat) else dags[0].project_id
+        return dags, pid
+
+    def _open_plan_screen(self) -> None:
+        """l — open the Plan view (full-screen layered future DAG, waves by
+        longest-path depth) for the selected task's project."""
+        dags, pid = self._selected_project_and_dags()
+        if not dags:
+            return
+        from juggle_cockpit_plan_screen import PlanScreen
+        self.push_screen(PlanScreen(dags, pid, self._db))
+
+    def _open_gitlog_screen(self) -> None:
+        """L — open the Frontier Railroad (full-screen, ONE surface replacing
+        the removed GitlogScreen + RailroadScreen) for the selected task's
+        project."""
+        dags, pid = self._selected_project_and_dags()
+        if not dags:
+            return
         from juggle_cockpit_frontier_screen import FrontierScreen
         self.push_screen(FrontierScreen(dags, pid, self._db))

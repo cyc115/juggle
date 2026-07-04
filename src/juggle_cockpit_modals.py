@@ -254,10 +254,16 @@ COCKPIT_HELP_TABLE: list[dict] = [
                 "desc": "Open the Frontier Railroad for the selected task's project",
             },
             {
-                "action": "gitlog",
+                "action": "plan_view",
                 "key": "l  (in Graph mode)",
-                "short": "Log",
-                "desc": "Open the Frontier Railroad for the selected task's project; l again closes",
+                "short": "Plan",
+                "desc": "Open the Plan view (layered future DAG — waves by dependency depth) for the selected task's project",
+            },
+            {
+                "action": "gitlog",
+                "key": "L  (in Graph mode)",
+                "short": "Rail",
+                "desc": "Open the Frontier Railroad (the old railroad) for the selected task's project",
             },
             {
                 "action": "projects",
