@@ -66,6 +66,28 @@ def _merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _finalize_stop_overlay() -> dict:
+    """The always-on agent-finalization Stop hook (T-enforce-finalize-stop-hook).
+
+    Injected into EVERY agent overlay — and only agent overlays, since this file
+    builds nothing for the orchestrator — so a coder that finishes work and idles
+    at the prompt WITHOUT running ``agent complete``/``agent fail`` gets its
+    turn-end blocked (see juggle_hooks_finalize). ``${JUGGLE_REPO_ROOT}`` is
+    injected into every dispatched agent's env (juggle_harness._env_prefix) and
+    points at the SAME repo the orchestrator runs, so the hook never hits
+    agent/orchestrator CLI skew. Hook arrays UNION across sources, so this is
+    purely additive to any host/role Stop hooks.
+    """
+    return {
+        "hooks": {
+            "Stop": [
+                {"hooks": [{"type": "command",
+                    "command": "uv run ${JUGGLE_REPO_ROOT}/src/juggle_hooks.py AgentStop"}]}
+            ]
+        }
+    }
+
+
 def _strip_deny(overlay: dict) -> dict:
     """Return a copy of ``overlay`` with ``permissions.deny`` removed.
 
@@ -100,6 +122,10 @@ def build_agent_overlay(role: str | None, overrides: dict | None = None) -> dict
     agent = get_settings().get("agent", {})
 
     overlay = copy.deepcopy(agent.get("settings_overlay_base") or {})
+    # Finalization Stop hook is structural to every agent overlay (not config —
+    # so it can't be accidentally dropped by a deployment's settings_overlay_base
+    # override). Merged first so role/override Stop hooks union on top of it.
+    overlay = _merge(overlay, _finalize_stop_overlay())
     role_overlay = copy.deepcopy((agent.get("settings_overlay_by_role") or {}).get(role) or {})
     # Audit mode: relax the per-role denials so those tools remain in context
     # and `juggle agent-tools` can measure real demand. Universal (base) denials

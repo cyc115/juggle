@@ -65,12 +65,14 @@ def test_overlay_unions_and_dedups_deny(fake_settings):
 
 
 def test_overlay_is_additive_only_no_stray_keys(fake_settings):
-    """With only deny configured the overlay must contain ONLY permissions.deny —
-    no model/defaultMode/etc. — so host values for those keys are preserved."""
+    """With only deny configured the overlay must contain ONLY permissions.deny
+    plus the structural finalization Stop hook — no model/defaultMode/etc. — so
+    host values for those keys are preserved."""
     fake_settings()
     overlay = jas.build_agent_overlay("coder")
-    assert set(overlay.keys()) == {"permissions"}
+    assert set(overlay.keys()) == {"permissions", "hooks"}
     assert set(overlay["permissions"].keys()) == {"deny"}
+    assert set(overlay["hooks"].keys()) == {"Stop"}
 
 
 def test_per_role_divergence(fake_settings):
@@ -215,4 +217,50 @@ def test_write_overlay_has_editor_mode_normal(tmp_path, monkeypatch):
     data = json.loads(path.read_text())
     assert data.get("editorMode") == "normal", (
         f"written overlay JSON must have editorMode==normal; got {data.get('editorMode')!r}"
+    )
+
+
+# ── AgentStop finalization hook — installed in every agent overlay ────────────
+
+
+def _stop_commands(overlay: dict) -> list[str]:
+    cmds = []
+    for entry in overlay.get("hooks", {}).get("Stop", []):
+        for h in entry.get("hooks", []):
+            cmds.append(h.get("command", ""))
+    return cmds
+
+
+def test_agent_stop_hook_in_overlay_for_all_roles():
+    """Every agent role's overlay must carry the AgentStop finalization hook.
+
+    Uses the REAL get_settings() so it proves the value flows from DEFAULTS
+    through the live install. RED before DEFAULTS carries the Stop hook; GREEN
+    after. The hook is what code-enforces `agent complete`/`agent fail`.
+    """
+    for role in (None, "researcher", "coder", "planner"):
+        cmds = _stop_commands(jas.build_agent_overlay(role))
+        assert any("juggle_hooks.py AgentStop" in c for c in cmds), (
+            f"role={role!r}: overlay must install the AgentStop hook; got {cmds!r}"
+        )
+
+
+def test_agent_stop_hook_survives_audit_mode(monkeypatch):
+    """audit_mode strips per-role deny but must NOT remove the Stop hook."""
+    real = jas.get_settings()
+    patched = {**real, "agent": {**real["agent"], "audit_mode": True}}
+    monkeypatch.setattr(jas, "get_settings", lambda: patched)
+    cmds = _stop_commands(jas.build_agent_overlay("coder"))
+    assert any("juggle_hooks.py AgentStop" in c for c in cmds)
+
+
+def test_write_overlay_has_agent_stop_hook(tmp_path, monkeypatch):
+    """write_agent_overlay must write the AgentStop hook into the JSON file."""
+    real = jas.get_settings()
+    patched = {**real, "paths": {**real.get("paths", {}), "config_dir": str(tmp_path)}}
+    monkeypatch.setattr(jas, "get_settings", lambda: patched)
+    data = json.loads(jas.write_agent_overlay("coder").read_text())
+    cmds = _stop_commands(data)
+    assert any("juggle_hooks.py AgentStop" in c for c in cmds), (
+        f"written overlay JSON must install the AgentStop hook; got {cmds!r}"
     )

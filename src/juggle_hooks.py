@@ -61,6 +61,7 @@ from juggle_hooks_classb import (  # noqa: F401
     _do_class_b_scan,
     _attribute_tool_errors,
 )
+from juggle_hooks_finalize import handle_agent_stop  # noqa: F401
 
 
 # handle_stop needs to call _scan_transcript_for_class_b — wire it here so
@@ -77,6 +78,9 @@ def handle_stop(data: dict) -> None:
 HANDLERS = {
     "UserPromptSubmit": handle_user_prompt_submit,
     "Stop": handle_stop,
+    # Agent-only Stop hook — installed via the per-role settings overlay, blocks
+    # a turn-end until the agent has run `agent complete`/`agent fail`.
+    "AgentStop": handle_agent_stop,
     "SessionStart": handle_session_start,
     "PreCompact": handle_pre_compact,
     "PreToolUse": handle_pre_tool_use,
