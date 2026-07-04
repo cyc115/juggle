@@ -188,8 +188,8 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     # with a NULL/dead dispatch thread is healed off the wedge so it re-enters the
     # ready set this same tick. A node bound to a LIVE (busy) agent is never reset.
     try:
-        from juggle_graph_reconcile import reconcile_orphaned_inflight
-        stats["reconciled"] = reconcile_orphaned_inflight(db)
+        from juggle_graph_reconcile import reconcile_orphans
+        stats["reconciled"] = reconcile_orphans(db)
     except Exception:
         _log.exception("graph tick: orphan reconcile failed — continuing")
     stats["rebase_nudged"] = sweep_rebase_nudges(db, mgr) if mgr else []  # P3

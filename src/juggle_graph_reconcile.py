@@ -45,6 +45,11 @@ _HEAL_EVENT = {
     "integrating": "integrate_fail",  # → failed-integration
 }
 
+# Member-task states from which a topic is still CLAIMABLE — i.e. no work has
+# begun, so re-dispatching the topic is safe (no double-merge risk). Mirrors
+# db_topics._DISPATCHABLE_TASK_STATES.
+_CLAIMABLE_TASK_STATES = ("open", "ready")
+
 
 def _live_thread_ids(db) -> set[str]:
     """Threads with a busy agent assigned — the watchdog's liveness signal
@@ -110,3 +115,70 @@ def reconcile_orphaned_inflight(
             task_id, state, thread_id, new_state, event,
         )
     return healed
+
+
+def reconcile_orphaned_running_topics(
+    db, *, stale_secs: int = RECONCILE_STALE_SECS
+) -> list[str]:
+    """Heal kind='topic' nodes wedged in 'running' with NO live bound agent and a
+    still-claimable member task (incident 2026-07-03, defect 2).
+
+    The task-node reconcile above operates on kind='task' nodes; a TOPIC node
+    stuck in 'running' after a dispatch whose worktree/agent never materialised —
+    member task left 'ready', no agent ever attached — is invisible to it, and
+    ``graph reconcile`` protects 'running', so the wedge never self-heals. Because
+    the member task is still CLAIMABLE (open/ready) no work has begun, so
+    re-dispatch is safe (unlike a half-run 'running' task node, which fails).
+
+    Only topics stale for ``stale_secs`` (updated_at older than the cutoff) are
+    candidates — same guard as ``reconcile_orphaned_inflight`` — so a topic in the
+    just-dispatched window (busy agent not yet observable) is never reset. The
+    final state decision delegates to db_topics_reconcile.reconcile_topic_state,
+    whose derive logic turns exactly this wedge into 'open' (re-eligible for the
+    tick's recompute→ready→re-claim) while its G4a live-agent guard protects a
+    topic whose agent is still busy. Returns the reset topic ids. Never raises
+    (per-topic guarded).
+    """
+    from dbops.db_topics_reconcile import reconcile_topic_state
+
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(seconds=stale_secs)
+    ).isoformat()
+    placeholders = ",".join("?" for _ in _CLAIMABLE_TASK_STATES)
+    try:
+        with db._connect() as conn:
+            rows = conn.execute(
+                f"SELECT DISTINCT t.id FROM nodes t "
+                f"JOIN nodes m ON m.parent_id = t.id AND m.kind='task' "
+                f"WHERE t.kind='topic' AND t.state='running' "
+                f"AND t.updated_at < ? "
+                f"AND m.state IN ({placeholders})",
+                (cutoff, *_CLAIMABLE_TASK_STATES),
+            ).fetchall()
+    except Exception:
+        _log.exception("reconcile: running-topic orphan scan failed — skipping")
+        return []
+
+    healed: list[str] = []
+    for row in rows:
+        topic_id = row["id"]
+        try:
+            after = reconcile_topic_state(db, topic_id)
+        except Exception:
+            _log.exception("reconcile: running-topic heal failed for %s", topic_id)
+            continue
+        # G4a kept it 'running' (agent still busy) → not an orphan; skip.
+        if after != "running":
+            healed.append(topic_id)
+            _log.warning(
+                "reconcile: orphaned running topic %s (no live agent, claimable "
+                "member task) → %s", topic_id, after,
+            )
+    return healed
+
+
+def reconcile_orphans(db) -> list[str]:
+    """Run BOTH per-tick orphan-recovery passes (the graph_tick entry point):
+    task-node in-flight wedges (``reconcile_orphaned_inflight``) then running-topic
+    wedges (``reconcile_orphaned_running_topics``). Returns the combined ids."""
+    return reconcile_orphaned_inflight(db) + reconcile_orphaned_running_topics(db)
