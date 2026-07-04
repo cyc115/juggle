@@ -46,6 +46,12 @@ _NODE_TRANSITIONS: dict[tuple[str, str], str] = {
     ("integrating", "integrate_fail"):  "failed-integration",
     ("integrating", "verify_fail"):     "failed-verify",
     ("integrating", "archive"):         "archived",
+    # deliver_ok (loop-entity V1 Phase 3, 2026-07-04): delivery='deliver' topics
+    # complete to 'delivered' WITHOUT the merged_sha gate — non-merge work (proof
+    # is a verify_cmd/attestation, not a landed sha). db_topics.topic_transition
+    # only runs the merged_sha gate on the 'verified' target, so 'delivered' never
+    # sets merged_sha (verified⟺merged stays the sole merge gate).
+    ("integrating", "deliver_ok"):      "delivered",
     # integrated-unlanded (async-land, SPEC §5.1/§5.2): tests-green and submitted
     # to an async land queue (Sapling/git-pr) but not yet an ancestor of trunk.
     # Sits BELOW verified — must never set merged_sha (graph_guards.topic_is_merged
@@ -56,6 +62,12 @@ _NODE_TRANSITIONS: dict[tuple[str, str], str] = {
     # verified
     ("verified", "g1_pass"):  "done",
     ("verified", "archive"):  "archived",
+    # delivered — non-merge success terminal (Phase 3). Mirrors verified's exits
+    # (g1_pass→done, archive→archived, reopen→open) so a delivered node is never a
+    # dead-end and add-task can reopen a delivered topic. NEVER sets merged_sha.
+    ("delivered", "g1_pass"): "done",
+    ("delivered", "archive"): "archived",
+    ("delivered", "reopen"):  "open",
     # failure terminals → reload resurrects
     ("failed-exec",         "reload"):  "open",
     ("failed-exec",         "archive"): "archived",
@@ -115,6 +127,7 @@ _KIND_LEGAL: dict[str, frozenset[str]] = {
         "integrate_start", "exec_fail",
         "integrate_ok", "integrate_fail", "verify_fail",
         "integrate_submitted", "land_confirmed", "land_fail",
+        "deliver_ok",
         "g1_pass", "reopen", "cancel",
     }),
     "research": frozenset({

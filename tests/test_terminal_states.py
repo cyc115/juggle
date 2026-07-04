@@ -7,6 +7,18 @@ ZERO behaviour change. Each pin below freezes ONE migrated site's exact
 pre-Phase-0 membership AND asserts the site now references the canonical object,
 so the consolidation is provably behaviour-neutral and Phase 3's `delivered`
 success-terminal becomes a single-line, test-guarded edit.
+
+PHASE 3 UPDATE (2026-07-04, loop-entity V1): `delivered` was added to
+TERMINAL_SUCCESS_STATES. Every set composed from that atom (the eight below
+marked "+delivered") now INTENTIONALLY includes it — this is the reviewed,
+behaviour-changing pin edit the regression-pin gate allows: `delivered` is a
+second success-terminal that must be accepted everywhere `verified` is treated
+as terminal-success (completion gate, guarded-upsert protection, tick-ownership,
+reopen-before-add-task, replay supersede, reconcile/frontier/plan done-rollup,
+topic-done derivation, cockpit done-glyph). The sets NOT composed from
+TERMINAL_SUCCESS_STATES (IN_FLIGHT_STATES inverse, NON_TERMINAL_DISPLAY_STATUSES)
+are unchanged — `delivered` is terminal, so it is correctly absent from both, and
+the merged_sha GATE (graph_guards.topic_is_merged) stays verified-only.
 """
 from __future__ import annotations
 
@@ -24,8 +36,8 @@ def test_task_terminal_membership_unchanged():
     import juggle_cmd_agents_graph_topics as m
 
     expected = frozenset(
-        {"verified", "failed-exec", "failed-integration", "failed-verify",
-         "blocked-failed", "cancelled"}
+        {"verified", "delivered", "failed-exec", "failed-integration",
+         "failed-verify", "blocked-failed", "cancelled"}  # +delivered (Phase 3)
     )
     assert ts.TASK_TERMINAL_STATES == expected
     assert m._TASK_TERMINAL is ts.TASK_TERMINAL_STATES
@@ -36,7 +48,8 @@ def test_protected_states_membership_unchanged():
     touch a task in one of these."""
     from dbops import db_graph
 
-    expected = frozenset({"dispatching", "running", "integrating", "verified"})
+    expected = frozenset({"dispatching", "running", "integrating", "verified",
+                          "delivered"})  # +delivered (Phase 3): don't clobber it
     assert ts.PROTECTED_STATES == expected
     assert db_graph.PROTECTED_STATES is ts.PROTECTED_STATES
 
@@ -47,7 +60,8 @@ def test_tick_owned_states_membership_unchanged():
     from dbops import db_graph
 
     expected = frozenset(
-        {"ready", "dispatching", "running", "integrating", "verified"}
+        {"ready", "dispatching", "running", "integrating", "verified",
+         "delivered"}  # +delivered (Phase 3): tick owns the deliver terminal too
     )
     assert ts.TICK_OWNED_STATES == expected
     assert db_graph.TICK_OWNED_STATES is ts.TICK_OWNED_STATES
@@ -59,8 +73,8 @@ def test_terminal_reopen_topic_states_unchanged():
     import juggle_graph_add as m
 
     expected = frozenset(
-        {"verified", "failed-exec", "failed-integration", "failed-verify",
-         "blocked-failed", "integrated-unlanded"}
+        {"verified", "delivered", "failed-exec", "failed-integration",
+         "failed-verify", "blocked-failed", "integrated-unlanded"}  # +delivered
     )
     assert ts.TERMINAL_REOPEN_TOPIC_STATES == expected
     assert m.TERMINAL_REOPEN_TOPIC_STATES is ts.TERMINAL_REOPEN_TOPIC_STATES
@@ -70,7 +84,7 @@ def test_success_terminal_membership_unchanged():
     """juggle_spool_apply._SUCCESS_TERMINAL — spool replay/supersede success set."""
     import juggle_spool_apply as m
 
-    expected = frozenset({"verified", "integrated-unlanded"})
+    expected = frozenset({"verified", "delivered", "integrated-unlanded"})  # +delivered
     assert ts.SUCCESS_REPLAY_TERMINAL_STATES == expected
     assert m._SUCCESS_TERMINAL is ts.SUCCESS_REPLAY_TERMINAL_STATES
 
@@ -80,7 +94,7 @@ def test_completion_task_states_unchanged():
     from dbops import db_topics  # noqa: F401  parent must load first (import-order)
     from dbops import db_topics_reconcile as m
 
-    expected = frozenset({"verified", "cancelled"})
+    expected = frozenset({"verified", "delivered", "cancelled"})  # +delivered (Phase 3)
     assert ts.COMPLETION_TERMINAL_STATES == expected
     assert m._COMPLETION_TASK_STATES is ts.COMPLETION_TERMINAL_STATES
 
@@ -89,7 +103,7 @@ def test_merged_terminal_unchanged():
     """juggle_topic_derive._MERGED_TERMINAL — topic-done derivation set."""
     import juggle_topic_derive as m
 
-    expected = frozenset({"verified", "done", "cancelled"})
+    expected = frozenset({"verified", "delivered", "done", "cancelled"})  # +delivered
     assert ts.MERGED_TERMINAL_STATES == expected
     assert m._MERGED_TERMINAL is ts.MERGED_TERMINAL_STATES
 
@@ -98,7 +112,7 @@ def test_cockpit_merged_unchanged():
     """juggle_cockpit_tree._MERGED — cockpit tree done-glyph rollup set."""
     import juggle_cockpit_tree as m
 
-    expected = frozenset({"verified", "done"})
+    expected = frozenset({"verified", "delivered", "done"})  # +delivered (Phase 3)
     assert ts.MERGED_DONE_STATES == expected
     assert m._MERGED is ts.MERGED_DONE_STATES
 
@@ -110,7 +124,7 @@ def test_done_states_both_defs_unchanged():
     import juggle_frontier_layout as fl
     import juggle_plan_layout as pl
 
-    expected = frozenset({"verified", "cancelled"})
+    expected = frozenset({"verified", "delivered", "cancelled"})  # +delivered (Phase 3)
     assert frozenset(fl.DONE_STATES) == expected
     assert frozenset(pl.DONE_STATES) == expected
     assert fl.DONE_STATES is pl.DONE_STATES

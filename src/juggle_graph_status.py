@@ -12,6 +12,8 @@ not the legacy graph_tasks table — the write-cut no longer populates it.
 
 from __future__ import annotations
 
+from dbops.terminal_states import TERMINAL_SUCCESS_STATES as _DONE_STATES
+
 FAILED_STATES = ("failed-exec", "failed-integration", "failed-verify")
 # dispatching/integrating are transient execution states — fold into "running"
 # for display so operators see "in flight", not scheduler internals.
@@ -29,7 +31,8 @@ def counts_from_states(states: list[str]) -> dict:
     """Aggregate raw task-node state values into display counts. Pure."""
     return {
         "total": len(states),
-        "verified": sum(1 for s in states if s == "verified"),
+        # "done" numerator: BOTH success-terminals (verified + delivered, Phase 3)
+        "verified": sum(1 for s in states if s in _DONE_STATES),
         "failed": sum(1 for s in states if s in FAILED_STATES),
         "blocked": sum(1 for s in states if s == "blocked-failed"),
         "ready": sum(1 for s in states if s == "ready"),

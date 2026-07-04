@@ -116,7 +116,8 @@ def mark_topic_completion(db, topic_id, *, integrate_ok, verify_ok=True,
     topic = get_topic(db, topic_id)
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
-    if integrate_ok and topic["state"] in ("verified", "integrated-unlanded"):
+    if integrate_ok and topic["state"] in ("verified", "integrated-unlanded",
+                                            "delivered"):
         return topic["state"]
     if topic["state"] not in _ADVANCE_TO_INTEGRATING:
         raise ValueError(
@@ -134,6 +135,12 @@ def mark_topic_completion(db, topic_id, *, integrate_ok, verify_ok=True,
     if submitted_rev:
         set_topic_submitted_rev(db, topic_id, submitted_rev)
         return topic_transition(db, topic_id, "integrate_submitted")
+    # Completion contract fork (loop-entity V1 Phase 3): delivery='deliver' topics
+    # complete to 'delivered' with NO merge — the merged_sha gate (fired only on
+    # the 'verified' target) is bypassed by construction. delivery='merge' (the
+    # default) keeps the integrate_ok→verified edge verbatim.
+    if (topic.get("delivery") or "merge") == "deliver":
+        return topic_transition(db, topic_id, "deliver_ok")
     return topic_transition(db, topic_id, "integrate_ok")
 
 

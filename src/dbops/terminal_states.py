@@ -32,9 +32,14 @@ from pathlib import Path
 
 # ── Atomic building blocks ──────────────────────────────────────────────────────
 ACTIVE_STATES = frozenset({"dispatching", "running", "integrating"})
-# Phase 3 adds "delivered" to TERMINAL_SUCCESS_STATES — every consumer composed
-# from it (TASK_TERMINAL_STATES, TERMINAL_STATES, …) then inherits it for free.
-TERMINAL_SUCCESS_STATES = frozenset({"verified"})
+# Two success-terminals (Phase 3, 2026-07-04): 'verified' (delivery='merge',
+# backed by a merged_sha ancestor of main) and 'delivered' (delivery='deliver',
+# non-merge work whose proof is a verify_cmd/attestation — NO merged_sha). Every
+# consumer composed from this set (TASK_TERMINAL_STATES, TERMINAL_STATES, …)
+# inherits 'delivered' for free. The merged_sha GATE (graph_guards.topic_is_merged
+# / db_topics._verified_allowed) reads the column directly and is DELIBERATELY not
+# composed from this set, so verified⟺merged stays verified-only.
+TERMINAL_SUCCESS_STATES = frozenset({"verified", "delivered"})
 ASYNC_PENDING_STATES = frozenset({"integrated-unlanded"})
 DONE_ROLLUP_STATES = frozenset({"done"})
 CANCELLED_STATES = frozenset({"cancelled"})
@@ -178,9 +183,11 @@ VERIFIED_SQL_LITERAL_SITES: dict[str, tuple[str, ...]] = {
     "juggle_add_node.py": (
         "\"WHERE e.node_id=? AND e.kind='dep' AND d.state != 'verified' LIMIT 1\",",
     ),
+    # Phase 3 (2026-07-04): both rollup literals gained 'delivered' so a delivered
+    # topic/task counts as done (open-count) — deliver loops never read incomplete.
     "juggle_cockpit_graph_dag.py": (
-        "\"SUM(CASE WHEN state IN ('verified','cancelled') THEN 1 ELSE 0 END) AS done, \"",
-        "\"SUM(CASE WHEN state NOT IN ('verified','cancelled') THEN 1 ELSE 0 END) AS opn, \"",
+        "\"SUM(CASE WHEN state IN ('verified','delivered','cancelled') THEN 1 ELSE 0 END) AS done, \"",
+        "\"SUM(CASE WHEN state NOT IN ('verified','delivered','cancelled') THEN 1 ELSE 0 END) AS opn, \"",
     ),
     "juggle_learnings_rollup.py": (
         "\"AND state='verified'\",",
