@@ -235,6 +235,26 @@ def test_check_overflow_wide_boundary_exact_width_passes_over_fails():
     assert any("3" in v for v in result["violations"])
 
 
+def test_check_overflow_one_over_boundary_fails():
+    """Boundary pin: a line exactly one column too wide is a violation.
+
+    A full-width line (len == cols) is legal; the very next character makes it
+    overflow. The existing long-line case (95 vs 80) is far past the edge and
+    would survive an off-by-one loosening of the comparison (`> cols` →
+    `> cols + 1`). This pins the tight `>` boundary at cols+1, where 'Wide'
+    layouts actually clip.
+    """
+    from juggle_smoke import check_overflow
+
+    grid = _make_grid(24, 80)
+    grid[7] = "x" * 80          # exactly cols → legal
+    grid[8] = "x" * 81          # one over → violation
+    result = check_overflow(grid, 80)
+    assert result["pass"] is False
+    assert any("row 8" in v for v in result["violations"])
+    assert not any("row 7" in v for v in result["violations"])
+
+
 # ── heuristic: check_real_estate ──────────────────────────────────────────────
 
 
