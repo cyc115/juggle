@@ -112,3 +112,6 @@ from juggle_cmd_graph_cancel import cmd_graph_cancel_node  # noqa: E402,F401
 
 # graph learnings (READ) — token-light nodes.learnings reader (gl-learnings-cmd).
 from juggle_cmd_graph_learnings import cmd_graph_learnings  # noqa: E402,F401
+
+# graph edit-node (UPDATE) — field + edge edit, its own module (Phase7 LOC gate).
+from juggle_cmd_graph_edit import cmd_graph_edit_node  # noqa: E402,F401

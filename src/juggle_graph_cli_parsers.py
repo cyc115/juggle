@@ -19,9 +19,10 @@ def register_graph_parsers(subparsers) -> None:
     imports so the graph CLI surface lives in one place.
     """
     from juggle_cmd_graph import (
-        cmd_graph_add_task, cmd_graph_cancel_node, cmd_graph_learn,
-        cmd_graph_learnings, cmd_graph_mark_task, cmd_graph_reconcile,
-        cmd_graph_retry_node, cmd_graph_show, cmd_project_graph_load,
+        cmd_graph_add_task, cmd_graph_cancel_node, cmd_graph_edit_node,
+        cmd_graph_learn, cmd_graph_learnings, cmd_graph_mark_task,
+        cmd_graph_reconcile, cmd_graph_retry_node, cmd_graph_show,
+        cmd_project_graph_load,
     )
 
     p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
@@ -158,3 +159,23 @@ def register_graph_parsers(subparsers) -> None:
     _rn.add_argument("--json", dest="json_out", action="store_true",
                      help="Machine-readable output")
     _rn.set_defaults(func=cmd_graph_retry_node)
+
+    _en = _g2s.add_parser(
+        "edit-node",
+        help="Edit a live task's fields + dependency edges (mutable states only)",
+    )
+    _en.add_argument("id", help="Task id to edit")
+    _en.add_argument("--title", default=None, help="New title")
+    _en.add_argument("--prompt", default=None,
+                     help="New dispatch prompt (pass '-' to read from stdin)")
+    _en.add_argument("--priority", type=int, default=None,
+                     help="New dispatch priority (higher = first)")
+    _en.add_argument("--verify-cmd", dest="verify_cmd", default=None,
+                     help="New verify command")
+    _en.add_argument("--add-dep", dest="add_dep", default=None,
+                     help="Comma-separated EXISTING task ids to add as deps")
+    _en.add_argument("--rm-dep", dest="rm_dep", default=None,
+                     help="Comma-separated dep ids to remove")
+    _en.add_argument("--json", dest="json_out", action="store_true",
+                     help="Machine-readable output (the new node object)")
+    _en.set_defaults(func=cmd_graph_edit_node)

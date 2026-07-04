@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from juggle_db import JuggleDB  # noqa: E402
 from dbops import db_graph as g  # noqa: E402
-import juggle_cmd_graph_ops as ops  # noqa: E402
+import juggle_cmd_graph_edit as ops  # noqa: E402
 
 
 @pytest.fixture
