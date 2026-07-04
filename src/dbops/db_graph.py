@@ -284,10 +284,12 @@ from dbops.db_graph_marking import (  # noqa: E402,F401
 )
 from dbops.db_graph_setters import (  # noqa: E402,F401
     bump_verify_retry,
+    clear_task_failure,
     set_cancel_reason,
     set_task_diffstat,
     set_task_fail_envelope,
     set_task_handoff,
+    set_task_priority,
     set_task_thread,
     set_task_topic,
 )

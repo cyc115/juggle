@@ -21,7 +21,7 @@ def register_graph_parsers(subparsers) -> None:
     from juggle_cmd_graph import (
         cmd_graph_add_task, cmd_graph_cancel_node, cmd_graph_learn,
         cmd_graph_learnings, cmd_graph_mark_task, cmd_graph_reconcile,
-        cmd_graph_show, cmd_project_graph_load,
+        cmd_graph_retry_node, cmd_graph_show, cmd_project_graph_load,
     )
 
     p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
@@ -146,3 +146,15 @@ def register_graph_parsers(subparsers) -> None:
     _ln.add_argument("--json", dest="json_out", action="store_true",
                      help="Machine-readable output")
     _ln.set_defaults(func=cmd_graph_learnings)
+
+    _rn = _g2s.add_parser(
+        "retry-node",
+        help="Reset a failed/cancelled node to 'open' (un-cancel included)",
+    )
+    _rn.add_argument("node_id", metavar="id",
+                     help="Node id to retry (failed-verify/blocked-failed/cancelled)")
+    _rn.add_argument("--cascade", action="store_true",
+                     help="Also un-block dependents blocked because of this node")
+    _rn.add_argument("--json", dest="json_out", action="store_true",
+                     help="Machine-readable output")
+    _rn.set_defaults(func=cmd_graph_retry_node)

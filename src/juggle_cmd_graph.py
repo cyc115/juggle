@@ -102,6 +102,7 @@ from juggle_cmd_graph_ops import (  # noqa: E402,F401
     cmd_graph_learn,
     cmd_graph_mark_task,
     cmd_graph_reconcile,
+    cmd_graph_retry_node,
 )
 
 # graph show (READ) — pure-read view, extracted to its own module (Phase4).

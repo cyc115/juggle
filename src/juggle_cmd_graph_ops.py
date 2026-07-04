@@ -211,9 +211,68 @@ def cmd_graph_mark_task(args):
             handoff=getattr(args, "handoff", None),
         )
     except ValueError as e:
+        # Guarded transition refusal (terminal/blocked source state) → exit 2,
+        # uniform with the other graph mutators (spec DA "2 = guarded refusal").
         print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(2)
     print(f"task {args.task_id} → {state}")
     topic_id = db_graph.get_task(db, args.task_id)["topic_id"]
     if topic_id:
         db_topics.reconcile_topic_state(db, topic_id)
+
+
+# Source states from which `retry-node` may reset a node back to 'open'
+# (spec §4 + DA "un-cancel"): the two failure terminals plus the soft-terminal
+# 'cancelled'. All three reach 'open' through the existing 'reload' event.
+RETRYABLE_STATES = frozenset({"failed-verify", "blocked-failed", "cancelled"})
+
+
+def cmd_graph_retry_node(args):
+    """`juggle graph retry-node <id> [--cascade] [--json]` — cancel's twin.
+
+    Resets a failed-verify / blocked-failed / cancelled node to 'open' (via the
+    'reload' state event — un-cancel included, DA) and clears its retry/failure
+    bookkeeping (verify_failure / verify_retries / fail_envelope). Any other
+    source state is a guarded refusal (exit 2). `--cascade` re-derives block
+    state across the project (recompute_blocked) so dependents that were
+    blocked-failed *because of* this node un-block too. Its topic is reconciled
+    so a terminal-parked topic can redispatch."""
+    import json
+
+    import juggle_cmd_graph as cg  # lazy: break the re-export import cycle
+
+    db = cg.get_db(getattr(args, "db_path", None), init=True)
+    node_id = args.node_id
+    task = db_graph.get_task(db, node_id)
+    if not task:
+        print(f"Error: node {node_id!r} not found.", file=sys.stderr)
+        sys.exit(1)
+
+    state = task["state"]
+    if state not in RETRYABLE_STATES:
+        msg = (f"retry-node REFUSED — node {node_id!r} is {state!r}; only "
+               "failed-verify, blocked-failed, or cancelled can be retried")
+        if getattr(args, "json_out", False):
+            print(json.dumps({"ok": False, "error": msg}))
+        else:
+            print(msg, file=sys.stderr)
+        sys.exit(2)
+
+    # Reset → open through the sole state writer, then clear failure bookkeeping.
+    db_graph.task_transition(db, node_id, "reload")
+    db_graph.clear_task_failure(db, node_id)
+
+    cascaded: list[str] = []
+    if getattr(args, "cascade", False):
+        cascaded, _ = db_graph.recompute_blocked(db, task["project_id"])
+
+    topic_id = task.get("topic_id")
+    if topic_id:
+        db_topics.reconcile_topic_state(db, topic_id)
+
+    if getattr(args, "json_out", False):
+        print(json.dumps({"ok": True, "id": node_id, "state": "open",
+                          "from": state, "cascaded": cascaded}))
+        return
+    tail = f" (+{len(cascaded)} dependents)" if cascaded else ""
+    print(f"retry {node_id} → open{tail}")

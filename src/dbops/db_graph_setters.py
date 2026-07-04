@@ -61,6 +61,20 @@ def set_task_fail_envelope(db, task_id: str, fail_envelope: str) -> None:
         conn.commit()
 
 
+def clear_task_failure(db, task_id: str) -> None:
+    """Reset the retry/failure bookkeeping for a retried node (graph retry-node,
+    Phase6): zero verify_retries, null verify_failure + fail_envelope. Never
+    writes state — the caller resets the task via task_transition('reload')."""
+    now = _now()
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET verify_retries=0, verify_failure=NULL, "
+            "fail_envelope=NULL, updated_at=? WHERE id=? AND kind='task'",
+            (now, task_id),
+        )
+        conn.commit()
+
+
 def set_task_diffstat(db, task_id: str, diffstat: str) -> None:
     """Pre-merge diffstat captured by integrate (hydration enrichment)."""
     now = _now()
@@ -84,6 +98,19 @@ def set_cancel_reason(db, task_id: str, reason: str) -> None:
             (reason, now, task_id),
         )
         conn.commit()
+
+
+def set_task_priority(db, task_id: str, priority: int, conn=None) -> None:
+    """Update a task's dispatch priority (higher = first). Never touches state —
+    backs `graph edit-node --priority`."""
+    from dbops.db_graph import _cx
+
+    now = _now()
+    with _cx(db, conn) as c:
+        c.execute(
+            "UPDATE nodes SET priority=?, updated_at=? WHERE id=? AND kind='task'",
+            (priority, now, task_id),
+        )
 
 
 def set_task_topic(db, task_id: str, topic_id, conn=None) -> None:
