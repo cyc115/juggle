@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-import string
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -216,7 +215,11 @@ CREATE TABLE IF NOT EXISTS projects (
   last_active      TEXT NOT NULL,
   match_profile    TEXT DEFAULT '',
   profile_synth_at TEXT,
-  profile_dirty    INTEGER NOT NULL DEFAULT 0
+  profile_dirty    INTEGER NOT NULL DEFAULT 0,
+  -- Loop-entity V1 (Phase 1): 'project' (default, unchanged) vs 'loop'. Migration
+  -- 72 appends it to already-migrated DBs; a 'loop' project self-schedules and is
+  -- excluded from P-slots (Phase 4).
+  kind             TEXT NOT NULL DEFAULT 'project'
 );
 """
 
@@ -237,6 +240,13 @@ from dbops.schema_graph import (  # noqa: E402,F401
     CREATE_GRAPH_EDGES,
     CREATE_GRAPH_TASKS,
     CREATE_GRAPH_TOPICS,
+)
+
+# loops table DDL lives in dbops.schema_loops (architecture gate). Re-exported so
+# ``from dbops.schema import CREATE_LOOPS`` keeps working.
+from dbops.schema_loops import (  # noqa: E402,F401
+    CREATE_LOOPS,
+    CREATE_LOOPS_INDEXES,
 )
 
 # agent_runs ledger DDL lives in dbops.schema_runs (architecture gate). Re-

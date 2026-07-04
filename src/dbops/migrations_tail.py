@@ -53,3 +53,11 @@ def apply_tail_migrations(conn: sqlite3.Connection) -> None:
     # columns — nodes.reintegrate_attempts/last_attempt/pid.
     from dbops.migration_71_reintegrate_backoff import migrate_71_reintegrate_backoff
     migrate_71_reintegrate_backoff(conn)
+
+    # Migration 72 (loop-entity V1 Phase 1): nodes.role/delivery + projects.kind.
+    from dbops.migration_72_node_role_delivery import migrate_72_node_role_delivery
+    migrate_72_node_role_delivery(conn)
+
+    # Migration 73 (loop-entity V1 Phase 1): loops table + run-seq/breaker columns.
+    from dbops.migration_73_loops import migrate_73_loops
+    migrate_73_loops(conn)

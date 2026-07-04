@@ -37,6 +37,8 @@ from dbops.schema import (  # noqa: E402, F401
     CREATE_GRAPH_EDGES,
     CREATE_GRAPH_TASKS,
     CREATE_GRAPH_TOPICS,
+    CREATE_LOOPS,
+    CREATE_LOOPS_INDEXES,
     CREATE_MESSAGES,
     CREATE_NOTIFICATIONS,
     CREATE_NOTIFICATIONS_V2,
@@ -59,6 +61,7 @@ from dbops.agents import AgentsMixin  # noqa: E402, F401
 from dbops.messages import MessagesMixin  # noqa: E402, F401
 from dbops.migrations import run_migrations  # noqa: E402, F401
 from dbops.notifications import NotificationsMixin  # noqa: E402, F401
+from dbops.loops import LoopsMixin  # noqa: E402, F401
 from dbops.projects import ProjectsMixin  # noqa: E402, F401
 from dbops.runs import RunsMixin  # noqa: E402, F401
 from dbops.selfheal import SelfhealMixin  # noqa: E402, F401
@@ -76,6 +79,7 @@ class JuggleDB(
     SessionMixin,
     ThreadsMixin,
     ProjectsMixin,
+    LoopsMixin,
     MessagesMixin,
     NotificationsMixin,
     SelfhealMixin,
@@ -172,6 +176,9 @@ class JuggleDB(
             conn.execute(CREATE_ERROR_EVENTS)
             conn.execute(CREATE_SELFHEAL_AUDIT)
             conn.execute(CREATE_PROJECTS)
+            conn.execute(CREATE_LOOPS)
+            for _loops_idx in CREATE_LOOPS_INDEXES:
+                conn.execute(_loops_idx)
             conn.execute(CREATE_SPOOL_JOURNAL)
             conn.execute(CREATE_GRAPH_TASKS)
             conn.execute(CREATE_GRAPH_EDGES)
