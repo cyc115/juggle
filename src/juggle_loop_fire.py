@@ -38,6 +38,7 @@ import os
 from datetime import datetime
 
 from dbops import event_kinds as _ek
+from dbops.schema import _now as _now_ts
 from dbops.terminal_states import FAILURE_TERMINAL_STATES, TERMINAL_STATES
 from juggle_loop_instantiate import instantiate_topic
 
@@ -170,7 +171,11 @@ def _reconstruct_topic(db, loop: dict) -> dict:
                 "SELECT depends_on_id FROM node_edges WHERE node_id=? AND kind='dep'",
                 (tr["id"],),
             ).fetchall()
-            deps[tr["id"]] = [d[0][base:] for d in drows]
+            # Only strip the r0 prefix off deps that actually carry it (code-review
+            # #5): a dep pointing outside the loop's r0 namespace would otherwise be
+            # mis-stripped into a bogus re-prefixed edge. V1 single-topic templates
+            # are self-contained so this can't happen today — defensive hardening.
+            deps[tr["id"]] = [d[0][base:] for d in drows if d[0].startswith(src_prefix)]
     tasks = [{
         "id": tr["id"][base:], "title": tr["title"], "prompt": tr["objective"],
         "role": tr["role"], "delivery": tr["delivery"], "verify_cmd": tr["verify_cmd"],
@@ -183,14 +188,28 @@ def _reconstruct_topic(db, loop: dict) -> dict:
     }
 
 
-def _instantiate_next_iteration(db, loop: dict, run_seq: int) -> None:
-    """Materialize iteration ``run_seq`` from the reconstructed template, all-or-nothing."""
-    topic = _reconstruct_topic(db, loop)
-    prefix = f"{loop['id']}-r{run_seq}-"
+def _fire_next_iteration_atomic(db, loop: dict) -> int:
+    """Bump run_seq AND instantiate the iteration in ONE transaction; return the new
+    run_seq.
+
+    The seq bump and the node instantiation commit together (code-review #2, RED-pin
+    test_failed_instantiate_rolls_back_seq_bump): if instantiate raises, the seq bump
+    rolls back too, so there is NEVER a bumped run_seq with zero task nodes — an empty
+    iteration would otherwise read as a phantom 'success' next window, silently
+    resetting the circuit-breaker and masking the failure."""
+    topic = _reconstruct_topic(db, loop)  # reads committed r0 nodes (own conn)
     conn = db._connect()
     try:
+        row = conn.execute(
+            "UPDATE loops SET run_seq = run_seq + 1, updated_at = ? WHERE id = ? "
+            "RETURNING run_seq",
+            (_now_ts(), loop["id"]),
+        ).fetchone()
+        new_seq = row[0]
+        prefix = f"{loop['id']}-r{new_seq}-"
         instantiate_topic(db, conn, project_id=loop["project_id"], prefix=prefix, topic=topic)
         conn.commit()
+        return new_seq
     except Exception:
         conn.rollback()
         raise
@@ -235,8 +254,7 @@ def _fire_one(db, loop: dict, session_id: str, now: str) -> str:
         db.reset_consecutive_failures(loop_id)
 
     _SKIP_COUNTS[loop_id] = 0  # a real fire clears the overlap-skip streak
-    new_seq = db.advance_run_seq(loop_id)
-    _instantiate_next_iteration(db, loop, new_seq)
+    new_seq = _fire_next_iteration_atomic(db, loop)  # seq bump + instantiate atomic
     db.stamp_last_run(loop_id)
     _log.info("Loop %s fired iteration r%d", loop_id, new_seq)
     return "fired"
@@ -246,8 +264,7 @@ def fire_due_loops(db, session_id: str, now: str | None = None) -> list[tuple[st
     """Fire every ``active`` loop whose ``next_run`` is due. Returns ``[(loop_id,
     action)]``. A tick with no due loop is a pure no-op (preserves non-loop tick
     behaviour). Per-loop failures are isolated so one bad loop never downs the tick."""
-    from dbops.schema import _now
-    now = now or _now()
+    now = now or _now_ts()
     results: list[tuple[str, str]] = []
     for loop in db.list_active_loops():
         nr = loop.get("next_run")
@@ -255,7 +272,21 @@ def fire_due_loops(db, session_id: str, now: str | None = None) -> list[tuple[st
             continue  # not due (or never scheduled)
         try:
             results.append((loop["id"], _fire_one(db, loop, session_id, now)))
-        except Exception:
-            _log.exception("Loop %s fire failed — continuing", loop.get("id"))
+        except Exception as exc:
+            # A fire-step machinery error (reconstruct/instantiate/DB failure) is a
+            # machinery-error class event — per the triage ladder it pushes the
+            # orchestrator IMMEDIATELY and must NEVER be swallowed to a log line
+            # (code-review #1, user never-swallow directive). Route it through the
+            # same choke point; guard so surfacing itself can't down the tick.
+            _log.exception("Loop %s fire failed — surfacing", loop.get("id"))
+            try:
+                surface_iteration_failure(
+                    db, loop, session_id,
+                    err=f"loop fire machinery error: {exc}",
+                    seq=loop.get("run_seq", -1),
+                )
+            except Exception:
+                _log.exception("Loop %s failure-surface ALSO failed — continuing",
+                               loop.get("id"))
             results.append((loop.get("id"), "error"))
     return results

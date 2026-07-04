@@ -266,6 +266,32 @@ def test_successful_iteration_resets_failure_counter(db):
     assert db.get_loop(loop_id)["consecutive_failures"] == 0
 
 
+def test_failed_instantiate_rolls_back_seq_bump_and_surfaces(db, monkeypatch):
+    """code-review #2 + #1 (2026-07-04): a failed instantiation rolls the run_seq
+    bump back (NO phantom empty iteration — an empty seq would read as a false
+    'success' next window, silently resetting the breaker + masking the failure)
+    AND the machinery error is surfaced through the never-swallow choke point, never
+    reduced to a log line."""
+    loop_id, res = _make_loop(db, thread_id="T-mach")
+    pid = res["project_id"]
+    _set_iter_state(db, pid, loop_id, 0, "verified")  # prior success → would fire r1
+
+    def _boom(*a, **k):
+        raise RuntimeError("injected instantiate failure")
+    monkeypatch.setattr(lf, "instantiate_topic", _boom)
+
+    lf.fire_due_loops(db, SESSION, now=NOW)
+
+    loop = db.get_loop(loop_id)
+    assert loop["run_seq"] == 0, "seq bump must roll back with the failed instantiate"
+    assert _iter_task_count(db, pid, loop_id, 1) == 0, "no phantom r1 nodes"
+    notifs = [n for n in db.get_notifications_for_session(SESSION)
+              if "machinery error" in (n["message"] or "")]
+    assert notifs, "machinery error must push the orchestrator (never swallowed)"
+    items = [i for i in db.get_open_action_items() if i["thread_id"] == "T-mach"]
+    assert items and items[0]["priority"] == "high"
+
+
 def test_paused_loop_does_not_fire(db):
     """A paused loop is inert: fire_due_loops skips it entirely (list_active_loops
     excludes non-active)."""
