@@ -68,10 +68,20 @@ def build_worktree_context(
         else:
             _log.warning("[juggle] WARNING: worktree auto-create failed: %s", msg_wt)
 
-    if not existing_wt and repo_path_wt and not allow_main:
+    # Atomic-dispatch guard (df-atomic-dispatch, incident 2026-07-03 defect 1):
+    # a coder MUST run in an isolated worktree. Refuse LOUDLY when none was
+    # established — whether _create_worktree failed (repo_path_wt set) OR no
+    # source repo could be resolved at all (repo_path_wt ''). Silently returning
+    # "" here let the topic reach 'running' with no worktree and no live agent —
+    # a permanent wedge the stale sweep can't reclaim (thread-bound) and reconcile
+    # protects ('running'). The tick's dispatch except-path catches this raise and
+    # rolls the topic back to a claimable state + files a failure action item.
+    # (planner-without-repo stays lenient: it may legitimately run repo-less.)
+    if not existing_wt and not allow_main and (repo_path_wt or role == "coder"):
         raise RuntimeError(
             f"cannot dispatch {role} task without an isolated worktree "
-            f"(repo={repo_path_wt}). Worktree auto-create failed. "
+            f"(repo={repo_path_wt or '<none resolved>'}, thread={thread_label_wt}). "
+            f"Worktree auto-create failed or no source repo resolved. "
             f"Use allow_main=True to override (bypass is logged)."
         )
 
