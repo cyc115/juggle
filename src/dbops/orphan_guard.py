@@ -1,19 +1,15 @@
 """dbops.orphan_guard — detect & surface completed-but-unmerged topics (G5).
 
 P8 (Task 4.2): orphan detection reads exclusively from the unified nodes table —
-topic nodes (kind='topic', P8 M2), their child states, and the
-bound dispatch thread (the typed kind='dispatch' node_edge, P8 M1/Q2).
-reconcile_out_of_band_merges stamps nodes.merged_sha (the lockstep
-set_topic_merged_sha keeps graph_topics in sync where it is still dual-written).
+topic nodes (kind='topic'), their child states, and the bound dispatch thread
+(the typed kind='dispatch' node_edge). reconcile_out_of_band_merges stamps
+nodes.merged_sha (lockstep set_topic_merged_sha mirrors graph_topics).
 
-Incident (2026-06-17): a false-negative in ``JuggleTmuxManager.send_task`` made
-the watchdog treat a successful dispatch as failed, so the topic was never
-tracked for integrate. When the coder's ``complete-agent`` closed the topic, its
-work sat committed-in-worktree but UNMERGED, and ``juggle integrate`` reported
-"Missing worktree fields — nothing to integrate". G1 (graph_guards.topic_is_merged)
-already keeps such a topic out of ``verified``; this guard *detects* the stranded
-topics and files a HIGH action item so a completed topic is NEVER silently closed
-without merge — it always surfaces a blocker.
+Incident (2026-06-17): a send_task false-negative made the watchdog treat a
+successful dispatch as failed, so a completed topic's work sat committed-in-
+worktree but UNMERGED. G1 (graph_guards.topic_is_merged) keeps such a topic out
+of ``verified``; this guard DETECTS it and files a HIGH action item so a
+completed topic is never silently closed without merge — always a blocker.
 
 Pure detection + flagging. Owns no state transition (db_topics stays the writer)
 and no integrate logic (juggle_cmd_integrate).
@@ -23,11 +19,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from dbops.graph_guards import (
-    branch_merged_to_main,
-    resolve_branch_sha,
-    sha_is_ancestor,
-)
+from dbops.graph_guards import sha_is_ancestor
 
 # watchdog_events.event_type used to dedup repeated flags for the same topic.
 _ORPHAN_EVENT = "topic_unmerged_orphan"
@@ -35,15 +27,19 @@ _ORPHAN_EVENT = "topic_unmerged_orphan"
 # bound to a single agent.
 _GUARD_AGENT_ID = "orphan-guard"
 
-# Grace period (minutes) after the last child task turns verified before a
-# topic becomes eligible for orphan detection — consistent with the
-# watchdog's stall_threshold_minutes convention (juggle_watchdog_stall).
-# Incident (2026-07-02): mark-task verified happens BEFORE the owning agent's
-# own `agent complete` -> `integrate` finalize call in the normal happy path,
-# so detecting the instant all children verify races that finalize and fires
-# a false HIGH action item almost every time a topic completes normally
-# (confirmed on T-spool-02, T-bump-version-1-94).
+# Grace period (minutes) after the last child task turns verified before a topic
+# becomes eligible for orphan detection. Incident (2026-07-02): mark-task
+# verified happens BEFORE the owning agent's own finalize (agent complete ->
+# integrate), so detecting the instant all children verify races that finalize
+# and fires a false HIGH item on nearly every normal completion.
 _DEFAULT_ORPHAN_GRACE_MINUTES = 5.0
+
+# Hard-wedge escalation (2026-07-03 integrate-wedge fix 5): a topic that has sat
+# in 'integrating' longer than this is a STUCK agent, not a mid-finalize one —
+# surface it as a HIGH blocker EVEN THOUGH the finalize-race guard (busy agent /
+# grace) would otherwise skip it. The incident: 3 topics wedged 1.5 h with
+# still-'busy' agents produced ZERO action items.
+_DEFAULT_INTEGRATING_WEDGE_MINUTES = 60.0
 
 
 def _dispatch_thread(db, node_id: str) -> "str | None":
@@ -102,6 +98,35 @@ def _orphan_grace_minutes() -> float:
     return float(wd.get("orphan_grace_minutes", _DEFAULT_ORPHAN_GRACE_MINUTES))
 
 
+def _integrating_wedge_minutes() -> float:
+    """``watchdog.integrating_wedge_minutes`` setting (default
+    ``_DEFAULT_INTEGRATING_WEDGE_MINUTES``)."""
+    try:
+        from juggle_settings import get_settings
+        wd = get_settings().get("watchdog", {}) or {}
+    except Exception:
+        wd = {}
+    return float(wd.get("integrating_wedge_minutes", _DEFAULT_INTEGRATING_WEDGE_MINUTES))
+
+
+def _hard_wedged(node: dict, *, wedge_minutes: float) -> bool:
+    """True iff the topic has been in 'integrating' longer than ``wedge_minutes``
+    (its ``updated_at`` is stamped when it entered that state) — a stuck agent,
+    which the finalize-race busy/grace guard must NOT keep suppressing (fix 5)."""
+    if node.get("state") != "integrating":
+        return False
+    ts = node.get("updated_at")
+    if not ts:
+        return False
+    try:
+        dt = datetime.fromisoformat(ts)
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt) >= timedelta(minutes=wedge_minutes)
+
+
 def _owning_agent_busy(db, node: dict) -> bool:
     """True iff the topic's dispatch thread currently has a live busy agent —
     it may still be mid-finalize (``agent complete`` -> ``integrate``) on its
@@ -149,6 +174,7 @@ def find_unmerged_completed_topics(db) -> list[dict]:
         parents = [dict(r) for r in parent_rows]
 
     grace_minutes = _orphan_grace_minutes()
+    wedge_minutes = _integrating_wedge_minutes()
     orphans: list[dict] = []
     for node in parents:
         # Skip nodes already stamped as verified
@@ -168,10 +194,14 @@ def find_unmerged_completed_topics(db) -> list[dict]:
             continue
         if _node_is_merged(db, node):
             continue
-        if _owning_agent_busy(db, node):
-            continue
-        if not _grace_period_elapsed(child_rows, grace_minutes=grace_minutes):
-            continue
+        # Fix 5: a HARD-wedged 'integrating' topic (stuck agent) escalates past
+        # the finalize-race busy/grace guard — otherwise a still-'busy' stuck
+        # agent suppresses the blocker forever (the 1.5 h incident, zero items).
+        if not _hard_wedged(node, wedge_minutes=wedge_minutes):
+            if _owning_agent_busy(db, node):
+                continue
+            if not _grace_period_elapsed(child_rows, grace_minutes=grace_minutes):
+                continue
         orphans.append(node)
     return orphans
 
@@ -196,62 +226,6 @@ def _topic_branch(db, node: dict) -> str:
     return ""
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
-    """Stamp ``merged_sha`` for completed topics whose work is already on main.
-
-    P8: reads nodes as primary source; stamps nodes.merged_sha AND (compat)
-    graph_topics.merged_sha. Calls db_topics.reconcile_topic_state for compat
-    state update on graph_topics.
-
-    G1-pure verification: only advances topics whose branch IS an ancestor of
-    main — genuinely-unmerged topics (branch ahead of main, or branch ref gone)
-    are left untouched. Returns reconciled node ids.
-
-    Self-heals graph drift FIRST (DEFECT #4907): a task node with a NULL
-    parent_id makes its topic look childless to ``find_unmerged_completed_topics``
-    so it is never reconciled and the watchdog re-dispatches it forever. Heal a
-    still-NULL parent_id from the frozen graph_tasks.topic_id before detecting, so
-    a stranded-but-completed topic is found and stamped. (P8 c4-write-cut:
-    nodes.state is authoritative and is NOT resynced from the frozen legacy table.)
-    """
-    from dbops import db_topics
-    from dbops.migration_parent_relink import reconcile_node_parentage
-
-    reconcile_node_parentage(db)
-
-    reconciled: list[str] = []
-    for node in find_unmerged_completed_topics(db):
-        repo = _node_repo(db, node)
-        branch = _topic_branch(db, node)
-        if not repo or not branch:
-            continue
-        if not branch_merged_to_main(repo, branch, main=main):
-            continue
-        sha = resolve_branch_sha(repo, branch)
-        if not sha:
-            continue
-        now = _now()
-        with db._connect() as conn:
-            # nodes is authoritative; set_topic_merged_sha already lockstep-mirrors
-            # graph_topics, so stamp the node directly here (single store).
-            conn.execute(
-                "UPDATE nodes SET merged_sha=?, state='verified', updated_at=? WHERE id=?",
-                (sha, now, node["id"]),
-            )
-            conn.commit()
-        # Re-derive the topic state from its member tasks (idempotent on verified).
-        try:
-            db_topics.reconcile_topic_state(db, node["id"])
-        except Exception:
-            pass
-        reconciled.append(node["id"])
-    return reconciled
-
-
 def flag_unmerged_completed_topics(db, *, dedup_window_hours: float = 24.0) -> list[str]:
     """Detect completed-but-unmerged topics and file a HIGH action item for each.
 
@@ -259,7 +233,7 @@ def flag_unmerged_completed_topics(db, *, dedup_window_hours: float = 24.0) -> l
     work already on main is verified, never re-flagged. Remaining orphans are
     deduped via ``watchdog_events`` (one flag per topic per ``dedup_window_hours``)
     so the watchdog tick can call this every cycle. Returns the topic ids flagged
-    this pass.
+    this pass. (``reconcile_out_of_band_merges`` is re-exported at module bottom.)
     """
     reconcile_out_of_band_merges(db)
     orphans = find_unmerged_completed_topics(db)
@@ -293,3 +267,10 @@ def flag_unmerged_completed_topics(db, *, dedup_window_hours: float = 24.0) -> l
         db.add_watchdog_event(_GUARD_AGENT_ID, node_id, _ORPHAN_EVENT)
         flagged.append(node_id)
     return flagged
+
+
+# ── reconciler extracted to dbops.orphan_reconcile (LOC gate + concern split) ──
+# Re-exported so the existing orphan_guard.reconcile_out_of_band_merges call
+# surface (juggle_cmd_doctor, tests) is unchanged. Bottom import breaks the
+# detection⇄reconcile cycle (orphan_reconcile imports our helpers lazily).
+from dbops.orphan_reconcile import reconcile_out_of_band_merges  # noqa: E402,F401
