@@ -26,6 +26,7 @@ daemon restart) is retried on a later tick and eventually lands.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -54,19 +55,29 @@ def _no_backoff():
 
 
 class _AliveProc:
-    """Stand-in for a detached integrate subprocess still running the gate."""
+    """Stand-in for a detached integrate subprocess still running the gate. Its
+    pid is THIS process's (always live) so the cross-process liveness probe
+    (os.kill(pid, 0)) reports it alive — the durable single-flight signal."""
+    pid = os.getpid()
+
     def poll(self):
         return None
 
 
 class _DoneProc:
-    """Stand-in for a detached integrate subprocess that exited cleanly."""
+    """Stand-in for a detached integrate subprocess that exited cleanly. pid=0 →
+    the liveness probe reports it dead (a later tick may reconcile/re-spawn)."""
+    pid = 0
+
     def poll(self):
         return 0
 
 
 class _KilledProc:
-    """Stand-in for a subprocess the tickguard daemon restart killed mid-gate."""
+    """Stand-in for a subprocess the tickguard daemon restart killed mid-gate.
+    pid=0 → the liveness probe reports it dead, so a later tick re-spawns."""
+    pid = 0
+
     def poll(self):
         return -9
 
@@ -473,6 +484,59 @@ def test_reintegrate_routes_failed_subprocess_to_failed_integration(tmp_path):
     topic = get_topic(db, "T1")
     assert topic["state"] == "failed-integration"
     assert topic["fail_envelope"], "a fail_envelope must route it to the repair sweep"
+
+
+def test_reintegrate_attempts_and_singleflight_survive_restart(tmp_path):
+    """Regression pin (2026-07-03/04 integrate-wedge #2, RC4 of 4): the re-integrate
+    driver's attempt counter, backoff timestamp, and single-flight guard must be
+    DURABLE across a watchdog restart.
+
+    Incident: those three lived in an in-memory module dict (_backoff). The
+    watchdog restarts on every plugin-HEAD advance — which every successful
+    integrate causes — so the state was wiped constantly: the log showed perpetual
+    'attempt 1', the spawn-failure attempt bound never accumulated, and the lost
+    proc handle let a restart double-spawn a gate for the SAME topic (observed
+    same-tick gates for two topics sharing a branch).
+
+    This pins the fix: after a simulated restart (fresh module state via
+    reset_backoff) the attempt count + last-attempt stamp survive (read back from
+    the DB) and a still-alive recorded gate pid blocks a second spawn."""
+    import juggle_graph_reintegrate as ri
+    from dbops import db_reintegrate
+
+    repo = _repo(tmp_path)
+    wt = _worktree(repo, tmp_path, "RS")
+    (Path(wt) / "feat.py").write_text("y = 2\n")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-m", "feat")
+
+    db = _make_db(tmp_path)
+    tid = db.create_thread(topic="feat", session_id="s")
+    db.update_thread(tid, worktree_path=wt, worktree_branch="cyc_RS",
+                     main_repo_path=repo)
+    _seed_topic_with_thread(db, "T1", tid, repo, "cyc_RS")
+
+    with patch("juggle_graph_reintegrate._spawn_detached_integrate",
+               return_value=_AliveProc()) as spawn:
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 1: spawn, record attempt + live pid
+        attempts, last_attempt, pid = db_reintegrate.get_state(db, "T1")
+        assert attempts == 1
+        assert last_attempt is not None            # backoff timestamp persisted
+        assert pid == os.getpid()                  # gate pid persisted
+
+        ri.reset_backoff()                          # <-- SIMULATE WATCHDOG RESTART
+
+        # Attempt count + backoff timestamp survive the restart (old in-memory
+        # code reset to 'attempt 1' every restart — this is the incident).
+        attempts2, last_attempt2, _ = db_reintegrate.get_state(db, "T1")
+        assert attempts2 == 1
+        assert last_attempt2 == last_attempt
+
+        # Single-flight survives: the recorded gate pid is still alive, so the
+        # post-restart tick must NOT spawn a second gate for the same topic.
+        ri.sweep_reintegrate(db, ["INBOX"])   # tick 2, post-restart
+
+    spawn.assert_called_once()   # NO double-spawn across the restart
 
 
 def test_run_tick_sweeps_invokes_reintegrate_driver(tmp_path, monkeypatch):

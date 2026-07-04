@@ -53,22 +53,25 @@ MAX_REINTEGRATE_ATTEMPTS = 3
 # completion, stale past this generous threshold, is a presumed-dead finalize.
 REINTEGRATE_STALE_BOUND_SECS = 1800  # 30 min
 
-# Per-topic backoff state, keyed by (db_path, topic_id). Reset via reset_backoff.
-_backoff: dict[tuple[str, str], dict] = {}
+# Per-topic backoff state (attempts + last_attempt + spawned gate pid) is now
+# PERSISTED on the topic's node row (dbops.db_reintegrate / Migration 71), not an
+# in-memory dict wiped on every watchdog restart (integrate-wedge #2, RC4:
+# perpetual 'attempt 1', a never-accumulating attempt bound, and a lost
+# single-flight handle that let a restart double-spawn a gate).
 
 
 def reset_backoff() -> None:
-    """Drop all per-topic backoff state (test hook / config reload)."""
-    _backoff.clear()
-
-
-def _key(db, topic_id: str) -> tuple[str, str]:
-    return (str(getattr(db, "db_path", "")), topic_id)
+    """No-op: backoff state is durable in the DB (Migration 71), not in memory.
+    Retained because tests/config-reload call it — a restart must NOT drop it."""
+    return None
 
 
 def _forget(db, topic_id: str) -> None:
-    """k8s workqueue.Forget: stop tracking a topic that left 'integrating'."""
-    _backoff.pop(_key(db, topic_id), None)
+    """k8s workqueue.Forget: drop the persisted backoff state for a topic that
+    left 'integrating' (fail-soft via the sweep's per-topic guard)."""
+    from dbops import db_reintegrate
+
+    db_reintegrate.forget(db, topic_id)
 
 
 def _secs_since(iso_ts: str | None, now: datetime) -> float:
@@ -88,33 +91,30 @@ def _grace_elapsed(topic: dict, now: datetime) -> bool:
 
 
 def _backoff_elapsed(db, topic_id: str, now: datetime) -> bool:
-    st = _backoff.get(_key(db, topic_id))
-    if not st:
-        return True
-    last = st.get("last_attempt")
-    return last is None or (now - last).total_seconds() >= REINTEGRATE_BACKOFF_SECS
+    from dbops import db_reintegrate
+
+    _, last_attempt, _ = db_reintegrate.get_state(db, topic_id)
+    return _secs_since(last_attempt, now) >= REINTEGRATE_BACKOFF_SECS
 
 
 def _record_attempt(db, topic_id: str, now: datetime, proc=None) -> int:
-    st = _backoff.setdefault(
-        _key(db, topic_id), {"attempts": 0, "last_attempt": None, "proc": None}
-    )
-    st["attempts"] += 1
-    st["last_attempt"] = now
-    st["proc"] = proc  # the detached integrate we just spawned (single-flight guard)
-    return st["attempts"]
+    """Durably bump the attempt counter, stamp last_attempt, and record the
+    spawned gate's pid (single-flight guard) on the topic's node row."""
+    from dbops import db_reintegrate
+
+    pid = getattr(proc, "pid", None)  # the detached integrate we just spawned
+    return db_reintegrate.record_attempt(db, topic_id, now.isoformat(), pid=pid)
 
 
 def _spawn_alive(db, topic_id: str) -> bool:
-    """True iff the detached integrate last spawned for this topic is still running."""
-    st = _backoff.get(_key(db, topic_id))
-    proc = st.get("proc") if st else None
-    if proc is None:
-        return False
-    try:
-        return proc.poll() is None
-    except Exception:
-        return False
+    """True iff the gate last spawned for this topic is still running — a
+    CROSS-PROCESS check (recorded pid + os.kill liveness probe) that survives a
+    watchdog restart, so a restart cannot double-spawn the same topic's gate."""
+    from dbops import db_reintegrate
+    from juggle_integrate_lock import _pid_alive
+
+    _, _, pid = db_reintegrate.get_state(db, topic_id)
+    return _pid_alive(int(pid)) if pid else False
 
 
 def _has_live_bound_agent(db, thread_id: str | None) -> bool:
@@ -229,9 +229,9 @@ def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str |
     # 4. A prior detached attempt finished WITHOUT landing → route to
     #    'failed-integration' (repair sweep) on a real fail_envelope or the
     #    soft-failure backstop (never re-spawn forever).
+    from dbops import db_reintegrate
     refreshed = get_topic(db, tid) or {}
-    st = _backoff.get(_key(db, tid))
-    attempts = st["attempts"] if st else 0
+    attempts = db_reintegrate.get_attempts(db, tid)
     if refreshed.get("fail_envelope") or attempts >= MAX_REINTEGRATE_ATTEMPTS:
         try:
             mark_graph_topic(db, thread_id, False, None, session_id)

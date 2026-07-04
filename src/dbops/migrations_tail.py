@@ -48,3 +48,8 @@ def apply_tail_migrations(conn: sqlite3.Connection) -> None:
     # Migration 70 (graph-node learnings primitive): nodes.learnings column.
     from dbops.migration_70_node_learnings import migrate_70_node_learnings
     migrate_70_node_learnings(conn)
+
+    # Migration 71 (fix-reintegrate-persist-backoff): durable re-integrate backoff
+    # columns — nodes.reintegrate_attempts/last_attempt/pid.
+    from dbops.migration_71_reintegrate_backoff import migrate_71_reintegrate_backoff
+    migrate_71_reintegrate_backoff(conn)
