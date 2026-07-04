@@ -200,6 +200,16 @@ def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str |
     return None
 
 
+def run_reintegrate_tick(db) -> list[str]:
+    """Watchdog-tick entry point (called from juggle_graph_repair.run_tick_sweeps,
+    right after graph_tick each cycle): derive the active project set + session and
+    re-drive every wedged 'integrating' topic. Kept out of graph_tick to respect
+    that module's LOC budget."""
+    from juggle_graph_dispatch import _all_project_ids, _session_id
+
+    return sweep_reintegrate(db, _all_project_ids(db), session_id=_session_id(db))
+
+
 def sweep_reintegrate(db, project_ids, *, session_id: str = "", now=None) -> list[str]:
     """graph_tick entry point: re-drive every wedged 'integrating' topic across
     the given projects. Fail-soft per-project and per-topic — one bad topic never

@@ -238,3 +238,12 @@ def run_tick_sweeps(db) -> None:
         reconcile_missing_topic_notifications(db)
     except Exception:
         _log.exception("graph repair: notification reconcile failed")
+    # integrate-wedge fix 1 (2026-07-03): level-triggered re-integrate driver —
+    # heals a LANDED (incl. rebased) wedged topic to verified, idempotently
+    # re-runs integrate on genuinely-unmerged work, routes a real failure to
+    # failed-integration (→ the repair sweep). Fail-soft; never downs the tick.
+    try:
+        from juggle_graph_reintegrate import run_reintegrate_tick
+        run_reintegrate_tick(db)
+    except Exception:
+        _log.exception("graph repair: re-integrate driver failed")

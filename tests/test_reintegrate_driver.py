@@ -203,6 +203,22 @@ def test_reintegrate_routes_real_failure_to_failed_integration(tmp_path):
     assert topic["fail_envelope"], "a fail_envelope must route it to the repair sweep"
 
 
+def test_run_tick_sweeps_invokes_reintegrate_driver(tmp_path, monkeypatch):
+    """Wiring pin: the watchdog tick (juggle_graph_repair.run_tick_sweeps, called
+    every cycle by the daemon) drives the re-integrate sweep."""
+    import juggle_graph_reintegrate as ri
+    import juggle_graph_repair as repair
+
+    db = _make_db(tmp_path)
+    called = {}
+    monkeypatch.setattr(ri, "run_reintegrate_tick",
+                        lambda _db: called.setdefault("hit", True))
+
+    repair.run_tick_sweeps(db)
+
+    assert called.get("hit") is True
+
+
 # ── shared seeder (kept below the tests that use it for readability) ──────────
 
 def _seed_topic_with_thread(db, topic_id, thread_id, repo, branch):

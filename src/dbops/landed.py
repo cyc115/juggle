@@ -34,11 +34,16 @@ def branch_content_landed(repo: str, branch: str, *, main: str = "main") -> bool
     """Tier-2 landed check: every commit on ``branch`` has a content-equivalent
     already on ``main`` (``git cherry`` / patch-id), i.e. the work landed via a
     rebase / cherry-pick / squash under a DIFFERENT sha. Fail-closed on a
-    missing repo / branch / git error."""
+    missing repo / branch / git error.
+
+    ``commits_landed`` is an OPTIONAL git-specific backend capability (content-
+    equivalence is a git-plumbing operation), NOT a VCS Protocol method — a
+    backend that lacks it fail-closes to "not content-landed", leaving the tier-1
+    ancestry probe as its sole merged? signal."""
     if not repo or not branch or not Path(repo).exists():
         return False
     backend = _backend_for_fail_closed(repo)
-    if backend is None:
+    if backend is None or not hasattr(backend, "commits_landed"):
         return False
     return backend.commits_landed(repo, branch, main)
 
