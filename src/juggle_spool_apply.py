@@ -54,7 +54,7 @@ def _journal_set_outcome(db, uuid: str, outcome: str) -> None:
 # test_spool_apply_event_shape pins writer-args ⊆ these defaults ∪ {thread_id}.
 _NS_DEFAULTS = dict(
     result_summary=None, error=None, message=None,
-    action_id=None, task_id=None,
+    action_id=None, task_id=None, node_id=None, text=None,
     retain_text=None, open_questions=None, handoff=None, role=None,
     failure_type=None, max_retries=0, recovery_dispatched=False,
     type="manual_step", priority="normal", fail=False, db_path=None,
@@ -93,9 +93,10 @@ def _dispatch(event: SpoolEvent) -> None:
             raise ValueError("action_notify event missing required 'message'")
         from juggle_cmd_agents import cmd_notify
         cmd_notify(_ns(event))
-    elif event.type == "graph_mark_task":
-        from juggle_cmd_graph import cmd_graph_mark_task
-        cmd_graph_mark_task(_ns(event))
+    elif event.type in ("graph_mark_task", "graph_learn"):
+        import juggle_cmd_graph as _g
+        {"graph_mark_task": _g.cmd_graph_mark_task,
+         "graph_learn": _g.cmd_graph_learn}[event.type](_ns(event))
     else:
         raise ValueError(f"unknown spool event type {event.type!r}")
 

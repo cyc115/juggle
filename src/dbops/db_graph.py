@@ -149,6 +149,20 @@ def update_task_content(
         )
 
 
+def set_learnings(db, task_id: str, text: str, conn=None) -> bool:
+    """Overwrite-on-rewrite upsert of a node's ``learnings`` (spec §1/§2). Stores
+    ``text`` VERBATIM (caller enforces the ≤300-char limit — NEVER truncated here).
+    Returns True iff a task node was updated (False → unknown node; caller checks
+    existence first and rejects fail-loud)."""
+    now = _now()
+    with _cx(db, conn) as c:
+        cur = c.execute(
+            "UPDATE nodes SET learnings=?, updated_at=? WHERE id=? AND kind='task'",
+            (text, now, task_id),
+        )
+        return cur.rowcount > 0
+
+
 def get_task(db, task_id: str, conn=None) -> dict | None:
     with _cx(db, conn) as c:
         row = c.execute(f"{_TASK_SELECT} AND id=?", (task_id,)).fetchone()

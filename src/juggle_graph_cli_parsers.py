@@ -19,8 +19,9 @@ def register_graph_parsers(subparsers) -> None:
     imports so the graph CLI surface lives in one place.
     """
     from juggle_cmd_graph import (
-        cmd_graph_add_task, cmd_graph_cancel_node, cmd_graph_mark_task,
-        cmd_graph_reconcile, cmd_graph_show, cmd_project_graph_load,
+        cmd_graph_add_task, cmd_graph_cancel_node, cmd_graph_learn,
+        cmd_graph_mark_task, cmd_graph_reconcile, cmd_graph_show,
+        cmd_project_graph_load,
     )
 
     p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
@@ -93,6 +94,19 @@ def register_graph_parsers(subparsers) -> None:
         help="Handoff for the task (files touched, interfaces, decisions)",
     )
     _mt.set_defaults(func=cmd_graph_mark_task)
+
+    _ln = _g2s.add_parser(
+        "learn",
+        help="Record a node's cross-session learnings (≤300 chars, verbatim, "
+        "overwrite-on-rewrite)",
+    )
+    _ln.add_argument("node_id", help="Node (task) id to attach the learning to")
+    _ln.add_argument(
+        "text",
+        help="Learning text (≤300 chars): non-obvious gotchas / constraints / "
+        "decision-why for the NEXT agent — NOT status (the handoff owns that)",
+    )
+    _ln.set_defaults(func=cmd_graph_learn)
 
     _sh = _g2s.add_parser(
         "show", help="Read the task graph (project rollup / node detail); pure read"

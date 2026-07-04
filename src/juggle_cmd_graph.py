@@ -99,6 +99,7 @@ from juggle_graph_cli_parsers import register_graph_parsers  # noqa: E402,F401
 # cg.get_db / cg.pr_mode_refusal at call time, so cg must be fully defined here.
 from juggle_cmd_graph_ops import (  # noqa: E402,F401
     cmd_graph_add_task,
+    cmd_graph_learn,
     cmd_graph_mark_task,
     cmd_graph_reconcile,
 )

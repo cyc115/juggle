@@ -66,6 +66,8 @@ WRITER_ARG_KEYS = {
     "action_notify": {"thread_id", "message"},
     # cmd_graph_mark_task (juggle_cmd_graph.py)
     "graph_mark_task": {"task_id", "fail", "handoff"},
+    # cmd_graph_learn (juggle_cmd_graph_ops.py)
+    "graph_learn": {"node_id", "text"},
 }
 
 

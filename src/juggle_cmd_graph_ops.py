@@ -144,6 +144,48 @@ def cmd_graph_reconcile(args):
             print(f"  {topic_id}: {before} (unchanged)")
 
 
+LEARNINGS_MAX = 300
+
+
+def cmd_graph_learn(args):
+    """`juggle graph learn <node-id> "<text>"` — upsert a node's cross-session
+    learnings: non-obvious gotchas / constraints / decision-why worth reading by
+    the NEXT agent (NOT status/what-was-done — the handoff/completion summary owns
+    that). Callable any time mid-task; overwrite-on-rewrite (spec §2).
+
+    Fail-loud + nonzero exit on: empty/whitespace text, >300 chars
+    (verbatim length — NEVER truncated), or unknown node. Text stored verbatim."""
+    import juggle_cmd_graph as cg  # lazy: break the re-export import cycle
+    from juggle_spool_cli_common import spool_event_if_agent
+
+    text = args.text if getattr(args, "text", None) is not None else ""
+    # Validate content BEFORE any spool/DB touch so agents get immediate fail-loud
+    # feedback rather than a deferred dead-letter at replay time.
+    if not text.strip():
+        print("Error: learnings text is empty — nothing to record.", file=sys.stderr)
+        sys.exit(1)
+    if len(text) > LEARNINGS_MAX:
+        print(
+            f"learnings too long ({len(text)}/{LEARNINGS_MAX}) — compress: "
+            "keep decision + why, drop narrative",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Agent context: spool the write for the single-writer watchdog broker (agent
+    # processes must not open the shared DB read-write) — mirrors mark-task.
+    if spool_event_if_agent("graph_learn", {"node_id": args.node_id, "text": text}):
+        print(f"learnings for {args.node_id} → spooled")
+        return
+
+    db = cg.get_db(getattr(args, "db_path", None), init=True)
+    if not db_graph.get_task(db, args.node_id):
+        print(f"Error: node {args.node_id!r} not found.", file=sys.stderr)
+        sys.exit(1)
+    db_graph.set_learnings(db, args.node_id, text)
+    print(f"learnings for {args.node_id} recorded ({len(text)}/{LEARNINGS_MAX}).")
+
+
 def cmd_graph_mark_task(args):
     """`juggle graph mark-task <task-id> [--fail] [--handoff '…']` — the topic
     agent's per-task completion (R9 hybrid). Maps onto the EXISTING task machine
