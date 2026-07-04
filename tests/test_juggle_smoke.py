@@ -158,6 +158,19 @@ def test_check_overflow_long_line_fails():
     assert any("5" in v for v in result["violations"])
 
 
+def test_check_overflow_empty_grid_passes():
+    """Edge case: an empty grid (no rows) has no lines to overflow → clean pass.
+
+    A cockpit frame can arrive blank (body not yet painted); overflow-checking
+    it must not spuriously fail with no rows to inspect.
+    """
+    from juggle_smoke import check_overflow
+
+    result = check_overflow([], 80)
+    assert result["pass"] is True
+    assert result["violations"] == []
+
+
 # ── heuristic: check_real_estate ──────────────────────────────────────────────
 
 
