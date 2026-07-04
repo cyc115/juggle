@@ -153,6 +153,7 @@ def mark_topic_integrating(db, topic_id, *, handoff=None) -> str:
     if handoff is not None:
         set_topic_handoff(db, topic_id, handoff)
     if topic["state"] == "integrating":
+        _stamp_run_completed(db, topic.get("thread_id"), handoff)
         return "integrating"
     if topic["state"] not in _ADVANCE_TO_INTEGRATING:
         raise ValueError(
@@ -162,7 +163,37 @@ def mark_topic_integrating(db, topic_id, *, handoff=None) -> str:
     state = "integrating"
     for event in _ADVANCE_TO_INTEGRATING[topic["state"]]:
         state = topic_transition(db, topic_id, event)
+    _stamp_run_completed(db, topic.get("thread_id"), handoff)
     return state
+
+
+def _stamp_run_completed(db, thread_id, output) -> None:
+    """Stamp the bound thread's NEWEST open ('dispatched') ledger run 'completed'
+    the instant its topic reaches 'integrating' — the sole complete-path stamp
+    that is COUPLED to the topic transition rather than trailing it
+    (fix-completion-stamp-at-apply, incident 2026-07-04).
+
+    Before this, the only agent_complete stamp was close_thread_run_backstop at
+    the TAIL of cmd_complete_agent, which runs long after start_detached_integrate
+    has already walked the topic to 'integrating'. When the detached integrate
+    spawn failed — or the watchdog process (which advances HEAD on every integrate
+    and self-restarts) died in that window — completion aborted after the topic
+    transition but before the tail stamp: the topic sat 'integrating', the run
+    stuck 'dispatched', the agent stuck busy-bound, and the reintegrate
+    bound-agent guard (_completion_recorded) blocked gate spawning for the full
+    30-min stale window per topic. Doing it here makes the stamp atomic-in-intent
+    with the transition and independent of any integrate subprocess. The tail
+    backstop stays.
+
+    Best-effort: close_run keys by thread_id and no-ops when no 'dispatched' run
+    remains, so this is safe to call unconditionally; a ledger miss must never
+    break the topic transition."""
+    if not thread_id:
+        return
+    try:
+        db.close_run(thread_id, output=output, diffstat=None, status="completed")
+    except Exception:
+        pass
 
 
 def mark_topic_exec_failed(db, topic_id) -> str:
