@@ -13,6 +13,10 @@ import logging
 from datetime import datetime, timezone
 
 from dbops.spool import SpoolEvent, read_pending, move_to_dead
+from juggle_spool_dead import (
+    file_dead_letter_action_items,
+    maybe_file_dead_backlog_reminder,
+)
 from juggle_spool_paths import spool_dir
 
 _log = logging.getLogger(__name__)
@@ -265,36 +269,9 @@ def drain_spool(db) -> dict:
             if event.path is not None:
                 move_to_dead(spool_dir(), event.path, msg)
             dead.append((event.thread_id or "", event.uuid, event.type, msg))
-    _file_dead_letter_action_items(db, dead)
+    file_dead_letter_action_items(db, dead)
+    # Surface a stale dead-letter backlog even on ticks that dead-lettered
+    # nothing new — throttled to once-daily so it never re-files every tick
+    # (RCA D1 req 3). Skipped when fresh items above already cover this drain.
+    maybe_file_dead_backlog_reminder(db, new_dead=len(dead))
     return stats
-
-
-# A burst of empty/malformed junk events (e.g. the 2026-07-02 empty-args
-# agent_complete fixtures) must NOT flood the cockpit with one HIGH action item
-# each — cap per-event items and collapse the overflow into a single grouped
-# alert so the signal survives without the noise.
-_DEAD_ACTION_ITEM_CAP = 3
-
-
-def _file_dead_letter_action_items(db, dead: list[tuple[str, str, str, str]]) -> None:
-    if not dead:
-        return
-    if len(dead) <= _DEAD_ACTION_ITEM_CAP:
-        for thread_id, uuid, etype, msg in dead:
-            db.add_action_item(
-                thread_id=thread_id or None,
-                message=f"⚠️ Spool event {uuid} ({etype}) dead-lettered: {msg}",
-                type_="failure",
-                priority="high",
-            )
-        return
-    sample = ", ".join(f"{etype}:{uuid[:8]}" for _, uuid, etype, _ in dead[:_DEAD_ACTION_ITEM_CAP])
-    db.add_action_item(
-        thread_id=None,
-        message=(
-            f"⚠️ {len(dead)} spool events dead-lettered this drain "
-            f"(first {_DEAD_ACTION_ITEM_CAP}: {sample}). See spool/dead/ for full reasons."
-        ),
-        type_="failure",
-        priority="high",
-    )

@@ -115,6 +115,7 @@ import juggle_cmd_autopilot
 from juggle_cli_spec import build_parser
 from juggle_cmd_graph import register_graph_parsers
 from juggle_cmd_runs import register_runs_parsers
+from juggle_cmd_spool import register_spool_parsers
 from juggle_cli_parsers_project import register_project_parsers
 from juggle_cli_aliases import cmd_aliases
 from juggle_cli_aliases import rewrite_argv as _rewrite_legacy_argv
@@ -213,6 +214,7 @@ def build_cli_parser(vault_path_default: str | None = None):
     # Out-of-scope groups (already noun-verb; not ported into COMMANDS).
     register_graph_parsers(subparsers)
     register_runs_parsers(subparsers)
+    register_spool_parsers(subparsers)
     register_project_parsers(subparsers)
     juggle_cmd_autopilot.register(subparsers)
 
