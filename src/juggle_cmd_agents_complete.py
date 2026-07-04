@@ -11,7 +11,6 @@ time so test monkeypatches on _com.<symbol> take effect.
 
 import json
 import sys
-from datetime import datetime, timezone
 
 import juggle_cmd_agents_common as _com
 from dbops import event_kinds as _ek
@@ -51,6 +50,16 @@ def cmd_complete_agent(args):
     # BEFORE integrate, so nothing is marked or merged on refusal.
     enforce_topic_gate(db, thread_uuid)
 
+    # Fix 4 (2026-07-03 integrate-wedge): snapshot the pre-existing items to
+    # dismiss BEFORE creating any new items — the finalization-failure item
+    # below was previously swept into this snapshot and auto-dismissed,
+    # silently swallowing a genuine integrate failure.
+    items_to_dismiss = [
+        item["id"]
+        for item in db.get_open_action_items()
+        if item.get("thread_id") == thread_uuid
+    ]
+
     # Finalize worktree BEFORE closing the thread.
     # Route through _run_integrate (rebase-aware) when worktree fields are present;
     # fall back to bare _finalize_worktree for pre-migration threads.
@@ -74,13 +83,6 @@ def cmd_complete_agent(args):
             "SELECT value FROM session WHERE key = 'session_id'"
         ).fetchone()
     session_id = srow["value"] if srow else ""
-
-    # Snapshot pre-existing open action items to dismiss after close
-    items_to_dismiss = [
-        item["id"]
-        for item in db.get_open_action_items()
-        if item.get("thread_id") == thread_uuid
-    ]
 
     # 1. Convert any open_questions to action_items
     oq_raw = thread.get("open_questions") or "[]"
@@ -106,6 +108,15 @@ def cmd_complete_agent(args):
     # 2. Store the agent result as an assistant message
     if args.result_summary:
         db.add_message(thread_uuid, role="assistant", content=args.result_summary)
+
+    # Reap the pool agent (kept for the role check below). Fix 3 (2026-07-03
+    # integrate-wedge Q3): reap INDEPENDENT of the live thread binding — via the
+    # OPEN ledger run's recorded agent_id when get_agent_by_thread misses. MUST
+    # run before close_adhoc_run, which closes the ad-hoc run it reads.
+    from juggle_agent_reap import reap_completed_agent
+
+    agent = reap_completed_agent(db, thread_uuid)
+
     close_adhoc_run(db, thread_uuid, args.result_summary)  # ledger (ad-hoc; graph→topic)
 
     # 3. Transition thread: close agent-owned ephemeral threads, but PRESERVE a
@@ -127,21 +138,6 @@ def cmd_complete_agent(args):
     preserve_feature_topic = _new_status != "closed"
     if _new_status is not None:
         db.set_thread_status(thread_uuid, _new_status)
-
-    # Resolve agent before step 5 (needed for role check below)
-    agent = db.get_agent_by_thread(thread_uuid)
-    if agent:
-        busy_since = agent.get("busy_since")
-        if busy_since:
-            try:
-                busy_dt = datetime.fromisoformat(busy_since.replace("Z", "+00:00"))
-                if busy_dt.tzinfo is None:
-                    busy_dt = busy_dt.replace(tzinfo=timezone.utc)
-                duration = (datetime.now(timezone.utc) - busy_dt).total_seconds()
-                db.insert_agent_completion(role=agent["role"], duration_secs=duration)
-            except (ValueError, TypeError):
-                pass
-        db.update_agent(agent["id"], status="idle", assigned_thread=None)
 
     # 5. Create notification row (informational, session TTL)
     title = thread.get("title") or "thread"
@@ -192,6 +188,13 @@ def cmd_complete_agent(args):
     mark_graph_topic(
         db, thread_uuid, ft_success, getattr(args, "handoff", None), session_id,
     )
+
+    # Fix 3 (ledger backstop): close this thread's ledger run by thread_id even
+    # if an early-return skipped the normal closer (mark_graph_topic ValueError
+    # / close_adhoc_run graph-skip). No-op when already closed.
+    from juggle_agent_reap import close_thread_run_backstop
+
+    close_thread_run_backstop(db, thread_uuid, args.result_summary)
 
     # Auto-dismiss pre-existing action items (not ones just created from open_questions)
     for item_id in items_to_dismiss:
