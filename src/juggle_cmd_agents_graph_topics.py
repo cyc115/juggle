@@ -81,6 +81,12 @@ def start_detached_integrate(db, thread_uuid, handoff) -> bool:
         return False
     if not topic:
         return False  # legacy flat/adhoc thread — caller finalizes inline
+    # Only divert an in-flight topic. A terminal/reopen state (e.g. already
+    # 'verified' on a double-complete race) falls to the inline mark_graph_topic
+    # path, which is idempotent + warns on an illegal transition — never crash
+    # complete-agent by raising out of mark_topic_integrating.
+    if topic["state"] not in ("open", "ready", "dispatching", "running", "integrating"):
+        return False
     tasks = db_topics.list_topic_tasks(db, topic["id"])
     all_verified = bool(tasks) and all(n["state"] == "verified" for n in tasks)
     if not all_verified:

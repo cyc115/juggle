@@ -140,6 +140,37 @@ def test_complete_agent_returns_before_gate_finishes(db):
     assert running.poll() is None
 
 
+def test_already_verified_topic_does_not_crash_or_respawn(db):
+    """Double-complete race: the topic is already 'verified'. start_detached_integrate
+    must NOT walk it (mark_topic_integrating would raise on a terminal state) nor
+    spawn a re-merge — it falls to the inline path, which is idempotent."""
+    import juggle_cmd_agents_common as _com
+    import juggle_cmd_agents_complete as complete_mod
+    from dbops.db_topics import get_topic
+
+    tid = db.create_thread("feat-topic", session_id="s")
+    db.update_thread(tid, worktree_path="/wt", worktree_branch="cyc_BM",
+                     main_repo_path="/repo")
+    _seed_running_topic(db, tid, "T-verified", "/repo")
+    with db._connect() as c:
+        c.execute("UPDATE nodes SET state='verified' WHERE id='T-verified'")
+        c.commit()
+
+    spawned = []
+
+    def _spy_popen(argv, **kwargs):
+        spawned.append(argv)
+        return _AliveProc()
+
+    with patch.object(_com.juggle_cmd_integrate, "_run_integrate",
+                      return_value=(True, "0 commits ahead")), \
+         patch.object(real_subprocess, "Popen", side_effect=_spy_popen):
+        complete_mod.cmd_complete_agent(_args(tid))  # must not raise
+
+    assert spawned == [], "a verified topic must not respawn a detached integrate"
+    assert get_topic(db, "T-verified")["state"] == "verified"
+
+
 def test_legacy_non_topic_thread_still_finalizes_inline(db):
     """A plain worktree thread with NO bound graph topic keeps the inline
     finalize — the detached path is topic-scoped (autopilot), so interactive
