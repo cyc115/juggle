@@ -54,6 +54,63 @@ def enforce_topic_gate(db, thread_uuid) -> None:
         sys.exit(1)
 
 
+def start_detached_integrate(db, thread_uuid, handoff) -> bool:
+    """Complete-time detached-integrate handoff (2026-07-04 inline-gate death by
+    watchdog respawn, integrate-wedge #2): mark the thread's bound TOPIC
+    'integrating', spawn the SAME detached integrate the re-integrate sweep uses,
+    and return — NEVER running the merge gate inline. The watchdog reconcile/
+    reintegrate tick applies the final verdict from git reality.
+
+    Only the integrate-worthy SUCCESS case is diverted — a topic whose member
+    tasks are ALL 'verified' (the incident shape: work done, ready to land). A
+    topic with a failed/incomplete task has nothing to land: the caller's inline
+    mark_graph_topic drives it straight to 'failed-verify' + blocks dependents
+    (cheap DB marking, no merge → no wedge risk), unchanged.
+
+    Returns True when a TOPIC was marked 'integrating' + a detached integrate
+    spawned (the caller must NOT finalize inline nor mark the outcome), False for
+    a legacy non-topic thread OR a non-integrate-worthy topic (caller keeps its
+    inline path)."""
+    from dbops import db_topics
+    from dbops.db_topics_marking import mark_topic_integrating
+    from juggle_integrate_spawn import spawn_detached_integrate
+
+    try:
+        topic = db_topics.get_topic_by_thread(db, thread_uuid)
+    except Exception:
+        return False
+    if not topic:
+        return False  # legacy flat/adhoc thread — caller finalizes inline
+    tasks = db_topics.list_topic_tasks(db, topic["id"])
+    all_verified = bool(tasks) and all(n["state"] == "verified" for n in tasks)
+    if not all_verified:
+        return False  # failure/incomplete → caller marks failed-verify inline
+    # Walk the topic to 'integrating' so the reintegrate sweep + reconcile own it.
+    mark_topic_integrating(db, topic["id"], handoff=handoff)
+    thread = db.get_thread(thread_uuid) or {}
+    spawn_detached_integrate(thread, db)  # detached; outcome reconciles on a later tick
+    return True
+
+
+def finalize_or_detach_integrate(db, thread, thread_uuid, handoff):
+    """Complete-time worktree finalize. A bound integrate-worthy TOPIC hands the
+    merge to a DETACHED integrate (RC1 2026-07-04 inline-gate death by watchdog
+    respawn — never run the gate inline in the watchdog/spool process) and returns
+    detached=True; a legacy worktree thread finalizes inline via _run_integrate
+    (accessed through juggle_cmd_agents_common so test monkeypatches take effect),
+    and a pre-migration thread via bare _finalize_worktree. Returns
+    (ft_success, ft_msg, detached)."""
+    import juggle_cmd_agents_common as _com
+
+    has_wt = bool(thread.get("worktree_path") and thread.get("worktree_branch")
+                  and thread.get("main_repo_path"))
+    if has_wt and start_detached_integrate(db, thread_uuid, handoff):
+        return True, "integrate spawned detached (watchdog-owned)", True
+    if has_wt:
+        return (*_com.juggle_cmd_integrate._run_integrate(thread, db), False)
+    return (*_com._finalize_worktree(thread), False)
+
+
 def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
                      *, verify_failed=False):
     """Topic twin of mark_graph_task: map (integrate, verify) outcomes onto the

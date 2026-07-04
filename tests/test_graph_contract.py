@@ -288,24 +288,30 @@ def test_complete_agent_refuses_while_tasks_unmarked(db, capsys, monkeypatch):
 
 
 def test_complete_agent_marks_topic_when_all_tasks_terminal(db, monkeypatch):
-    """All tasks verified → topic 'verified', handoff stored; integrate stub
-    called exactly ONCE (integrate-once-per-topic, spec §2.3)."""
+    """All tasks verified → the topic is handed to a DETACHED integrate and left
+    'integrating' with its handoff stored; the inline merge gate NEVER runs in the
+    watchdog/spool process (RC1, 2026-07-04 inline-gate death by watchdog
+    respawn). The detached integrate lands it; a later reconcile tick →'verified'."""
     import juggle_cmd_agents_common as _com
 
     _mk_topic_task(db, "A", "a1")
     _mk_topic_task(db, "A", "a2")
     _verify_task(db, "a1")
     _verify_task(db, "a2")
-    tid = _bind_running_topic(db, "A", merged=True)  # G1: merged → verifies
-    calls = []
+    tid = _bind_running_topic(db, "A", merged=True)
+    inline_calls = []
+    spawns = []
     monkeypatch.setattr(_com.juggle_cmd_integrate, "_run_integrate",
-                        lambda thread, db_: calls.append(1) or (True, "ok"))
+                        lambda thread, db_: inline_calls.append(1) or (True, "ok"))
+    monkeypatch.setattr("juggle_integrate_spawn.spawn_detached_integrate",
+                        lambda thread, db_: spawns.append(thread.get("id")) or object())
 
     _complete(tid, handoff="topic handoff")
 
-    assert tp.get_topic(db, "A")["state"] == "verified"
+    assert tp.get_topic(db, "A")["state"] == "integrating"
     assert tp.get_topic(db, "A")["handoff"] == "topic handoff"
-    assert calls == [1], "integrate runs exactly once per topic"
+    assert inline_calls == [], "merge gate must NEVER run inline in the watchdog"
+    assert spawns == [tid], "integrate handed to a detached subprocess exactly once"
 
 
 def test_topic_with_failed_task_completes_as_failed_verify(db, monkeypatch):

@@ -60,13 +60,12 @@ def cmd_complete_agent(args):
         if item.get("thread_id") == thread_uuid
     ]
 
-    # Finalize worktree BEFORE closing the thread.
-    # Route through _run_integrate (rebase-aware) when worktree fields are present;
-    # fall back to bare _finalize_worktree for pre-migration threads.
-    if thread.get("worktree_path") and thread.get("worktree_branch") and thread.get("main_repo_path"):
-        ft_success, ft_msg = _com.juggle_cmd_integrate._run_integrate(thread, db)
-    else:
-        ft_success, ft_msg = _com._finalize_worktree(thread)
+    # Finalize worktree BEFORE closing the thread. A bound TOPIC hands the merge to
+    # a DETACHED integrate (RC1 2026-07-04: NEVER run the gate inline in the
+    # watchdog/spool process); legacy threads finalize inline. See the helper.
+    from juggle_cmd_agents_graph_topics import finalize_or_detach_integrate
+    ft_success, ft_msg, _detached_integrate = finalize_or_detach_integrate(
+        db, thread, thread_uuid, getattr(args, "handoff", None))
 
     if not ft_success:
         db.add_action_item(
@@ -183,11 +182,12 @@ def cmd_complete_agent(args):
     # outcome onto the bound task's state machine, store the handoff, and
     # notify newly-ready dependents. Notify ONLY — dispatch is watchdog-owned
     # (Phase 2); complete-agent never dispatches (DA B4/M1).
-    from juggle_cmd_agents_graph_topics import mark_graph_topic
-
-    mark_graph_topic(
-        db, thread_uuid, ft_success, getattr(args, "handoff", None), session_id,
-    )
+    # SKIP when detached (RC1): topic rests 'integrating'; the reconcile tick verdicts it.
+    if not _detached_integrate:
+        from juggle_cmd_agents_graph_topics import mark_graph_topic
+        mark_graph_topic(
+            db, thread_uuid, ft_success, getattr(args, "handoff", None), session_id,
+        )
 
     # Fix 3 (ledger backstop): close this thread's ledger run by thread_id even
     # if an early-return skipped the normal closer (mark_graph_topic ValueError

@@ -111,6 +111,32 @@ def mark_topic_completion(db, topic_id, *, integrate_ok, verify_ok=True,
     return topic_transition(db, topic_id, "integrate_ok")
 
 
+def mark_topic_integrating(db, topic_id, *, handoff=None) -> str:
+    """Walk a topic legally to 'integrating' and STOP — no outcome applied.
+
+    Used by complete-agent's detached-integrate handoff (2026-07-04 inline-gate
+    death by watchdog respawn): the merge gate runs in a DETACHED subprocess, and
+    the watchdog reconcile/reintegrate tick applies the final verdict from git
+    reality. Stores ``handoff`` (mirrors mark_topic_completion). Idempotent when
+    the topic is already 'integrating'."""
+    topic = get_topic(db, topic_id)
+    if topic is None:
+        raise ValueError(f"graph topic not found: {topic_id!r}")
+    if handoff is not None:
+        set_topic_handoff(db, topic_id, handoff)
+    if topic["state"] == "integrating":
+        return "integrating"
+    if topic["state"] not in _ADVANCE_TO_INTEGRATING:
+        raise ValueError(
+            f"cannot mark integrating: topic {topic_id!r} in terminal state "
+            f"{topic['state']!r}"
+        )
+    state = "integrating"
+    for event in _ADVANCE_TO_INTEGRATING[topic["state"]]:
+        state = topic_transition(db, topic_id, event)
+    return state
+
+
 def mark_topic_exec_failed(db, topic_id) -> str:
     """Agent death / give-up: walk the topic legally to 'failed-exec'
     (mirror of db_graph.mark_exec_failed — read it and follow its walk)."""

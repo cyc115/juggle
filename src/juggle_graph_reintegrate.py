@@ -145,49 +145,18 @@ def _real_commits_ahead(thread: dict) -> bool:
 
 def _spawn_detached_integrate(thread: dict, db):
     """Spawn ``juggle integrate <thread>`` DETACHED; return its handle (None on
-    spawn failure). NEVER blocks the tick. ``start_new_session`` detaches it from
-    the watchdog's process group so a tickguard daemon restart can't kill the gate
-    mid-run (the 2026-07-03 livelock); the per-repo integrate lock + heartbeat
-    serialize it (single-flight) even across a restart. ``JUGGLE_ORCHESTRATOR=1``
-    marks it watchdog-owned so the integrate guard permits the call."""
-    import os
-    import subprocess
-    import sys
-    from pathlib import Path
+    spawn failure). NEVER blocks the tick. Thin wrapper over the shared
+    juggle_integrate_spawn.spawn_detached_integrate — the SAME spawn complete-agent
+    uses (2026-07-04 inline-gate death by watchdog respawn). Kept as a module
+    symbol so the driver's own test patches (single-flight, mid-gate-kill) target
+    it. ``start_new_session`` detaches it from the watchdog's process group so a
+    tickguard daemon restart can't kill the gate mid-run (the 2026-07-03
+    livelock); the per-repo integrate lock + heartbeat serialize it (single-flight)
+    even across a restart. ``JUGGLE_ORCHESTRATOR=1`` marks it watchdog-owned so the
+    integrate guard permits the call."""
+    from juggle_integrate_spawn import spawn_detached_integrate
 
-    thread_id = (thread.get("id") or "").strip()
-    repo = (thread.get("main_repo_path") or "").strip()
-    if not thread_id or not repo:
-        return None
-
-    cli = str(Path(__file__).resolve().parent / "juggle_cli.py")
-    env = os.environ.copy()
-    env["JUGGLE_ORCHESTRATOR"] = "1"  # integrate is watchdog-owned; this IS the watchdog
-    db_path = getattr(db, "db_path", None)
-    if db_path:
-        env["JUGGLE_DB_PATH"] = str(db_path)
-
-    # Detached-process output → a durable log (the incident was diagnosed from
-    # watchdog-spawn.log); fall back to DEVNULL if the dir is unwritable.
-    logf = subprocess.DEVNULL
-    try:
-        log_dir = Path(db_path).parent if db_path else Path(repo)
-        log_dir.mkdir(parents=True, exist_ok=True)
-        logf = open(log_dir / "reintegrate-spawn.log", "ab")
-    except OSError:
-        pass
-    try:
-        proc = subprocess.Popen(
-            [sys.executable, cli, "integrate", thread_id], cwd=repo, env=env,
-            start_new_session=True, stdin=subprocess.DEVNULL, stdout=logf, stderr=logf,
-        )
-    except Exception:
-        _log.exception("reintegrate: failed to spawn detached integrate for %s", thread_id)
-        return None
-    finally:
-        if logf is not subprocess.DEVNULL:
-            logf.close()  # child dup'd the fd
-    return proc
+    return spawn_detached_integrate(thread, db)
 
 
 def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str | None:

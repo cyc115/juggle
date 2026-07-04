@@ -180,12 +180,21 @@ def test_diamond_happy_path_full_flow(db):
 
 
 def test_diamond_failed_integration_branch_blocks_dependents_loudly(db, monkeypatch):
-    """B's integrate fails mid-diamond → B = failed-integration (DA B3: never
-    verified), downstream D goes 'blocked-failed' and is NEVER dispatched,
-    sibling C is unaffected (still verifies), and a HIGH action item flags the
-    failure naming the blocked topic (no silent stall).
-    (rewritten to the topic seam, R9 2026-06-11 Task 7)"""
-    import juggle_cmd_agents_common as _com
+    """B's DETACHED integrate fails mid-diamond → the watchdog reintegrate sweep
+    routes B to failed-integration (DA B3: never verified), downstream D goes
+    'blocked-failed' and is NEVER dispatched, sibling C is unaffected (still
+    verifies), and a HIGH action item flags the failure naming the blocked topic.
+
+    RC1 (2026-07-04 inline-gate death by watchdog respawn): a rebase conflict can
+    only be detected by RUNNING the merge, and the merge NEVER runs inline in the
+    watchdog/spool process — so complete-agent marks B 'integrating' + spawns the
+    detached gate, which fails (fail_envelope), and the sweep does the routing on
+    a later tick. (rewritten to the topic seam, R9 2026-06-11 Task 7)"""
+    import json
+
+    import juggle_graph_reintegrate as ri
+    from dbops.db_topics import set_topic_fail_envelope
+    from unittest.mock import patch
 
     _load_diamond(db)
     fake = FakeDispatch()
@@ -193,17 +202,32 @@ def test_diamond_failed_integration_branch_blocks_dependents_loudly(db, monkeypa
     _complete_topic(db, "A", handoff="base done")
     gd.graph_tick(db, dispatch_fn=fake)            # B, C
 
-    # B's worktree integration fails; C (no worktree fields) finalizes fine —
-    # _run_integrate only runs for threads with worktree fields, i.e. only B.
+    # B has worktree fields → its integrate is DETACHED; C (no worktree fields)
+    # finalizes inline. B's detached gate hits a rebase conflict: it writes a
+    # fail_envelope and exits WITHOUT landing (simulated by the spawn stub).
     b_tid = tp.get_topic(db, "B")["thread_id"]
     db.update_thread(b_tid, worktree_path="/tmp/wt-b", worktree_branch="cyc_b",
                      main_repo_path="/tmp/repo")
-    monkeypatch.setattr(
-        _com.juggle_cmd_integrate, "_run_integrate",
-        lambda thread, db_: (False, "rebase conflict"),
-    )
-    _complete_topic(db, "B", handoff="b attempted")
+
+    def _fail_detached(thread, db_):
+        set_topic_fail_envelope(db_, "B",
+                                json.dumps({"step": "rebase", "reason": "conflict"}))
+        return None  # the failed detached run left the envelope; nothing landed
+    monkeypatch.setattr("juggle_integrate_spawn.spawn_detached_integrate",
+                        _fail_detached)
+
+    _complete_topic(db, "B", handoff="b attempted")   # marks B 'integrating' + spawns
     _complete_topic(db, "C", handoff="c done")
+
+    # complete-agent NEVER decides the integrate outcome — B rests 'integrating'.
+    assert tp.get_topic(db, "B")["state"] == "integrating"
+    assert _states(db)["C"] == "verified", "sibling must be unaffected by b's failure"
+
+    # The watchdog reintegrate sweep sees the fail_envelope → failed-integration.
+    ri.reset_backoff()
+    with patch.object(ri, "REINTEGRATE_GRACE_SECS", 0), \
+         patch.object(ri, "REINTEGRATE_BACKOFF_SECS", 0):
+        ri.sweep_reintegrate(db, ["INBOX"])
 
     states = _states(db)
     assert states["B"] == "failed-integration"
