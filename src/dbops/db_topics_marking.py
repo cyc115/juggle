@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from dbops.db_topics import (
     get_topic,
-    get_topic_by_thread,
     set_topic_handoff,
     set_topic_submitted_rev,
     topic_transition,
@@ -37,22 +36,40 @@ def set_topic_fail_envelope(db, topic_id, fail_envelope: str) -> None:
         conn.commit()
 
 
-def store_fail_envelope(db, thread_id, task, fail_envelope: str) -> None:
+def store_fail_envelope(db, thread_id, task, fail_envelope: str, *, topic_id=None) -> None:
     """Persist an integrate fail envelope where the T4 repair sweep can read it:
-    on the bound graph TASK (flat-task path), else on the TOPIC bound to the
-    thread. A non-graph thread (no task, no bound topic) persists nothing.
-    Best-effort — a Mock/pre-migration db resolving no topic simply skips."""
+    on the bound graph TASK (flat-task path), else on the TOPIC(s) currently
+    'integrating' on the thread. A non-graph thread (no task, no integrating
+    topic) persists nothing. Best-effort — a Mock/pre-migration db resolving no
+    topic simply skips.
+
+    fix-conflict-envelope-routing (2026-07-04 cyc_GP): a dual-dispatch thread
+    owns SEVERAL topics; the old get_topic_by_thread stamped the envelope on the
+    thread's first topic (observed: an already-verified sibling), leaving the
+    real integrating topics envelope-empty so the reintegrate sweep never routed
+    them and re-drove the doomed gate forever. Stamp EVERY integrating topic on
+    the thread (or the explicit ``topic_id`` a caller names) — never a
+    thread-first-topic guess."""
     if task:
         from dbops import db_graph
 
         db_graph.set_task_fail_envelope(db, task["id"], fail_envelope)
         return
+    if topic_id is not None:
+        set_topic_fail_envelope(db, topic_id, fail_envelope)
+        return
     try:
-        topic = get_topic_by_thread(db, thread_id)
+        with db._connect() as conn:
+            rows = conn.execute(
+                "SELECT e.node_id FROM node_edges e JOIN nodes n ON n.id=e.node_id "
+                "WHERE e.kind='dispatch' AND e.depends_on_id=? AND n.kind='topic' "
+                "AND n.state='integrating'",
+                (thread_id,),
+            ).fetchall()
     except Exception:
-        topic = None
-    if topic:
-        set_topic_fail_envelope(db, topic["id"], fail_envelope)
+        rows = []
+    for row in rows:
+        set_topic_fail_envelope(db, row[0], fail_envelope)
 
 _ADVANCE_TO_INTEGRATING = {
     "open": ("deps_ready", "claim", "dispatch", "integrate_start"),

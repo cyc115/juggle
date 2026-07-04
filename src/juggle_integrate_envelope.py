@@ -242,7 +242,8 @@ def record_refusal(step: str, detail: str, ctx: FailContext) -> FailRecord:
     Control flow (lock release, early return) stays in `_fail`.
     """
     message = f"⚠️ integrate failed [{ctx.worktree_branch}]: {detail}"
-    ctx.db.add_action_item(
+    # _once dedups a re-driven gate's byte-identical HIGH item (fix-conflict-envelope-routing).
+    ctx.db.add_action_item_once(
         thread_id=ctx.thread_id, message=message, type_="manual_step", priority="high",
     )
 

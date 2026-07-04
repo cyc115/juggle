@@ -126,6 +126,18 @@ class NotificationsMixin:
             conn.commit()
             return cur.lastrowid
 
+    def add_action_item_once(
+        self, thread_id, message: str, type_: str, priority: str = "normal"
+    ):
+        """add_action_item, but skip when an OPEN item already carries the same
+        thread+message signature (fix-conflict-envelope-routing, 2026-07-04): a
+        re-driven integrate gate must not file byte-identical HIGH items every
+        backoff round (~25 tonight, 5312-5340). Returns the new/existing id."""
+        for item in self.get_open_action_items():
+            if item.get("thread_id") == thread_id and item.get("message") == message:
+                return item["id"]
+        return self.add_action_item(thread_id, message, type_, priority)
+
     def get_open_action_items(self) -> list[dict]:
         """Open action items ordered by (priority: high > normal > low), then created_at DESC."""
         with self._connect() as conn:

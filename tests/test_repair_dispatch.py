@@ -216,6 +216,11 @@ def test_record_refusal_flags_routine_dispatchable_and_persists_on_topic(db):
     tp.create_topic(db, topic_id="TE", project_id="INBOX", title="TE")
     thread_id = db.create_thread("[TE]", session_id="s")
     tp.set_topic_thread(db, "TE", thread_id)
+    # A topic is 'integrating' when integrate runs (and can fail) — the state
+    # store_fail_envelope now scopes the stamp to (fix-conflict-envelope-routing).
+    with db._connect() as conn:
+        conn.execute("UPDATE nodes SET state='integrating' WHERE id='TE' AND kind='topic'")
+        conn.commit()
 
     ctx = FailContext(
         db=db, thread_id=thread_id, worktree_branch="cyc_x",

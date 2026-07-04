@@ -234,7 +234,7 @@ def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str |
     attempts = db_reintegrate.get_attempts(db, tid)
     if refreshed.get("fail_envelope") or attempts >= MAX_REINTEGRATE_ATTEMPTS:
         try:
-            mark_graph_topic(db, thread_id, False, None, session_id)
+            mark_graph_topic(db, thread_id, False, None, session_id, topic_id=tid)
         except Exception:
             _log.exception("reintegrate: failed to route %s to failed-integration", tid)
             return None

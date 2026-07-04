@@ -118,15 +118,24 @@ def finalize_or_detach_integrate(db, thread, thread_uuid, handoff):
 
 
 def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
-                     *, verify_failed=False):
+                     *, verify_failed=False, topic_id=None):
     """Topic twin of mark_graph_task: map (integrate, verify) outcomes onto the
     TOPIC machine; verify_ok additionally requires every task 'verified'.
-    Falls back to mark_graph_task for legacy task-bound threads."""
+    Falls back to mark_graph_task for legacy task-bound threads.
+
+    ``topic_id`` names the EXACT topic to mark (fix-conflict-envelope-routing,
+    2026-07-04 cyc_GP): a dual-dispatch thread owns several topics, so the
+    reintegrate sweep must route each failed topic by id rather than let
+    get_topic_by_thread guess the thread's first topic (which routed the same
+    topic twice and left its integrating sibling wedged)."""
     from dbops import db_topics
     from juggle_cmd_agents_graph import mark_graph_task
 
     try:
-        topic = db_topics.get_topic_by_thread(db, thread_uuid)
+        if topic_id is not None:
+            topic = db_topics.get_topic(db, topic_id)
+        else:
+            topic = db_topics.get_topic_by_thread(db, thread_uuid)
     except Exception:
         return  # pre-migration DB without graph tables
     if not topic:
