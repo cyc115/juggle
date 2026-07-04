@@ -57,7 +57,7 @@ GRANDFATHERED: dict[str, int] = {
     "scripts/talkback": 415,
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
-    "src/juggle_graph_dispatch.py": 409,  # +5 irl-repair T4: pre-claim repair-sweep call before the topic-claim loop (2026-07-03)
+    "src/juggle_graph_dispatch.py": 410,  # +1 fix-topic-unblock-sweep: convergent per-tick unblock_topic_dependents call, kept alongside the raising recompute (R4 pin) — irreducible loop wiring (2026-07-04)
     "src/juggle_watchdog_daemon.py": 487,  # +3 fix-paste-submit-detect: irreducible tick wiring for the paste-submit fast-sweep (import + secs_since kwarg + unsubmitted branch); bulk extracted to juggle_paste_submit.py (2026-07-03)
     "src/dbops/db_topics.py": 367,  # +1 irl-repair T4: re-export set_topic_fail_envelope from db_topics_marking (2026-07-03)
     "src/juggle_context.py": 345,

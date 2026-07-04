@@ -912,3 +912,41 @@ def test_disarm_snapshot_at_tick_start(db):
 
     stats = gd.graph_tick(db, dispatch_fn=DisarmMidTick())
     assert sorted(stats["dispatched"]) == ["A1", "B1"]
+
+
+def _set_node_state(db, node_id, state, kind):
+    now = datetime.now(timezone.utc).isoformat()
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET state=?, updated_at=? WHERE id=? AND kind=?",
+            (state, now, node_id, kind),
+        )
+        conn.commit()
+
+
+def test_tick_sweep_unblocks_topic_dependent_without_lift_event(db):
+    """Regression pin — T-fix-topic-unblock-sweep (2026-07-04): 4 P2 topics sat
+    'blocked-failed' forever though ALL dep topics were 'verified', because
+    unblock_topic_dependents only ran on a failed-integration LIFT event; the
+    deps cleared while a swallowed NameError ate the one-shot event, so nothing
+    ever retried. Assert one graph_tick sweep flips a blocked-failed dependent
+    whose dep topic is already verified to open/ready with NO lift event pending.
+    """
+    # dep topic (verified) + its member task (verified)
+    _mk_topic(db, "T-dep", "P2")
+    _set_node_state(db, "T-dep-k0", "verified", "task")
+    _set_node_state(db, "T-dep", "verified", "topic")
+    # dependent topic wedged in blocked-failed, member task depends across topics
+    _mk_topic(db, "T-dependent", "P2")
+    g.replace_edges(db, "T-dependent-k0", ["T-dep-k0"])  # cross-topic dep edge
+    _set_node_state(db, "T-dependent", "blocked-failed", "topic")
+
+    assert tp.get_topic(db, "T-dependent")["state"] == "blocked-failed"
+
+    stats = gd.graph_tick(db, dispatch_fn=FakeDispatch())
+
+    # The sweep reopens it (→ open/ready); the SAME tick then claims & dispatches
+    # the now-ready topic, so it advances to running — the point is it left the
+    # permanent blocked-failed wedge, which pre-fix it never did.
+    assert tp.get_topic(db, "T-dependent")["state"] != "blocked-failed"
+    assert "T-dependent" in stats["dispatched"]

@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from dbops import db_graph, db_topics
+from dbops import db_graph, db_topics, db_topics_marking
 from dbops import event_kinds as _ek
 from dbops.schema import _now
 from juggle_autopilot_state import (  # noqa: F401 — re-exported for compat
@@ -209,7 +209,8 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
         try:
             stats["swept"] += sweep_stale_topic_claims(db, pid)
             poll_unlanded_topics(db, pid)  # SPEC §5.3/§7.5
-            db_topics.recompute_topic_ready(db, pid)
+            db_topics_marking.unblock_topic_dependents(db, pid)  # converge blocked-failed⇄open every tick, not only on lift (T-fix-topic-unblock-sweep 2026-07-04)
+            db_topics.recompute_topic_ready(db, pid)  # raises → poisoned project skipped (R4 blast-radius pin)
             topics = db_topics.list_topics(db, pid)
         except Exception:
             _log.exception("graph tick: ready-set scan failed for %s — skipping project", pid)
