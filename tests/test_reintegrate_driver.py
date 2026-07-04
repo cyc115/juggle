@@ -328,6 +328,49 @@ def test_reintegrate_killed_mid_gate_is_retried_and_lands(tmp_path):
     assert get_topic(db, "T1")["state"] == "verified"
 
 
+def test_spawn_detached_integrate_command_and_env(tmp_path):
+    """Pin the integration seam: the detached spawn invokes the `integrate` CLI
+    subcommand for the thread, detached (start_new_session), on the SAME db
+    (JUGGLE_DB_PATH) and marked watchdog-owned (JUGGLE_ORCHESTRATOR) so the
+    watchdog-owned-integrate guard permits it. A rename of the CLI subcommand or
+    a dropped env var breaks the whole off-tick fix silently — this catches it."""
+    import subprocess as real_subprocess
+
+    import juggle_graph_reintegrate as ri
+
+    class _FakeDB:
+        db_path = str(tmp_path / "j.db")
+
+    thread = {"id": "T-uuid-123", "main_repo_path": str(tmp_path)}
+    captured = {}
+
+    def _fake_popen(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return _DoneProc()
+
+    with patch.object(real_subprocess, "Popen", side_effect=_fake_popen):
+        proc = ri._spawn_detached_integrate(thread, _FakeDB())
+
+    assert proc is not None
+    argv = captured["argv"]
+    assert argv[-2:] == ["integrate", "T-uuid-123"]   # `juggle integrate <thread>`
+    assert argv[1].endswith("juggle_cli.py")
+    kw = captured["kwargs"]
+    assert kw["start_new_session"] is True             # survives daemon restart
+    assert kw["cwd"] == str(tmp_path)
+    assert kw["env"]["JUGGLE_ORCHESTRATOR"] == "1"     # watchdog-owned → guard permits
+    assert kw["env"]["JUGGLE_DB_PATH"] == str(tmp_path / "j.db")  # same db
+
+
+def test_spawn_detached_integrate_refuses_without_repo(tmp_path):
+    """No main_repo_path → nothing to integrate; never spawn a bogus process."""
+    import juggle_graph_reintegrate as ri
+
+    assert ri._spawn_detached_integrate({"id": "T", "main_repo_path": ""}, object()) is None
+    assert ri._spawn_detached_integrate({"id": "", "main_repo_path": "/x"}, object()) is None
+
+
 def test_reintegrate_routes_failed_subprocess_to_failed_integration(tmp_path):
     """A detached integrate that FAILED (rebase conflict → fail_envelope written,
     but subprocess exited without landing) is routed to 'failed-integration' on a
