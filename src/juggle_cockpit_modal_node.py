@@ -153,6 +153,23 @@ class _NodeDetailModal(ModalScreen):
             out += ["", "handoff:", handoff[: self._EXCERPT]]
         return out
 
+    def _learnings_lines(self) -> list[str]:
+        """Member-task learnings for a TOPIC — one ``node-id: text`` line each.
+
+        Items are pre-fetched into ``summary_ctx['learnings']`` by the 'i'-key
+        handler via ``db_graph.read_learnings`` (gl-cockpit-info reuses that
+        reader — no duplicate SQL here). Section omitted when the topic has no
+        non-empty learnings; never rendered for task nodes."""
+        if not self._is_topic:
+            return []
+        items = self._summary_ctx.get("learnings") or []
+        if not items:
+            return []
+        out = ["", "Learnings:"]
+        for it in items:
+            out.append(f"{it.get('node_id', '')}: {it.get('text', '')}")
+        return out
+
     def _raw_body_lines(self) -> list[str]:
         """Fallback body when an LLM summary is unavailable (topic nodes)."""
         out: list[str] = []
@@ -191,6 +208,7 @@ class _NodeDetailModal(ModalScreen):
         """Combined header + raw fallback body. Sync helper for tests."""
         out = self._field_lines()
         if self._is_topic:
+            out += self._learnings_lines()
             out += self._raw_body_lines()
             recent = self._summary_ctx.get("recent") or []
             if recent:
@@ -211,6 +229,10 @@ class _NodeDetailModal(ModalScreen):
     def compose(self) -> ComposeResult:
         with VerticalScroll():
             yield Static("\n".join(self._field_lines()), id="node-header", markup=False)
+            learn = self._learnings_lines()
+            if learn:
+                from rich.text import Text
+                yield Static(Text("\n".join(learn), style="dim"), id="node-learnings", markup=False)
             yield Static("", id="node-body", markup=False)
 
     def on_key(self, event) -> None:

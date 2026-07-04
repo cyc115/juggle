@@ -845,6 +845,12 @@ class CockpitApp(GraphModeMixin, App):
             if topic is not None:
                 # Shared summary-context builder (messages, task input/result).
                 extra = build_summary_ctx(self._db, topic.id)
+                # gl-cockpit-info: member-task learnings for the Learnings section
+                # (reuse the graph learnings reader — no duplicate SQL).
+                try:
+                    extra["learnings"] = _g.read_learnings(self._db, topic_id=topic.id)["items"]
+                except Exception:
+                    pass
                 agent = agent_by_label.get(topic.label.upper())
                 if agent:
                     extra["agent"] = agent

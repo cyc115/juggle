@@ -454,6 +454,48 @@ def test_node_detail_modal_shows_result_output():
     assert "Done: feature implemented" in lines
 
 
+# ---------------------------------------------------------------------------
+# gl-cockpit-info — topic-info 'Learnings' section (reuses read_learnings items
+# pre-fetched into extra['learnings'] by the 'i'-key handler).
+# ---------------------------------------------------------------------------
+
+
+def test_node_detail_modal_shows_learnings():
+    """A topic modal renders a 'Learnings' section, one 'node-id: text' line per
+    member task with a non-empty learning (same format as `graph learnings`)."""
+    from juggle_cockpit_modals import _NodeDetailModal
+    topic = _make_topic("AO", title="My Topic")
+    learnings = [
+        {"node_id": "FE1", "text": "keep the form controlled", "completed_at": 1},
+        {"node_id": "FE2", "text": "api rejects empty body", "completed_at": 2},
+    ]
+    modal = _NodeDetailModal.from_conversation(topic, {"learnings": learnings})
+    lines = "\n".join(modal._lines())
+    assert "Learnings:" in lines
+    assert "FE1: keep the form controlled" in lines
+    assert "FE2: api rejects empty body" in lines
+
+
+def test_node_detail_modal_omits_empty_learnings():
+    """The Learnings section is omitted entirely when the topic has none."""
+    from juggle_cockpit_modals import _NodeDetailModal
+    topic = _make_topic("AO", title="My Topic")
+    # no learnings key
+    modal = _NodeDetailModal.from_conversation(topic)
+    assert "Learnings" not in "\n".join(modal._lines())
+    # explicit empty list
+    modal2 = _NodeDetailModal.from_conversation(topic, {"learnings": []})
+    assert "Learnings" not in "\n".join(modal2._lines())
+
+
+def test_task_node_has_no_learnings_section():
+    """Task (non-topic) nodes never render a Learnings section."""
+    from juggle_cockpit_modals import _NodeDetailModal
+    task = {"id": "N1", "title": "do thing", "state": "open"}
+    modal = _NodeDetailModal(task, [], is_topic=False, summary_ctx={"learnings": [{"node_id": "N1", "text": "x"}]})
+    assert "Learnings" not in "\n".join(modal._lines())
+
+
 def test_node_detail_modal_shows_recent():
     """A topic modal renders the recent activity list when provided in extra."""
     from juggle_cockpit_modals import _NodeDetailModal
