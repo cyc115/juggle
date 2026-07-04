@@ -129,7 +129,11 @@ def check_chrome_present(
     header_markers = header_markers or _HEADER_MARKERS
     footer_markers = footer_markers or _FOOTER_MARKERS
     top = grid[:3]
-    bottom = grid[-3:]
+    # The footer can be followed by trailing blank padding rows (common in
+    # non-pyte --out renders where the body doesn't fill the viewport); scan the
+    # last 3 non-blank rows so that padding can't hide a footer that did paint.
+    nonblank = [row for row in grid if row.strip()]
+    bottom = nonblank[-3:] if nonblank else grid[-3:]
     has_header = any(m in row for row in top for m in header_markers)
     has_footer = any(m in row for row in bottom for m in footer_markers)
     ok = has_header and has_footer

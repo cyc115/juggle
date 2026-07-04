@@ -249,6 +249,27 @@ def test_check_chrome_present_no_header_fails():
     assert result["pass"] is False
 
 
+def test_check_chrome_present_footer_with_trailing_blank_rows_passes():
+    """A footer followed by trailing blank padding rows must still be detected.
+
+    Non-pyte --out renders can emit blank padding rows below the footer (the
+    body not filling the viewport). Scanning only the literal bottom 3 rows then
+    sees blanks and spuriously reports the footer MISSING even though it painted.
+    The last non-blank rows are the real footer region.
+    """
+    from juggle_smoke import check_chrome_present
+
+    grid = (
+        ["Juggle  Cockpit v2"]              # header
+        + ["body content"] * 20
+        + ["q Quit  ? Help  s Switch"]      # footer
+        + [""] * 3                          # trailing blank padding
+    )
+    result = check_chrome_present(grid)
+    assert result["pass"] is True
+    assert result["reason"] == ""
+
+
 # ── heuristic: check_truncation ───────────────────────────────────────────────
 
 
