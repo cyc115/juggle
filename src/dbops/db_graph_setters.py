@@ -72,6 +72,20 @@ def set_task_diffstat(db, task_id: str, diffstat: str) -> None:
         conn.commit()
 
 
+def set_cancel_reason(db, task_id: str, reason: str) -> None:
+    """Store the operator's cancel reason on a node (graph-node-primitives Phase5,
+    spec DA-B3). Written alongside — never in place of — the 'cancelled' state
+    transition (task_transition remains the sole state writer). The audit row is
+    kept intact (soft terminal, never a hard delete)."""
+    now = _now()
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET cancel_reason=?, updated_at=? WHERE id=? AND kind='task'",
+            (reason, now, task_id),
+        )
+        conn.commit()
+
+
 def set_task_topic(db, task_id: str, topic_id, conn=None) -> None:
     """Assign a task to its topic — writes the authoritative nodes.parent_id
     (get_task maps parent_id→topic_id). The legacy graph_tasks.topic_id write was

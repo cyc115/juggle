@@ -105,3 +105,5 @@ from juggle_cmd_graph_ops import (  # noqa: E402,F401
 
 # graph show (READ) — pure-read view, extracted to its own module (Phase4).
 from juggle_cmd_graph_show import cmd_graph_show  # noqa: E402,F401
+# graph cancel-node (mutator) — own module (Phase5, LOC-gate: graph_ops full).
+from juggle_cmd_graph_cancel import cmd_graph_cancel_node  # noqa: E402,F401

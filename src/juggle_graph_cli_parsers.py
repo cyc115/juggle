@@ -19,8 +19,8 @@ def register_graph_parsers(subparsers) -> None:
     imports so the graph CLI surface lives in one place.
     """
     from juggle_cmd_graph import (
-        cmd_graph_add_task, cmd_graph_mark_task, cmd_graph_reconcile,
-        cmd_graph_show, cmd_project_graph_load,
+        cmd_graph_add_task, cmd_graph_cancel_node, cmd_graph_mark_task,
+        cmd_graph_reconcile, cmd_graph_show, cmd_project_graph_load,
     )
 
     p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
@@ -104,3 +104,18 @@ def register_graph_parsers(subparsers) -> None:
     _sh.add_argument("--json", dest="json_out", action="store_true",
                      help="Machine-readable output (compact)")
     _sh.set_defaults(func=cmd_graph_show)
+
+    _cn = _g2s.add_parser(
+        "cancel-node",
+        help="Soft-cancel a node → 'cancelled' (+ --cascade for the subtree)",
+    )
+    _cn.add_argument("id", help="Task/node id to cancel")
+    _cn.add_argument("--cascade", action="store_true",
+                     help="Also cancel every transitive dependent (subtree prune)")
+    _cn.add_argument("--reason", default=None,
+                     help="Reason string stored on the cancelled node(s)")
+    _cn.add_argument("--dry-run", dest="dry_run", action="store_true",
+                     help="Report the affected id set without mutating")
+    _cn.add_argument("--json", dest="json_out", action="store_true",
+                     help="Machine-readable output (compact)")
+    _cn.set_defaults(func=cmd_graph_cancel_node)

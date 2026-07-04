@@ -71,7 +71,8 @@ _TASK_SELECT = (
     "SELECT id, project_id, title, objective AS prompt, verify_cmd, state, "
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' LIMIT 1) AS thread_id, "
     "parent_id AS topic_id, handoff, diffstat, verified_at, "
-    "verify_retries, verify_failure, priority, fail_envelope, created_at, updated_at "
+    "verify_retries, verify_failure, priority, fail_envelope, cancel_reason, "
+    "created_at, updated_at "
     "FROM nodes WHERE kind='task'"
 )
 
@@ -232,6 +233,7 @@ from dbops.db_graph_marking import (  # noqa: E402,F401
 )
 from dbops.db_graph_setters import (  # noqa: E402,F401
     bump_verify_retry,
+    set_cancel_reason,
     set_task_diffstat,
     set_task_fail_envelope,
     set_task_handoff,
