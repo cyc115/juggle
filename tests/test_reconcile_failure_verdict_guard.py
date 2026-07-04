@@ -32,9 +32,7 @@ def _make_db(tmp_path):
 def _seed_topic(db, topic_id, task_states, *, state, merged_sha=None,
                 thread_id=None):
     from dbops import db_topics, db_graph
-    from datetime import datetime, timezone
 
-    now = datetime.now(timezone.utc).isoformat()
     db_topics.create_topic(db, topic_id=topic_id, project_id="INBOX",
                            title=f"Topic {topic_id}")
     with db._connect() as c:
