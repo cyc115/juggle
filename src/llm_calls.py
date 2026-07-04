@@ -42,7 +42,15 @@ def run_claude_p(
     cmd = ["claude", "-p", prompt, "--model", model]
     if output_format:
         cmd += ["--output-format", output_format]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    # Tag the subprocess as an internal Juggle LLM call. `claude -p` fires the
+    # Juggle plugin hooks in the caller's environment; without this flag a
+    # background title-gen / summarizer prompt gets recorded as a USER question
+    # on the active thread and its reply as the ANSWER (fix-title-gen-thread-leak).
+    # The recording hooks honor JUGGLE_INTERNAL_LLM=1 by skipping entirely.
+    env = {**os.environ, "JUGGLE_INTERNAL_LLM": "1"}
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout, env=env
+    )
     if result.returncode != 0:
         if log is not None:
             log.warning("claude -p failed: %s", result.stderr[:200])

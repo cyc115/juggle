@@ -112,6 +112,12 @@ def auto_approve_blocked_agents() -> None:
 
 def handle_user_prompt_submit(data: dict) -> None:
     """Inject juggle context (plus autopilot directive) and record the user prompt."""
+    # Internal Juggle LLM subprocess (title-gen / summarizers via run_claude_p):
+    # background machinery, not a user turn — no thread binding, no context
+    # injection. Else it pollutes the active thread's Q&A (fix-title-gen-thread-leak).
+    if os.environ.get("JUGGLE_INTERNAL_LLM") == "1":
+        sys.exit(0)
+
     # Agent sessions: inject ONLY the role anchor (build_context_string returns
     # anchor-only when JUGGLE_IS_AGENT=1). Skip the orchestrator dashboard, the
     # autopilot directive, the agent-pane auto-approve sweep, the thread message
@@ -221,6 +227,10 @@ def _stamp_agent_session(db, data: dict) -> None:
 
 def handle_stop(data: dict, scan_class_b_fn) -> None:
     """Capture last assistant message and mark notifications delivered."""
+    # Internal Juggle LLM subprocess (see handle_user_prompt_submit): its reply
+    # must not record or auto-file action items (fix-title-gen-thread-leak).
+    if os.environ.get("JUGGLE_INTERNAL_LLM") == "1":
+        sys.exit(0)
     if not is_active():
         sys.exit(0)
 
