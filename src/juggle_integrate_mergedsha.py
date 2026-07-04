@@ -60,5 +60,12 @@ def _record_merged_sha(db, thread_uuid: str, repo: str, ref: str) -> None:
 
         db_topics.set_topic_merged_sha(db, topic["id"], sha)
         db_topics.set_topic_pending_merged_sha(db, topic["id"], None)
+        # merged_sha has definitively landed (ancestry proven above) — auto-ack
+        # any stale completed-but-UNMERGED escalation the watchdog filed while
+        # this topic sat unmerged. The integrate happy path never passes through
+        # orphan reconcile, so without this the blocker lingers (2026-07-04
+        # autoclear fix; incident: T-gp-cancel merged yet item 5308 stayed open).
+        from dbops.orphan_autoclear import clear_stale_unmerged_escalations
+        clear_stale_unmerged_escalations(db, topic["id"])
     except Exception:
         pass
