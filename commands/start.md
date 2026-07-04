@@ -321,6 +321,15 @@ signals (pure functions, --json/--out, deterministic CLI, headless/pilot
 harness) over human-eyeball verification. Flag any recommended approach whose
 correctness can only be confirmed manually.
 
+## METHOD (primary-source contract)
+
+- PRIMARY SOURCES ONLY: official docs, source code, specs, first-party APIs —
+  never a secondary write-up. Follow every claim back to the source that owns it.
+- Cite each claim inline (URL or file:line) right next to the claim.
+- Write findings to ONE Markdown file where the repo keeps such notes
+  (this repo: research/YYYY-MM-DD-<slug>.md); if none, pick sensibly and say where.
+- Findings-first structure; token-light prose.
+
 # --retain: non-obvious findings, personal details, hard-to-re-derive config.
 uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent complete <thread_id> "<findings>" --retain "<non-obvious findings>"
 ```
