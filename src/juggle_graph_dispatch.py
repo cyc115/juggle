@@ -96,16 +96,36 @@ from juggle_graph_hydration import (  # noqa: E402, F401
 # ── dispatch path ──────────────────────────────────────────────────────────────
 
 
-def _dispatch_via_pool(db, thread_id: str, prompt: str, task: dict) -> None:
-    """Dispatch ``prompt`` for ``thread_id`` via dispatch_node() (P3).
+def _resolve_dispatch_role(db, node: dict | None) -> str:
+    """The role a node/topic dispatches as (loop-entity Phase 2).
 
-    dispatch_node owns the acquire-agent + send-task logic so the tick no
-    longer routes through the user-facing get-agent/send-task CLI commands.
-    Raises CapacityError (pool full → defer) or RuntimeError.
-    """
+    Reads nodes.role by id (Phase-1 column, DEFAULT 'coder' → legacy graphs
+    unchanged), preferring any 'role' the caller already hydrated onto the dict,
+    then falling back to 'coder'. coder/planner get an isolated worktree (the
+    send-path gate keys off the acquired agent's role); researcher runs
+    read-only in place (no worktree)."""
+    node = node or {}
+    role = node.get("role")
+    nid = node.get("id")
+    if not role and nid:
+        try:
+            with db._connect() as conn:
+                row = conn.execute(
+                    "SELECT role FROM nodes WHERE id=?", (nid,)
+                ).fetchone()
+            role = (row["role"] if not isinstance(row, tuple) else row[0]) if row else None
+        except Exception:
+            role = None
+    return role or TASK_ROLE
+
+
+def _dispatch_via_pool(db, thread_id: str, prompt: str, task: dict) -> None:
+    """Dispatch ``prompt`` via dispatch_node(), resolving the role PER NODE
+    (loop-entity Phase 2 — no longer hardcoded coder; researcher gets no
+    worktree). Raises CapacityError (pool full → defer) or RuntimeError."""
     from juggle_dispatch_core import dispatch_node
 
-    dispatch_node(db, thread_id, prompt, task, role=TASK_ROLE)
+    dispatch_node(db, thread_id, prompt, task, role=_resolve_dispatch_role(db, task))
 
 
 def _give_up_dispatch(db, task_id: str, err: Exception) -> None:
