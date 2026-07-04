@@ -18,23 +18,16 @@ import json
 import os
 from pathlib import Path
 
+from dbops.terminal_states import NON_TERMINAL_DISPLAY_STATUSES as _NON_TERMINAL_STATUSES
+
 DEFAULT_MAX_TOPICS = 30
 _ENV_KEY = "JUGGLE_COCKPIT_MAX_TOPICS"
 
 # Display statuses that must NEVER be dropped — the design's non-terminal node
 # states (open/background/running/ready/dispatching/integrating) mapped through
 # node_translation.status_for_state, plus the current-thread marker 'current'.
-_NON_TERMINAL_STATUSES = frozenset(
-    {
-        "active",
-        "background",
-        "running",
-        "current",
-        "ready",
-        "dispatching",
-        "integrating",
-    }
-)
+# Terminal-BY-OMISSION: a status absent from this set is treated as terminal.
+# Sourced from the canonical dbops.terminal_states module (Phase 0).
 
 
 def cap_topics(ordered_topics, n, *, protected_labels=frozenset()):

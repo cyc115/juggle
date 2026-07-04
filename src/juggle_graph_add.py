@@ -17,6 +17,7 @@ validation (juggle_graph_upsert.validate_graph).
 from __future__ import annotations
 
 from dbops import db_graph
+from dbops.terminal_states import TERMINAL_REOPEN_TOPIC_STATES
 from juggle_graph_upsert import find_cycle, lint_verify_cmd
 # Re-exported (2026-07-03 LOC-gate extraction) so `from juggle_graph_add import
 # resolve_dispatch_topic, record_surfacing_conversation` keeps working.
@@ -47,16 +48,8 @@ MUTABLE_STATES = frozenset(
 # dispatch and no notification. Excludes active in-flight states (running/
 # dispatching/integrating) — those are already engaged and reconcile
 # re-derives their state normally once the work lands.
-TERMINAL_REOPEN_TOPIC_STATES = frozenset(
-    {
-        "verified",
-        "failed-exec",
-        "failed-integration",
-        "failed-verify",
-        "blocked-failed",
-        "integrated-unlanded",
-    }
-)
+# TERMINAL_REOPEN_TOPIC_STATES is sourced from the canonical dbops.terminal_states
+# module (Phase 0) — imported at the top of this file.
 
 
 class AddTaskError(ValueError):

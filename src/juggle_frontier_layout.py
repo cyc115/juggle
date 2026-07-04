@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from dbops.terminal_states import COMPLETION_TERMINAL_STATES as DONE_STATES
 from juggle_cockpit_graph_layout import GraphTask, assign_ranks, build_ranks
 from juggle_cockpit_graph_lanes import assign_lanes
 
@@ -28,7 +29,8 @@ IN_FLIGHT_STATES = ("dispatching", "running", "integrating", "integrated-unlande
 FAILED_STATES = ("failed-exec", "failed-integration", "failed-verify", "blocked-failed")
 # COMPLETION terminals (DA-B1): excluded from the open/actionable frontier just
 # like verified history — a cancelled node is done, never an actionable row.
-DONE_STATES = ("verified", "cancelled")
+# DONE_STATES is the canonical dbops.terminal_states.COMPLETION_TERMINAL_STATES
+# (Phase 0) — the single source of truth shared with juggle_plan_layout.
 
 
 @dataclass(frozen=True)

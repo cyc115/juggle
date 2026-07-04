@@ -16,15 +16,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from dbops.terminal_states import COMPLETION_TERMINAL_STATES as DONE_STATES
 from juggle_cockpit_graph_layout import GraphTask, assign_ranks, build_ranks
 
 IN_FLIGHT_STATES = ("dispatching", "running", "integrating", "integrated-unlanded")
 FAILED_STATES = ("failed-exec", "failed-integration", "failed-verify", "blocked-failed")
 # COMPLETION terminals: excluded from the open/actionable waves just like
-# verified history (kept in sync with juggle_frontier_layout.DONE_STATES) — a
-# cancelled node is done, never an actionable card. Only 'verified' feeds the
-# anchor count; 'cancelled' vanishes entirely (matches the railroad).
-DONE_STATES = ("verified", "cancelled")
+# verified history — a cancelled node is done, never an actionable card. Only
+# 'verified' feeds the anchor count; 'cancelled' vanishes entirely (matches the
+# railroad). DONE_STATES is now the SAME canonical
+# dbops.terminal_states.COMPLETION_TERMINAL_STATES object shared with
+# juggle_frontier_layout (Phase 0) — no more sync-by-comment.
 
 
 @dataclass(frozen=True)

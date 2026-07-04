@@ -22,14 +22,15 @@ from dbops.schema import _now
 from dbops.db_graph import _cx
 from dbops.db_topics import get_topic, list_topics
 from dbops.state_write import write_state
+# COMPLETION terminals (DA-B1): a task counts as complete for topic rollup when
+# verified OR cancelled. Sourced from the canonical dbops.terminal_states module
+# (Phase 0). 'cancelled' is NEVER added to the failed/active sets.
+from dbops.terminal_states import COMPLETION_TERMINAL_STATES as _COMPLETION_TASK_STATES
 
 _FAILED_TASK_STATES = frozenset({
     "failed-exec", "failed-integration", "failed-verify", "blocked-failed"
 })
 _ACTIVE_TASK_STATES = frozenset({"running", "dispatching", "integrating"})
-# COMPLETION terminals (DA-B1): a task counts as complete for topic rollup when
-# verified OR cancelled. 'cancelled' is NEVER added to the failed/active sets.
-_COMPLETION_TASK_STATES = frozenset({"verified", "cancelled"})
 
 
 def _heal_merged_sha(db, topic: dict) -> bool:

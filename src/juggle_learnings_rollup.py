@@ -25,6 +25,7 @@ import logging
 from dbops import db_topics
 from dbops import event_kinds as _ek
 from dbops.schema import _now
+from dbops.terminal_states import IN_FLIGHT_STATES as _IN_PROGRESS
 
 _log = logging.getLogger("juggle-learnings-rollup")
 
@@ -35,12 +36,11 @@ ROLLUP_THRESHOLD = 10
 # forces SOME handoff on a node with dependents; a near-empty one is a stub.
 _STUB_HANDOFF_LEN = 10
 
-# Task states that are still in-flight (not a completion). Everything else
+# Task states that are still in-flight (not a completion) are the canonical
+# IN_FLIGHT_STATES (imported above as _IN_PROGRESS, Phase 0). Everything else
 # (verified / failed-* / blocked-failed) is terminal → the project is "done"
-# once none of these remain.
-_IN_PROGRESS = frozenset(
-    {"open", "ready", "dispatching", "running", "integrating"}
-)
+# once none of these remain. INVERSE set: a later terminal like 'delivered' must
+# NOT be in here, so it counts as done rather than in-progress-forever.
 
 
 def _mark_key(project_id: str) -> str:

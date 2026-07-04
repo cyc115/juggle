@@ -1,12 +1,15 @@
 """juggle_topic_derive — pure derivation of a conversation-topic state from its
-child task states (2026-06-30 topic-graph-state-unify R2). No DB, no imports of
-graph/db modules — the single testable seam for the close rule."""
+child task states (2026-06-30 topic-graph-state-unify R2). No DB access and no
+imports of graph/db LOGIC modules — the single testable seam for the close rule.
+(The pure-data dbops.terminal_states vocabulary module is the one allowed import;
+it holds no DB access, only the canonical state sets — Phase 0.)"""
 from __future__ import annotations
+
+from dbops.terminal_states import MERGED_TERMINAL_STATES as _MERGED_TERMINAL
 
 _ACTIVE = frozenset(
     {"open", "ready", "dispatching", "running", "integrating", "background"}
 )
-_MERGED_TERMINAL = frozenset({"verified", "done", "cancelled"})
 _FAILED = frozenset(
     {"failed-exec", "failed-integration", "failed-verify", "blocked-failed"}
 )

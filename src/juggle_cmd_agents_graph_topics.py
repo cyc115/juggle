@@ -17,11 +17,7 @@ from __future__ import annotations
 import sys
 
 from dbops import event_kinds as _ek
-
-_TASK_TERMINAL = frozenset(
-    {"verified", "failed-exec", "failed-integration", "failed-verify",
-     "blocked-failed", "cancelled"}
-)
+from dbops.terminal_states import TASK_TERMINAL_STATES as _TASK_TERMINAL
 
 
 def check_topic_completion_gate(db, thread_uuid) -> str | None:

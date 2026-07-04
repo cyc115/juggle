@@ -9,7 +9,8 @@ from typing import Callable
 
 from rich.text import Text
 
-_MERGED = frozenset({"verified", "done"})
+from dbops.terminal_states import MERGED_DONE_STATES as _MERGED
+
 _GRAPH_BOUND_STATES = frozenset({"running", "dispatching"})
 _MAX_CHILD_LINES = 6
 

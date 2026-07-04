@@ -19,6 +19,12 @@ from contextlib import contextmanager
 from dbops.schema import _now
 from dbops.db_node_machine import InvalidTransition, legal_events, node_transition
 from dbops.state_write import cas_state, write_state
+# Re-exported (Phase 0 consolidation): callers reference db_graph.PROTECTED_STATES
+# / db_graph.TICK_OWNED_STATES (juggle_graph_load, juggle_cmd_agents_graph, cancel).
+from dbops.terminal_states import (  # noqa: F401
+    PROTECTED_STATES,
+    TICK_OWNED_STATES,
+)
 
 
 @contextmanager
@@ -50,14 +56,11 @@ VALID_STATES = frozenset(
 )
 
 # Tasks in these states must not be modified by a re-load (guarded upsert).
-PROTECTED_STATES = frozenset({"dispatching", "running", "integrating", "verified"})
-
 # Tick-owned states (DA B5): a thread bound to a task in one of these is
 # dispatched by the watchdog tick — manual send-task must refuse without
 # --force-task. pending/failed-*/blocked-failed remain operator territory.
-TICK_OWNED_STATES = frozenset(
-    {"ready", "dispatching", "running", "integrating", "verified"}
-)
+# Both PROTECTED_STATES and TICK_OWNED_STATES are now sourced from the canonical
+# dbops.terminal_states module (Phase 0) and re-exported here for existing callers.
 
 # Topic/task discriminator (P8 M2): topics are now their OWN kind='topic' nodes
 # (Migration 53), so the task set is simply kind='task' — bare tasks and a topic's

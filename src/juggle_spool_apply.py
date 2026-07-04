@@ -15,6 +15,7 @@ import logging
 from datetime import datetime, timezone
 
 from dbops.spool import SpoolEvent, bump_attempts, read_pending, move_to_dead
+from dbops.terminal_states import SUCCESS_REPLAY_TERMINAL_STATES as _SUCCESS_TERMINAL
 from juggle_spool_dead import (
     _RETRY_MAX_ATTEMPTS,
     _is_transient_missing,
@@ -124,7 +125,6 @@ def _dispatch(event: SpoolEvent) -> None:
 # terminal state (event says --fail but task 'verified', or a success event
 # against a failed-* task) CONTRADICTS the event — NOT superseded — and is left
 # to the handler, whose terminal-state guard raises → loud dead-letter.
-_SUCCESS_TERMINAL = frozenset({"verified", "integrated-unlanded"})
 _FAILURE_TERMINAL = frozenset(
     {"failed-exec", "failed-integration", "failed-verify", "blocked-failed"}
 )
