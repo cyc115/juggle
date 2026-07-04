@@ -20,7 +20,7 @@ from dbops import event_kinds as _ek
 
 _TASK_TERMINAL = frozenset(
     {"verified", "failed-exec", "failed-integration", "failed-verify",
-     "blocked-failed"}
+     "blocked-failed", "cancelled"}
 )
 
 

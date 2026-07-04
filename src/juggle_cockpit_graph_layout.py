@@ -104,7 +104,9 @@ def dag_is_done(tasks: list[GraphTask]) -> bool:
     every one is verified — the same predicate ``frontier_visible`` uses for its
     'fully done' branch. Drives the cockpit done-collapse (spec 2026-07-03)."""
     real = [n for n in tasks if not getattr(n, "is_mirror", False)]
-    return bool(real) and all(n.state == "verified" for n in real)
+    # 'cancelled' is a COMPLETION terminal (DA-B1): a cancelled node counts as
+    # done, so a DAG of verified+cancelled nodes is fully done.
+    return bool(real) and all(n.state in ("verified", "cancelled") for n in real)
 
 
 def selectable_units(

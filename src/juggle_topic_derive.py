@@ -6,7 +6,7 @@ from __future__ import annotations
 _ACTIVE = frozenset(
     {"open", "ready", "dispatching", "running", "integrating", "background"}
 )
-_MERGED_TERMINAL = frozenset({"verified", "done"})
+_MERGED_TERMINAL = frozenset({"verified", "done", "cancelled"})
 _FAILED = frozenset(
     {"failed-exec", "failed-integration", "failed-verify", "blocked-failed"}
 )

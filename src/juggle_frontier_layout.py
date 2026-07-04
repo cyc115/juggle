@@ -26,6 +26,9 @@ from juggle_cockpit_graph_lanes import assign_lanes
 
 IN_FLIGHT_STATES = ("dispatching", "running", "integrating", "integrated-unlanded")
 FAILED_STATES = ("failed-exec", "failed-integration", "failed-verify", "blocked-failed")
+# COMPLETION terminals (DA-B1): excluded from the open/actionable frontier just
+# like verified history — a cancelled node is done, never an actionable row.
+DONE_STATES = ("verified", "cancelled")
 
 
 @dataclass(frozen=True)
@@ -95,7 +98,7 @@ def build_frontier_layout(
     snapshot. ``folded_waves`` (owned by the caller — the screen toggles this
     on 'z') collapses each named wave index to one fold-summary row."""
     anchor_count = sum(1 for t in tasks if t.state == "verified")
-    open_tasks = [t for t in tasks if t.state != "verified"]
+    open_tasks = [t for t in tasks if t.state not in DONE_STATES]
     if not open_tasks:
         return FrontierLayout(anchor_count=anchor_count)
 

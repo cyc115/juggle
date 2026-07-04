@@ -27,6 +27,9 @@ _FAILED_TASK_STATES = frozenset({
     "failed-exec", "failed-integration", "failed-verify", "blocked-failed"
 })
 _ACTIVE_TASK_STATES = frozenset({"running", "dispatching", "integrating"})
+# COMPLETION terminals (DA-B1): a task counts as complete for topic rollup when
+# verified OR cancelled. 'cancelled' is NEVER added to the failed/active sets.
+_COMPLETION_TASK_STATES = frozenset({"verified", "cancelled"})
 
 
 def _heal_merged_sha(db, topic: dict) -> bool:
@@ -156,7 +159,7 @@ def reconcile_topic_state(db, topic_id: str) -> str:
 
     task_states = [r[0] for r in rows]
 
-    if all(s == "verified" for s in task_states):
+    if all(s in _COMPLETION_TASK_STATES for s in task_states):
         # G1 single gate (T-verified-merged-sha): verified ⟺ a recorded
         # merged_sha that is an ancestor of main. Tasks 'verified' only means
         # committed-in-worktree; without merge proof the topic stays

@@ -80,7 +80,7 @@ def gather_project_activity(conn) -> list[ProjectActivity]:
     try:
         for r in conn.execute(
             "SELECT project_id, "
-            "SUM(CASE WHEN state != 'verified' THEN 1 ELSE 0 END) AS opn, "
+            "SUM(CASE WHEN state NOT IN ('verified','cancelled') THEN 1 ELSE 0 END) AS opn, "
             "COUNT(*) AS total, MAX(COALESCE(verified_at,'')) AS vmax "
             "FROM nodes "
             "WHERE (kind='topic' OR (kind='task' AND parent_id IS NULL)) "
@@ -182,7 +182,7 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
     try:
         count_rows = conn.execute(
             "SELECT parent_id, "
-            "SUM(CASE WHEN state='verified' THEN 1 ELSE 0 END) AS done, "
+            "SUM(CASE WHEN state IN ('verified','cancelled') THEN 1 ELSE 0 END) AS done, "
             "COUNT(*) AS total "
             f"FROM nodes WHERE parent_id IN ({ph}) GROUP BY parent_id",
             topic_ids,

@@ -67,6 +67,22 @@ _NODE_TRANSITIONS: dict[tuple[str, str], str] = {
     ("blocked-failed",      "archive"): "archived",
     # done → archive only
     ("done", "archive"): "archived",
+    # cancelled — soft terminal (P2 graph-node primitives, DA-B4). Reachable via
+    # a 'cancel' event from any NON-in-flight state (PROTECTED_STATES —
+    # dispatching/running/integrating/verified — are refused: no table entry).
+    # 'cancelled' is a COMPLETION terminal, never a blocking/failed one.
+    ("open",                 "cancel"): "cancelled",
+    ("ready",                "cancel"): "cancelled",
+    ("integrated-unlanded",  "cancel"): "cancelled",
+    ("failed-exec",          "cancel"): "cancelled",
+    ("failed-integration",   "cancel"): "cancelled",
+    ("failed-verify",        "cancel"): "cancelled",
+    ("blocked-failed",       "cancel"): "cancelled",
+    ("background",           "cancel"): "cancelled",
+    ("done",                 "cancel"): "cancelled",
+    # un-cancel: retry-node reuses the existing 'reload' event → open (DA "un-cancel").
+    ("cancelled",            "reload"):  "open",
+    ("cancelled",            "archive"): "archived",
     # reopen — topic-only (T-fix-addtask-reopen-verified-topic, 2026-07-03):
     # add-task into a topic terminal-parked with old work must reopen it, else
     # a newly attached task can never dispatch (topic_ready_eligible requires
@@ -99,7 +115,7 @@ _KIND_LEGAL: dict[str, frozenset[str]] = {
         "integrate_start", "exec_fail",
         "integrate_ok", "integrate_fail", "verify_fail",
         "integrate_submitted", "land_confirmed", "land_fail",
-        "g1_pass", "reopen",
+        "g1_pass", "reopen", "cancel",
     }),
     "research": frozenset({
         "deps_ready", "dep_fail", "reload", "archive",
