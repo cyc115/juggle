@@ -32,13 +32,17 @@ pytestmark = pytest.mark.skipif(
 )
 
 # Raw-mode stub: enable bracketed paste, log every received byte until Ctrl-D.
+# Prints "READY" (a visible marker) AFTER enabling bracketed-paste mode so the
+# driver can POLL for readiness instead of a fixed sleep — the first paste must
+# not race the mode-set (deflake 2026-07-04: fixed sleeps dropped pastes under
+# parallel shared-tmux-server load).
 _STUB = r'''
 import sys, os, tty, termios
 log = open(sys.argv[1], "wb")
 fd = sys.stdin.fileno()
 old = termios.tcgetattr(fd)
 tty.setraw(fd)
-sys.stdout.write("\x1b[?2004h"); sys.stdout.flush()
+sys.stdout.write("\x1b[?2004h"); sys.stdout.write("READY\r\n"); sys.stdout.flush()
 try:
     while True:
         b = os.read(fd, 4096)
@@ -80,6 +84,38 @@ def _classify(raw: bytes):
     return submits, payloads
 
 
+def _wait_pane_marker(mgr, pane, marker, timeout=10.0, interval=0.02):
+    """Poll the pane until `marker` is visible or timeout. Deterministic
+    replacement for a fixed stub-startup sleep (deflake 2026-07-04)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        out = mgr._run_tmux("capture-pane", "-pt", pane).stdout
+        if marker in out:
+            return True
+        time.sleep(interval)
+    return False
+
+
+def _wait_log_counts(log_path, want, timeout=15.0, interval=0.02):
+    """Poll the raw log until it holds >= `want` bracketed pastes AND submits.
+
+    This DRAINS the pty each iteration: the driver never sends the next paste
+    (or the final C-d/kill) until the stub has actually consumed the current
+    one, so bytes are never dropped by a full pty input buffer under load and
+    teardown never races an unread paste (deflake 2026-07-04). Returns the final
+    (submits, payloads) so the caller can proceed once satisfied or on timeout.
+    """
+    deadline = time.monotonic() + timeout
+    submits, payloads = 0, []
+    while time.monotonic() < deadline:
+        if log_path.exists():
+            submits, payloads = _classify(log_path.read_bytes())
+            if submits >= want and len(payloads) >= want:
+                return submits, payloads
+        time.sleep(interval)
+    return submits, payloads
+
+
 PROMPTS = [
     "go",                                       # tiny single-line
     "implement the feature now please",         # longer single-line
@@ -111,19 +147,23 @@ def test_paste_submit_100pct(tmp_path):
         ).stdout.strip().splitlines()
         pane = panes[0]
         mgr._run_tmux("send-keys", "-t", pane, f"{sys.executable} {stub} {log}", "Enter")
-        time.sleep(1.0)  # stub up + bracketed-paste mode enabled
+        # Poll for the stub's READY marker instead of a fixed sleep: guarantees
+        # bracketed-paste mode is enabled before the first paste (deflake).
+        assert _wait_pane_marker(mgr, pane, "READY"), "paste stub never signalled READY"
 
         src = tmp_path / "p.txt"
-        for prompt, jit in plan:
+        for done, (prompt, jit) in enumerate(plan, start=1):
             src.write_text(prompt)
             mgr._paste_buffer(pane, str(src))
             if jit:
                 time.sleep(jit)
             mgr._run_tmux("send-keys", "-t", pane, "C-m")
-            time.sleep(0.15)
-        time.sleep(0.3)
+            # Wait until this paste+submit has actually been consumed by the stub
+            # before the next iteration — drains the pty, so no bytes are dropped
+            # under load and teardown can't race an unread paste.
+            _wait_log_counts(log, done)
         mgr._run_tmux("send-keys", "-t", pane, "C-d")
-        time.sleep(0.3)
+        _wait_log_counts(log, len(plan))
     finally:
         mgr._run_tmux("kill-session", "-t", session)
 
