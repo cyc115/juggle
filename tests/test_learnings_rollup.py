@@ -213,13 +213,12 @@ def test_nudge_idempotent(db):
     assert len([i for i in _open_items(db) if "TA" in i["message"]]) == 1
 
 
-# ── graph_tick hook (serialized, watchdog-owned) ───────────────────────────────
+# ── poll_unlanded_topics hook (serialized, watchdog-owned — spec §5) ───────────
 
 
-def test_graph_tick_invokes_rollup_and_nudge_per_project(db, monkeypatch):
-    import juggle_graph_dispatch as gd
+def test_poll_unlanded_invokes_rollup_and_nudge(db, monkeypatch):
+    import juggle_land_poller as lp
 
-    _verified_task(db, "n0", project="P1", learnings=None)  # gives P1 graph work
     seen = {"rollup": [], "nudge": []}
     monkeypatch.setattr(
         "juggle_learnings_rollup.maybe_rollup_learnings",
@@ -229,6 +228,6 @@ def test_graph_tick_invokes_rollup_and_nudge_per_project(db, monkeypatch):
         "juggle_learnings_rollup.nudge_missing_learnings",
         lambda d, pid: seen["nudge"].append(pid),
     )
-    gd.graph_tick(db, dispatch_fn=lambda *a, **k: None)
-    assert "P1" in seen["rollup"]
-    assert "P1" in seen["nudge"]
+    lp.poll_unlanded_topics(db, "P1")
+    assert seen["rollup"] == ["P1"]
+    assert seen["nudge"] == ["P1"]

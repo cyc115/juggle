@@ -8,11 +8,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dbops import event_kinds as ek
 
 
-def test_eighteen_kinds_defined():
+def test_nineteen_kinds_defined():
     """irl-envelope T2 adds integrate_failed + machinery_error to T1a's 12;
     irl-retry T3 adds repair_exhausted; irl-repair T4 adds repair_dispatched;
-    df-monitor-dispatch adds dispatch_failed + running_orphan."""
-    assert len(ek.ALL_KINDS) == 18
+    df-monitor-dispatch adds dispatch_failed + running_orphan; gl-rollup adds
+    learnings_rollup."""
+    assert len(ek.ALL_KINDS) == 19
 
 
 def test_dispatch_failure_kinds_default_watchdog_overridable_to_orchestrator():

@@ -2,9 +2,9 @@
 
 Owns the watchdog-side push of the learnings primitive (spec 2026-07-03 §5 +
 Final revisions 3/4/7). Both entry points run ONCE PER PROJECT inside the
-serialized ``graph_tick`` (right after ``poll_unlanded_topics``) — NEVER in the
-concurrent ``cmd_complete_agent`` process, so the count is race-free and
-restart-safe by construction (Final revision 4):
+serialized ``poll_unlanded_topics`` sweep (the graph_tick path, per Final
+revision 4) — NEVER in the concurrent ``cmd_complete_agent`` process, so the
+count is race-free and restart-safe by construction:
 
   * ``maybe_rollup_learnings`` — derive COUNT(verified tasks) each tick, compare
     to the per-project ``learnings_rollup_mark:<p>`` watermark. Emit a

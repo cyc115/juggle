@@ -138,4 +138,11 @@ def poll_unlanded_topics(db, project_id: str) -> dict:
         except Exception:
             _log.exception("land poller: unexpected error on topic %s", tid)
             stats["errors"].append(tid)
+    # gl-rollup (spec §5, Final revision 4/7): the serialized, watchdog-owned
+    # learnings push runs once per project per tick on THIS graph_tick path only
+    # (never the concurrent complete path). Both calls are internally guarded and
+    # no-op unless their thresholds are met — safe to run every sweep.
+    from juggle_learnings_rollup import maybe_rollup_learnings, nudge_missing_learnings
+    maybe_rollup_learnings(db, project_id)
+    nudge_missing_learnings(db, project_id)
     return stats
