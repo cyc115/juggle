@@ -174,6 +174,23 @@ def test_check_overflow_ignores_trailing_whitespace():
     assert result["violations"] == []
 
 
+def test_check_overflow_wide_profile_no_false_positive():
+    """Wide viewport (2k_full, 240 cols): a full-width grid is clean.
+
+    Regression pin: check_overflow must honor the `cols` argument rather than a
+    hardcoded 80. A 240-col grid whose every line is exactly 240 chars wide must
+    pass at 240 — even though each line is far wider than the 80-col budget the
+    other tests exercise.
+    """
+    from juggle_smoke import check_overflow
+
+    grid = _make_grid(67, 240)  # 2k_full profile dimensions
+    assert all(len(line) == 240 for line in grid)
+    result = check_overflow(grid, 240)
+    assert result["pass"] is True
+    assert result["violations"] == []
+
+
 def test_check_overflow_empty_grid_passes():
     """Edge case: an empty grid (no rows) has no lines to overflow → clean pass.
 
@@ -185,6 +202,17 @@ def test_check_overflow_empty_grid_passes():
     result = check_overflow([], 80)
     assert result["pass"] is True
     assert result["violations"] == []
+
+
+def test_check_overflow_wide_profile_catches_over_width_line():
+    """Wide viewport: a line past the 240-col budget is still flagged."""
+    from juggle_smoke import check_overflow
+
+    grid = _make_grid(67, 240)
+    grid[10] = "x" * 250  # 10 cols past the 240 budget
+    result = check_overflow(grid, 240)
+    assert result["pass"] is False
+    assert any("10" in v for v in result["violations"])
 
 
 # ── heuristic: check_real_estate ──────────────────────────────────────────────
