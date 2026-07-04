@@ -72,6 +72,27 @@ class GitVCS:
             return False
         return _run(["git", "-C", repo, "merge-base", "--is-ancestor", rev, of], repo) is not None
 
+    def commits_landed(self, repo: str, rev: str, of: str) -> bool:
+        """True iff every commit in ``of..rev`` has a content-equivalent already
+        on ``of`` — the rebase/cherry-pick/squash landing that ancestry
+        (``is_ancestor``) is blind to (2026-07-03 integrate-wedge amendment).
+
+        ``git cherry <upstream> <head>`` prefixes each commit with ``-`` when it
+        has an equivalent upstream (diff-based, whitespace/line-number-
+        insensitive) and ``+`` when it does not. LANDED = at least one commit
+        ahead AND every one prefixed ``-``. An empty output (branch is an
+        ancestor of ``of``, or no commits ahead) is NOT a content landing — the
+        ancestry tier owns that case. Fail-closed on any git error / bad repo."""
+        if not repo or not rev or not of or not Path(repo).exists():
+            return False
+        out = _run(["git", "-C", repo, "cherry", of, rev], repo)
+        if out is None:
+            return False
+        lines = [ln for ln in out.splitlines() if ln.strip()]
+        if not lines:
+            return False
+        return all(ln.startswith("-") for ln in lines)
+
     # ── workspace lifecycle ──────────────────────────────────────────────────
 
     def create_workspace(

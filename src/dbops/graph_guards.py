@@ -88,6 +88,42 @@ def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
     return backend.is_ancestor(repo, sha, main)
 
 
+def branch_content_landed(repo: str, branch: str, *, main: str = "main") -> bool:
+    """Tier-2 landed check: every commit on ``branch`` has a content-equivalent
+    already on ``main`` (``git cherry`` / patch-id), i.e. the work landed via a
+    rebase / cherry-pick / squash under a DIFFERENT sha. Ancestry
+    (``sha_is_ancestor``) is blind to this (2026-07-03 integrate-wedge
+    amendment). Fail-closed on a missing repo / branch / git error."""
+    if not repo or not branch or not Path(repo).exists():
+        return False
+    backend = _backend_for_fail_closed(repo)
+    if backend is None:
+        return False
+    return backend.commits_landed(repo, branch, main)
+
+
+def resolve_landed_sha(repo: str, branch: str, *, main: str = "main") -> str:
+    """Two-tier LANDED oracle → a REAL ancestor-of-``main`` sha proving
+    ``branch``'s work is on main, or '' when it is genuinely unmerged.
+
+    Tier 1 (ancestry, the ff/true-merge common case): if the branch tip is an
+    ancestor of main, return the tip itself. Tier 2 (content-equivalence, the
+    rebase/cherry-pick/squash case ancestry cannot see): if every branch commit
+    has a patch-equivalent on main (``branch_content_landed``), return main's
+    tip — a genuine ancestor that CONTAINS the equivalents, never the unmerged
+    branch tip. This keeps verified ⟺ merged (the recorded sha is always an
+    ancestor of main) while recognising a rebased landing so the re-integrate
+    driver records it instead of RE-MERGING already-landed work. Fail-closed."""
+    tip = resolve_branch_sha(repo, branch)
+    if tip and sha_is_ancestor(repo, tip, main=main):
+        return tip
+    if branch_content_landed(repo, branch, main=main):
+        trunk_sha = resolve_branch_sha(repo, main)
+        if trunk_sha and sha_is_ancestor(repo, trunk_sha, main=main):
+            return trunk_sha
+    return ""
+
+
 def thread_solely_bound_to(db, thread_id: str, topic_id: str) -> bool:
     """True iff ``thread_id`` is dispatch-bound to ``topic_id`` and to no
     OTHER node (T-fix-backfill-sha-misattribution). dispatch_edge only
