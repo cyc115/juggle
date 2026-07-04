@@ -266,6 +266,16 @@ def reconcile_topic_state(db, topic_id: str) -> str:
     with _cx(db) as conn:
         write_state(conn, topic_id, target, now=_now(),
                     verified=(target == "verified"))
+    if target == "integrating":
+        # fix-stamp-spool-apply-path (2026-07-04): this is the SECOND seam that
+        # walks a topic to 'integrating' — the graph_mark_task / spool-apply
+        # completion ingress (cmd_graph_mark_task → here) reaches it by writing
+        # state DIRECTLY, bypassing mark_topic_integrating where f258871 put the
+        # 'completed' stamp. Without stamping here the coder's ledger run stays
+        # 'dispatched', the reintegrate bound-agent guard blocks, and the operator
+        # must `agent release --force`. Stamp at the transition, same as f258871.
+        from dbops.db_topics_marking import _stamp_run_completed
+        _stamp_run_completed(db, topic.get("thread_id"), topic.get("handoff"))
     return target
 
 
