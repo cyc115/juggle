@@ -255,9 +255,9 @@ def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str |
         return None  # empty branch / lost worktree — not this driver's job
 
     proc = _spawn_detached_integrate(thread, db)
+    n = _record_attempt(db, tid, now, proc)  # record even on spawn failure → backoff + backstop apply
     if proc is None:
         return None
-    n = _record_attempt(db, tid, now, proc)
     _log.info("reintegrate: spawned detached integrate for wedged topic %s (attempt %d)",
               tid, n)
     return tid
