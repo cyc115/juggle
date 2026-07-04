@@ -129,6 +129,61 @@ holding it in process memory that every respawn erases.
 
 ---
 
+## RC5 — integrate lock phantom-holder race (the worst one)
+
+**Incident:** 2026-07-03/04 integrate-wedge #2, RC5 — ~30 min full merge-queue
+outage, 9 deadlocked gate processes. Observed live with PIDs 3893/3899 spawned
+70 ms apart.
+
+**Location:** `juggle_integrate_lock.py` — `acquire_repo_lock`, the old
+shared-tmp + rename-replace acquisition.
+
+**Mechanism (four compounding steps):**
+
+1. **Shared tmp path.** ALL acquirers wrote the same
+   `lock_path.with_suffix(".lock.tmp")`. A writes `tmp(pid_A)`; B overwrites
+   `tmp(pid_B)`; A renames `tmp → lock`. POSIX `rename(2)` silently REPLACES,
+   so the lockfile now records **pid_B** even though A performed the rename.
+2. **Winner disowned.** A's post-rename verify (`pid == os.getpid()`) fails →
+   A loops and starts waiting on "B".
+3. **Waiting on yourself.** B's own rename fails `ENOENT` → B loops, reads the
+   lock, sees a LIVE pid — **its own** — and waits on itself. There was no
+   "holder is me" check.
+4. **No heartbeat, no steal.** The heartbeat thread starts only after a
+   successful verify, so nobody heartbeats (lock timestamp observed 20 min
+   stale). `_pid_alive`-based steal never fires because the recorded pid is a
+   live (deadlocked) process. Every subsequent gate queues behind a lock
+   **nobody holds** until the recorded process hits its 1800 s timeout and dies.
+
+**Trigger amplifier:** the reintegrate sweep spawns one detached gate per
+TOPIC, and `T-gp-retry` + `T-gp-edit` share one thread/branch (dual-dispatch),
+so every sweep round launched a same-instant PAIR racing the lock.
+
+**Fix (this task — three layers):**
+
+a. **Atomic exclusive create.** Acquire via
+   `os.open(lock_path, O_CREAT|O_EXCL|O_WRONLY)` and write pid+ts through the
+   fd. The shared-tmp + rename scheme is deleted entirely — rename-replace can
+   never be exclusive on POSIX, so exactly one racer becomes the holder and the
+   winner's own pid is always what the file records.
+b. **Self-hold detection.** If the lockfile records the CURRENT pid but this
+   process holds no live heartbeat for it, treat it as a poisoned lock — remove
+   and retry (belt-and-braces; unreachable given (a), logged loudly).
+c. **Phantom detection for waiters.** A live-pid lock whose timestamp is stale
+   beyond `PHANTOM_HEARTBEAT_MULTIPLE` (10×) the heartbeat interval means the
+   recorded holder never started heartbeating — log loudly and steal. This
+   refines DA M2's "never steal a live pid": that rule assumed the holder
+   heartbeats; a live pid with a dead heartbeat is by construction NOT mid-gate.
+
+**Regression pins:** `tests/test_integrate.py` —
+`test_lock_concurrent_acquirers_one_wins_no_phantom_holder` (multiprocessing
+hammer: winner's own pid always recorded),
+`test_lock_self_pid_unverified_is_recovered_not_waited_on`,
+`test_lock_live_pid_stale_heartbeat_is_stolen`, and the refined
+`test_lock_live_holder_is_never_stolen_pin` (fresh heartbeat → never stolen).
+
+---
+
 ## Fix status
 
 | RC | Status | Owner |
@@ -137,3 +192,4 @@ holding it in process memory that every respawn erases.
 | RC2 — bound-agent guard has no completion escape | Open — follow-up | — |
 | RC3 — release ignores `agent_completions` | Open — follow-up | — |
 | RC4 — `_backoff` wiped by restarts | Open — follow-up | — |
+| RC5 — integrate lock phantom-holder race | **Fixed** (this branch) | `T-fix-integrate-lock-phantom-holder` |

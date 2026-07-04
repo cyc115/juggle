@@ -148,12 +148,14 @@ def test_acquire_lock_times_out_on_alive_pid(tmp_path):
 
 
 def test_lock_live_holder_is_never_stolen_pin(tmp_path):
-    """Regression pin (2026-06-10, DA M2): acquire_repo_lock stole LIVE locks
-    aged >300s — under autopilot fan-in, concurrent completions stole the
-    merge-queue lock from a holder still running test_cmd (full pytest exceeds
-    300s) and interleaved rebases on main. Steal is now dead-PID-only: a live
-    holder, however old its lockfile, must NOT be stolen; the waiter times out
-    with RuntimeError and the lockfile stays owned by the live holder."""
+    """Regression pin (2026-06-10 DA M2, refined 2026-07-04 phantom-holder
+    outage): a live holder that is HEARTBEATING (fresh lockfile timestamp) must
+    NOT be stolen — the waiter times out with RuntimeError and the lockfile
+    stays owned by the live holder. (DA M2's original "never steal a live pid,
+    however old the lockfile" was too broad: it assumed a live holder always
+    heartbeats. A live pid with a *stale* heartbeat is a phantom and IS stolen
+    — see test_lock_live_pid_stale_heartbeat_is_stolen. This pin covers only
+    the fresh-heartbeat case, which stays inviolable.)"""
     from juggle_cmd_integrate import acquire_repo_lock
     from juggle_integrate_lock import _read_lock
 
@@ -162,12 +164,12 @@ def test_lock_live_holder_is_never_stolen_pin(tmp_path):
     )
     try:
         lock_file = tmp_path / "live.lock"
-        # Lock timestamp far older than the waiter's deadline (simulates a
-        # holder mid-test_cmd, aged past any steal threshold).
-        lock_file.write_text(f"{holder.pid}\n{time.time() - 4000}\n")
+        # Fresh timestamp: a live holder whose heartbeat is current. Must never
+        # be stolen, no matter how long the waiter waits.
+        lock_file.write_text(f"{holder.pid}\n{time.time()}\n")
         with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
             with pytest.raises(RuntimeError, match="Cannot acquire lock"):
-                acquire_repo_lock("/repo", timeout_secs=0.3)
+                acquire_repo_lock("/repo", timeout_secs=0.3, heartbeat_interval=30)
         pid, _ = _read_lock(lock_file)
         assert pid == holder.pid, "live holder's lock was stolen"
     finally:
@@ -340,6 +342,112 @@ def test_two_concurrent_integrate_lock_acquisitions_serialize_and_both_succeed(t
     finally:
         proc.kill()
         proc.wait()
+
+
+def test_lock_concurrent_acquirers_one_wins_no_phantom_holder(tmp_path):
+    """Regression pin (2026-07-04 phantom-holder outage, RC5): N acquirers
+    spawned near-simultaneously must ALL end up recording THEIR OWN pid in the
+    lockfile at the instant they win — never a phantom other pid. The RC5 bug:
+    a shared tmp path + rename-replace let acquirer A rename its tmp over B's,
+    so the lockfile recorded B's pid while A believed it won; A then waited on
+    B and B waited on itself (no "holder is me" check) → merge-queue deadlock.
+    With atomic O_CREAT|O_EXCL acquisition, exactly one wins at a time and the
+    winner's own pid is always what the file records; every worker eventually
+    acquires (no deadlock)."""
+    import json
+    import textwrap
+
+    src_dir = str(Path(__file__).parent.parent / "src")
+    lock_file = tmp_path / "hammer.lock"
+    worker = tmp_path / "worker.py"
+    worker.write_text(textwrap.dedent(f"""
+        import sys, os, time, json
+        from pathlib import Path
+        sys.path.insert(0, {src_dir!r})
+        import juggle_integrate_lock as L
+        lock_file = Path({str(lock_file)!r})
+        L._get_lock_path = lambda repo: lock_file
+        result = {{"pid": os.getpid()}}
+        try:
+            lp = L.acquire_repo_lock("/repo", timeout_secs=30, heartbeat_interval=5)
+            file_pid, _ = L._read_lock(lp)
+            result["file_pid_after_acquire"] = file_pid
+            result["won"] = True
+            time.sleep(0.05)          # hold the critical section briefly
+            L.release_repo_lock(lp)
+        except Exception as e:
+            result["won"] = False
+            result["error"] = repr(e)
+        Path(sys.argv[1]).write_text(json.dumps(result))
+    """))
+
+    n = 8
+    procs, result_files = [], []
+    for i in range(n):
+        rf = tmp_path / f"r{i}.json"
+        result_files.append(rf)
+        procs.append(subprocess.Popen([sys.executable, str(worker), str(rf)]))
+    for p in procs:
+        p.wait(timeout=60)
+
+    results = [json.loads(rf.read_text()) for rf in result_files]
+    assert all(r.get("won") for r in results), \
+        f"not every acquirer won (deadlock/timeout): {results}"
+    for r in results:
+        assert r["file_pid_after_acquire"] == r["pid"], (
+            "phantom holder: winner saw another pid in the lockfile "
+            f"(expected {r['pid']}, got {r['file_pid_after_acquire']})"
+        )
+
+
+def test_lock_self_pid_unverified_is_recovered_not_waited_on(tmp_path):
+    """Regression pin (2026-07-04 phantom-holder outage): a lockfile recording
+    the CURRENT process's own pid, which this process never verified ownership
+    of (no live heartbeat), is a POISONED lock — it must be removed and
+    re-acquired, never waited on. In RC5, a rename-race left a process's own
+    live pid in the file; lacking a "holder is me" check, it waited on itself
+    forever. Acquisition must return promptly with the lock owned by us."""
+    from juggle_cmd_integrate import acquire_repo_lock, release_repo_lock
+    from juggle_integrate_lock import _read_lock
+
+    lock_file = tmp_path / "self.lock"
+    # Our own pid, fresh timestamp, but NO heartbeat registered for this path.
+    lock_file.write_text(f"{os.getpid()}\n{time.time()}\n")
+    with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
+        # Short timeout: if it WAITED on itself this would raise RuntimeError.
+        lp = acquire_repo_lock("/repo", timeout_secs=2, heartbeat_interval=30)
+    try:
+        pid, _ = _read_lock(lp)
+        assert pid == os.getpid(), "did not recover self-poisoned lock"
+    finally:
+        release_repo_lock(lp)
+
+
+def test_lock_live_pid_stale_heartbeat_is_stolen(tmp_path):
+    """Regression pin (2026-07-04 phantom-holder outage): a lock held by a LIVE
+    pid whose heartbeat is STALE beyond the phantom threshold (N× heartbeat
+    interval) means the recorded holder never started heartbeating — by
+    construction it is NOT mid-gate. Such a phantom lock must be stolen. (RC5:
+    a deadlocked live process held a 20-min-stale lock that _pid_alive refused
+    to steal, wedging the whole merge queue behind a holder that never ran.)"""
+    from juggle_cmd_integrate import acquire_repo_lock, release_repo_lock
+    from juggle_integrate_lock import _read_lock
+
+    holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        lock_file = tmp_path / "phantom.lock"
+        # Live pid, but timestamp stale well beyond 10× the heartbeat interval.
+        lock_file.write_text(f"{holder.pid}\n{time.time() - 1000}\n")
+        with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
+            lp = acquire_repo_lock("/repo", timeout_secs=5, heartbeat_interval=1)
+        try:
+            pid, _ = _read_lock(lp)
+            assert pid == os.getpid(), "phantom (stale-heartbeat) lock not stolen"
+        finally:
+            release_repo_lock(lp)
+    finally:
+        holder.kill()
+        holder.wait()
 
 
 def test_integrate_runs_suite_inside_lock(git_repo, tmp_path):
