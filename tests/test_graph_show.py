@@ -154,6 +154,17 @@ def test_node_json_includes_cancel_reason_and_verify_failure(db, capsys):
     assert node["deps"] == ["a"]
 
 
+def test_state_filter_json_across_projects(db, capsys):
+    """--state --json (no --project) must honor the filter, not silently fall
+    through to the project rollup."""
+    _seed(db)
+    gs.cmd_graph_show(_args(db, state="failed-verify", json_out=True))
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["state"] == "failed-verify"
+    assert [n["id"] for n in payload["nodes"]] == ["b"]
+    assert payload["nodes"][0]["project"] == "INBOX"
+
+
 def test_show_is_pure_read(db):
     """Show must never mutate state."""
     _seed(db)

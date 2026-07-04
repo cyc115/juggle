@@ -152,12 +152,20 @@ def cmd_graph_show(args) -> None:
 
     # ── all-projects rollup (or flat --state filter across projects) ──
     projects = db.list_projects(include_archived=True)
-    if state and not json_out:
-        # flat: every node in `state` across all projects, one line each
-        for p in projects:
-            for t in db_graph.list_tasks(db, p["id"]):
-                if t["state"] == state:
-                    print(_node_line(db, t))
+    if state:
+        # flat: every node in `state` across all projects (human line or JSON)
+        matched = [t for p in projects
+                   for t in db_graph.list_tasks(db, p["id"]) if t["state"] == state]
+        if json_out:
+            print(json.dumps({"state": state, "nodes": [{
+                "id": t["id"], "title": t["title"], "state": t["state"],
+                "project": t["project_id"],
+                "deps": db_graph.get_deps(db, t["id"]),
+                "dependents": db_graph.get_dependents(db, t["id"]),
+            } for t in matched]}))
+        else:
+            for t in matched:
+                print(_node_line(db, t))
         return
     rows = []
     for p in projects:
