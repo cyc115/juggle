@@ -215,6 +215,26 @@ def test_check_overflow_wide_profile_catches_over_width_line():
     assert any("10" in v for v in result["violations"])
 
 
+def test_check_overflow_wide_boundary_exact_width_passes_over_fails():
+    """Column-budget boundary pin at a wide viewport (wide_140 = 140 cols).
+
+    A line whose visible width is *exactly* the budget must pass; one column
+    wider must fail. Pins the `>` comparison against a `>=` off-by-one mutation
+    that would falsely flag every full-width row as overflow.
+    """
+    from juggle_smoke import check_overflow
+
+    cols = 140
+    grid = _make_grid(24, cols)
+    grid[3] = "x" * cols  # exactly at the budget → allowed
+    assert check_overflow(grid, cols)["pass"] is True
+
+    grid[3] = "x" * (cols + 1)  # one past the budget → overflow
+    result = check_overflow(grid, cols)
+    assert result["pass"] is False
+    assert any("3" in v for v in result["violations"])
+
+
 # ── heuristic: check_real_estate ──────────────────────────────────────────────
 
 
