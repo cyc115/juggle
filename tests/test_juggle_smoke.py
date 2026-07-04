@@ -192,6 +192,23 @@ def test_check_real_estate_mostly_blank_fails():
     assert result["blank_pct"] > 0.40
 
 
+def test_check_real_estate_short_grid_counts_unpainted_rows_blank():
+    """A grid shorter than the viewport height must count the missing rows.
+
+    The cockpit can return fewer painted lines than the viewport's `rows`
+    (body not fully painted). Those un-emitted bottom rows are blank screen
+    real estate; ignoring them (measuring blank% over len(grid) alone) lets a
+    mostly-empty viewport spuriously pass. 10 content rows in a 40-row
+    viewport = 30 unpainted rows = 75% blank → must fail.
+    """
+    from juggle_smoke import check_real_estate
+
+    grid = ["content " + " " * 72] * 10  # 10 painted rows, viewport wants 40
+    result = check_real_estate(grid, 40)
+    assert result["pass"] is False
+    assert result["blank_pct"] > 0.40
+
+
 # ── heuristic: check_chrome_present ───────────────────────────────────────────
 
 

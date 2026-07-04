@@ -83,12 +83,16 @@ def check_overflow(grid: list[str], cols: int) -> dict:
 def check_real_estate(grid: list[str], rows: int) -> dict:
     """Flag if >40% of rows are entirely blank (wasted space).
 
+    Measures against the viewport height `rows`, not just the painted lines:
+    a grid shorter than `rows` has un-emitted bottom rows that are blank screen
+    real estate too, so they count toward the blank tally.
+
     Returns {"pass": bool, "blank_pct": float, "content_pct": float, "reason": str}.
     """
-    total = len(grid)
+    total = max(len(grid), rows)
     if total == 0:
         return {"pass": False, "blank_pct": 1.0, "content_pct": 0.0, "reason": "empty grid"}
-    blank = sum(1 for ln in grid if not ln.strip())
+    blank = total - sum(1 for ln in grid if ln.strip())
     blank_pct = blank / total
     content_pct = 1.0 - blank_pct
     ok = blank_pct <= 0.40
