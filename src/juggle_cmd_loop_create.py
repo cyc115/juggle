@@ -81,13 +81,19 @@ def compute_next_run(cadence: str, now: datetime | None = None) -> str:
 
 
 def create_loop_atomic(db, *, template, cadence, name=None, objective="",
-                       now=None, max_consecutive_failures=3):
+                       now=None, max_consecutive_failures=3, session_id=None):
     """Validate + atomically create a single-topic loop. Returns a dict with
-    ``loop_id``/``project_id``/``topic_id``/``node_ids``/``next_run``.
+    ``loop_id``/``project_id``/``topic_id``/``node_ids``/``next_run``/``thread_id``.
 
     The template is validated (partition rule, V1 single-topic) BEFORE any write.
     All DB writes run on ONE connection with no intermediate commit; any exception
-    rolls back the whole create (ZERO orphan rows)."""
+    rolls back the whole create (ZERO orphan rows).
+
+    The loop is bound to its OWN thread (``loops.thread_id``) so a failing iteration's
+    HIGH action item and any loop-scoped notifications land on that named thread —
+    surfaced in the cockpit ACTION PANE on the loop — instead of the null-thread
+    ORPHAN bucket. The thread is created via the shared ``create_thread`` primitive
+    on THIS connection, so it commits/rolls back atomically with the loop."""
     norm = validate_loop_template(template)  # raises LoopTemplateError pre-write
     topic = norm["topics"][0]
     next_run = compute_next_run(cadence, now)
@@ -116,11 +122,22 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
             db, conn, project_id=project_id, prefix=prefix, topic=topic,
         )
 
+        # The loop's OWN thread — failure action items + loop-scoped notifications
+        # attach here (not the null-thread ORPHAN bucket). Reuses the shared
+        # create_thread primitive on THIS conn (conn=) so the thread commits/rolls
+        # back atomically with the project + graph + loop row.
+        thread_id = db.create_thread(
+            name or f"loop {loop_id}",
+            session_id or f"loop:{loop_id}",
+            project_id=project_id,
+            conn=conn,
+        )
+
         conn.execute(
             "INSERT INTO loops (id, project_id, thread_id, cadence, status, run_seq, "
             "next_run, last_run_at, consecutive_failures, max_consecutive_failures, "
-            "created_at, updated_at) VALUES (?,?,NULL,?,'active',?,?,NULL,0,?,?,?)",
-            (loop_id, project_id, cadence, run_seq, next_run,
+            "created_at, updated_at) VALUES (?,?,?,?,'active',?,?,NULL,0,?,?,?)",
+            (loop_id, project_id, thread_id, cadence, run_seq, next_run,
              max_consecutive_failures, ts, ts),
         )
         conn.commit()
@@ -132,7 +149,7 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
 
     return {
         "loop_id": loop_id, "project_id": project_id, "topic_id": topic_id,
-        "node_ids": node_ids, "next_run": next_run,
+        "node_ids": node_ids, "next_run": next_run, "thread_id": thread_id,
     }
 
 

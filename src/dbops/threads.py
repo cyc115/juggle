@@ -103,8 +103,36 @@ class ThreadsMixin:
                 return row["id"]
         return None
 
+    def _insert_new_conversation(
+        self, conn, new_id: str, topic: str, session_id: str, now_min: str
+    ) -> str | None:
+        """Cap-check + slug-alloc + conversation-node insert on the caller's
+        ``conn`` (caller MUST already hold the write lock). Returns ``new_id``, or
+        ``None`` if at/over the thread cap.
+
+        The SOLE new-conversation writer — shared by BOTH the self-transaction
+        ``create_thread`` path and the caller-transaction (``conn=``) path so a
+        thread is allocated + laid down identically whether created standalone or
+        inside a larger atomic write (one source of truth). P8 c4-write-cut: the
+        cap count and live-set scan both resolve from kind='conversation' nodes,
+        whose unique idx_nodes_live_label enforces the no-shared-live-slug rule."""
+        rows = conn.execute(
+            "SELECT state FROM nodes WHERE kind='conversation'"
+        ).fetchall()
+        active_count = sum(1 for r in rows if r["state"] != "archived")
+        if active_count >= MAX_THREADS:
+            return None
+        user_label = self._next_wheel_slug(conn)
+        # The conversation is a first-class node — the sole store.
+        mirror_conv_insert(
+            conn, new_id, topic=topic, session_id=session_id,
+            user_label=user_label, now=now_min,
+        )
+        return new_id
+
     def create_thread(
-        self, topic: str, session_id: str, project_id: str | None = None
+        self, topic: str, session_id: str, project_id: str | None = None,
+        *, conn=None
     ) -> str:
         """Create a new thread. Returns the UUID of the new thread.
 
@@ -114,19 +142,31 @@ class ThreadsMixin:
         Dedup guard: if an OPEN (same-project, when `project_id` is given)
         thread already exists whose title is a lexical duplicate of `topic`,
         no new row is inserted and that existing thread's id is returned.
+
+        When ``conn`` is passed the conversation node is written on the CALLER'S
+        connection/transaction (no BEGIN/COMMIT of our own), so thread creation can
+        be one step of a larger atomic write — e.g. ``create_loop_atomic`` binds a
+        loop to its own thread inside the same all-or-nothing transaction that lays
+        down the project + graph (the caller already holds the write lock, and its
+        rollback discards the thread too). Over-cap still fails loud via
+        ``_raise_thread_cap`` — which rolls the caller's transaction back.
         """
         existing = self._find_duplicate_open_thread(topic, project_id)
         if existing is not None:
             return existing
         new_id = str(uuid.uuid4())
         now_min = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        if conn is not None:
+            result = self._insert_new_conversation(
+                conn, new_id, topic, session_id, now_min
+            )
+            if result is None:
+                self._raise_thread_cap()  # rolls the caller's transaction back
+            return result
         # ATOMIC allocation (2026-06-21): take the write lock with BEGIN IMMEDIATE
         # BEFORE reading label_seq so the read-modify-write of the counter and the
         # live-set scan are serialized across processes — no two creates can land
         # on the same slug. The retry loop is a backstop for lock contention.
-        # P8 c4-write-cut: the conversation node is the SOLE store; the cap count
-        # and the live-set scan both resolve from kind='conversation' nodes, whose
-        # unique idx_nodes_live_label enforces the no-shared-live-slug invariant.
         with self._connect() as conn:
             conn.isolation_level = None  # manual transaction control
             last_exc: Exception | None = None
@@ -137,23 +177,14 @@ class ThreadsMixin:
                     last_exc = exc  # busy; retry
                     continue
                 try:
-                    rows = conn.execute(
-                        "SELECT state FROM nodes WHERE kind='conversation'"
-                    ).fetchall()
-                    active_count = sum(
-                        1 for r in rows if r["state"] != "archived"
+                    result = self._insert_new_conversation(
+                        conn, new_id, topic, session_id, now_min
                     )
-                    if active_count >= MAX_THREADS:
+                    if result is None:
                         conn.execute("ROLLBACK")
                         break  # over cap — raise structured guidance below
-                    user_label = self._next_wheel_slug(conn)
-                    # The conversation is a first-class node — the sole store.
-                    mirror_conv_insert(
-                        conn, new_id, topic=topic, session_id=session_id,
-                        user_label=user_label, now=now_min,
-                    )
                     conn.execute("COMMIT")
-                    return new_id
+                    return result
                 except sqlite3.IntegrityError as exc:
                     conn.execute("ROLLBACK")
                     last_exc = exc

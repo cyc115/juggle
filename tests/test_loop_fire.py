@@ -65,8 +65,9 @@ def _make_loop(db, *, cadence="every 5m", max_cf=3, thread_id="T-loop", next_run
     res = create_loop_atomic(db, template=_template(), cadence=cadence,
                              max_consecutive_failures=max_cf)
     loop_id = res["loop_id"]
-    # V1 create leaves thread_id NULL + next_run in the future; drive it here so a
-    # failure surfaces on a real thread and the loop is due under a fixed `now`.
+    # create now binds the loop to its OWN thread; these tests pin a FIXED thread id
+    # + a PAST next_run so failures assert against a known thread and the loop is due
+    # under a fixed `now`. (The real-thread binding is pinned separately below.)
     with db._connect() as conn:
         conn.execute("UPDATE loops SET thread_id=?, next_run=? WHERE id=?",
                      (thread_id, next_run, loop_id))
@@ -164,6 +165,35 @@ def test_overlap_skip_escalates_after_k(db):
               if n["message"] and "wedged" in n["message"].lower()]
     assert pushed, "K overlap-skips must emit an escalation event"
     assert _iter_task_count(db, pid, loop_id, 1) == 0  # still never fired
+
+
+# ── Loop owns a real thread; failures surface ON it (not the orphan bucket) ─────
+def test_created_loop_has_thread_and_failure_item_lands_on_it(db):
+    """Review gap (2026-07-04): create_loop_atomic inserted thread_id=NULL, so a
+    failing iteration's HIGH action item landed in the null-thread ORPHAN bucket
+    instead of on the loop's OWN thread. A loop created via the REAL create path
+    must own a real thread, and its failure item must land ON that thread (the user
+    requirement: loop failures surface in the ACTION PANE on the loop)."""
+    res = create_loop_atomic(db, template=_template(), cadence="every 5m")
+    loop_id = res["loop_id"]
+    thread_id = db.get_loop(loop_id)["thread_id"]
+    assert thread_id, "created loop must own a real thread (not NULL/orphan)"
+    assert res["thread_id"] == thread_id  # create returns the bound thread
+
+    pid = res["project_id"]
+    _set_iter_state(db, pid, loop_id, 0, "failed-verify")  # prior iteration failed
+    with db._connect() as conn:  # make it due — timer only; thread untouched
+        conn.execute("UPDATE loops SET next_run=? WHERE id=?", (PAST, loop_id))
+        conn.commit()
+
+    lf.fire_due_loops(db, SESSION, now=NOW)
+
+    items = db.get_open_action_items()
+    on_thread = [i for i in items if i["thread_id"] == thread_id]
+    assert on_thread, "failure HIGH action item must land on the loop's thread"
+    assert on_thread[0]["priority"] == "high"
+    assert not [i for i in items if i["thread_id"] is None], \
+        "no failure item may land in the null-thread ORPHAN bucket"
 
 
 # ── Never-swallow failure surfacing (LOAD-BEARING) ──────────────────────────────
