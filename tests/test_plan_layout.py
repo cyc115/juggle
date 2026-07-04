@@ -37,6 +37,20 @@ def test_all_verified_collapses_to_anchor_only():
     assert layout.edges == ()
 
 
+def test_cancelled_topics_are_excluded_like_verified():
+    """A cancelled node is a COMPLETION terminal — never an actionable card. It
+    vanishes from the waves (kept in sync with the railroad's DONE_STATES) and,
+    unlike verified, is NOT counted in the anchor stub."""
+    tasks = [
+        _n("A", state="ready"), _n("X", state="cancelled"),
+        _n("V", state="verified"),
+    ]
+    layout = build_plan_layout(tasks, edges=[], free_slots=2)
+    assert layout.anchor_count == 1  # only V (verified), not the cancelled X
+    ids = [c.id for w in layout.waves for c in w.cards]
+    assert ids == ["A"]  # cancelled X is not an open card
+
+
 def test_verified_deps_do_not_extend_open_topic_waves():
     """A depends on verified V; V is not in the open graph so A is wave 0."""
     tasks = [_n("V", state="verified"), _n("A", state="ready")]

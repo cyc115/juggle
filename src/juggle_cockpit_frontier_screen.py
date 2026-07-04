@@ -1,6 +1,7 @@
 """juggle_cockpit_frontier_screen — the Frontier Railroad (fr-screen,
-2026-07-02). ONE full-screen graph surface bound to both ``l`` (in Graph
-mode) and ``G`` (muscle memory), replacing the removed GitlogScreen and
+2026-07-02). ONE full-screen graph surface bound to ``L`` (in Graph mode,
+since the plan-view rebind — ``l`` now opens the Plan view) and ``G`` (muscle
+memory), replacing the removed GitlogScreen and
 RailroadScreen. Rendering is delegated to juggle_frontier_render (pure text)
 over juggle_frontier_layout.build_frontier_layout; this module owns only
 compose/bindings/actions — cursor nav, topic drill-in (Enter), wave fold

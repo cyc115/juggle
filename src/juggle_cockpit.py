@@ -916,7 +916,7 @@ class CockpitApp(GraphModeMixin, App):
         self.push_screen(_ProjectArmModal(self._db))
 
     def action_graph_railroad(self) -> None:
-        """G — alias of 'l' (muscle memory): open the Frontier Railroad for
+        """G — alias of 'L' (muscle memory): open the Frontier Railroad for
         the selected task's project."""
         from juggle_cockpit_model import snapshot as _snapshot
         try:

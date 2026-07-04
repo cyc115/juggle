@@ -20,6 +20,11 @@ from juggle_cockpit_graph_layout import GraphTask, assign_ranks, build_ranks
 
 IN_FLIGHT_STATES = ("dispatching", "running", "integrating", "integrated-unlanded")
 FAILED_STATES = ("failed-exec", "failed-integration", "failed-verify", "blocked-failed")
+# COMPLETION terminals: excluded from the open/actionable waves just like
+# verified history (kept in sync with juggle_frontier_layout.DONE_STATES) — a
+# cancelled node is done, never an actionable card. Only 'verified' feeds the
+# anchor count; 'cancelled' vanishes entirely (matches the railroad).
+DONE_STATES = ("verified", "cancelled")
 
 
 @dataclass(frozen=True)
@@ -135,7 +140,7 @@ def build_plan_layout(
 ) -> PlanLayout:
     """Build the deterministic Plan-view layout for one project snapshot."""
     anchor_count = sum(1 for t in tasks if t.state == "verified")
-    open_tasks = [t for t in tasks if t.state != "verified"]
+    open_tasks = [t for t in tasks if t.state not in DONE_STATES]
     if not open_tasks:
         return PlanLayout(anchor_count=anchor_count)
 
