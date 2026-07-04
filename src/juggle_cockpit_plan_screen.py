@@ -17,7 +17,7 @@ from textual.widgets import Static
 
 from juggle_cockpit_frontier_screen import _free_agent_slots, _running_meta
 from juggle_plan_layout import build_plan_layout
-from juggle_plan_render import render_plan_body
+from juggle_plan_render import render_plan_body, render_plan_legend
 
 # When folded ('z'), cap total visible open cards; trailing whole waves collapse
 # into the "…N more open nodes, z expands" summary (never wave 0).
@@ -26,6 +26,11 @@ FOLD_MAX_TOPICS = 8
 
 class PlanScreen(Screen):
     """Full-screen layered future-DAG Plan view for ONE project."""
+
+    DEFAULT_CSS = """
+    PlanScreen #plan-rows { height: 1fr; }
+    PlanScreen #plan-legend { dock: bottom; height: auto; }
+    """
 
     BINDINGS = [
         Binding("j", "cursor_down", "↓", show=False),
@@ -65,6 +70,7 @@ class PlanScreen(Screen):
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="plan-rows"):
             yield Static("Plan view", id="plan-body", markup=True)
+        yield Static(render_plan_legend(), id="plan-legend", markup=True)
 
     def on_mount(self) -> None:
         self._rebuild()

@@ -133,6 +133,8 @@ MISC_COMMANDS: tuple[Cmd, ...] = (
                 help="Output smoke results as JSON"),
             Arg("--smoke-graph", dest="smoke_graph", action="store_true",
                 help="During smoke, toggle the lower-right panel into Graph mode (press g) and validate it"),
+            Arg("--smoke-plan", dest="smoke_plan", action="store_true",
+                help="During smoke, open the full-screen Plan view (press g then l) and validate its wave layout"),
         ),
         help="Open live cockpit dashboard"),
     Cmd(None, "metrics", cmd_metrics,

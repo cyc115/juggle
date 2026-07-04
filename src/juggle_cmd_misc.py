@@ -23,7 +23,9 @@ def cmd_cockpit(args):
     if getattr(args, "smoke", False):
         import json as _json
         import tempfile
-        from juggle_smoke import load_viewports, run_smoke, seed_smoke_db
+        from juggle_smoke import (
+            load_viewports, run_smoke, seed_smoke_db, seed_smoke_graph_db,
+        )
 
         vp_path = Path(__file__).parent.parent / "config" / "viewports.yaml"
         viewports = load_viewports(vp_path)
@@ -43,6 +45,8 @@ def cmd_cockpit(args):
         interactive = getattr(args, "interactive", False)
         db_path = getattr(args, "db_path", None)
 
+        plan_mode = getattr(args, "smoke_plan", False)
+
         def _run(seeded_db):
             return run_smoke(
                 viewports,
@@ -50,6 +54,7 @@ def cmd_cockpit(args):
                 output_dir=out_dir,
                 interactive=interactive,
                 graph_mode=getattr(args, "smoke_graph", False),
+                plan_mode=plan_mode,
             )
 
         if db_path:
@@ -59,8 +64,11 @@ def cmd_cockpit(args):
             # No --db: seed an isolated, populated DB so the cockpit renders
             # deterministically and never touches the shared production DB
             # (which an agent/worktree context refuses to migrate → crash).
+            # The Plan view needs an armed project with a real dependency DAG,
+            # so --smoke-plan seeds the graph-shaped fixture instead.
             with tempfile.TemporaryDirectory(prefix="juggle-smoke-") as _td:
-                seeded = seed_smoke_db(str(Path(_td) / "juggle.db"))
+                _db_file = str(Path(_td) / "juggle.db")
+                seeded = seed_smoke_graph_db(_db_file) if plan_mode else seed_smoke_db(_db_file)
                 results = _run(seeded)
 
         any_fail = any(not r.get("pass") for r in results)

@@ -125,6 +125,27 @@ def visible_wave_span(n_waves: int, pan: int, width: "int | None") -> tuple[int,
     return start, wave_slots
 
 
+def plan_grid_rows(
+    layout, *, selected_id=None, meta_by_id=None, member_tasks=None,
+    pan=0, width=None,
+) -> tuple[list[str], int, int]:
+    """The width-critical part: the anchor-pinned, paged wave-column grid as
+    plain fixed-width rows. Returns (rows, shown_wave_count, total_wave_count).
+    Every row is ≤ ``width`` because the anchor plus only as many wave columns
+    as fit are shown (the rest page in via ``pan``) — the narrow-viewport
+    degradation contract the smoke matrix pins."""
+    if not layout.waves:
+        return [], 0, 0
+    columns = [_anchor_column(layout.anchor_count)]
+    for wave in layout.waves:
+        columns.append(_wave_column(wave, selected_id, meta_by_id, member_tasks))
+    start, wave_slots = visible_wave_span(len(layout.waves), pan, width)
+    wave_cols = columns[1:]
+    shown = wave_cols[start:start + wave_slots]
+    grid = _zip_columns([columns[0]] + shown)
+    return grid, len(shown), len(layout.waves)
+
+
 def render_plan_body(
     layout, *, selected_id=None, meta_by_id=None, member_tasks=None,
     titles=None, pan=0, width=None, project_header="Plan",
@@ -138,14 +159,11 @@ def render_plan_body(
         done = style(f"▦ anchor · {layout.anchor_count} verified — nothing open", DIM)
         return [header, "", done]
 
-    columns = [_anchor_column(layout.anchor_count)]
-    for wave in layout.waves:
-        columns.append(_wave_column(wave, selected_id, meta_by_id, member_tasks))
-
-    start, wave_slots = visible_wave_span(len(layout.waves), pan, width)
-    wave_cols = columns[1:]
-    shown = [columns[0]] + wave_cols[start:start + wave_slots]
-    grid = _zip_columns(shown)
+    grid, shown_waves, total_waves = plan_grid_rows(
+        layout, selected_id=selected_id, meta_by_id=meta_by_id,
+        member_tasks=member_tasks, pan=pan, width=width,
+    )
+    start, _ = visible_wave_span(total_waves, pan, width)
 
     w0 = layout.waves[0]
     cap = f"WAVE 1 runnable now — {w0.parallel_count} parallel"
@@ -154,18 +172,25 @@ def render_plan_body(
         if w0.queued:
             cap += f" → {w0.queued} queue"
     lines = [header, style(cap, GREEN), ""]
-    if len(layout.waves) > wave_slots:
+    if shown_waves < total_waves:
         lines.append(style(
-            f"←/→ pan · showing waves {start + 1}–{start + min(wave_slots, len(layout.waves) - start)}"
-            f" of {len(layout.waves)}", DIM,
+            f"←/→ pan · showing waves {start + 1}–{start + shown_waves}"
+            f" of {total_waves}", DIM,
         ))
     lines += grid
     lines.append("")
     if layout.fold_summary:
         lines.append(style(layout.fold_summary, DIM))
     lines.append(_critical_footer(layout, titles))
-    lines.append(_legend_footer())
     return lines
+
+
+def render_plan_legend() -> str:
+    """The one-line key legend, rendered separately so the screen can DOCK it at
+    the bottom — keeping it in the terminal's bottom band on any viewport height
+    (a top-anchored scroll body would otherwise scroll it off / leave it mid
+    screen, failing the smoke chrome check)."""
+    return _legend_footer()
 
 
 def _critical_footer(layout, titles) -> str:

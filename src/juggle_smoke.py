@@ -53,42 +53,13 @@ def load_viewports(path: str | Path) -> dict:
     return data.get("profiles", {})
 
 
-# ---------------------------------------------------------------------------
-# Isolated DB seeding (hermetic smoke)
-# ---------------------------------------------------------------------------
-
-
-def seed_smoke_db(db_path: str, n_threads: int = 30) -> str:
-    """Create and seed an isolated juggle.db for hermetic smoke rendering.
-
-    The smoke matrix must NOT run the cockpit against the shared production DB:
-    in an agent/worktree context migration of the shared DB is refused
-    (SharedDBMigrationRefused) and the cockpit crashes at startup, blanking every
-    viewport. An isolated DB also makes the render deterministic — the cockpit
-    needs populated topics to fill the body panes, or check_real_estate flags the
-    mostly-blank layout.
-
-    Seeds `n_threads` topics, temporarily lifting the module-level MAX_THREADS cap
-    (the documented test env exports JUGGLE_MAX_THREADS=10) so all are created.
-    Returns `db_path`.
-    """
-    import juggle_db
-    import dbops.schema as _schema
-    import dbops.threads as _threads
-    from juggle_db import JuggleDB
-
-    db = JuggleDB(db_path=db_path)
-    db.init_db()
-    db.set_active(True)
-    old_max = juggle_db.MAX_THREADS
-    new_max = max(old_max, n_threads)
-    juggle_db.MAX_THREADS = _schema.MAX_THREADS = _threads.MAX_THREADS = new_max
-    try:
-        for i in range(n_threads):
-            db.create_thread(f"smoke-topic-{i:02d}", session_id="s0")
-    finally:
-        juggle_db.MAX_THREADS = _schema.MAX_THREADS = _threads.MAX_THREADS = old_max
-    return db_path
+# Isolated DB seeding (hermetic smoke) lives in juggle_smoke_seed and is
+# re-exported here so `from juggle_smoke import seed_smoke_db, seed_smoke_graph_db`
+# keeps working (extracted to hold this module under the 300-line LOC gate).
+from juggle_smoke_seed import (  # noqa: E402,F401 — re-exported public API
+    seed_smoke_db,
+    seed_smoke_graph_db,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -124,20 +95,35 @@ def check_real_estate(grid: list[str], rows: int) -> dict:
     return {"pass": ok, "blank_pct": blank_pct, "content_pct": content_pct, "reason": reason}
 
 
-def check_chrome_present(grid: list[str]) -> dict:
+# The full-screen Plan view (pushed Screen) replaces cockpit chrome with its
+# own: a "◈ Plan —" title header, and a bottom band that is either the legend
+# keybind line (wide) or the critical-path line (narrow/tall, where the legend
+# scrolls below the fold). Either bottom marker satisfies the footer check.
+_PLAN_HEADER_MARKERS = ("Plan",)
+_PLAN_FOOTER_MARKERS = ("critical path", "railroad", "q/esc", "select", "fold")
+
+
+def check_chrome_present(
+    grid: list[str],
+    header_markers: "tuple[str, ...] | None" = None,
+    footer_markers: "tuple[str, ...] | None" = None,
+) -> dict:
     """Header (top 3 rows) and footer (bottom 3 rows) must render.
 
-    Header marker: app title "Juggle" / "Cockpit".
-    Footer marker: any visible keybinding label.
+    Header marker: app title "Juggle" / "Cockpit" (or a caller-supplied set,
+    e.g. the Plan view's own "Plan" title).
+    Footer marker: any visible keybinding label (or a caller-supplied set).
 
     Returns {"pass": bool, "reason": str}.
     """
     if not grid:
         return {"pass": False, "reason": "empty grid"}
+    header_markers = header_markers or _HEADER_MARKERS
+    footer_markers = footer_markers or _FOOTER_MARKERS
     top = grid[:3]
     bottom = grid[-3:]
-    has_header = any(m in row for row in top for m in _HEADER_MARKERS)
-    has_footer = any(m in row for row in bottom for m in _FOOTER_MARKERS)
+    has_header = any(m in row for row in top for m in header_markers)
+    has_footer = any(m in row for row in bottom for m in footer_markers)
     ok = has_header and has_footer
     parts = []
     if not has_header:
@@ -216,6 +202,7 @@ def run_smoke(
     output_dir: Path | None = None,
     interactive: bool = False,
     graph_mode: bool = False,
+    plan_mode: bool = False,
 ) -> list[dict]:
     """Render each viewport profile, run heuristics, dump frames.
 
@@ -236,12 +223,20 @@ def run_smoke(
             with open_cockpit_pty(profile, db_path=db_path) as handle:
                 grid = capture_body_frame(handle, rows)
 
-                if graph_mode:
+                if graph_mode or plan_mode:
                     # Toggle the lower-right panel into Graph mode and re-capture
                     # so the heuristics validate the graph panel layout.
                     handle.send(b"g")
                     grid = handle.frame(settle=1.5, timeout=8.0)
                     rec["graph_mode"] = True
+
+                if plan_mode:
+                    # From Graph mode, `l` opens the full-screen Plan view
+                    # (layered future DAG). Re-capture so the heuristics validate
+                    # the wave-column layout across this viewport.
+                    handle.send(b"l")
+                    grid = handle.frame(settle=1.5, timeout=8.0)
+                    rec["plan_mode"] = True
 
                 if interactive:
                     # Nav: scroll down
@@ -261,7 +256,11 @@ def run_smoke(
 
             rec["overflow"] = check_overflow(grid, cols)
             rec["real_estate"] = check_real_estate(grid, rows)
-            rec["chrome"] = check_chrome_present(grid)
+            if plan_mode:
+                rec["chrome"] = check_chrome_present(
+                    grid, _PLAN_HEADER_MARKERS, _PLAN_FOOTER_MARKERS)
+            else:
+                rec["chrome"] = check_chrome_present(grid)
             rec["truncation"] = check_truncation(grid)
             rec["pass"] = (
                 rec["overflow"]["pass"]
