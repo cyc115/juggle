@@ -144,10 +144,16 @@ def cmd_release_agent(args):
 
     # Reconcile: if the agent's thread is still "background", it was released
     # without completing — mark the thread as failed so it doesn't appear stuck.
-    # EXCEPT (T-fix-release-after-verified-false-alarm, 2026-07-03): a topic
-    # already verified+merged has completed its work — release here is routine
-    # post-completion pool cleanup, not an abandonment. A topic still
-    # 'integrating' is NOT terminal and must keep the loud path.
+    # EXCEPT two routine post-completion cleanup cases (2026-07-03/04 incidents,
+    # integrate-wedge #2) — release then is pool cleanup, NOT abandonment:
+    #   1. (T-fix-release-after-verified-false-alarm) the bound topic is already
+    #      verified+merged — its work landed. A topic still 'integrating' is NOT
+    #      terminal and must keep the loud path.
+    #   2. the durable completion ledger records a completion for this thread — a
+    #      spool-applied agent_complete closes an agent_runs row to
+    #      status='completed', which may not yet be reflected in the conversation
+    #      node's state. Reading thread state alone marked provably-finished
+    #      agents failed + filed spurious HIGH escalations.
     if assigned:
         thread = db.get_thread(assigned)
         if thread and thread["state"] == "background":
@@ -156,15 +162,23 @@ def cmd_release_agent(args):
                 topic and topic["state"] == "verified" and topic.get("merged_sha")
             )
             label = thread.get("user_label") or thread.get("label") or assigned[:8]
+            # Newest run only (get_runs is id-DESC): a completed CURRENT dispatch
+            # means the agent finished; a still-open ('dispatched') or 'failed'
+            # newest run means it did not. Checking the newest — not "any" —
+            # avoids a stale completed run from a PRIOR dispatch masking a
+            # genuinely-stuck re-dispatch.
+            _runs = db.get_runs(thread_id=assigned, limit=1)
+            completed = bool(_runs) and _runs[0].get("status") == "completed"
             with db._connect() as conn:
                 row = conn.execute(
                     "SELECT value FROM session WHERE key = 'session_id'"
                 ).fetchone()
             session_id = row["value"] if row else ""
-            if topic_terminal:
+            if topic_terminal or completed:
+                # Routine cleanup: no failed mark, no HIGH item, INFO notice only.
                 db.emit_event(
                     assigned,
-                    f"[Topic {label}] Agent released after topic was already verified — routine cleanup.",
+                    f"[Topic {label}] Agent released after completion — routine cleanup.",
                     session_id=session_id,
                     kind=_ek.WATCHDOG_RECOVERY,
                 )
