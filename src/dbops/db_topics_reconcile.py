@@ -75,7 +75,7 @@ def _heal_merged_sha(db, topic: dict) -> bool:
     """
     from dbops.db_topics import set_topic_merged_sha, set_topic_pending_merged_sha
     from dbops.graph_guards import (
-        _resolve_topic_repo, resolve_branch_sha, sha_is_ancestor,
+        _resolve_topic_repo, resolve_landed_sha, sha_is_ancestor,
         thread_solely_bound_to,
     )
 
@@ -94,9 +94,15 @@ def _heal_merged_sha(db, topic: dict) -> bool:
         if not repo:
             return False
 
-        sha = resolve_branch_sha(repo, branch) if branch else ""
-        if sha and sha_is_ancestor(repo, sha):
-            set_topic_merged_sha(db, topic["id"], sha)
+        # Two-tier LANDED oracle (2026-07-03 watchdog-reconciliation amendment):
+        # resolve_landed_sha recognises BOTH an ff/true-merge (branch tip is an
+        # ancestor of main) AND a rebased/cherry-picked landing (branch tip is
+        # NOT an ancestor, but its work is on main under a different sha) —
+        # returning a REAL ancestor sha in either case. Ancestry-only left a
+        # rebased-landed topic wedged at 'integrating' forever (Defect C note).
+        landed = resolve_landed_sha(repo, branch) if branch else ""
+        if landed and sha_is_ancestor(repo, landed):
+            set_topic_merged_sha(db, topic["id"], landed)
             return True
 
         pending = (topic.get("pending_merged_sha") or "").strip()
@@ -148,6 +154,17 @@ def reconcile_topic_state(db, topic_id: str) -> str:
     # repo/branch is gone would derive 'integrating' and flap.
     if topic.get("state") == "verified":
         return "verified"
+
+    # Fix 2 (2026-07-03 integrate-wedge, RCA §Q2.3): a recorded FAILURE verdict is
+    # terminal FOR DERIVATION — never re-derive it back to 'integrating' from
+    # all-verified tasks. That silently erased both the failure signal AND its
+    # repair-sweep trigger (run_repair_sweeps only picks up 'failed-integration'
+    # + fail_envelope). Promotion to 'verified' when the work actually landed
+    # still flows through the merged_sha stamp path
+    # (orphan_guard.reconcile_out_of_band_merges), which writes state directly —
+    # so guarding derivation here never strands a genuinely-landed topic.
+    if topic.get("state") in ("failed-integration", "failed-verify"):
+        return topic["state"]
 
     with db._connect() as conn:
         rows = conn.execute(
