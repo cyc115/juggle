@@ -165,8 +165,8 @@ def sweep_repair_dispatch(db, project_id: str, *, dispatch, session_id: str = ""
     capacity hit stops the sweep (retried next tick, slot still reserved); any
     other per-topic error is logged and skipped so one bad topic can't wedge it.
     """
-    from dbops import db_topics
-    from juggle_graph_hydration import build_repair_prompt
+    from dbops import db_graph, db_topics
+    from juggle_graph_hydration import _by_recency, build_repair_prompt
 
     dispatched: list[str] = []
     try:
@@ -185,8 +185,9 @@ def sweep_repair_dispatch(db, project_id: str, *, dispatch, session_id: str = ""
         if not is_repair_dispatchable(envelope):
             continue
 
+        own = _by_recency(db_graph.read_learnings(db, topic_id=topic["id"])["items"])
         try:
-            dispatch(db, thread_id, build_repair_prompt(envelope), topic)
+            dispatch(db, thread_id, build_repair_prompt(envelope, own_learnings=own), topic)
         except Exception as exc:  # noqa: BLE001 — classify below, never propagate
             from juggle_graph_dispatch import CapacityError
             if isinstance(exc, CapacityError):

@@ -22,6 +22,12 @@ from __future__ import annotations
 import json
 
 from dbops import db_graph
+from juggle_graph_hydration_learnings import (  # re-exported for juggle_graph_repair
+    _LEARNINGS_INSTRUCTION,
+    _aggregate_dep_learnings,
+    _by_recency,
+    _render_learnings_lines,
+)
 from juggle_prompt_context import TaskSpec, TopicPromptPayload
 
 # ── irl-repair T4: class playbooks ──────────────────────────────────────────
@@ -70,7 +76,7 @@ _REPAIR_PLAYBOOKS: dict[str, str] = {
 }
 
 
-def build_repair_prompt(envelope: dict) -> str:
+def build_repair_prompt(envelope: dict, *, own_learnings: list[dict] | None = None) -> str:
     """Dispatch prompt for a watchdog repair agent (irl-repair T4).
 
     Pure. Selects the class playbook and embeds the full fail envelope JSON so
@@ -79,16 +85,26 @@ def build_repair_prompt(envelope: dict) -> str:
     unknown class (fail-safe: rebase+resolve+rerun is the least-destructive
     recovery). The worktree is ALREADY preserved on the bound thread, so the
     prompt never tells the agent to create one — it works in place.
+
+    gl-hydrate (spec §5): a repair is a re-dispatch into the SAME failed topic,
+    so its OWN prior learnings (caller pre-ordered most-recent-first) are exactly
+    what the fresh agent needs — inject them beside the failure envelope.
     """
     fail_class = (envelope or {}).get("class", "conflict")
     playbook = _REPAIR_PLAYBOOKS.get(fail_class, _REPAIR_PLAYBOOKS["conflict"])
     envelope_json = json.dumps(envelope or {}, indent=2, sort_keys=True)
+    own_block = _render_learnings_lines(own_learnings or [])
+    own_section = (
+        "## This topic's own prior learnings (from the attempt that failed to "
+        f"integrate — refine, don't repeat)\n{own_block}\n\n" if own_block else ""
+    )
     return (
         f"# Repair task — integrate failed ({fail_class})\n"
         "A prior integrate of this topic's branch was refused. You are dispatched "
         "into the SAME preserved worktree to fix it — do not start fresh, do not "
         "create a new branch.\n\n"
         f"## Playbook\n{playbook}\n\n"
+        f"{own_section}"
         f"## Failure envelope\n```json\n{envelope_json}\n```"
     )
 
@@ -153,16 +169,43 @@ def hydrate_for_task(db, project_id: str, task: dict) -> TopicPromptPayload:
 
 
 def build_topic_hydration(objective: str, topic: dict, deps: list[dict],
-                          tasks: list[dict]) -> TopicPromptPayload:
+                          tasks: list[dict], *,
+                          dep_learnings: list[dict] | None = None,
+                          own_learnings: list[dict] | None = None) -> TopicPromptPayload:
     """TASK-section payload for a TOPIC (R9 hybrid): project objective +
     dep-topic handoffs (+ diffstat) + the topic objective as ``context``, and
     the SEQUENTIAL task list as resolved ``TaskSpec`` rows (VERIFIED tasks
-    flagged, not dropped). Pure; never thread.summary."""
+    flagged, not dropped). Pure; never thread.summary.
+
+    gl-hydrate (spec §4 / 🔴1): ``dep_learnings`` are the upstream dependency
+    topics' task learnings, aggregated and pre-ordered most-recent-first by the
+    DB wrapper — injected (cap 10 + breadcrumb) as a channel SEPARATE from the
+    dep handoffs above (🔴2 delineation). ``own_learnings`` are the topic's OWN
+    task learnings; non-empty only on a re-dispatch/repair (a first dispatch has
+    recorded none), so they surface a prior attempt's notes right beside the
+    topic objective (spec §5). Both default None → behaviour-identical to a
+    first dispatch with no learnings."""
     narrative = _context_narrative(objective, deps, heading="topic handoffs")
+    dep_block = _render_learnings_lines(dep_learnings or [])
+    if dep_block:
+        dep_block = (
+            "## Upstream learnings (non-obvious gotchas from dependency topics)\n"
+            "These COMPLEMENT the handoffs above — never a re-statement of them.\n"
+            + dep_block
+        )
+    own_block = _render_learnings_lines(own_learnings or [])
+    if own_block:
+        own_block = (
+            "## This topic's own prior learnings (an earlier attempt — refine, don't repeat)\n"
+            + own_block
+        )
     context = "\n\n".join(p for p in (
         narrative,
+        dep_block,
         f"## Topic {topic['id']}: {topic['title']}\n"
         f"{(topic.get('objective') or '').strip()}",
+        own_block,
+        _LEARNINGS_INSTRUCTION,
     ) if p)
 
     task_specs = tuple(
@@ -217,12 +260,18 @@ def topic_source_of_truth_for_thread(db, thread_id: str | None) -> str:
 
 
 def hydrate_for_topic(db, project_id: str, topic: dict) -> TopicPromptPayload:
-    """DB wrapper: dep-topic rows + topo-ordered tasks → build_topic_hydration."""
-    from dbops import db_topics
+    """DB wrapper: dep-topic rows + topo-ordered tasks → build_topic_hydration,
+    plus the gl-hydrate learnings channels — upstream dep-topic learnings and
+    (on re-dispatch) this topic's OWN prior learnings."""
+    from dbops import db_graph, db_topics
 
     project = db.get_project(project_id) or {}
-    deps = [db_topics.get_topic(db, t)
-            for t in db_topics.derived_topic_deps(db, topic["id"])]
+    dep_topic_ids = db_topics.derived_topic_deps(db, topic["id"])
+    deps = [d for t in dep_topic_ids if (d := db_topics.get_topic(db, t))]
     tasks = db_topics.list_topic_tasks(db, topic["id"])
+    dep_learnings = _aggregate_dep_learnings(db, dep_topic_ids)
+    own_learnings = _by_recency(db_graph.read_learnings(db, topic_id=topic["id"])["items"])
     return build_topic_hydration(project.get("objective") or "", topic,
-                                 [d for d in deps if d], tasks)
+                                 deps, tasks,
+                                 dep_learnings=dep_learnings,
+                                 own_learnings=own_learnings)
