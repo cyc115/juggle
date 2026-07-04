@@ -337,6 +337,37 @@ def test_reconcile_auto_clears_stale_unmerged_escalation(tmp_path):
     assert note is not None, "an INFO notification must be emitted for the auto-clear"
 
 
+def test_clear_helper_acks_only_marker_linked_items(tmp_path):
+    """The integrate happy path calls clear_stale_unmerged_escalations directly
+    (it never passes through orphan reconcile). Pin that contract: the helper
+    acks exactly the marker-linked UNMERGED item(s) for the topic and nothing
+    else, and is a no-op the second time (idempotent)."""
+    from dbops import orphan_guard
+
+    db = _make_db(tmp_path)
+    _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    # File the UNMERGED item (records the action_item_id on the marker event).
+    from datetime import datetime, timedelta, timezone
+    _stamp_child_verified_at(
+        db, "T1-t0",
+        iso_ts=(datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat(),
+    )
+    assert orphan_guard.flag_unmerged_completed_topics(db) == ["T1"]
+    linked = next(i for i in db.get_open_action_items() if "T1" in i["message"])
+
+    # An unrelated open item — never touched.
+    other = db.add_action_item(thread_id="thr-1", message="unrelated", type_="manual_step")
+
+    dismissed = orphan_guard.clear_stale_unmerged_escalations(db, "T1")
+    assert dismissed == [linked["id"]]
+    open_ids = {i["id"] for i in db.get_open_action_items()}
+    assert linked["id"] not in open_ids
+    assert other in open_ids
+
+    # Idempotent: nothing left to clear on a second call.
+    assert orphan_guard.clear_stale_unmerged_escalations(db, "T1") == []
+
+
 def test_reconcile_skips_truly_unmerged_branch(tmp_path):
     """A branch NOT reachable from main is a genuine orphan — never reconciled,
     still flagged."""

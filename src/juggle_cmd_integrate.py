@@ -244,6 +244,21 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         # binding still resolves).
         _record_merged_sha(db, thread_uuid, main_repo_path, result.landed_rev)
 
+        # ── 7b. Auto-ack a stale completed-but-UNMERGED escalation ───────────
+        # The happy integrate path stamps merged_sha via set_topic_merged_sha and
+        # never passes through orphan reconcile, so the watchdog's UNMERGED item
+        # (if one was filed while this topic sat unmerged) would otherwise linger
+        # (2026-07-04 autoclear fix). Gate on merged_sha actually landing — a
+        # phantom/pending SHA leaves it NULL and must NOT clear the blocker.
+        try:
+            from dbops import db_topics as _dbt
+            from dbops.orphan_guard import clear_stale_unmerged_escalations
+            _topic = _dbt.get_topic_by_thread(db, thread_uuid)
+            if _topic and (_topic.get("merged_sha") or "").strip():
+                clear_stale_unmerged_escalations(db, _topic["id"])
+        except Exception:
+            pass
+
         # ── 8. Remove worktree + branch ───────────────────────────────────────
         backend.remove_workspace(main_repo_path, worktree_path)
 
