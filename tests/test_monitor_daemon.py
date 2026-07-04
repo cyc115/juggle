@@ -109,3 +109,43 @@ def test_three_or_fewer_same_kind_are_not_coalesced(tmp_path):
         results, _ = _poll_once(conn, 0)
 
     assert len(results) == 3
+
+
+def test_dispatch_failed_orchestrator_row_is_emitted(tmp_path):
+    """df-monitor-dispatch (2026-07-03 dispatch-wedge incident, defect 3): a HIGH
+    dispatch failure escalated to the orchestrator must push as a monitor event,
+    not only land in the action-item feed. Intermediate watchdog-handled retries
+    stay suppressed."""
+    d = _db(tmp_path)
+    # Attempts 1..N-1 stay watchdog-handled — suppressed (no push spam).
+    d.emit_event(
+        None, "⬢ dispatch retry 1 failed", "s",
+        kind=ek.DISPATCH_FAILED, handled_by="watchdog",
+    )
+    # Final exhaustion escalates to the orchestrator — must be emitted.
+    d.emit_event(
+        None, "⬢ dispatch failed: T-foo wedged", "s",
+        kind=ek.DISPATCH_FAILED, handled_by="orchestrator",
+    )
+
+    with d._connect() as conn:
+        results, _ = _poll_once(conn, 0)
+
+    assert len(results) == 1
+    assert results[0][1] == "⬢ dispatch failed: T-foo wedged"
+
+
+def test_running_orphan_orchestrator_row_is_emitted(tmp_path):
+    """df-monitor-dispatch: an unrecoverable running-orphan escalated to the
+    orchestrator pushes as a monitor event."""
+    d = _db(tmp_path)
+    d.emit_event(
+        None, "⬢ running-orphan: T-bar has no worktree/agent", "s",
+        kind=ek.RUNNING_ORPHAN, handled_by="orchestrator",
+    )
+
+    with d._connect() as conn:
+        results, _ = _poll_once(conn, 0)
+
+    assert len(results) == 1
+    assert results[0][1] == "⬢ running-orphan: T-bar has no worktree/agent"

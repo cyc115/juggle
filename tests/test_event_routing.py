@@ -8,10 +8,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dbops import event_kinds as ek
 
 
-def test_sixteen_kinds_defined():
+def test_eighteen_kinds_defined():
     """irl-envelope T2 adds integrate_failed + machinery_error to T1a's 12;
-    irl-retry T3 adds repair_exhausted; irl-repair T4 adds repair_dispatched."""
-    assert len(ek.ALL_KINDS) == 16
+    irl-retry T3 adds repair_exhausted; irl-repair T4 adds repair_dispatched;
+    df-monitor-dispatch adds dispatch_failed + running_orphan."""
+    assert len(ek.ALL_KINDS) == 18
+
+
+def test_dispatch_failure_kinds_default_watchdog_overridable_to_orchestrator():
+    """df-monitor-dispatch (2026-07-03 dispatch-wedge, defect 3): routine dispatch
+    retries + orphan recovery stay DB-row-only (watchdog default); the emitter
+    escalates handled_by='orchestrator' on exhaustion so the monitor pushes it."""
+    for kind in (ek.DISPATCH_FAILED, ek.RUNNING_ORPHAN):
+        assert ek.handled_by_for_kind(kind) == "watchdog"
+        assert not ek.is_pushable(ek.handled_by_for_kind(kind))
+        assert ek.is_pushable("orchestrator")  # override path pushes
 
 
 def test_repair_dispatched_is_watchdog_not_pushable():

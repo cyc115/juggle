@@ -33,6 +33,8 @@ INTEGRATE_FAILED = "integrate_failed"
 MACHINERY_ERROR = "machinery_error"
 REPAIR_EXHAUSTED = "repair_exhausted"
 REPAIR_DISPATCHED = "repair_dispatched"
+DISPATCH_FAILED = "dispatch_failed"
+RUNNING_ORPHAN = "running_orphan"
 
 ALL_KINDS = frozenset(
     {
@@ -52,6 +54,8 @@ ALL_KINDS = frozenset(
         MACHINERY_ERROR,
         REPAIR_EXHAUSTED,
         REPAIR_DISPATCHED,
+        DISPATCH_FAILED,
+        RUNNING_ORPHAN,
     }
 )
 
@@ -81,6 +85,13 @@ HANDLED_BY = {
     # worktree — FYI only, DB row (never pushed; the orchestrator learns of the
     # outcome via the repair's own integrate result, not this dispatch notice).
     REPAIR_DISPATCHED: "watchdog",
+    # df-monitor-dispatch (2026-07-03 dispatch-wedge, defect 3): dispatch/worktree
+    # retries and running-orphan recovery are watchdog playbooks — routine attempts
+    # stay DB-row-only. On FINAL retry exhaustion or an unrecoverable running-orphan,
+    # the emitter overrides handled_by='orchestrator' (triage-ladder escalation), so
+    # the monitor pushes it as an event instead of only the action-item feed.
+    DISPATCH_FAILED: "watchdog",
+    RUNNING_ORPHAN: "watchdog",
 }
 
 # handled_by values that are pushed (to a human or the orchestrator) rather
