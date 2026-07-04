@@ -40,6 +40,35 @@ def claim_topic(db, topic_id: str) -> bool:
         return won == 1
 
 
+# Active (in-flight) topic states — a topic in one of these is driving a coder in
+# its bound worktree RIGHT NOW (mirrors the graph_tick in_flight tally).
+_ACTIVE_TOPIC_STATES = ("dispatching", "running", "integrating")
+
+
+def reusable_thread(db, reuse_tid, topic_id):
+    """The surfacing thread graph_tick should REUSE for ``topic_id``, or None to
+    mint a fresh one.
+
+    Reuse the topic's already-bound conversation UNLESS it is gone, or it is
+    already the dispatch thread of another ACTIVE topic (F2 fan-in guard,
+    2026-07-04 dual-dispatch-binding-rca). Reusing a thread already driving
+    another live topic would put two coders in one worktree (the 2026-07-03
+    corruption). F1 prevents such a binding at add-task time; this defends a DB
+    that already contains one. Returning None makes graph_tick create + rebind a
+    fresh thread — self-healing the stale fan-in binding for this topic."""
+    if not reuse_tid or db.get_thread(reuse_tid) is None:
+        return None
+    ph = ",".join("?" * len(_ACTIVE_TOPIC_STATES))
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM nodes n JOIN node_edges e ON e.node_id=n.id "
+            "AND e.kind='dispatch' WHERE n.kind='topic' AND e.depends_on_id=? "
+            f"AND n.id!=? AND n.state IN ({ph}) LIMIT 1",
+            (reuse_tid, topic_id, *_ACTIVE_TOPIC_STATES),
+        ).fetchone()
+    return None if row else reuse_tid
+
+
 def sweep_stale_topic_claims(db, project_id: str) -> list[str]:
     """dispatching >10 min with no thread → ready (crash-safe, idempotent)."""
     cutoff = (

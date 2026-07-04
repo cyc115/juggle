@@ -227,10 +227,10 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
             # minting a second "[T-<id>]" mirror row. Reuse it even when archived,
             # so an explicitly-archived surface is never resurrected as a fresh
             # mirror — ONE conversation row per task, ever.
-            reuse_tid = topic.get("thread_id")
-            thread_id = reuse_tid if (
-                reuse_tid and db.get_thread(reuse_tid) is not None
-            ) else None
+            # Reuse the topic's bound surfacing thread, UNLESS it is gone or is
+            # already driving another active topic (F2 fan-in guard) — see
+            # reusable_thread. None here → create + rebind a fresh thread below.
+            thread_id = reusable_thread(db, topic.get("thread_id"), tid)
             try:
                 if thread_id is None:
                     thread_id = db.create_thread(
@@ -405,5 +405,5 @@ def _session_id(db) -> str:
 # Topic claim/sweep/give-up live in juggle_graph_dispatch_topics (LOC gate),
 # re-exported here for graph_tick + callers/tests (bottom import breaks the cycle).
 from juggle_graph_dispatch_topics import (  # noqa: E402, F401
-    _give_up_topic_dispatch, claim_topic, sweep_stale_topic_claims)
+    _give_up_topic_dispatch, claim_topic, reusable_thread, sweep_stale_topic_claims)
 
