@@ -10,6 +10,35 @@ isolated, populated DB so the render is deterministic.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+
+def hermetic_smoke_env(run_dir: str | Path) -> dict[str, str]:
+    """Env overlay that makes a child cockpit's smoke run HERMETIC.
+
+    The cockpit's on_mount ensure-exists a DETACHED watchdog. Seeded against a
+    temp smoke DB (esp. the --smoke-plan graph fixture) that watchdog behaves as
+    a REAL orchestrator: it dispatches the fixture's placeholder nodes as tmux
+    coder agents, creating real worktrees/branches off the PROD repo, and writes
+    agent_complete/graph_mark_task events to the GLOBAL spool where the PROD
+    watchdog drains and dead-letters them (2026-07-04 incident: leaked daemon,
+    cyc_AA..cyc_AE orphan branches, "SystemExit code=1" dead-letter storm).
+
+    This overlay closes both seams so a smoke run can never reach production:
+      * JUGGLE_WATCHDOG_DISABLE_SPAWN=1 — ``ensure_watchdog`` never launches a
+        real detached daemon, so nothing dispatches (no tmux server, no repo
+        worktrees, no branches).
+      * JUGGLE_SPOOL_DIR — a per-run spool dir honored by both the writer and
+        the drain (see ``juggle_spool_paths.spool_dir``), so any spool event
+        lands here and can never reach the prod drain.
+    """
+    spool = Path(run_dir) / "spool"
+    spool.mkdir(parents=True, exist_ok=True)
+    return {
+        "JUGGLE_WATCHDOG_DISABLE_SPAWN": "1",
+        "JUGGLE_SPOOL_DIR": str(spool),
+    }
+
 
 def seed_smoke_db(db_path: str, n_threads: int = 30) -> str:
     """Seed an isolated juggle.db with `n_threads` topics so the cockpit body

@@ -24,7 +24,8 @@ def cmd_cockpit(args):
         import json as _json
         import tempfile
         from juggle_smoke import (
-            load_viewports, run_smoke, seed_smoke_db, seed_smoke_graph_db,
+            hermetic_smoke_env, load_viewports, run_smoke,
+            seed_smoke_db, seed_smoke_graph_db,
         )
 
         vp_path = Path(__file__).parent.parent / "config" / "viewports.yaml"
@@ -47,7 +48,14 @@ def cmd_cockpit(args):
 
         plan_mode = getattr(args, "smoke_plan", False)
 
-        def _run(seeded_db):
+        def _run(seeded_db, run_dir):
+            # The child cockpit's on_mount ensure-exists a DETACHED watchdog;
+            # against a seeded smoke DB that daemon behaves as a REAL orchestrator
+            # (dispatches fixture nodes → real tmux agents + worktrees/branches off
+            # the PROD repo, and writes to the GLOBAL spool the prod watchdog drains
+            # → 2026-07-04 dead-letter storm). The hermetic overlay disables the
+            # real daemon spawn and redirects the spool to a per-run dir so the
+            # smoke run can never reach production.
             return run_smoke(
                 viewports,
                 db_path=seeded_db,
@@ -55,21 +63,22 @@ def cmd_cockpit(args):
                 interactive=interactive,
                 graph_mode=getattr(args, "smoke_graph", False),
                 plan_mode=plan_mode,
+                env=hermetic_smoke_env(run_dir),
             )
 
-        if db_path:
-            # Caller supplied an explicit DB — honour it.
-            results = _run(db_path)
-        else:
-            # No --db: seed an isolated, populated DB so the cockpit renders
-            # deterministically and never touches the shared production DB
-            # (which an agent/worktree context refuses to migrate → crash).
-            # The Plan view needs an armed project with a real dependency DAG,
-            # so --smoke-plan seeds the graph-shaped fixture instead.
-            with tempfile.TemporaryDirectory(prefix="juggle-smoke-") as _td:
+        with tempfile.TemporaryDirectory(prefix="juggle-smoke-") as _td:
+            if db_path:
+                # Caller supplied an explicit DB — honour it (still hermetic).
+                results = _run(db_path, _td)
+            else:
+                # No --db: seed an isolated, populated DB so the cockpit renders
+                # deterministically and never touches the shared production DB
+                # (which an agent/worktree context refuses to migrate → crash).
+                # The Plan view needs an armed project with a real dependency DAG,
+                # so --smoke-plan seeds the graph-shaped fixture instead.
                 _db_file = str(Path(_td) / "juggle.db")
                 seeded = seed_smoke_graph_db(_db_file) if plan_mode else seed_smoke_db(_db_file)
-                results = _run(seeded)
+                results = _run(seeded, _td)
 
         any_fail = any(not r.get("pass") for r in results)
         if getattr(args, "json_out", False):

@@ -57,6 +57,7 @@ def load_viewports(path: str | Path) -> dict:
 # re-exported here so `from juggle_smoke import seed_smoke_db, seed_smoke_graph_db`
 # keeps working (extracted to hold this module under the 300-line LOC gate).
 from juggle_smoke_seed import (  # noqa: E402,F401 — re-exported public API
+    hermetic_smoke_env,
     seed_smoke_db,
     seed_smoke_graph_db,
 )
@@ -203,6 +204,7 @@ def run_smoke(
     interactive: bool = False,
     graph_mode: bool = False,
     plan_mode: bool = False,
+    env: dict | None = None,
 ) -> list[dict]:
     """Render each viewport profile, run heuristics, dump frames.
 
@@ -220,7 +222,7 @@ def run_smoke(
         cols, rows = profile["cols"], profile["rows"]
         rec: dict = {"profile": name, "cols": cols, "rows": rows}
         try:
-            with open_cockpit_pty(profile, db_path=db_path) as handle:
+            with open_cockpit_pty(profile, db_path=db_path, env=env) as handle:
                 grid = capture_body_frame(handle, rows)
 
                 if graph_mode or plan_mode:
