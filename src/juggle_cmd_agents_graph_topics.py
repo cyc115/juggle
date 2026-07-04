@@ -18,6 +18,7 @@ import sys
 
 from dbops import event_kinds as _ek
 from dbops.terminal_states import TASK_TERMINAL_STATES as _TASK_TERMINAL
+from dbops.terminal_states import is_success_terminal
 
 
 def check_topic_completion_gate(db, thread_uuid) -> str | None:
@@ -138,12 +139,18 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
         return mark_graph_task(db, thread_uuid, integrate_ok, handoff,
                                session_id, verify_failed=verify_failed)
     tasks = db_topics.list_topic_tasks(db, topic["id"])
-    all_verified = bool(tasks) and all(n["state"] == "verified" for n in tasks)
+    # loop-entity V1 Phase 4 (boundary #2): a deliver loop's member tasks reach
+    # 'delivered' (a success terminal), NOT 'verified'. Gate on the success-terminal
+    # SET (is_success_terminal), not a verified-only literal, so a single-topic
+    # delivery='deliver' loop passes verify_ok=True and mark_topic_completion's
+    # deliver-branch walks it to 'delivered' instead of verify_fail→failed-verify.
+    # A merge topic is unchanged: its tasks are 'verified' (still success-terminal).
+    all_success = bool(tasks) and all(is_success_terminal(n["state"]) for n in tasks)
     try:
         state = db_topics.mark_topic_completion(
             db, topic["id"],
             integrate_ok=integrate_ok or verify_failed,
-            verify_ok=(not verify_failed) and all_verified,
+            verify_ok=(not verify_failed) and all_success,
             handoff=handoff,
         )
     except db_topics.UnmergedVerifyRefused as e:
@@ -178,15 +185,20 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
         _t = db_topics.get_topic(db, topic["id"]) or {}
         db.close_run(
             thread_uuid, output=handoff, diffstat=_t.get("diffstat"),
-            status="completed" if state == "verified" else "failed",
+            status="completed" if is_success_terminal(state) else "failed",
         )
     except Exception:
         pass
 
-    if state == "verified":
+    # loop-entity V1 Phase 4 (boundary #2): 'delivered' is a SUCCESS terminal too,
+    # so both success terminals emit the success event — never the failure branch
+    # (which would file a bogus 'topic failed (delivered)' HIGH item + propagate a
+    # non-existent failure to dependents).
+    if is_success_terminal(state):
+        verb = "verified (merged)" if state == "verified" else "delivered"
         db.emit_event(
             thread_id=thread_uuid,
-            message=f"⬢ topic {topic['id']} verified (merged)",
+            message=f"⬢ topic {topic['id']} {verb}",
             session_id=session_id,
             kind=_ek.TOPIC_STATUS,
         )

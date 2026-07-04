@@ -49,10 +49,16 @@ class ProjectsMixin:
 
     def list_projects(self, include_archived: bool = False) -> list[dict]:
         with self._connect() as conn:
+            # kind='loop' projects self-schedule (Phase 4/5) and must NOT surface as
+            # armable P-slot projects (critique §11 bullet 2) — excluded from the
+            # default (arming/arm-modal/project-list) feed. include_archived=True is
+            # the "give me everything" path (doctor migrate / graph show) and keeps
+            # loops so they still get migrated.
             q = (
                 "SELECT * FROM projects"
                 if include_archived
-                else "SELECT * FROM projects WHERE status NOT IN ('archived', 'closed')"
+                else "SELECT * FROM projects WHERE status NOT IN ('archived', 'closed') "
+                "AND kind != 'loop'"
             )
             return [dict(r) for r in conn.execute(q).fetchall()]
 
@@ -61,7 +67,7 @@ class ProjectsMixin:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM projects WHERE status NOT IN ('archived', 'closed') "
-                "AND id != 'INBOX' ORDER BY created_at"
+                "AND id != 'INBOX' AND kind != 'loop' ORDER BY created_at"
             ).fetchall()
             return [dict(r) for r in rows]
 

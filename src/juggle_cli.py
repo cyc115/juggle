@@ -117,6 +117,7 @@ from juggle_cmd_graph import register_graph_parsers
 from juggle_cmd_runs import register_runs_parsers
 from juggle_cmd_spool import register_spool_parsers
 from juggle_cli_parsers_project import register_project_parsers
+from juggle_cli_parsers_loop import register_loop_parsers
 from juggle_cli_aliases import cmd_aliases
 from juggle_cli_aliases import rewrite_argv as _rewrite_legacy_argv
 
@@ -216,6 +217,7 @@ def build_cli_parser(vault_path_default: str | None = None):
     register_runs_parsers(subparsers)
     register_spool_parsers(subparsers)
     register_project_parsers(subparsers)
+    register_loop_parsers(subparsers)
     juggle_cmd_autopilot.register(subparsers)
 
     # vault path / vault name — entry-module verbs folded into the `vault` group
