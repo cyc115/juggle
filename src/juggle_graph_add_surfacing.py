@@ -50,7 +50,20 @@ def record_surfacing_conversation(db, topic_id: str, requested_topic) -> None:
         conv = db.get_thread(requested_topic) or db.get_thread_by_user_label(
             requested_topic
         )
-        if conv is not None:
-            db_topics.set_topic_thread(db, topic_id, conv["id"])
+        if conv is None:
+            return
+        # Fan-in guard (2026-07-04 dual-dispatch-binding RCA): refuse to bind a
+        # conversation that is ALREADY another topic's dispatch thread. Without
+        # it, N `add-task --topic <conv>` calls each synthesize a distinct
+        # 'T-<id>' topic and bound ALL of them to the one conversation (bind_
+        # dispatch_thread dedups only on node_id, never the thread) — graph_tick
+        # then reused that single thread per topic, dispatching multiple coders
+        # into one worktree (corruption). The FIRST topic keeps the surfacing
+        # binding; a later topic is left unbound, so graph_tick mints it a fresh
+        # '[T-<id>]' mirror. The owner rebinding itself is still allowed.
+        owner = db_topics.get_topic_by_thread(db, conv["id"])
+        if owner is not None and owner["id"] != topic_id:
+            return
+        db_topics.set_topic_thread(db, topic_id, conv["id"])
     except Exception:
         pass  # a bad --topic never fails the already-committed add
