@@ -180,6 +180,7 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     from juggle_graph_hydration import hydrate_for_topic
     from juggle_graph_scheduler import interleave_ready
     from juggle_land_poller import poll_unlanded_topics
+    from juggle_learnings_rollup import maybe_rollup_learnings, nudge_missing_learnings
     from juggle_watchdog_rebase_nudge import sweep_rebase_nudges, clear_rebase_nudge
 
     stats: dict = {"dispatched": [], "swept": [], "deferred": [], "errors": [], "reconciled": []}
@@ -210,6 +211,10 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
             stats["swept"] += sweep_stale_topic_claims(db, pid)
             poll_unlanded_topics(db, pid)  # SPEC §5.3/§7.5
             db_topics_marking.unblock_topic_dependents(db, pid)  # converge blocked-failed⇄open every tick, not only on lift (T-fix-topic-unblock-sweep 2026-07-04)
+            # gl-rollup: serialized, watchdog-owned learnings push (race-free —
+            # NEVER in the concurrent complete path). Both are internally guarded.
+            maybe_rollup_learnings(db, pid)
+            nudge_missing_learnings(db, pid)
             db_topics.recompute_topic_ready(db, pid)  # raises → poisoned project skipped (R4 blast-radius pin)
             topics = db_topics.list_topics(db, pid)
         except Exception:

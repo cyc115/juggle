@@ -35,6 +35,10 @@ REPAIR_EXHAUSTED = "repair_exhausted"
 REPAIR_DISPATCHED = "repair_dispatched"
 DISPATCH_FAILED = "dispatch_failed"
 RUNNING_ORPHAN = "running_orphan"
+# gl-rollup (graph-node learnings, spec §5 + Final revision 3): the watchdog
+# tick rolled up learnings written since the last per-project watermark — the
+# orchestrator triages them (commands/start.md). Routing derived, not manual.
+LEARNINGS_ROLLUP = "learnings_rollup"
 
 ALL_KINDS = frozenset(
     {
@@ -56,6 +60,7 @@ ALL_KINDS = frozenset(
         REPAIR_DISPATCHED,
         DISPATCH_FAILED,
         RUNNING_ORPHAN,
+        LEARNINGS_ROLLUP,
     }
 )
 
@@ -92,6 +97,9 @@ HANDLED_BY = {
     # the monitor pushes it as an event instead of only the action-item feed.
     DISPATCH_FAILED: "watchdog",
     RUNNING_ORPHAN: "watchdog",
+    # gl-rollup: the orchestrator reads/triages the rolled-up learnings — the
+    # judgment step of the triage ladder. Derived routing (no manual handled_by).
+    LEARNINGS_ROLLUP: "orchestrator",
 }
 
 # handled_by values that are pushed (to a human or the orchestrator) rather
