@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 # the worker-scoped session helper is importable from here too.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from juggle_db import JuggleDB
-from juggle_watchdog_singleton import PROD_DB_PATH, find_watchdog_pids
+from juggle_watchdog_singleton import PROD_DB_PATH
 
 from _xdist_isolation import watchdog_session_name
 
