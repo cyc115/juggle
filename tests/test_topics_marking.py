@@ -114,3 +114,28 @@ def test_submitted_rev_idempotent_on_already_unlanded(db):
     state = t.mark_topic_completion(db, "T5", integrate_ok=True, submitted_rev="cyc_T5")
 
     assert state == "integrated-unlanded"
+
+
+def test_db_topics_marking_importable_before_db_topics():
+    """Regression pin (2026-07-04, red-suite repair): db_topics_marking and
+    db_topics form a re-export cycle (marking's top-level `from dbops.db_topics
+    import ...` ↔ db_topics's bottom `from dbops.db_topics_marking import ...`).
+    Whichever module loads FIRST left the other's names undefined, so importing
+    db_topics_marking before db_topics raised `ImportError: cannot import name
+    'mark_topic_completion' from partially initialized module`. Any test whose
+    import chain reached db_topics_marking first (e.g. test_integrate importing
+    juggle_cmd_integrate) died on collect. A FRESH interpreter is required —
+    this module already imported db_topics at top, which masks the order bug."""
+    import subprocess
+
+    src = os.path.join(os.path.dirname(__file__), "..", "src")
+    proc = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, sys.argv[1]); "
+         "import dbops.db_topics_marking as m; "
+         "assert callable(m.mark_topic_completion); print('ok')",
+         src],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "ok" in proc.stdout

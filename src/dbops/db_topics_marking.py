@@ -12,12 +12,14 @@ or the derive-and-sync reconcile (db_topics_reconcile).
 
 from __future__ import annotations
 
-from dbops.db_topics import (
-    get_topic,
-    set_topic_handoff,
-    set_topic_submitted_rev,
-    topic_transition,
-)
+# db_topics is imported at FUNCTION level below, not here: this module and
+# db_topics form a re-export cycle (db_topics's bottom does `from
+# dbops.db_topics_marking import ...`). A top-level `from dbops.db_topics import
+# ...` here made import order matter — whichever module loaded first left the
+# other's names undefined, raising `ImportError: cannot import name
+# 'mark_topic_completion' from partially initialized module`. Deferring the
+# import (the same pattern unblock_topic_dependents / db_topics_reconcile use)
+# breaks the cycle. Pinned by test_db_topics_marking_importable_before_db_topics.
 from dbops.schema import _now
 
 
@@ -104,6 +106,13 @@ def mark_topic_completion(db, topic_id, *, integrate_ok, verify_ok=True,
     Prevents a task stuck at 'running' when an out-of-band integrate + a
     racing complete-agent both succeed (2026-06-11 bug I).
     """
+    from dbops.db_topics import (
+        get_topic,
+        set_topic_handoff,
+        set_topic_submitted_rev,
+        topic_transition,
+    )
+
     topic = get_topic(db, topic_id)
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
@@ -136,6 +145,8 @@ def mark_topic_integrating(db, topic_id, *, handoff=None) -> str:
     the watchdog reconcile/reintegrate tick applies the final verdict from git
     reality. Stores ``handoff`` (mirrors mark_topic_completion). Idempotent when
     the topic is already 'integrating'."""
+    from dbops.db_topics import get_topic, set_topic_handoff, topic_transition
+
     topic = get_topic(db, topic_id)
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
@@ -157,6 +168,8 @@ def mark_topic_integrating(db, topic_id, *, handoff=None) -> str:
 def mark_topic_exec_failed(db, topic_id) -> str:
     """Agent death / give-up: walk the topic legally to 'failed-exec'
     (mirror of db_graph.mark_exec_failed — read it and follow its walk)."""
+    from dbops.db_topics import get_topic, topic_transition
+
     topic = get_topic(db, topic_id)
     if topic is None:
         raise ValueError(f"graph topic not found: {topic_id!r}")
@@ -177,6 +190,8 @@ def mark_topic_exec_failed(db, topic_id) -> str:
 def propagate_topic_failure(db, topic_id) -> list[str]:
     """Block transitive DERIVED dependents of a failed topic (blocked-failed).
     Mirror of db_graph.propagate_failure over derived topic deps (node_edges)."""
+    from dbops.db_topics import get_topic, topic_transition
+
     blocked: list[str] = []
     frontier = [topic_id]
     while frontier:

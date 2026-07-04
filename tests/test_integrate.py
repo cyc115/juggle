@@ -677,8 +677,10 @@ def test_integrate_rebase_conflict_aborts_files_action_item(git_repo, tmp_path):
         ["git", "-C", git_repo, "branch"], capture_output=True, text=True
     ).stdout
     assert "cyc_CD" in branches                    # branch preserved
-    db.add_action_item.assert_called_once()
-    ai_msg = db.add_action_item.call_args[1]["message"]
+    # record_refusal files via add_action_item_once (dedup, 2026-07-04
+    # fix-conflict-envelope-routing).
+    db.add_action_item_once.assert_called_once()
+    ai_msg = db.add_action_item_once.call_args[1]["message"]
     assert "conflict.py" in ai_msg
 
 
@@ -699,7 +701,9 @@ def test_integrate_red_tests_prevents_merge(git_repo, tmp_path):
 
     assert not ok
     assert not (Path(git_repo) / "new.py").exists()   # NOT merged
-    db.add_action_item.assert_called_once()
+    # record_refusal files via add_action_item_once (dedup, 2026-07-04
+    # fix-conflict-envelope-routing).
+    db.add_action_item_once.assert_called_once()
 
 
 def test_integrate_already_merged_skips_straight_to_cleanup(git_repo, tmp_path):
@@ -765,7 +769,10 @@ def test_integrate_backend_for_raising_reported_cleanly_not_masked_pin(git_repo,
 
     assert not ok
     assert "boom" in msg  # original exception surfaced, not masked
-    db.add_action_item.assert_called_once()
+    # record_refusal files via add_action_item_once (dedup, 2026-07-04
+    # fix-conflict-envelope-routing) — a re-driven gate must not stack
+    # byte-identical HIGH items; the _fail path is the deduped one.
+    db.add_action_item_once.assert_called_once()
 
 
 # ── cmd_complete_agent routing test ──────────────────────────────────────────
@@ -975,7 +982,9 @@ def test_integrate_direct_main_checked_out_on_wrong_branch_fails_loudly_pin(git_
         capture_output=True, text=True,
     ).stdout.strip()
     assert main_sha_after == main_sha_before, "main was advanced despite wrong HEAD branch"
-    db.add_action_item.assert_called_once()
+    # _fail → record_refusal → add_action_item_once (dedup, 2026-07-04
+    # fix-conflict-envelope-routing).
+    db.add_action_item_once.assert_called_once()
 
 
 def test_integrate_direct_test_retry_merges_on_transient_failure_pin(git_repo_with_remote, tmp_path):
