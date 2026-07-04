@@ -42,6 +42,7 @@ _TOPIC_SELECT = (
     "(SELECT depends_on_id FROM node_edges WHERE node_id=nodes.id AND kind='dispatch' "
     "LIMIT 1) AS thread_id, merged_sha, submitted_rev, pending_merged_sha, "
     "pending_merged_repo, handoff, diffstat, plan_path, spec_path, worktree_branch, "
+    "main_repo_path, "
     f"fail_envelope, verified_at, priority, created_at, updated_at FROM nodes WHERE {_TOPIC_ONLY}"
 )
 

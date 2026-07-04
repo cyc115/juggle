@@ -88,42 +88,6 @@ def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
     return backend.is_ancestor(repo, sha, main)
 
 
-def branch_content_landed(repo: str, branch: str, *, main: str = "main") -> bool:
-    """Tier-2 landed check: every commit on ``branch`` has a content-equivalent
-    already on ``main`` (``git cherry`` / patch-id), i.e. the work landed via a
-    rebase / cherry-pick / squash under a DIFFERENT sha. Ancestry
-    (``sha_is_ancestor``) is blind to this (2026-07-03 integrate-wedge
-    amendment). Fail-closed on a missing repo / branch / git error."""
-    if not repo or not branch or not Path(repo).exists():
-        return False
-    backend = _backend_for_fail_closed(repo)
-    if backend is None:
-        return False
-    return backend.commits_landed(repo, branch, main)
-
-
-def resolve_landed_sha(repo: str, branch: str, *, main: str = "main") -> str:
-    """Two-tier LANDED oracle → a REAL ancestor-of-``main`` sha proving
-    ``branch``'s work is on main, or '' when it is genuinely unmerged.
-
-    Tier 1 (ancestry, the ff/true-merge common case): if the branch tip is an
-    ancestor of main, return the tip itself. Tier 2 (content-equivalence, the
-    rebase/cherry-pick/squash case ancestry cannot see): if every branch commit
-    has a patch-equivalent on main (``branch_content_landed``), return main's
-    tip — a genuine ancestor that CONTAINS the equivalents, never the unmerged
-    branch tip. This keeps verified ⟺ merged (the recorded sha is always an
-    ancestor of main) while recognising a rebased landing so the re-integrate
-    driver records it instead of RE-MERGING already-landed work. Fail-closed."""
-    tip = resolve_branch_sha(repo, branch)
-    if tip and sha_is_ancestor(repo, tip, main=main):
-        return tip
-    if branch_content_landed(repo, branch, main=main):
-        trunk_sha = resolve_branch_sha(repo, main)
-        if trunk_sha and sha_is_ancestor(repo, trunk_sha, main=main):
-            return trunk_sha
-    return ""
-
-
 def thread_solely_bound_to(db, thread_id: str, topic_id: str) -> bool:
     """True iff ``thread_id`` is dispatch-bound to ``topic_id`` and to no
     OTHER node (T-fix-backfill-sha-misattribution). dispatch_edge only
@@ -152,13 +116,16 @@ def thread_solely_bound_to(db, thread_id: str, topic_id: str) -> bool:
 def _resolve_topic_repo(db, topic: dict) -> str:
     """Resolve the repo that holds ``main`` for this topic's merged_sha check.
 
-    Primary: the bound thread's main_repo_path. Next: the topic's own
+    Primary: the bound thread's main_repo_path. Next: the topic NODE's own
+    ``main_repo_path`` (stamped at dispatch) — it SURVIVES ``_run_integrate``
+    clearing the thread's fields on a successful land, so a topic verified /
+    re-integrated after its thread is torn down is still repo-resolvable (the
+    2026-07-03 integrate-wedge re-integrate driver needs this to complete an
+    external-repo topic to 'verified'; mirrors orphan_guard._node_repo, which
+    already reads the node's main_repo_path). Next: the topic's own
     ``pending_merged_repo`` breadcrumb (2026-07-02 async-land incident) — the
-    repo a resolved-but-unproven SHA was recorded in, which survives
-    ``_run_integrate`` clearing the thread's fields on success (and is correct
-    for ANY repo, not just juggle's own). Last resort: juggle's own repo —
-    integrate clears main_repo_path on success, but a recorded merged_sha for a
-    self-repo topic must still be checkable afterward (and on orphan recovery).
+    repo a resolved-but-unproven SHA was recorded in. Last resort: juggle's own
+    repo — a recorded merged_sha for a self-repo topic must still be checkable.
     """
     thread_id = topic.get("thread_id")
     if thread_id:
@@ -169,6 +136,9 @@ def _resolve_topic_repo(db, topic: dict) -> str:
         repo = (thread.get("main_repo_path") or "").strip()
         if repo:
             return repo
+    node_repo = (topic.get("main_repo_path") or "").strip()
+    if node_repo:
+        return node_repo
     pending_repo = (topic.get("pending_merged_repo") or "").strip()
     if pending_repo:
         return pending_repo
@@ -296,3 +266,13 @@ def diagnose_agent_db_error(exc: BaseException) -> str:
         f"instead. NOT a sign the schema is missing anything — agents never "
         f"run schema changes against the shared DB (G2)."
     )
+
+
+# ── two-tier LANDED oracle (extracted to dbops.landed, LOC gate) ─────────────
+# Re-exported so the existing graph_guards.resolve_landed_sha call/patch surface
+# is unchanged. The import sits at the bottom, after the ancestry primitives it
+# depends on are defined, so the dbops.landed → graph_guards back-import resolves.
+from dbops.landed import (  # noqa: E402,F401
+    branch_content_landed,
+    resolve_landed_sha,
+)

@@ -203,6 +203,20 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
     from juggle_graph_repair import run_repair_sweeps
     stats["repaired"] = run_repair_sweeps(db, all_projects, dispatch, _session_id(db))
 
+    # integrate-wedge fix 1 (2026-07-03): level-triggered re-integrate driver.
+    # Re-drives topics wedged in 'integrating' (a missed one-shot integrate) —
+    # heals a LANDED topic (incl. rebased) to verified, idempotently re-runs
+    # integrate on genuinely-unmerged work, and routes a real failure to
+    # failed-integration (→ the repair sweep above). Fail-soft: never downs the
+    # tick. Ordered after repair so a just-routed failure is picked up next tick.
+    try:
+        from juggle_graph_reintegrate import sweep_reintegrate
+        stats["reintegrated"] = sweep_reintegrate(
+            db, all_projects, session_id=_session_id(db)
+        )
+    except Exception:
+        _log.exception("graph tick: re-integrate driver failed — continuing")
+
     ready_by_project: dict[str, list[dict]] = {}
     in_flight: dict[str, int] = {}
     for pid in all_projects:
