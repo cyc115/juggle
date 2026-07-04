@@ -30,8 +30,8 @@ import re
 import sys
 from datetime import datetime, timedelta, timezone
 
-from dbops import db_graph, db_topics
 from dbops.schema import _now
+from juggle_loop_instantiate import instantiate_topic
 from juggle_loop_template_validator import LoopTemplateError, validate_loop_template
 
 _CADENCE_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -108,38 +108,13 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
             (project_id, name or f"loop {loop_id}", objective, "[]", "", ts, ts),
         )
 
-        topic_id = f"{prefix}{topic['id']}"
-        db_topics.create_topic(
-            db, topic_id=topic_id, project_id=project_id,
-            title=topic["title"], objective=topic["objective"], conn=conn,
+        # Shared writer with the Phase-5 re-fire (juggle_loop_instantiate) — one
+        # source of truth for how an iteration's nodes/edges are laid down. Only
+        # role + delivery are persisted in V1 (no nodes.model column yet; the
+        # validator still partitions on `model` but it is not stored — V2).
+        topic_id, node_ids = instantiate_topic(
+            db, conn, project_id=project_id, prefix=prefix, topic=topic,
         )
-        conn.execute(
-            "UPDATE nodes SET delivery=?, role=? WHERE id=? AND kind='topic'",
-            (topic["delivery"], topic["role"], topic_id),
-        )
-
-        node_ids = [topic_id]
-        for task in topic["tasks"]:
-            tid = f"{prefix}{task['id']}"
-            db_graph.create_task(
-                db, task_id=tid, project_id=project_id, title=task["title"],
-                prompt=task["prompt"], verify_cmd=task["verify_cmd"], conn=conn,
-            )
-            db_graph.set_task_topic(db, tid, topic_id, conn=conn)
-            # Only role + delivery are persisted in V1 — there is no nodes.model
-            # column yet. The validator still partitions on `model` (differing
-            # models must live in separate topics), but the model-claim predicate +
-            # per-node model persistence are deferred to V2 (plan §6 / critique
-            # Axis-3): a pinned `model` is validated-for-partition, not stored.
-            conn.execute(
-                "UPDATE nodes SET role=?, delivery=? WHERE id=? AND kind='task'",
-                (task["role"], task["delivery"], tid),
-            )
-            node_ids.append(tid)
-        for task in topic["tasks"]:
-            deps = sorted(f"{prefix}{d}" for d in task["deps"])
-            if deps:
-                db_graph.replace_edges(db, f"{prefix}{task['id']}", deps, conn=conn)
 
         conn.execute(
             "INSERT INTO loops (id, project_id, thread_id, cadence, status, run_seq, "

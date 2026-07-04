@@ -145,9 +145,14 @@ def test_loop_create_atomic_rollback_on_graph_failure(db, monkeypatch):
     """§Axis-5 LOAD-BEARING: a failure mid-create (after the project + topic are
     written) rolls the WHOLE transaction back — NO projects row, NO loops row, NO
     orphan nodes. A half-created kind='loop' project must never claim a P-slot."""
+    # create_task is now called through the shared juggle_loop_instantiate writer
+    # (Phase-5 refactor: one iteration-materialization seam for create + re-fire).
+    # Inject the mid-create failure at that new seam — same rollback behavior pinned.
+    import juggle_loop_instantiate as li
+
     def _boom(*a, **k):
         raise RuntimeError("injected mid-create failure")
-    monkeypatch.setattr(lc.db_graph, "create_task", _boom)
+    monkeypatch.setattr(li.db_graph, "create_task", _boom)
 
     with pytest.raises(RuntimeError, match="injected"):
         create_loop_atomic(db, template=_single_topic_template(), cadence="every 1h")

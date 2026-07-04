@@ -321,14 +321,10 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     except Exception:
         _log.exception("Watchdog: daemon reaper tick failed — continuing")
 
-    # Graph claim-dispatch tick (autopilot Phase 2, DA B4/M1) — guarded so a bug never downs the daemon.
-    try:
-        from juggle_graph_dispatch import graph_tick
-        graph_tick(db, mgr)
-        from juggle_graph_repair import run_tick_sweeps  # T1c: TTL + notif reconcile
-        run_tick_sweeps(db)
-    except Exception:
-        _log.exception("Watchdog: graph dispatch tick failed — continuing")
+    # Graph claim-dispatch + loop-fire tick (extracted to juggle_watchdog_loop_tick
+    # for the daemon LOC budget) — guarded internally so a bug never downs the tick.
+    from juggle_watchdog_loop_tick import run_graph_and_loop_ticks
+    run_graph_and_loop_ticks(db, mgr, session_id)
     from juggle_topic_reconcile import tick_sweep as _ts  # F5 conversation-topic sweep
     _ts(db)
 
