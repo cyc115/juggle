@@ -17,6 +17,24 @@ from pathlib import Path
 
 from juggle_spool_paths import spool_dead_dir, spool_dir
 
+# ── transient-missing retry classifier (T-fix-spool-drain-systemexit) ──────────
+# A not-found precondition (target thread/task absent) is the handler's FIRST
+# check — side-effect-free and often TRANSIENT: the target row is created moments
+# earlier by another context and lands on a LATER drain (every dead-lettered
+# event applied cleanly on manual replay). drain_spool retries it in-order for a
+# bounded number of ticks instead of dead-lettering the first one; a genuinely
+# absent target still dead-letters once attempts exhaust. Keys on the handler's
+# captured "not found"/"no thread" text — a contradiction (illegal transition,
+# missing arg) lacks those markers and dead-letters at once.
+_RETRY_MAX_ATTEMPTS = 3
+_TRANSIENT_MISSING_MARKERS = ("not found", "no thread")
+
+
+def _is_transient_missing(msg: str) -> bool:
+    m = (msg or "").lower()
+    return any(marker in m for marker in _TRANSIENT_MISSING_MARKERS)
+
+
 # ── per-drain dead-letter action items (moved verbatim from juggle_spool_apply) ──
 # A burst of empty/malformed junk events (e.g. the 2026-07-02 empty-args
 # agent_complete fixtures) must NOT flood the cockpit with one HIGH action item

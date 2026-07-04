@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 
 from dbops.spool import SpoolEvent, bump_attempts, read_pending, move_to_dead
 from juggle_spool_dead import (
+    _RETRY_MAX_ATTEMPTS,
+    _is_transient_missing,
     file_dead_letter_action_items,
     maybe_file_dead_backlog_reminder,
 )
@@ -33,13 +35,11 @@ def _journal_state(db, uuid: str) -> str | None:
 
 
 def _journal_insert_applying(db, uuid: str, event_type: str) -> None:
-    # UPSERT to 'applying' (not INSERT OR IGNORE): a retried event already has a
-    # 'failed' row from its prior attempt, but this attempt is about to run the
-    # handler again, so the row MUST read 'applying' for the duration — else a
-    # process crash mid-retry leaves 'failed' and the next drain blind-retries a
-    # handler whose non-transactional side effects may be half-applied. Only
-    # None/'failed' rows reach here (the 'applied'/'superseded'/'applying' guards
-    # in apply_event short-circuit first), so overwriting is always correct.
+    # UPSERT to 'applying' (not INSERT OR IGNORE): a retried event keeps its
+    # prior 'failed' row, but this attempt reruns the handler, so the row must
+    # read 'applying' for the duration — else a mid-retry crash leaves 'failed'
+    # and the next drain blind-retries a half-applied write (DA Res #2). Only
+    # None/'failed' rows reach here (earlier guards short-circuit the rest).
     with db._connect() as conn:
         conn.execute(
             "INSERT INTO spool_journal(uuid, event_type, applied_at, outcome) "
@@ -216,13 +216,35 @@ def apply_event(db, event: SpoolEvent) -> tuple[bool, str]:
 
     _journal_insert_applying(db, event.uuid, event.type)
     cap = io.StringIO()
+    a = event.args
     try:
-        # Capture the handler's own stdout/stderr so a failure's "Error: … not
-        # found" line survives into the returned message (→ dead_reason / the
-        # retry classifier) instead of being swallowed to daemon stdout, leaving
-        # only an opaque "code=1" (2026-07-04 incident).
+        # Capture the handler's stdout/stderr so a failure's "Error: … not found"
+        # survives into the message (→ dead_reason / retry) — else only "code=1".
         with contextlib.redirect_stdout(cap), contextlib.redirect_stderr(cap):
-            _apply_body(db, event)
+            if event.type == "record_error":
+                # Arg keys match _spool_error_event (juggle_selfheal.py): the
+                # captured context rides under 'command_args' (a JSON string),
+                # NOT 'context' — reading the wrong key would silently drop it.
+                db.dedup_or_insert_error(
+                    signature_hash=a["signature_hash"],
+                    error_class=a.get("error_class", "A"),
+                    exc_type=a.get("exc_type"), traceback=a.get("traceback"),
+                    entrypoint=a.get("entrypoint"),
+                    command_args=a.get("command_args", "{}"),
+                )
+            elif event.type == "record_orchestration_error":
+                # Class B mirror (T-spool-06b): tool input under 'command_args';
+                # surface/juggle_ref carry the offending tool reference.
+                db.dedup_or_insert_error(
+                    signature_hash=a["signature_hash"],
+                    error_class=a.get("error_class", "B"),
+                    exc_type=a.get("exc_type"), traceback=a.get("traceback"),
+                    entrypoint=a.get("entrypoint"),
+                    command_args=a.get("command_args", "{}"),
+                    surface=a.get("surface"), juggle_ref=a.get("juggle_ref"),
+                )
+            else:
+                _dispatch(event)
         _journal_set_outcome(db, event.uuid, "applied")
         return True, f"applied {event.type} {event.uuid}"
     except BaseException as exc:  # BaseException: replayed cmd_* handlers use
@@ -236,57 +258,6 @@ def apply_event(db, event: SpoolEvent) -> tuple[bool, str]:
         handler_msg = cap.getvalue().strip().replace("\n", " ")
         base = f"{kind} during replay of {event.type}: {detail}"
         return False, (f"{base} — {handler_msg}" if handler_msg else base)
-
-
-def _apply_body(db, event: SpoolEvent) -> None:
-    """The write itself: record_error/record_orchestration_error inline, every
-    other type via _dispatch. Extracted from apply_event so the exception +
-    output-capture boundary stays a thin wrapper (no behavior change)."""
-    a = event.args
-    if event.type == "record_error":
-        # Arg keys match _spool_error_event (juggle_selfheal.py): the
-        # captured context rides under 'command_args' (a JSON string), NOT
-        # 'context' — reading the wrong key would silently drop it.
-        db.dedup_or_insert_error(
-            signature_hash=a["signature_hash"],
-            error_class=a.get("error_class", "A"),
-            exc_type=a.get("exc_type"), traceback=a.get("traceback"),
-            entrypoint=a.get("entrypoint"),
-            command_args=a.get("command_args", "{}"),
-        )
-    elif event.type == "record_orchestration_error":
-        # Class B mirror of record_error (T-spool-06b): the captured tool
-        # input rides under 'command_args' (a JSON string); surface/juggle_ref
-        # carry the offending tool reference for triage.
-        db.dedup_or_insert_error(
-            signature_hash=a["signature_hash"],
-            error_class=a.get("error_class", "B"),
-            exc_type=a.get("exc_type"), traceback=a.get("traceback"),
-            entrypoint=a.get("entrypoint"),
-            command_args=a.get("command_args", "{}"),
-            surface=a.get("surface"), juggle_ref=a.get("juggle_ref"),
-        )
-    else:
-        _dispatch(event)
-
-
-# A not-found precondition (target thread/task absent) is the handler's FIRST
-# check and side-effect-free, and is often TRANSIENT: the target row is created
-# moments earlier by another context and lands on a LATER drain (2026-07-04
-# incident T-fix-spool-drain-systemexit — every dead-lettered event applied
-# cleanly on manual `juggle spool replay`, i.e. once its target had appeared).
-# Retry such an event in-order for a bounded number of drains instead of
-# dead-lettering on the first; a genuinely-missing target still dead-letters
-# once the attempts exhaust. Detection keys on the handler's own captured
-# message ("… not found" / "no thread …") — a CONTRADICTION (illegal graph
-# transition, missing required arg) lacks those markers and dead-letters at once.
-_RETRY_MAX_ATTEMPTS = 3
-_TRANSIENT_MISSING_MARKERS = ("not found", "no thread")
-
-
-def _is_transient_missing(msg: str) -> bool:
-    m = (msg or "").lower()
-    return any(marker in m for marker in _TRANSIENT_MISSING_MARKERS)
 
 
 def drain_spool(db) -> dict:
