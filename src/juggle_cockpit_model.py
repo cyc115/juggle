@@ -203,7 +203,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
     # Load projects for grouping (graceful fallback for old DBs without the table)
     try:
         proj_rows = conn.execute(
-            "SELECT id, name FROM projects WHERE status != 'archived' ORDER BY (id='INBOX'), id"
+            "SELECT id, name FROM projects WHERE status != 'archived' AND kind != 'loop' ORDER BY (id='INBOX'), id"
         ).fetchall()
         projects_by_id: dict[str, str] = {r[0]: r[1] for r in proj_rows}
     except Exception:

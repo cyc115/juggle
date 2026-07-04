@@ -58,6 +58,13 @@ def compute_next_run(cadence: str, now: datetime | None = None) -> str:
     m = _DAILY_RE.search(cadence or "")
     if m:
         hh, mm = int(m.group(1)), int(m.group(2))
+        if hh > 23 or mm > 59:
+            # The regex accepts \d{1,2}:\d{2} (e.g. 30:70); reject out-of-range as a
+            # LoopTemplateError so cmd_loop_create fails loud instead of a bare
+            # datetime.replace ValueError tracebacking past its except handler.
+            raise LoopTemplateError(
+                f"invalid time in cadence {cadence!r}: {hh:02d}:{mm:02d}"
+            )
         cand = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
         if cand <= now:
             cand = cand + timedelta(days=1)
@@ -119,6 +126,11 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
                 prompt=task["prompt"], verify_cmd=task["verify_cmd"], conn=conn,
             )
             db_graph.set_task_topic(db, tid, topic_id, conn=conn)
+            # Only role + delivery are persisted in V1 — there is no nodes.model
+            # column yet. The validator still partitions on `model` (differing
+            # models must live in separate topics), but the model-claim predicate +
+            # per-node model persistence are deferred to V2 (plan §6 / critique
+            # Axis-3): a pinned `model` is validated-for-partition, not stored.
             conn.execute(
                 "UPDATE nodes SET role=?, delivery=? WHERE id=? AND kind='task'",
                 (task["role"], task["delivery"], tid),

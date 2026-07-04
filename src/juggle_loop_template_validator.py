@@ -129,6 +129,21 @@ def validate_loop_template(template: dict) -> dict:
             "verify_cmd": task.get("verify_cmd"),
             "deps": list(task.get("deps") or []),
         })
+
+    # Dep closure: every dep must reference a sibling member task (never a foreign
+    # id, never itself). replace_edges uses INSERT OR IGNORE with no FK check, so a
+    # dangling dep edge would silently wedge a task at never-'deps_ready'. The
+    # validator is the deterministic gate — reject it here, not at run time.
+    member_ids = {tk["id"] for tk in norm_tasks}
+    for tk in norm_tasks:
+        for dep in tk["deps"]:
+            if dep == tk["id"]:
+                raise LoopTemplateError(f"task {tk['id']!r} depends on itself")
+            if dep not in member_ids:
+                raise LoopTemplateError(
+                    f"task {tk['id']!r} dep {dep!r} is not a member task of topic "
+                    f"{topic['id']!r}"
+                )
     norm_topic = {
         "id": topic["id"],
         "title": topic["title"],

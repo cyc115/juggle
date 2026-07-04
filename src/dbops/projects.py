@@ -181,7 +181,7 @@ class ProjectsMixin:
     def get_dirty_projects(self) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM projects WHERE profile_dirty=1 AND status NOT IN ('archived','closed') AND id != 'INBOX'",
+                "SELECT * FROM projects WHERE profile_dirty=1 AND status NOT IN ('archived','closed') AND id != 'INBOX' AND kind != 'loop'",
             ).fetchall()
         return [dict(r) for r in rows]
 

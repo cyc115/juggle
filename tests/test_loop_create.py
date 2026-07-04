@@ -90,15 +90,31 @@ def test_validator_normalizes_single_topic():
                for tk in topic["tasks"])
 
 
+def test_validator_rejects_dangling_and_self_deps():
+    """Dep closure (code-review #4): a dep to a non-member id or to itself is
+    rejected — a dangling dep edge would silently wedge the task."""
+    tmpl = _single_topic_template(ntasks=2)
+    tmpl["topics"][0]["tasks"][1]["deps"] = ["nonexistent"]
+    with pytest.raises(LoopTemplateError, match="not a member task"):
+        validate_loop_template(tmpl)
+    tmpl2 = _single_topic_template(ntasks=1)
+    tmpl2["topics"][0]["tasks"][0]["deps"] = [tmpl2["topics"][0]["tasks"][0]["id"]]
+    with pytest.raises(LoopTemplateError, match="depends on itself"):
+        validate_loop_template(tmpl2)
+
+
 def test_compute_next_run_from_cadence():
-    """next_run is derived from the cadence string; an unparseable cadence is
-    fail-loud (a loop with no timer would silently never fire)."""
+    """next_run is derived from the cadence string; an unparseable cadence AND an
+    out-of-range daily time are both fail-loud LoopTemplateError (a loop with no
+    valid timer would silently never fire)."""
     from datetime import datetime
     now = datetime(2026, 7, 4, 8, 0, 0)
     assert compute_next_run("every 15m", now).startswith("2026-07-04T08:15")
     assert compute_next_run("daily at 09:30", now).startswith("2026-07-04T09:30")
     with pytest.raises(LoopTemplateError):
         compute_next_run("whenever", now)
+    with pytest.raises(LoopTemplateError, match="invalid time"):
+        compute_next_run("daily at 30:70", now)  # code-review #3: range guard
 
 
 # ── Atomic create (§Axis-5) ─────────────────────────────────────────────────────
@@ -156,3 +172,20 @@ def test_loop_project_excluded_from_arming_feeds(db):
     assert normal in active_ids and normal in listed_ids  # normal project unaffected
     # include_archived='give me everything' still sees the loop (doctor migrate path)
     assert r["project_id"] in {p["id"] for p in db.list_projects(include_archived=True)}
+    # match-profile synth feed excludes loops too (code-review #5)
+    db.mark_project_dirty(r["project_id"])
+    assert r["project_id"] not in {p["id"] for p in db.get_dirty_projects()}
+
+
+def test_loop_project_excluded_from_cockpit_render(db):
+    """code-review #2: the cockpit project-slot / DAG feeds must NOT render a
+    kind='loop' project (the plan's Phase-4 P-slot pin). A loop with a topic graph
+    produces no graph-DAG card."""
+    from juggle_cockpit_graph_dag import load_graph_dags
+
+    normal = db.create_project(name="normal", objective="o")
+    r = create_loop_atomic(db, template=_single_topic_template(), cadence="every 1h")
+    with db._connect() as conn:
+        dag_pids = {d.project_id for d in load_graph_dags(conn)}
+    assert r["project_id"] not in dag_pids
+    _ = normal  # a normal project with tasks WOULD render; loop must not

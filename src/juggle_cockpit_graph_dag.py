@@ -53,7 +53,7 @@ def gather_project_activity(conn) -> list[ProjectActivity]:
     """
     try:
         proj_rows = conn.execute(
-            "SELECT id, last_active FROM projects WHERE status='active'"
+            "SELECT id, last_active FROM projects WHERE status='active' AND kind != 'loop'"
         ).fetchall()
     except Exception:
         return []
@@ -64,7 +64,7 @@ def gather_project_activity(conn) -> list[ProjectActivity]:
         for r in conn.execute(
             "SELECT DISTINCT project_id FROM nodes "
             "WHERE kind IN ('topic','task','research') AND parent_id IS NULL "
-            "AND project_id IS NOT NULL"
+            "AND project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects WHERE kind='loop')"
         ).fetchall():
             pid = r[0]
             if pid and pid not in last_active:
