@@ -112,9 +112,48 @@ def _heal_merged_sha(db, topic: dict) -> bool:
             set_topic_pending_merged_sha(db, topic["id"], None, repo=pending_repo)
             return True
 
+        # Deleted-branch fallback (T-fix-heal-deleted-branch, 2026-07-04 GAP 1):
+        # once integrate deletes/GC's the cyc_* branch AND no pending breadcrumb
+        # was stashed, neither resolve_landed_sha (branch ref gone → '') nor the
+        # pending tier can prove the merge — the topic wedged 'integrating'
+        # forever even though its commit is on main (observed T-rca-spool-
+        # deadletter). But a LANDED commit itself survives on main (reachable from
+        # trunk, never GC'd) even after its branch ref is deleted, so the topic's
+        # own recorded head/submitted_rev is real merge proof IFF it is provably
+        # an ancestor of main. Fail-closed: an opaque async-land ticket (never a
+        # git sha) simply fails sha_is_ancestor and stamps nothing.
+        recorded = (topic.get("submitted_rev") or "").strip()
+        if recorded and sha_is_ancestor(repo, recorded):
+            set_topic_merged_sha(db, topic["id"], recorded)
+            return True
+
         return False
     except Exception:
         return False
+
+
+def _lift_failed_integration_if_landed(db, topic: dict) -> bool:
+    """GAP 2 (T-fix-heal-deleted-branch): a 'failed-integration' topic whose branch
+    SUBSEQUENTLY landed (operator or the repair sweep re-ran integrate) keeps its
+    failed state even with merged_sha stamped — dependents stay blocked though the
+    work is on main (observed T-gl-learn-cmd). When the merge is provable (recorded
+    merged_sha is an ancestor of main, or heal derives one from git reality), lift
+    to 'verified', clear the fail_envelope, and unblock dependents. Returns True
+    iff it lifted. Fail-closed: no proof → False (verdict preserved)."""
+    from dbops.db_topics import _verified_allowed
+    from dbops.db_topics_marking import set_topic_fail_envelope, unblock_topic_dependents
+
+    topic_id = topic["id"]
+    if not (_verified_allowed(db, topic_id)
+            or (_heal_merged_sha(db, topic) and _verified_allowed(db, topic_id))):
+        return False
+    with _cx(db) as conn:
+        write_state(conn, topic_id, "verified", now=_now(), verified=True)
+    set_topic_fail_envelope(db, topic_id, None)  # merge landed → verdict void
+    project_id = (topic.get("project_id") or "").strip()
+    if project_id:
+        unblock_topic_dependents(db, project_id)
+    return True
 
 
 def _has_live_bound_agent(db, topic: dict) -> bool:
@@ -164,6 +203,13 @@ def reconcile_topic_state(db, topic_id: str) -> str:
     # (orphan_guard.reconcile_out_of_band_merges), which writes state directly —
     # so guarding derivation here never strands a genuinely-landed topic.
     if topic.get("state") in ("failed-integration", "failed-verify"):
+        # GAP 2 (T-fix-heal-deleted-branch): a 'failed-integration' topic whose
+        # branch has since LANDED must not stay parked with its dependents blocked
+        # — lift it to 'verified' when the merge is provable. 'failed-verify' is a
+        # genuine test failure, never auto-lifted here.
+        if (topic["state"] == "failed-integration"
+                and _lift_failed_integration_if_landed(db, topic)):
+            return "verified"
         return topic["state"]
 
     with db._connect() as conn:

@@ -180,3 +180,50 @@ def propagate_topic_failure(db, topic_id) -> list[str]:
                 blocked.append(dep_tid)
                 frontier.append(dep_tid)
     return blocked
+
+
+_TOPIC_BLOCKING_STATES = frozenset(
+    {"failed-exec", "failed-integration", "failed-verify", "blocked-failed"}
+)
+
+
+def _topic_has_blocking_dep(db, topic_id: str) -> bool:
+    """True iff any CROSS-topic dependency of ``topic_id`` (a dep edge from one of
+    its member tasks to a task owned by a DIFFERENT topic) resolves to a dep topic
+    still in a blocking state. Mirrors db_topics.topic_ready_eligible's dep join
+    and db_graph_marking.recompute_blocked's blocking predicate."""
+    with db._connect() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT dt.state FROM node_edges e "
+            "JOIN nodes n ON n.id = e.node_id "
+            "JOIN nodes d ON d.id = e.depends_on_id "
+            "JOIN nodes dt ON dt.id = d.parent_id "
+            "WHERE e.kind='dep' AND n.parent_id=? AND d.parent_id != ?",
+            (topic_id, topic_id),
+        ).fetchall()
+    return any(r[0] in _TOPIC_BLOCKING_STATES for r in rows)
+
+
+def unblock_topic_dependents(db, project_id: str) -> None:
+    """Reverse any 'blocked-failed' topic whose blocking deps have ALL cleared,
+    then re-derive ready. The INVERSE of propagate_topic_failure and the topic-
+    level twin of db_graph_marking.recompute_blocked (T-fix-heal-deleted-branch,
+    GAP 2): propagate_topic_failure blocked these dependents when their dep topic
+    failed, and nothing but a spec reload ever reversed that — so a landed-then-
+    lifted topic left its dependents dead. Fixpoint over the DAG (failed roots are
+    fixed during the loop → terminates). Fail-soft: never raises into the caller."""
+    from dbops.db_topics import list_topics, recompute_topic_ready
+
+    try:
+        changed = True
+        while changed:
+            changed = False
+            for topic in list_topics(db, project_id):
+                if topic["state"] != "blocked-failed":
+                    continue
+                if not _topic_has_blocking_dep(db, topic["id"]):
+                    topic_transition(db, topic["id"], "reload")  # → open
+                    changed = True
+        recompute_topic_ready(db, project_id)
+    except Exception:
+        pass
