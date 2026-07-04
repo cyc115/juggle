@@ -20,7 +20,7 @@ def register_graph_parsers(subparsers) -> None:
     """
     from juggle_cmd_graph import (
         cmd_graph_add_task, cmd_graph_mark_task, cmd_graph_reconcile,
-        cmd_project_graph_load,
+        cmd_graph_show, cmd_project_graph_load,
     )
 
     p_g2 = subparsers.add_parser("graph", help="Live project task-graph edits")
@@ -93,3 +93,14 @@ def register_graph_parsers(subparsers) -> None:
         help="Handoff for the task (files touched, interfaces, decisions)",
     )
     _mt.set_defaults(func=cmd_graph_mark_task)
+
+    _sh = _g2s.add_parser(
+        "show", help="Read the task graph (project rollup / node detail); pure read"
+    )
+    _sh.add_argument("--project", default=None, help="Show one project's nodes")
+    _sh.add_argument("--node", default=None, help="Show a single node's detail")
+    _sh.add_argument("--state", default=None,
+                     help="Filter nodes to this state (e.g. failed-verify)")
+    _sh.add_argument("--json", dest="json_out", action="store_true",
+                     help="Machine-readable output (compact)")
+    _sh.set_defaults(func=cmd_graph_show)
