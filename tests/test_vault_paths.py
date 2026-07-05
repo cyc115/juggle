@@ -91,6 +91,29 @@ def test_loop_output_root_config_sourced_with_fallback():
         )
 
 
+def test_loop_run_dir_pure_and_deterministic():
+    """loop_run_dir-pure — the cross-topic handoff path helper (spec §1.4) is a PURE
+    function of (base, loop_id, run_ts, topic_id): base/loop_id/run_ts/<topic_id>.md,
+    with NO I/O and NO get_settings inside (the config resolver is called once at the
+    dispatch boundary and passed in as base, §1.6). Deterministic — same inputs →
+    same path, so retrieval never parses prose (P4b, 2026-07-05)."""
+    import juggle_vault_paths as vp
+
+    base = Path("/vault/loops")
+    p1 = vp.loop_run_dir(base, "L3", "0", "L3-research")
+    assert p1 == base / "L3" / "0" / "L3-research.md"
+    assert vp.loop_run_dir(base, "L3", "0", "L3-research") == p1  # deterministic
+    # run_ts (= run_seq) disambiguates per-run dirs under the SAME stable topic (§1.4)
+    assert vp.loop_run_dir(base, "L3", "1", "L3-research") != p1
+    assert vp.loop_run_dir(base, "L3", "0", "L3-notify").name == "L3-notify.md"
+
+    # PURE: the helper must not read settings (base is passed in, never resolved).
+    def _boom():
+        raise AssertionError("loop_run_dir must not call get_settings")
+    with patch("juggle_vault_paths.get_settings", side_effect=_boom):
+        assert vp.loop_run_dir(base, "L3", "0", "L3-research") == p1
+
+
 def test_no_hardcoded_vault_literal_in_loop_dispatch_modules():
     """no-hardcoded-vault-literal — loop/dispatch code must read the vault/output
     root ONLY through the resolver, never a string literal (spec §1.6, grep-guard,
@@ -108,6 +131,9 @@ def test_no_hardcoded_vault_literal_in_loop_dispatch_modules():
     #     settings schema legitimately hold the config default and are exempt.)
     loop_dispatch_modules = [
         "juggle_loop_fire.py",
+        "juggle_loop_regen.py",
+        "juggle_loop_instantiate.py",
+        "juggle_loop_dispatch.py",
         "juggle_cmd_loop_create.py",
         "juggle_dispatch_core.py",
         "juggle_graph_dispatch.py",
