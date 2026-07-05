@@ -96,29 +96,6 @@ from juggle_graph_hydration import (  # noqa: E402, F401
 # ── dispatch path ──────────────────────────────────────────────────────────────
 
 
-def _resolve_dispatch_role(db, node: dict | None) -> str:
-    """The role a node/topic dispatches as (loop-entity Phase 2).
-
-    Reads nodes.role by id (Phase-1 column, DEFAULT 'coder' → legacy graphs
-    unchanged), preferring any 'role' the caller already hydrated onto the dict,
-    then falling back to 'coder'. coder/planner get an isolated worktree (the
-    send-path gate keys off the acquired agent's role); researcher runs
-    read-only in place (no worktree)."""
-    node = node or {}
-    role = node.get("role")
-    nid = node.get("id")
-    if not role and nid:
-        try:
-            with db._connect() as conn:
-                row = conn.execute(
-                    "SELECT role FROM nodes WHERE id=?", (nid,)
-                ).fetchone()
-            role = (row["role"] if not isinstance(row, tuple) else row[0]) if row else None
-        except Exception:
-            role = None
-    return role or TASK_ROLE
-
-
 def _dispatch_via_pool(db, thread_id: str, prompt: str, task: dict) -> None:
     """Dispatch ``prompt`` via dispatch_node(), resolving the role PER NODE
     (loop-entity Phase 2 — no longer hardcoded coder; researcher gets no
@@ -340,6 +317,12 @@ def _session_id(db) -> str:
     with db._connect() as conn:
         return db._get_session_key(conn, "session_id") or ""
 
+
+# Per-node dispatch-attribute resolvers live in juggle_graph_dispatch_resolve
+# (LOC gate, loop-entity V2/P2), re-exported here so graph_tick + callers/tests
+# keep importing ``_resolve_dispatch_role`` (and the V2/P2 ``_resolve_dispatch_model``)
+# from this module unchanged (bottom import breaks the TASK_ROLE cycle).
+from juggle_graph_dispatch_resolve import _resolve_dispatch_role  # noqa: E402, F401
 
 # Topic claim/sweep/give-up live in juggle_graph_dispatch_topics (LOC gate),
 # re-exported here for graph_tick + callers/tests (bottom import breaks the cycle).
