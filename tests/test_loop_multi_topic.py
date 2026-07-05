@@ -143,9 +143,10 @@ def test_cross_topic_edge_to_unknown_topic_rejected():
 def test_duplicate_task_id_across_topics_rejected():
     """P4b (2026-07-05): task ids must be GLOBALLY unique across topics. A generation
     materializes each task as ``<L#>-r<seq>-<task_id>``; two topics sharing a base task
-    id would collide on that node id (create_task INSERT OR IGNORE silently drops the
-    second, and a crossing edge to ``<gen>-<id>`` becomes ambiguous). The validator is
-    the gate — reject it deterministically at create, never at instantiation."""
+    id would collide on that node id (create_task's plain INSERT raises on the duplicate
+    PK, rolling the whole create back, and a crossing edge to ``<gen>-<id>`` is
+    ambiguous). The validator is the gate — reject it deterministically at validate-time,
+    never a late IntegrityError at instantiation."""
     tmpl = {"topics": [
         {"id": "a", "title": "A", "delivery": "deliver", "deps": [],
          "tasks": [_task("dup", "researcher", delivery="deliver")]},

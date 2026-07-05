@@ -283,14 +283,17 @@ def test_iteration_outcome_keys_on_generation(db):
     assert lf.iteration_outcome(db, pid, loop_id, 1)[0] == "in_flight"
 
 
-# ── Multi-topic re-fire fails loud (deferred: full regeneration is future work) ──
-def test_multi_topic_refire_fails_loud_not_silent(db):
+# ── Multi-topic re-fire pauses + surfaces once (deferred: full regeneration) ─────
+def test_multi_topic_refire_pauses_and_surfaces_once(db):
     """P4b (2026-07-05): P4b lands create-time multi-topic + the cross-topic vault
     handoff; multi-topic re-fire REGENERATION (reopen every stable topic + re-wire the
     crossing edges each fire) is a deferred follow-up. Until it lands, a fire over a
-    MULTI-topic loop must FAIL LOUD (surface via the never-swallow choke point) rather
-    than silently regenerate only the first topic — which would drop topics and dangle
-    the crossing edges. No run_seq bump, no phantom r1 generation."""
+    MULTI-topic loop must refuse LOUDLY rather than silently regenerate only the first
+    topic (which would drop topics + dangle the crossing edges), AND it must PAUSE the
+    loop so it surfaces exactly ONCE — not push the orchestrator every cadence window
+    forever (a machinery-error raise never trips the consecutive-failure breaker, and a
+    loop whose r0 succeeded reads 'success' each window, so nothing else would pause
+    it). Incident: code-review 2026-07-05 (un-pausable perpetual push)."""
     tmpl = {"topics": [
         {"id": "research", "title": "Research", "delivery": "deliver", "deps": [],
          "tasks": [{"id": "gather", "title": "gather", "prompt": "p",
@@ -310,8 +313,12 @@ def test_multi_topic_refire_fails_loud_not_silent(db):
 
     results = lf.fire_due_loops(db, SESSION, now=NOW)
 
-    assert (loop_id, "error") in results, "a multi-topic re-fire must fail loud"
+    assert (loop_id, "error") in results, "a multi-topic re-fire must refuse loudly"
     assert db.get_loop(loop_id)["run_seq"] == 0, "no run_seq bump on a refused re-fire"
     assert _iter_task_count(db, pid, loop_id, 1) == 0, "no phantom r1 generation"
     assert [i for i in db.get_open_action_items()
             if i["thread_id"] == res["thread_id"]], "must surface, not silently wedge"
+    # PAUSED → dropped from the active set, so it does NOT push every window forever.
+    assert db.get_loop(loop_id)["status"] == "paused"
+    _rearm(db, loop_id)  # even re-armed, a paused loop is never fired again
+    assert lf.fire_due_loops(db, SESSION, now=NOW) == [], "paused loop must not re-fire"

@@ -226,10 +226,11 @@ def _validate_globally_unique_task_ids(norm_topics: list) -> None:
 
     A generation materializes each task as ``<L#>-r<seq>-<task_id>``
     (juggle_loop_instantiate); two topics sharing a base task id collide on that node
-    id — ``create_task`` INSERT OR IGNORE silently drops the second, and a crossing
-    edge to ``<gen><task_id>`` becomes ambiguous. Gate it deterministically at the
-    validator so a mis-decomposition is refused at create, never wedged at
-    instantiation."""
+    id — ``db_graph.create_task``'s plain ``INSERT`` raises on the duplicate PK (→ the
+    whole atomic create rolls back), and a crossing edge to ``<gen><task_id>`` is
+    ambiguous. Gate it deterministically at the validator so a mis-decomposition is
+    refused at validate-time with a clear message, before the write txn opens — never a
+    late IntegrityError rollback."""
     seen: dict = {}
     for t in norm_topics:
         for tk in t["tasks"]:

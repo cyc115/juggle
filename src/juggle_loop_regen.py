@@ -42,21 +42,30 @@ def _reconstruct_topic(db, loop: dict) -> dict:
             "ORDER BY created_at, id",
             (project_id, f"{loop_id}-%"),
         ).fetchall()
-        if not topic_rows:
-            raise ValueError(f"loop {loop_id!r} has no stable topic to re-fire")
-        if len(topic_rows) > 1:
-            # P4b lands create-time MULTI-topic + the cross-topic vault handoff;
-            # multi-topic re-fire REGENERATION (reopen every stable topic + re-wire the
-            # crossing edges each fire) is a deferred follow-up. Fail LOUD rather than
-            # silently regenerate only the first topic — that would drop topics and
-            # leave the crossing edges dangling (a task wedged at never-deps-ready).
-            # Raising here routes through fire_due_loops' never-swallow choke point.
-            raise ValueError(
-                f"loop {loop_id!r} has {len(topic_rows)} stable topics — multi-topic "
-                f"re-fire regeneration is not yet implemented (deferred P4b follow-up); "
-                f"refusing to regenerate a partial generation"
-            )
-        topic_row = topic_rows[0]
+    if not topic_rows:
+        raise ValueError(f"loop {loop_id!r} has no stable topic to re-fire")
+    if len(topic_rows) > 1:
+        # P4b lands create-time MULTI-topic + the cross-topic vault handoff; multi-topic
+        # re-fire REGENERATION (reopen every stable topic + re-wire the crossing edges
+        # each fire) is a deferred follow-up. Silently regenerating only the first topic
+        # would drop topics and dangle the crossing edges (a task wedged at
+        # never-deps-ready), so refuse.
+        #
+        # PAUSE + surface ONCE (not fail-loud-every-window): a machinery-error raise
+        # never bumps the consecutive-failure breaker (juggle_loop_fire only bumps on an
+        # iteration_outcome=='failed'), and a loop whose r0 succeeded reads 'success'
+        # each window — so without pausing here the refusal would push the orchestrator
+        # once per cadence FOREVER, unpauseable. Pausing (done OUTSIDE the read conn
+        # above) drops the loop from list_active_loops so this one raise is the only
+        # push; the orchestrator resumes it once multi-topic re-fire lands.
+        db.pause_loop(loop_id)
+        raise ValueError(
+            f"loop {loop_id!r} has {len(topic_rows)} stable topics — multi-topic re-fire "
+            f"regeneration is not yet implemented (deferred P4b follow-up); loop PAUSED "
+            f"(resume after it lands) rather than pushed every window"
+        )
+    topic_row = topic_rows[0]
+    with db._connect() as conn:
         task_rows = conn.execute(
             "SELECT id, title, objective, verify_cmd, role, delivery FROM nodes "
             "WHERE kind='task' AND project_id=? AND id LIKE ? ORDER BY created_at, id",
