@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-05 (autofix)
+- **feat(loops)**: atomic reopen-regenerate + four-seam integrate reset; stable-topic create; delivered upstream satisfies cross-topic dep-readiness; watchdog CAS-safe firing + failure circuit-breaker; transactional schedule:create router + deliver completion
+- **feat(dispatch)**: general per-node model persist + best-effort headroom preference; per-node role dispatch (researcher gets no worktree)
+- **feat(states)**: delivered success-terminal state (deliver→delivered, no merged_sha)
+- **feat(schedule)**: one schedule namespace — :list/:delete verbs + shared OS-backend doc
+- **fix(loops)**: fail loud when stable topic is not fire-ready; bind created loop to its own thread; never-swallow fire-machinery errors + atomic seq-bump/instantiate; address Phase-4 code-review findings
+- **fix(schedule)**: surface OS-backend enumeration errors on delete
+
 ## 2026-07-01 (v1.93.0)
 - **feat(selfheal): verify-fallback — bounded retry with fresh context**: a graph task whose real `verify_cmd` is red no longer escalates on the first failure. It routes through `juggle_verify_fallback.on_failed_verify`, which — while `verify_retries < N` (config `verify_fallback_retries` / env `JUGGLE_VERIFY_FALLBACK_RETRIES`, default 1) — increments the counter, stores the prior verify failure output, and resets the task to `ready` so the watchdog tick re-dispatches a FRESH agent with that failure injected into its prompt. The tick re-runs the REAL `verify_cmd` exactly as before (safety rail: no verdict CLI, no evidence artifact, no rubber-stamp). On exhaustion the task stays `failed-verify` and escalates via the same HIGH action item as any terminal failure. New `nodes.verify_retries`/`nodes.verify_failure` columns (Migration 57, additive).
 
