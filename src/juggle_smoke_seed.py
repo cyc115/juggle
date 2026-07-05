@@ -63,7 +63,38 @@ def seed_smoke_db(db_path: str, n_threads: int = 30) -> str:
             db.create_thread(f"smoke-topic-{i:02d}", session_id="s0")
     finally:
         juggle_db.MAX_THREADS = _schema.MAX_THREADS = _threads.MAX_THREADS = old_max
+    _seed_smoke_loops(db)
     return db_path
+
+
+def _seed_smoke_loops(db, n: int = 8) -> None:
+    """Populate the isolated smoke DB with a handful of loops (V2 §4) so the
+    Agents-panel Loops band renders across every viewport — including a paused
+    loop, a never-run loop, a failing loop, and enough loops to exercise the
+    at-scale collapse-to-summary (§8). kind='loop' projects stay out of the
+    P-slot headers (snapshot query excludes them)."""
+    from dbops.schema import _now
+
+    now = _now()
+    with db._connect() as conn:
+        for i in range(n):
+            pid = f"SLP{i}"
+            conn.execute(
+                "INSERT INTO projects(id,name,objective,success_criteria,out_of_scope,"
+                "status,kind,created_at,last_active) VALUES(?,?,?,?,?,'active','loop',?,?)",
+                (pid, f"smoke-loop-{i:02d}", "", "[]", "", now, now),
+            )
+            status = "paused" if i % 4 == 3 else "active"
+            consecutive = i % 3               # 0,1,2 → never/ok/failing mix
+            last_run = now if i % 2 == 0 else None
+            conn.execute(
+                "INSERT INTO loops(id,project_id,thread_id,cadence,status,run_seq,"
+                "next_run,last_run_at,consecutive_failures,max_consecutive_failures,"
+                "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,3,?,?)",
+                (f"SL{i}", pid, None, "every 6h", status, i, now, last_run,
+                 consecutive, now, now),
+            )
+        conn.commit()
 
 
 def seed_smoke_graph_db(db_path: str) -> str:

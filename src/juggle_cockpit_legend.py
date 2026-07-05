@@ -94,6 +94,17 @@ FALLBACK_TASK = "⬢"
 FALLBACK_SCHED = "⏰"
 FALLBACK_NOTIF = "ℹ️"
 
+# Loops render band (V2 §4). 🔁 is an IDENTITY glyph (a recurring work loop),
+# distinct from the (L)-prefixed OS schedules in the same Pool. A paused
+# (circuit-broken) loop reuses the canonical paused glyph. The last-outcome
+# badge is derived from EXISTING columns only (consecutive_failures /
+# last_run_at / run_seq) — there is NO loops.last_status column.
+LOOP_GLYPH = "🔁"
+LOOP_PAUSED_GLYPH = TOPIC_STATUS_GLYPHS["paused"]  # ⏸️ — paused-only (canonical)
+LOOP_OK_BADGE = "✓"      # ran ok — suffixed with run_seq (✓3)
+LOOP_FAIL_BADGE = "⚠"    # failing — suffixed with consecutive_failures (⚠2)
+LOOP_NEVER_BADGE = "·"   # never run yet
+
 
 # ---------------------------------------------------------------------------
 # Canonical lifecycle vocabulary (CANONICAL_VOCAB.md). One glyph per universal
@@ -210,6 +221,14 @@ STATUS_LEGEND: list[dict] = [
         {"glyph": SCHED_STATUS_GLYPHS["failed"],  "meaning": "scheduled task last run failed"},
         {"glyph": SCHED_STATUS_GLYPHS["unknown"], "meaning": "scheduled task status unknown"},
         {"glyph": FALLBACK_SCHED,                 "meaning": "scheduled task (unrecognized status)"},
+    ]},
+    {"section": "Loops", "entries": [
+        {"glyph": LOOP_GLYPH,               "meaning": "recurring work loop"},
+        {"glyph": LOOP_PAUSED_GLYPH,        "meaning": "paused loop (circuit-broken)"},
+        {"glyph": LOOP_OK_BADGE + "n",      "meaning": "loop ran ok — n runs completed"},
+        {"glyph": LOOP_FAIL_BADGE + "n",    "meaning": "loop failing — n consecutive failures"},
+        {"glyph": LOOP_NEVER_BADGE,         "meaning": "loop never run yet"},
+        {"glyph": GRAPH_READY_SUFFIX + "Pn", "meaning": "loop's project (jump target, not a P-slot)"},
     ]},
     {"section": "Notifications", "entries": [
         {"glyph": NOTIF_KIND_GLYPHS["complete"], "meaning": "complete"},

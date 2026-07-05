@@ -10,6 +10,10 @@ from juggle_cockpit_sched import (  # noqa: F401 — re-exported model types
     ScheduledTask,
     fetch_scheduled_tasks,
 )
+from juggle_cockpit_loops import (  # noqa: F401 — re-exported loop snapshot types
+    LoopRow,
+    fetch_loops,
+)
 from juggle_cockpit_graph_dag import (  # noqa: F401 — re-exported for back-compat
     GraphDag,
     load_graph_dags as _load_graph_dags,
@@ -82,6 +86,7 @@ class CockpitState:
     graph_by_project: dict = None  # type: ignore  # {id: task counts}, None → no graph
     graph_dag: "GraphDag | None" = None  # armed-project DAG, only in graph mode
     graph_dags: "list | None" = None  # all armed projects' DAGs (multi-project)
+    loops: "list[LoopRow] | None" = None  # active+paused loops for the Loops band (V2 §4)
 
 
 # ---------------------------------------------------------------------------
@@ -360,6 +365,7 @@ def snapshot(db, *, load_graph_dag: bool = False) -> CockpitState:
         graph_by_project=graph_by_project,
         graph_dag=graph_dag,
         graph_dags=graph_dags,
+        loops=fetch_loops(db),
     )
     conn.close()
     return result

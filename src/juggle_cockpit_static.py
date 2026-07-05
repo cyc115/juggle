@@ -67,7 +67,9 @@ def render_static_from_state(state: CockpitState, width: int = 120) -> str:
     )
     actions_lines = _render(render_actions(state.actions), half_right)
     agents_lines = _render(
-        render_agents(state.agents, state.scheduled), right_w - half_right
+        render_agents(state.agents, state.scheduled,
+                      loops=getattr(state, "loops", None)),
+        right_w - half_right,
     )
     notif_lines = _render(render_notifications(state.notifications), right_w)
 

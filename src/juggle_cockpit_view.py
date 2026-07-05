@@ -268,10 +268,14 @@ def render_agents(
     scroll_offset: int = 0,
     active: bool = False,
     filter_label: str = "",
+    loops: list | None = None,
 ) -> Panel:
-    """Render agents panel split into Active (topic-assigned) and Pool (idle/scheduled) sections."""
+    """Render agents panel: Active (topic-assigned) / Pool (idle+scheduled) / Loops.
+
+    The Loops sub-section (V2 §4) mirrors the Pool schedule rows for recurring
+    work loops, collapsing to a summary at scale (§8)."""
     border = _pane_border(active)
-    if not agents and not scheduled:
+    if not agents and not scheduled and not loops:
         table = Table.grid()
         table.add_column()
         table.add_row(Text("no agents", style=Style(dim=True)))
@@ -381,6 +385,21 @@ def render_agents(
                     Text(sched_str, style=Style(dim=True)),
                 )
             parts.append(t_sched)
+
+    # --- Loops section: recurring work loops (V2 §4/§8) ---
+    if loops:
+        from juggle_cockpit_loops import collapse_loop_lines, loop_glyph
+
+        if active_agents or pool_agents or scheduled:
+            parts.append(Text("─" * 22, style=Style(dim=True)))
+        parts.append(Text("Loops", style=Style(dim=True)))
+        paused_glyph = loop_glyph("paused")  # paused rows styled distinctly (dim yellow)
+        t_loops = Table.grid(padding=(0, 0))
+        t_loops.add_column(no_wrap=True, overflow="ellipsis")  # single ellipsized cell
+        for line in collapse_loop_lines(loops):
+            st = Style(dim=True, color="yellow") if line.startswith(paused_glyph) else Style(dim=True)
+            t_loops.add_row(Text(line, no_wrap=True, overflow="ellipsis", style=st))
+        parts.append(t_loops)
 
     title = _scroll_title("Agents", scroll_offset)
     if filter_label:

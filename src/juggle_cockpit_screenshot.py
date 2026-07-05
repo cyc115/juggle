@@ -82,7 +82,8 @@ def save_screenshot(
         graph_by_project=getattr(state, "graph_by_project", None),
     ))
     con.print(render_actions(state.actions))
-    con.print(render_agents(state.agents, state.scheduled))
+    con.print(render_agents(state.agents, state.scheduled,
+                            loops=getattr(state, "loops", None)))
     if graph_mode:
         from juggle_cockpit_graph_panel import build_graph_panel
         dag = getattr(state, "graph_dag", None)

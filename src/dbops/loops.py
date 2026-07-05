@@ -65,6 +65,16 @@ class LoopsMixin:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def list_loops(self) -> list[dict]:
+        """All loops (active + paused) for the cockpit render band — a paused
+        (circuit-broken) loop must still surface, unlike list_active_loops which
+        the fire path uses to skip inert loops."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM loops ORDER BY created_at"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def advance_run_seq(self, loop_id: str) -> int:
         """Atomically bump and return the loop's run_seq (strictly increasing).
 

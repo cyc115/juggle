@@ -462,6 +462,7 @@ class CockpitApp(GraphModeMixin, App):
                 render_agents(
                     filtered_agents, state.scheduled, off["agents"], active == "agents",
                     filter_label=self._filter.get("agents", ""),
+                    loops=getattr(state, "loops", None),
                 )
             )
             # Graph mode renders into a scrollable viewport (#graph-scroll);
