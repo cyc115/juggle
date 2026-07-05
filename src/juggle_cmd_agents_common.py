@@ -18,15 +18,20 @@ single patch surface for the whole juggle_cmd_agents_* family.
 import re
 
 from juggle_cli_common import (
+    SRC_DIR,                # noqa: F401 — re-exported for sub-module use
     _get_hindsight_client,  # noqa: F401 — re-exported for sub-module use
-    _last_sentences,        # noqa: F401
-    )
+    _last_sentences,        # noqa: F401 — re-exported for sub-module use
+    _resolve_thread,        # noqa: F401 — re-exported for sub-module use
+    get_db,                 # noqa: F401 — re-exported for sub-module use
+)
 import juggle_cmd_integrate  # noqa: F401 — imported here so sub-modules can access via _com
 from juggle_cmd_agents_worktree import (  # noqa: F401 — re-exported patch surface
     _create_worktree,
     _finalize_worktree,
 )
+from juggle_harness import get_adapter  # noqa: F401 — re-exported for sub-module use
 from juggle_settings import get_settings as _get_settings
+from juggle_tmux import JuggleTmuxManager  # noqa: F401 — re-exported for sub-module use
 
 _AGENT_TTL_SECS: int = _get_settings()["agent_idle_ttl_secs"]
 
