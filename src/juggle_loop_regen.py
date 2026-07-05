@@ -36,14 +36,27 @@ def _reconstruct_topic(db, loop: dict) -> dict:
     src_prefix = f"{loop_id}-r0-"
     base = len(src_prefix)
     with db._connect() as conn:
-        topic_row = conn.execute(
+        topic_rows = conn.execute(
             "SELECT id, title, objective, role, delivery FROM nodes "
             "WHERE kind='topic' AND project_id=? AND id LIKE ? "
-            "ORDER BY created_at, id LIMIT 1",
+            "ORDER BY created_at, id",
             (project_id, f"{loop_id}-%"),
-        ).fetchone()
-        if topic_row is None:
+        ).fetchall()
+        if not topic_rows:
             raise ValueError(f"loop {loop_id!r} has no stable topic to re-fire")
+        if len(topic_rows) > 1:
+            # P4b lands create-time MULTI-topic + the cross-topic vault handoff;
+            # multi-topic re-fire REGENERATION (reopen every stable topic + re-wire the
+            # crossing edges each fire) is a deferred follow-up. Fail LOUD rather than
+            # silently regenerate only the first topic — that would drop topics and
+            # leave the crossing edges dangling (a task wedged at never-deps-ready).
+            # Raising here routes through fire_due_loops' never-swallow choke point.
+            raise ValueError(
+                f"loop {loop_id!r} has {len(topic_rows)} stable topics — multi-topic "
+                f"re-fire regeneration is not yet implemented (deferred P4b follow-up); "
+                f"refusing to regenerate a partial generation"
+            )
+        topic_row = topic_rows[0]
         task_rows = conn.execute(
             "SELECT id, title, objective, verify_cmd, role, delivery FROM nodes "
             "WHERE kind='task' AND project_id=? AND id LIKE ? ORDER BY created_at, id",

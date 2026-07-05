@@ -1,17 +1,18 @@
 """juggle_cmd_loop_create — transactional loop creation + pre-create planning
-(loop-entity V2, Phase 4a).
+(loop-entity V2, Phase 4a create + Phase 4b multi-topic).
 
 Scope note: the validator + ``loop plan`` confirm-card accept a MULTI-topic
-decomposition (§6), but ``create_loop_atomic`` instantiates a SINGLE topic — it
-REFUSES a >1-topic template loudly (cross-topic instantiation lands in P4b) rather
-than silently dropping topics.
+decomposition (§6), and (P4b) ``create_loop_atomic`` now instantiates ALL N topics —
+N stable topic nodes, each topic's r0 task generation, AND the cross-topic dependency
+edges (the template's topic-level ``deps`` → crossing task edges). A single-topic
+loop is just the N=1 case.
 
 ``create_loop_atomic`` is the ATOMIC create (critique §Axis-5): allocating the
-L-id, creating the ``kind='loop'`` project, loading the validated single-topic
-template graph, and inserting the loop row with ``next_run`` all happen inside ONE
-DB transaction on ONE connection. Any step raising rolls the WHOLE thing back
-(``conn.rollback()``), so a half-created loop can never leave a ``kind='loop'``
-project claiming a P-slot, nor an orphan loop/graph row.
+L-id, creating the ``kind='loop'`` project, loading the validated template graph (all
+topics + generations + cross-topic edges), and inserting the loop row with
+``next_run`` all happen inside ONE DB transaction on ONE connection. Any step raising
+rolls the WHOLE thing back (``conn.rollback()``), so a half-created loop can never
+leave a ``kind='loop'`` project claiming a P-slot, nor an orphan loop/graph row.
 
 Why a single-transaction rollback (not project-close-as-abort): ``close_project``
 only flips ``status='closed'`` — it leaves the projects ROW behind. The atomicity
@@ -38,7 +39,11 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from dbops.schema import _now
-from juggle_loop_instantiate import create_stable_topic, instantiate_generation
+from juggle_loop_instantiate import (
+    create_stable_topic,
+    instantiate_generation,
+    wire_cross_topic_edges,
+)
 from juggle_loop_template_validator import LoopTemplateError, validate_loop_template
 
 _CADENCE_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -89,13 +94,16 @@ def compute_next_run(cadence: str, now: datetime | None = None) -> str:
 
 def create_loop_atomic(db, *, template, cadence, name=None, objective="",
                        now=None, max_consecutive_failures=3, session_id=None):
-    """Validate + atomically create a single-topic loop. Returns a dict with
-    ``loop_id``/``project_id``/``topic_id``/``node_ids``/``next_run``/``thread_id``.
+    """Validate + atomically create a (single- OR multi-topic) loop. Returns a dict
+    with ``loop_id``/``project_id``/``topic_id``/``topic_ids``/``node_ids``/
+    ``next_run``/``thread_id`` (``topic_id`` = the primary/first topic, back-compat).
 
-    The template is validated (multi-topic partition rule, §6) BEFORE any write; a
-    >1-topic decomposition is refused here (single-topic instantiation only, P4a).
-    All DB writes run on ONE connection with no intermediate commit; any exception
-    rolls back the whole create (ZERO orphan rows).
+    The template is validated (multi-topic partition rule, §6) BEFORE any write. P4b
+    instantiates ALL N topics of the decomposition: N stable ``kind='topic'`` nodes,
+    each topic's r0 task generation, AND the cross-topic dependency edges (the
+    template's topic-level ``deps`` → crossing task edges). All DB writes run on ONE
+    connection with no intermediate commit; any exception rolls back the whole create
+    (ZERO orphan rows).
 
     The loop is bound to its OWN thread (``loops.thread_id``) so a failing iteration's
     HIGH action item and any loop-scoped notifications land on that named thread —
@@ -103,18 +111,7 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
     ORPHAN bucket. The thread is created via the shared ``create_thread`` primitive
     on THIS connection, so it commits/rolls back atomically with the loop."""
     norm = validate_loop_template(template)  # raises LoopTemplateError pre-write
-    # The validator + `loop plan` confirm-card accept a multi-topic decomposition
-    # (P4a), but cross-topic instantiation (the second stable topic + the topic-level
-    # dep edge + the vault handoff seam) lands in P4b. Refuse >1 topic LOUDLY here
-    # rather than silently instantiating only topics[0] and dropping the rest.
-    if len(norm["topics"]) != 1:
-        raise LoopTemplateError(
-            f"loop create currently instantiates a SINGLE topic (got "
-            f"{len(norm['topics'])}) — multi-topic cross-topic instantiation lands in "
-            f"P4b. Use `loop plan` to preview the decomposition; a single-topic loop "
-            f"is a one-topic graph with no cross-topic deps."
-        )
-    topic = norm["topics"][0]
+    topics = norm["topics"]  # 1..N — the validator gates partition/DAG/uniqueness
     next_run = compute_next_run(cadence, now)
 
     conn = db._connect()
@@ -125,10 +122,6 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
         used_l = {r[0] for r in conn.execute("SELECT id FROM loops").fetchall()}
         loop_id = db._next_loop_label(used_l)
         run_seq = 0
-        # Stable-topic model (§0b): the loop gets ONE long-lived topic (a STABLE id,
-        # no run prefix) created here, ONCE — not a fresh topic per fire. Each fire
-        # attaches a new run-namespaced TASK generation under it.
-        topic_id = f"{loop_id}-{topic['id']}"
         gen_prefix = f"{loop_id}-r{run_seq}-"
 
         conn.execute(
@@ -137,15 +130,29 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
             (project_id, name or f"loop {loop_id}", objective, "[]", "", ts, ts),
         )
 
-        # Create the stable topic, then materialize the r0 task generation under it
-        # via the shared writer (juggle_loop_instantiate) — one source of truth for
-        # how a generation's nodes/edges are laid down, reused by the fire re-fire.
-        # Only role + delivery are persisted (no nodes.model column yet — V2 §2).
-        create_stable_topic(db, conn, project_id=project_id, topic_id=topic_id, topic=topic)
-        node_ids = [topic_id] + instantiate_generation(
-            db, conn, project_id=project_id, topic_id=topic_id,
-            gen_prefix=gen_prefix, tasks=topic["tasks"],
-        )
+        # Stable-topic model (§0b): each topic gets ONE long-lived node with a STABLE
+        # id (``<L#>-<topic>``, no run prefix) created ONCE here; each fire attaches a
+        # new run-namespaced TASK generation under it. Materialize every topic + its
+        # r0 generation via the shared writer (juggle_loop_instantiate) — one source
+        # of truth for how a generation's nodes/edges are laid down. Only role +
+        # delivery are persisted (no nodes.model column yet — V2 §2).
+        topic_ids: list[str] = []
+        node_ids: list[str] = []
+        for topic in topics:
+            topic_id = f"{loop_id}-{topic['id']}"
+            topic_ids.append(topic_id)
+            create_stable_topic(
+                db, conn, project_id=project_id, topic_id=topic_id, topic=topic,
+            )
+            node_ids.append(topic_id)
+            node_ids += instantiate_generation(
+                db, conn, project_id=project_id, topic_id=topic_id,
+                gen_prefix=gen_prefix, tasks=topic["tasks"],
+            )
+        # The template's TOPIC-level deps become crossing TASK edges AFTER every
+        # topic's generation exists (an edge target must already be materialized).
+        wire_cross_topic_edges(db, conn, gen_prefix=gen_prefix, topics=topics)
+        topic_id = topic_ids[0]  # the primary topic (single-topic loops keep shape)
 
         # The loop's OWN thread — failure action items + loop-scoped notifications
         # attach here (not the null-thread ORPHAN bucket). Reuses the shared
@@ -174,7 +181,8 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
 
     return {
         "loop_id": loop_id, "project_id": project_id, "topic_id": topic_id,
-        "node_ids": node_ids, "next_run": next_run, "thread_id": thread_id,
+        "topic_ids": topic_ids, "node_ids": node_ids, "next_run": next_run,
+        "thread_id": thread_id,
     }
 
 

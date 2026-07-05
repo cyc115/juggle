@@ -217,4 +217,27 @@ def validate_loop_template(template: dict) -> dict:
 
     norm_topics = [_validate_topic(t) for t in topics]
     _validate_cross_topic_dag(norm_topics)
+    _validate_globally_unique_task_ids(norm_topics)
     return {"topics": norm_topics}
+
+
+def _validate_globally_unique_task_ids(norm_topics: list) -> None:
+    """Task ids must be unique ACROSS topics, not just within one (P4b, spec §6/§1).
+
+    A generation materializes each task as ``<L#>-r<seq>-<task_id>``
+    (juggle_loop_instantiate); two topics sharing a base task id collide on that node
+    id — ``create_task`` INSERT OR IGNORE silently drops the second, and a crossing
+    edge to ``<gen><task_id>`` becomes ambiguous. Gate it deterministically at the
+    validator so a mis-decomposition is refused at create, never wedged at
+    instantiation."""
+    seen: dict = {}
+    for t in norm_topics:
+        for tk in t["tasks"]:
+            prior = seen.get(tk["id"])
+            if prior is not None:
+                raise LoopTemplateError(
+                    f"task id {tk['id']!r} is not unique across topics (in both "
+                    f"{prior!r} and {t['id']!r}) — task ids must be globally unique so "
+                    f"a generation's node ids (<L#>-r<seq>-<task_id>) are unambiguous."
+                )
+            seen[tk["id"]] = t["id"]
