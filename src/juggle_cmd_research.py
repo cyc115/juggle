@@ -21,6 +21,7 @@ from typing import Optional
 import httpx
 
 from juggle_settings import get_settings
+from juggle_vault_paths import get_vault_root
 
 SYNTHESIS_PROMPT = """You are a research assistant synthesizing results for a personal knowledge base.
 
@@ -50,14 +51,13 @@ Output format:
 
 
 def _get_vault_info() -> tuple[str, str]:
-    """Returns (vault_path, vault_name) from juggle settings."""
-    s = get_settings()
-    vault_val = s["paths"].get("vault", "/Documents/personal")
-    if vault_val.startswith("~"):
-        vault_path = str(Path(vault_val).expanduser())
-    else:
-        vault_path = str(Path.home() / vault_val.lstrip("/"))
-    explicit_name = s["paths"].get("vault_name", "")
+    """Returns (vault_path, vault_name) from juggle settings.
+
+    Vault root resolves through the canonical `juggle_vault_paths.get_vault_root`
+    (spec §1.2); vault_name stays a local settings read.
+    """
+    vault_path = str(get_vault_root())
+    explicit_name = get_settings()["paths"].get("vault_name", "")
     vault_name = explicit_name if explicit_name else Path(vault_path).name
     return vault_path, vault_name
 

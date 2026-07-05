@@ -12,6 +12,7 @@ if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
 import juggle_cli
+import juggle_vault_paths
 
 
 def test_cmd_vault_path_prints_root(capsys, monkeypatch):
@@ -28,14 +29,17 @@ def test_cmd_vault_name_prints_name(capsys, monkeypatch):
 
 def test_vault_root_handles_tilde_prefix(monkeypatch):
     # The old inline `expanduser('~') + vault_rel` mishandled this; the real
-    # function must expand a ~-prefixed config correctly.
-    monkeypatch.setattr(juggle_cli, "get_settings", lambda: {"paths": {"vault": "~/Notes"}})
+    # function must expand a ~-prefixed config correctly. Resolution moved to
+    # juggle_vault_paths (P0a 2026-07-04).
+    monkeypatch.setattr(
+        juggle_vault_paths, "get_settings", lambda: {"paths": {"vault": "~/Notes"}}
+    )
     assert juggle_cli._get_vault_root() == Path.home() / "Notes"
 
 
 def test_vault_root_handles_leading_slash(monkeypatch):
     monkeypatch.setattr(
-        juggle_cli, "get_settings", lambda: {"paths": {"vault": "/Documents/personal"}}
+        juggle_vault_paths, "get_settings", lambda: {"paths": {"vault": "/Documents/personal"}}
     )
     assert juggle_cli._get_vault_root() == Path.home() / "Documents/personal"
 
@@ -48,7 +52,9 @@ def test_vault_name_prefers_explicit_then_falls_back(monkeypatch):
     )
     assert juggle_cli._get_vault_name() == "Brain"
 
-    monkeypatch.setattr(
-        juggle_cli, "get_settings", lambda: {"paths": {"vault": "/Documents/personal"}}
-    )
+    # Fallback derives the name from the resolved root, so both read surfaces
+    # (name via juggle_cli, root via juggle_vault_paths) must agree.
+    fallback = {"paths": {"vault": "/Documents/personal"}}
+    monkeypatch.setattr(juggle_cli, "get_settings", lambda: fallback)
+    monkeypatch.setattr(juggle_vault_paths, "get_settings", lambda: fallback)
     assert juggle_cli._get_vault_name() == "personal"

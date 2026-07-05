@@ -9,9 +9,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 def test_get_vault_root_from_paths_vault():
-    """_get_vault_root() reads paths.vault from settings."""
+    """_get_vault_root() reads paths.vault from settings (resolution now lives in
+    juggle_vault_paths — spec §1.2, P0a 2026-07-04)."""
     with patch(
-        "juggle_cli.get_settings",
+        "juggle_vault_paths.get_settings",
         return_value={
             "paths": {"vault": "/Documents/test-vault", "vault_name": ""},
         },
@@ -36,12 +37,13 @@ def test_get_vault_name_explicit():
 
 
 def test_get_vault_name_derived_from_path():
-    """_get_vault_name() derives name from vault path when vault_name is empty."""
-    with patch(
-        "juggle_cli.get_settings",
-        return_value={
-            "paths": {"vault": "/Documents/personal", "vault_name": ""},
-        },
+    """_get_vault_name() derives name from vault path when vault_name is empty.
+
+    Name read stays in juggle_cli; root resolution moved to juggle_vault_paths
+    (P0a 2026-07-04) — patch both so the derived-name path is exercised."""
+    settings = {"paths": {"vault": "/Documents/personal", "vault_name": ""}}
+    with patch("juggle_cli.get_settings", return_value=settings), patch(
+        "juggle_vault_paths.get_settings", return_value=settings
     ):
         from juggle_cli import _get_vault_name
 
@@ -49,12 +51,13 @@ def test_get_vault_name_derived_from_path():
 
 
 def test_get_vault_info_research():
-    """_get_vault_info() in juggle_cmd_research reads paths.vault."""
-    with patch(
-        "juggle_cmd_research.get_settings",
-        return_value={
-            "paths": {"vault": "/Documents/personal", "vault_name": "personal"},
-        },
+    """_get_vault_info() in juggle_cmd_research reads paths.vault.
+
+    Root now resolves via juggle_vault_paths; vault_name stays a local
+    juggle_cmd_research read (P0a 2026-07-04) — patch both."""
+    settings = {"paths": {"vault": "/Documents/personal", "vault_name": "personal"}}
+    with patch("juggle_cmd_research.get_settings", return_value=settings), patch(
+        "juggle_vault_paths.get_settings", return_value=settings
     ):
         from juggle_cmd_research import _get_vault_info
 
@@ -64,9 +67,10 @@ def test_get_vault_info_research():
 
 
 def test_get_vault_root_tilde_path():
-    """_get_vault_root() expands tilde-prefixed vault values."""
+    """_get_vault_root() expands tilde-prefixed vault values (resolution in
+    juggle_vault_paths — P0a 2026-07-04)."""
     with patch(
-        "juggle_cli.get_settings",
+        "juggle_vault_paths.get_settings",
         return_value={
             "paths": {"vault": "~/Documents/personal", "vault_name": ""},
         },
