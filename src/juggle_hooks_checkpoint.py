@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import sys
-from pathlib import Path
 
 import juggle_hooks_config as _cfg
 

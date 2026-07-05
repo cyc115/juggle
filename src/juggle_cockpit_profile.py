@@ -119,7 +119,6 @@ def run_profile(duration: int = 60, db_path: str | None = None) -> None:
     Degrades gracefully if ``uvx``/``psrecord`` are unavailable — exits 0 with
     a clear message so CI is not broken.
     """
-    import os as _os
 
     log_path = Path("/tmp/cockpit_profile.log")
     plot_path = Path("/tmp/cockpit_profile.png")

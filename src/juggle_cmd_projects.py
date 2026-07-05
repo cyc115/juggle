@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import os
 import re as _re
 import subprocess
 import sys
@@ -14,7 +13,7 @@ from pathlib import Path
 SRC_DIR = Path(__file__).parent
 sys.path.insert(0, str(SRC_DIR))
 
-from juggle_cli_common import _cheap_llm_call, get_db, llm_call
+from juggle_cli_common import get_db, llm_call
 
 INBOX_PROJECT_ID = "INBOX"
 log = logging.getLogger(__name__)

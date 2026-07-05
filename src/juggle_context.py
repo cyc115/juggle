@@ -4,8 +4,7 @@
 import os
 import re
 
-from juggle_cli_common import _humanize_dt, _extract_decision_prompt
-from juggle_db import JuggleDB, _is_junk_message, _thread_age_seconds
+from juggle_db import JuggleDB
 from juggle_settings import get_settings as _get_settings
 
 from juggle_context_startup import (  # noqa: F401 — re-exported public API

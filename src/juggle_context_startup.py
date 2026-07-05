@@ -7,7 +7,6 @@ Must not own: the UserPromptSubmit additionalContext builder (juggle_context).
 All names are re-exported from juggle_context for backward compatibility.
 """
 
-import re
 
 from juggle_cli_common import _humanize_dt, _extract_decision_prompt
 from juggle_db import JuggleDB, _is_junk_message, _thread_age_seconds

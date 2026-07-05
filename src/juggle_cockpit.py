@@ -14,12 +14,10 @@ Exit: q or Ctrl-C
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 SRC_DIR = Path(__file__).parent
@@ -34,13 +32,11 @@ from textual.widgets import Footer, Header, Static
 from juggle_db import JuggleDB
 from juggle_settings import get_settings as _get_settings
 from juggle_cockpit_helpers import (
-    _PRIORITY_TIER_MAP,
     _SCROLL_PANES,
     _apply_filter_actions,
     _apply_filter_text,
     _new_blocker_actions,
     _newly_failed_agents,
-    _parse_filter,
     _resolve_actions_by_thread_label,
     _resolve_agent_by_index,
     _resolve_thread_by_label,

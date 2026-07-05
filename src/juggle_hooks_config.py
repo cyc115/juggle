@@ -6,10 +6,7 @@ Owns: DB_PATH, _CHECKPOINT_PATH, AUTOPILOT_FLAG, logging setup, is_active(),
 Must not own: handler logic, event routing.
 """
 
-import json
 import logging
-import os
-import threading
 from pathlib import Path
 
 from juggle_db import JuggleDB
