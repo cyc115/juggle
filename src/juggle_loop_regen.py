@@ -1,12 +1,13 @@
-"""juggle_loop_regen — reconstruct a loop's template + regenerate its next run-seq
-TASK generation under the loop's STABLE topic (loop-entity V2 stable-topic model,
-§0b; extracted from juggle_loop_fire for the LOC gate, 2026-07-04).
+"""juggle_loop_regen — reconstruct a loop's template + ATOMICALLY reopen-regenerate
+its next run-seq TASK generation under the loop's STABLE topic (loop-entity V2
+stable-topic model, §0b; extracted from juggle_loop_fire for the LOC gate,
+2026-07-04).
 
 Cohesive seam: given a loop, rebuild the normalized template from its canonical r0
-nodes, then — under the loop's ONE long-lived topic — reopen the topic if it is
-terminal and materialize the next iteration's task generation. Kept separate from
-the firing/scheduling policy (juggle_loop_fire) and the failure-surfacing choke
-point.
+nodes, then — under the loop's ONE long-lived topic — reopen the topic if terminal,
+CLEAR its durable integrate state, and materialize the next iteration's task
+generation, ALL in one transaction. Kept separate from the firing/scheduling policy
+(juggle_loop_fire) and the failure-surfacing choke point.
 """
 from __future__ import annotations
 
@@ -69,27 +70,58 @@ def _reconstruct_topic(db, loop: dict) -> dict:
     }
 
 
-def _reopen_if_terminal(db, topic_id: str) -> None:
-    """Reopen the stable topic when it is parked in a terminal state so the next
-    generation can run. SCAFFOLD: reopens on its own connection (commits), no
-    integrate-state reset yet — the P3a pins catch both gaps."""
-    topic = db_topics.get_topic(db, topic_id)
-    if topic and topic["state"] in _REOPENABLE_TERMINALS:
-        db_topics.topic_transition(db, topic_id, "reopen")
+def _reset_topic_integrate_state(db, conn, topic_id: str) -> None:
+    """Clear ALL of the stable topic's durable integrate state so generation N+1
+    starts clean, ON the caller's txn. ``reopen`` PRESERVES integrate state
+    (db_topics_marking.py:84 — "reopen resurrects"), so with a stable topic gen N's
+    state poisons N+1 unless every seam is cleared here (§0b consequence 2):
+
+      * ``merged_sha`` — else the verified gate passes gen N+1 against gen N's stale
+        (still-ancestor) sha;
+      * ``fail_envelope`` — the repair gate reads ``attempts_total`` off it and
+        ``BACKSTOP_TOTAL_PER_TOPIC=3`` overrides everything, so a topic that ever
+        needed a repair would refuse / silently halve N+1's repair budget;
+      * ``pending_merged_sha``/``pending_merged_repo`` — an unproven sha the
+        reconcile sweep's ``_heal_merged_sha`` could later promote onto N+1;
+      * the reintegrate backoff counters (``db_reintegrate.forget``);
+      * the ``submitted_rev``/``verified_at`` audit fields.
+    """
+    conn.execute(
+        "UPDATE nodes SET merged_sha=NULL, pending_merged_sha=NULL, "
+        "pending_merged_repo=NULL, fail_envelope=NULL, submitted_rev=NULL, "
+        "verified_at=NULL, updated_at=? WHERE id=? AND kind='topic'",
+        (_now_ts(), topic_id),
+    )
+    from dbops import db_reintegrate
+    db_reintegrate.forget(db, topic_id, conn=conn)
+
+
+def _reopen_and_reset_if_terminal(db, conn, topic_id: str) -> None:
+    """Reopen the stable topic (if parked in a terminal state) AND clear its durable
+    integrate state, ON the caller's txn — atomic with the generation instantiate.
+    ``verified→(reopen)→open→integrating`` is legal (db_topics_marking.py:78-89)."""
+    topic = db_topics.get_topic(db, topic_id, conn=conn)
+    if not topic or topic["state"] not in _REOPENABLE_TERMINALS:
+        return
+    db_topics.topic_transition(db, topic_id, "reopen", conn=conn)
+    _reset_topic_integrate_state(db, conn, topic_id)
 
 
 def _fire_next_iteration_atomic(db, loop: dict) -> int:
-    """Regenerate the loop's next iteration under its STABLE topic; return the new
-    run_seq.
+    """ATOMICALLY reopen-regenerate the loop's next iteration under its STABLE topic;
+    return the new run_seq.
 
-    Reopen the stable topic if terminal, then bump run_seq AND instantiate the new
-    task generation. The seq bump and node instantiation commit together
-    (code-review #2, RED-pin test_failed_instantiate_rolls_back_seq_bump): if
-    instantiate raises, the seq bump rolls back too, so there is NEVER a bumped
-    run_seq with zero task nodes."""
+    Bump run_seq, reopen+reset the stable topic if terminal, and instantiate the new
+    task generation — ALL in ONE transaction (rollback-on-error). Two invariants ride
+    on the atomicity:
+      * a fire that reopens the topic then FAILS instantiation rolls the reopen back
+        to the prior terminal (§0b consequence 1) — otherwise the topic wedges
+        permanently in 'open' (no reopen edge; kind='topic' never auto-terminalizes);
+      * the seq bump rolls back with the instantiate (code-review #2, RED-pin
+        test_failed_instantiate_rolls_back_seq_bump) — never a bumped run_seq with
+        zero task nodes."""
     topic = _reconstruct_topic(db, loop)  # reads committed r0 nodes (own conn)
     stable_topic_id = f"{loop['id']}-{topic['id']}"
-    _reopen_if_terminal(db, stable_topic_id)
     conn = db._connect()
     try:
         row = conn.execute(
@@ -98,6 +130,7 @@ def _fire_next_iteration_atomic(db, loop: dict) -> int:
             (_now_ts(), loop["id"]),
         ).fetchone()
         new_seq = row[0]
+        _reopen_and_reset_if_terminal(db, conn, stable_topic_id)
         gen_prefix = f"{loop['id']}-r{new_seq}-"
         instantiate_generation(
             db, conn, project_id=loop["project_id"], topic_id=stable_topic_id,
