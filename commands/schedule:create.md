@@ -58,38 +58,47 @@ The validator REJECTS a topic mixing `(role, delivery)` or `model`, a cross-topi
 edge that is cyclic / self-referential / points at an unknown topic — do not try to
 work around it. A single-topic loop is just a one-topic graph with no `deps`.
 
-Write the template to a temp JSON file (single- OR multi-topic):
+Write the template to a temp JSON file. The shape `loop create` instantiates today is
+a **single topic** (one-topic graph, no cross-topic `deps`):
 
 ```json
 {
   "topics": [
     {
-      "id": "research",
-      "title": "Research overnight AI news",
-      "objective": "Search for AI news from the last 24h",
+      "id": "overnight-ai-digest",
+      "title": "Overnight AI news digest",
+      "objective": "Research overnight AI news and write a digest",
       "delivery": "deliver",
       "deps": [],
       "tasks": [
-        {"id": "gather", "title": "Research + draft digest",
-         "prompt": "Search for AI news from the last 24h and draft a concise digest.",
+        {"id": "research", "title": "Research + write digest",
+         "prompt": "Search for AI news from the last 24h and write a concise digest.",
          "role": "researcher", "model": null, "verify_cmd": null, "deps": []}
-      ]
-    },
-    {
-      "id": "notify",
-      "title": "Send the digest",
-      "objective": "Deliver the drafted digest",
-      "delivery": "merge",
-      "deps": ["research"],
-      "tasks": [
-        {"id": "send", "title": "Send digest notification",
-         "prompt": "Send the digest produced by the research topic.",
-         "role": "coder", "model": null, "verify_cmd": null, "deps": []}
       ]
     }
   ]
 }
 ```
+
+If the requirement genuinely spans differing `(role, delivery)` steps, emit MULTIPLE
+topics joined by cross-topic `deps` — e.g. a `researcher`/`deliver` topic feeding a
+`coder`/`merge` topic:
+
+```json
+{"topics": [
+  {"id": "research", "title": "Research news", "delivery": "deliver", "deps": [],
+   "tasks": [{"id": "gather", "title": "Research + draft", "prompt": "…",
+              "role": "researcher", "model": null, "verify_cmd": null, "deps": []}]},
+  {"id": "notify", "title": "Send the digest", "delivery": "merge", "deps": ["research"],
+   "tasks": [{"id": "send", "title": "Send", "prompt": "…",
+              "role": "coder", "model": null, "verify_cmd": null, "deps": []}]}
+]}
+```
+
+The validator + the `loop plan` confirm-card accept a multi-topic decomposition
+**today**, but **`loop create` currently instantiates a SINGLE topic** — multi-topic
+cross-topic instantiation (the handoff seam) lands in a later phase, and create
+REFUSES a >1-topic template loudly until then.
 
 ## Step 3 — Confirm the decomposed topic-DAG (states the chosen type EXPLICITLY)
 
@@ -113,7 +122,8 @@ re-render.
 
 - **OS SCHEDULE** → follow the OS-schedule backend reference at
   `${CLAUDE_PLUGIN_ROOT}/docs/schedule-os-backends.md` (launchd/systemd/cron).
-- **LOOP** → transactional, atomic create:
+- **LOOP** → transactional, atomic create (single-topic template — a >1-topic
+  template is refused loudly until multi-topic instantiation lands):
 
 ```bash
 juggle loop create --template /tmp/loop-template.json --cadence "daily at 08:00" \

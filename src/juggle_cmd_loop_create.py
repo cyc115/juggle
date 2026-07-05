@@ -1,5 +1,10 @@
-"""juggle_cmd_loop_create — transactional single-topic loop creation (loop-entity
-V1, Phase 4).
+"""juggle_cmd_loop_create — transactional loop creation + pre-create planning
+(loop-entity V2, Phase 4a).
+
+Scope note: the validator + ``loop plan`` confirm-card accept a MULTI-topic
+decomposition (§6), but ``create_loop_atomic`` instantiates a SINGLE topic — it
+REFUSES a >1-topic template loudly (cross-topic instantiation lands in P4b) rather
+than silently dropping topics.
 
 ``create_loop_atomic`` is the ATOMIC create (critique §Axis-5): allocating the
 L-id, creating the ``kind='loop'`` project, loading the validated single-topic
@@ -87,7 +92,8 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
     """Validate + atomically create a single-topic loop. Returns a dict with
     ``loop_id``/``project_id``/``topic_id``/``node_ids``/``next_run``/``thread_id``.
 
-    The template is validated (partition rule, V1 single-topic) BEFORE any write.
+    The template is validated (multi-topic partition rule, §6) BEFORE any write; a
+    >1-topic decomposition is refused here (single-topic instantiation only, P4a).
     All DB writes run on ONE connection with no intermediate commit; any exception
     rolls back the whole create (ZERO orphan rows).
 
@@ -214,7 +220,8 @@ def cmd_loop_plan(args):
         sys.exit(1)
     try:
         norm = validate_loop_template(template)
+        compute_next_run(args.cadence)  # mirror create's cadence gate — fail-loud here
     except LoopTemplateError as e:
-        print(f"Error: invalid loop template — {e}", file=sys.stderr)
+        print(f"Error: cannot plan loop — {e}", file=sys.stderr)
         sys.exit(1)
     print(render_topic_dag_card(norm, args.cadence))

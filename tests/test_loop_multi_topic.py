@@ -164,6 +164,25 @@ def test_confirm_card_renders_topic_dag():
     assert "research → notify" in card                    # cross-topic edge
 
 
+def test_loop_plan_rejects_unparseable_cadence(tmp_path, capsys):
+    """P4a §6.3 (2026-07-05 pre-PR review): `loop plan` mirrors create's cadence gate
+    — an unparseable cadence fails loud AT PLAN time (SystemExit 1), not silently on a
+    good-looking confirm-card that then dies at create."""
+    import json as _json
+    from types import SimpleNamespace
+
+    import juggle_cmd_loop_create as lc
+
+    tmpl = {"topics": [{"id": "a", "title": "A", "delivery": "merge", "deps": [],
+                        "tasks": [_task("x", "coder", delivery="merge")]}]}
+    p = tmp_path / "t.json"
+    p.write_text(_json.dumps(tmpl), encoding="utf-8")
+    with pytest.raises(SystemExit) as ei:
+        lc.cmd_loop_plan(SimpleNamespace(template=str(p), cadence="whenever"))
+    assert ei.value.code == 1
+    assert "cannot plan loop" in capsys.readouterr().err
+
+
 def test_schedule_create_wires_confirm_card_cli():
     """P4a §6.3 (code over prompts): schedule:create must invoke the code-backed
     `loop plan` renderer for its confirm-card, not hand-render a prompt-only card that
