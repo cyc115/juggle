@@ -38,11 +38,18 @@ import os
 from datetime import datetime
 
 from dbops import event_kinds as _ek
+from dbops.schema import MAX_LOOP_THREADS as _DEFAULT_MAX_LOOP_THREADS
 from dbops.schema import _now as _now_ts
 from dbops.terminal_states import FAILURE_TERMINAL_STATES, TERMINAL_STATES
 from juggle_loop_regen import _fire_next_iteration_atomic
 
 _log = logging.getLogger("juggle.loop_fire")
+
+# Disjoint loop-thread budget (loop-entity V2 §8, P5b) — bound here as a module
+# global (mirrors dbops.threads.MAX_THREADS) so tests can patch it via
+# ``juggle_loop_fire.MAX_LOOP_THREADS``. Firing concurrency stays gated by
+# MAX_BACKGROUND_AGENTS; this only caps the number of concurrently-LIVE loops.
+MAX_LOOP_THREADS: int = _DEFAULT_MAX_LOOP_THREADS
 
 # In-process consecutive-overlap-skip tracker (keyed by loop id). The watchdog is a
 # long-running process so this persists across ticks (same pattern as the daemon's
@@ -89,6 +96,24 @@ def iteration_outcome(db, project_id: str, loop_id: str, seq: int) -> tuple[str,
     if failed:
         return ("failed", ", ".join(f"{nid}={state}" for nid, state in failed))
     return ("success", "")
+
+
+def count_live_loop_pool(db) -> int:
+    """Occupancy of the DISJOINT loop-thread pool (loop-entity V2 §8, P5b): the number
+    of ``active`` loops currently running an in-flight (non-terminal) current-generation
+    iteration — i.e. each holding one live loop-thread slot right now.
+
+    Bounded by ``MAX_LOOP_THREADS``, held SEPARATE from the interactive ``MAX_THREADS``
+    conversation pool: firing a loop iteration instantiates task nodes under the loop's
+    stable topic and reuses its bound thread, so it allocates ZERO interactive slots.
+    A loop between fires (prior generation terminal) frees its slot; a never-fired loop
+    (no task nodes) does not occupy one."""
+    live = 0
+    for lp in db.list_active_loops():
+        status, _ = iteration_outcome(db, lp["project_id"], lp["id"], lp["run_seq"])
+        if status == "in_flight":
+            live += 1
+    return live
 
 
 def surface_iteration_failure(db, loop: dict, session_id: str, *, err: str,
@@ -177,6 +202,18 @@ def _fire_one(db, loop: dict, session_id: str, now: str) -> str:
             return "paused"
     else:  # success (or first fire with no prior work)
         db.reset_consecutive_failures(loop_id)
+
+    # Loop-pool budget (loop-entity V2 §8, P5b): refuse to START a new iteration when
+    # the DISJOINT loop pool is at cap. This bounds concurrently-live loops WITHOUT
+    # touching the interactive MAX_THREADS pool; concurrent firing stays gated by
+    # MAX_BACKGROUND_AGENTS. A refused loop keeps its already-advanced next_run and
+    # re-fires next window — the same benign "not now" as an overlap-skip (the prior
+    # iteration's outcome above was already surfaced, so nothing is swallowed).
+    live = count_live_loop_pool(db)
+    if live >= MAX_LOOP_THREADS:
+        _log.info("Loop %s fire deferred — loop pool at cap (%d live >= %d)",
+                  loop_id, live, MAX_LOOP_THREADS)
+        return "pool_full"
 
     _SKIP_COUNTS[loop_id] = 0  # a real fire clears the overlap-skip streak
     new_seq = _fire_next_iteration_atomic(db, loop)  # seq bump + instantiate atomic

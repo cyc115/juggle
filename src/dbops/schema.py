@@ -20,6 +20,13 @@ _log = logging.getLogger(__name__)
 MAX_THREADS: int = _get_settings()["max_threads"]
 # #5045: single resolution path — same as the watchdog daemon and cockpit spawn.
 MAX_BACKGROUND_AGENTS: int = _resolve_max_agents()
+# Disjoint loop-thread budget (loop-entity V2 §8, P5b): caps concurrently-LIVE loops,
+# held SEPARATE from the interactive MAX_THREADS pool. OPTIONAL env-with-fallback;
+# firing stays gated by MAX_BACKGROUND_AGENTS. Malformed override falls back (no crash).
+try:
+    MAX_LOOP_THREADS: int = int(os.environ.get("JUGGLE_MAX_LOOP_THREADS") or 50)
+except ValueError:
+    MAX_LOOP_THREADS = 50
 
 DEFAULT_DATA_DIR = Path(_get_settings()["paths"]["data_dir"])
 

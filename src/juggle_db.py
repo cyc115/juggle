@@ -52,6 +52,7 @@ from dbops.schema import (  # noqa: E402, F401
     DEFAULT_DATA_DIR,
     INBOX_PROJECT_ID,
     MAX_BACKGROUND_AGENTS,
+    MAX_LOOP_THREADS,
     MAX_THREADS,
     _is_junk_message,
     _now,
