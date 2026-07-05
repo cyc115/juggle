@@ -31,7 +31,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from dbops.schema import _now
-from juggle_loop_instantiate import instantiate_topic
+from juggle_loop_instantiate import create_stable_topic, instantiate_generation
 from juggle_loop_template_validator import LoopTemplateError, validate_loop_template
 
 _CADENCE_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -106,7 +106,11 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
         used_l = {r[0] for r in conn.execute("SELECT id FROM loops").fetchall()}
         loop_id = db._next_loop_label(used_l)
         run_seq = 0
-        prefix = f"{loop_id}-r{run_seq}-"
+        # Stable-topic model (§0b): the loop gets ONE long-lived topic (a STABLE id,
+        # no run prefix) created here, ONCE — not a fresh topic per fire. Each fire
+        # attaches a new run-namespaced TASK generation under it.
+        topic_id = f"{loop_id}-{topic['id']}"
+        gen_prefix = f"{loop_id}-r{run_seq}-"
 
         conn.execute(
             "INSERT INTO projects (id,name,objective,success_criteria,out_of_scope,"
@@ -114,12 +118,14 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
             (project_id, name or f"loop {loop_id}", objective, "[]", "", ts, ts),
         )
 
-        # Shared writer with the Phase-5 re-fire (juggle_loop_instantiate) — one
-        # source of truth for how an iteration's nodes/edges are laid down. Only
-        # role + delivery are persisted in V1 (no nodes.model column yet; the
-        # validator still partitions on `model` but it is not stored — V2).
-        topic_id, node_ids = instantiate_topic(
-            db, conn, project_id=project_id, prefix=prefix, topic=topic,
+        # Create the stable topic, then materialize the r0 task generation under it
+        # via the shared writer (juggle_loop_instantiate) — one source of truth for
+        # how a generation's nodes/edges are laid down, reused by the fire re-fire.
+        # Only role + delivery are persisted (no nodes.model column yet — V2 §2).
+        create_stable_topic(db, conn, project_id=project_id, topic_id=topic_id, topic=topic)
+        node_ids = [topic_id] + instantiate_generation(
+            db, conn, project_id=project_id, topic_id=topic_id,
+            gen_prefix=gen_prefix, tasks=topic["tasks"],
         )
 
         # The loop's OWN thread — failure action items + loop-scoped notifications

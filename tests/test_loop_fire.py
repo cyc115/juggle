@@ -309,7 +309,7 @@ def test_failed_instantiate_rolls_back_seq_bump_and_surfaces(db, monkeypatch):
     def _boom(*a, **k):
         raise RuntimeError("injected instantiate failure")
     import juggle_loop_regen as regen
-    monkeypatch.setattr(regen, "instantiate_topic", _boom)
+    monkeypatch.setattr(regen, "instantiate_generation", _boom)
 
     lf.fire_due_loops(db, SESSION, now=NOW)
 

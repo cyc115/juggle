@@ -132,13 +132,20 @@ def test_loop_create_sets_next_run(db):
 
 
 def test_run_seq_namespaced_node_ids(db):
-    """Created node ids carry the <L#>-r0- prefix (collision guard vs the
-    guarded-upsert refusal on re-fire)."""
+    """Stable-topic model (§0b): the loop's topic id is STABLE (``<L#>-<topic>``, no
+    run prefix — created once, reused every fire), while the TASK generation carries
+    the ``<L#>-r0-`` prefix (the collision guard vs the guarded-upsert refusal on
+    re-fire). Supersedes the V1 topic-per-fire id shape."""
     r = create_loop_atomic(db, template=_single_topic_template(ntasks=2),
                            cadence="every 1h")
-    prefix = f"{r['loop_id']}-r0-"
-    assert r["topic_id"].startswith(prefix)
-    assert all(nid.startswith(prefix) for nid in r["node_ids"])
+    loop_id = r["loop_id"]
+    # the stable topic id has NO run-seq segment
+    assert r["topic_id"] == f"{loop_id}-digest"
+    assert "-r0-" not in r["topic_id"]
+    # every TASK node of the r0 generation is run-seq namespaced
+    task_prefix = f"{loop_id}-r0-"
+    task_ids = [nid for nid in r["node_ids"] if nid != r["topic_id"]]
+    assert task_ids and all(nid.startswith(task_prefix) for nid in task_ids)
 
 
 def test_loop_create_atomic_rollback_on_graph_failure(db, monkeypatch):

@@ -1,30 +1,33 @@
-"""juggle_loop_instantiate — instantiate a normalized loop-template topic into a
-graph under a run-seq prefix (loop-entity V1).
+"""juggle_loop_instantiate — materialize a loop's STABLE topic + its per-run task
+generations into the graph (loop-entity V2 stable-topic model, §0b).
 
-Extracted (mechanical, behaviour-neutral) from ``juggle_cmd_loop_create`` so BOTH
-the Phase-4 transactional create AND the Phase-5 watchdog re-fire share ONE writer
-for the "materialize a template topic + its member tasks + dep edges under a
-``<L#>-r<seq>-`` prefix" step. One source of truth for how an iteration's nodes are
-laid down keeps create and re-fire from drifting.
+Two seams, both pure over the caller's ``conn`` (never commit — the caller owns the
+transaction):
 
-Pure over the caller's ``conn`` — never commits (the caller owns the transaction).
-Node ids are ``<prefix><base-id>`` so each iteration's ids are run-seq namespaced
-and never collide with the guarded-upsert refusal (juggle_graph_load).
+  * ``create_stable_topic`` — create the loop's ONE long-lived ``kind='topic'`` node
+    (a STABLE id, ``<L#>-<topic>``, no run prefix). Called ONCE at loop-create time.
+  * ``instantiate_generation`` — materialize a run-namespaced TASK generation
+    (``<L#>-r<seq>-<task>``) parented under an EXISTING stable topic. Called at
+    create (r0) AND every fire (r<seq>). Task ids are run-seq namespaced so a fresh
+    generation never collides with a prior generation's PROTECTED terminal nodes
+    (the guarded-upsert refusal, juggle_graph_load) — the sole reason run_seq exists.
+
+V2 delta from V1: V1 minted a fresh run-namespaced TOPIC per fire; V2 keeps the
+topic identity STABLE and makes only the task generations ephemeral (§0b).
+Only ``role``/``delivery`` are persisted per node (no nodes.model column yet).
 """
 from __future__ import annotations
 
 from dbops import db_graph, db_topics
 
 
-def instantiate_topic(db, conn, *, project_id: str, prefix: str, topic: dict):
-    """Materialize normalized ``topic`` under ``prefix`` into ``project_id`` on the
-    caller-supplied ``conn`` (no commit). Returns ``(topic_id, node_ids)``.
+def create_stable_topic(db, conn, *, project_id: str, topic_id: str, topic: dict) -> str:
+    """Create the loop's ONE stable ``kind='topic'`` node under ``topic_id`` on the
+    caller-supplied ``conn`` (no commit). Sets role/delivery. Returns ``topic_id``.
 
     ``topic`` shape (validator/reconstruct output): ``{id, title, objective, role,
-    delivery, tasks: [{id, title, prompt, role, delivery, verify_cmd, deps}]}``.
-    Only ``role``/``delivery`` are persisted per node (no nodes.model column in V1).
+    delivery, tasks: [...]}``.
     """
-    topic_id = f"{prefix}{topic['id']}"
     db_topics.create_topic(
         db, topic_id=topic_id, project_id=project_id,
         title=topic["title"], objective=topic.get("objective", ""), conn=conn,
@@ -33,10 +36,19 @@ def instantiate_topic(db, conn, *, project_id: str, prefix: str, topic: dict):
         "UPDATE nodes SET delivery=?, role=? WHERE id=? AND kind='topic'",
         (topic["delivery"], topic["role"], topic_id),
     )
+    return topic_id
 
-    node_ids = [topic_id]
-    for task in topic["tasks"]:
-        tid = f"{prefix}{task['id']}"
+
+def instantiate_generation(db, conn, *, project_id: str, topic_id: str,
+                           gen_prefix: str, tasks: list) -> list:
+    """Materialize a run-namespaced TASK generation (``<gen_prefix><task>``) parented
+    under the EXISTING stable ``topic_id`` on the caller's ``conn`` (no commit). Does
+    NOT touch the topic node — the caller owns its lifecycle (create / reopen).
+    Returns the list of created task node ids.
+    """
+    node_ids = []
+    for task in tasks:
+        tid = f"{gen_prefix}{task['id']}"
         db_graph.create_task(
             db, task_id=tid, project_id=project_id, title=task["title"],
             prompt=task["prompt"], verify_cmd=task.get("verify_cmd"), conn=conn,
@@ -48,9 +60,9 @@ def instantiate_topic(db, conn, *, project_id: str, prefix: str, topic: dict):
         )
         node_ids.append(tid)
 
-    for task in topic["tasks"]:
-        deps = sorted(f"{prefix}{d}" for d in task.get("deps", []))
+    for task in tasks:
+        deps = sorted(f"{gen_prefix}{d}" for d in task.get("deps", []))
         if deps:
-            db_graph.replace_edges(db, f"{prefix}{task['id']}", deps, conn=conn)
+            db_graph.replace_edges(db, f"{gen_prefix}{task['id']}", deps, conn=conn)
 
-    return topic_id, node_ids
+    return node_ids
