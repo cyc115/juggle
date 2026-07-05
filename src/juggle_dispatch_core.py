@@ -23,6 +23,41 @@ _log = logging.getLogger("juggle-dispatch-core")
 DEFAULT_WORKTREE_ROOT = os.environ.get("JUGGLE_WORKTREE_ROOT", "/tmp")
 
 
+def _reuse_idle_agent(
+    db, mgr, thread_id: str, *, role, target_repo, requested_harness, model_match,
+) -> dict | None:
+    """CAS-claim the first idle agent matching repo/role/harness (warm reuse:
+    /clear + cd), or None. ``model_match`` None → model-blind (today's behavior);
+    non-NULL → constrain to a pane whose IMMUTABLE launch model equals it (the
+    headroom-preference pass). Claiming never grows the pool, so the cap is the
+    caller's spawn-branch job (2026-07-01 reuse-before-cap incident)."""
+    for candidate in db.get_ranked_idle_agents(thread_id, role=role):
+        agent_repo = candidate.get("repo_path")
+        if agent_repo is None:
+            continue
+        if target_repo and agent_repo != target_repo:
+            continue
+        if role and candidate.get("role") != role:
+            continue
+        if candidate.get("harness") != requested_harness:
+            continue
+        if model_match is not None and candidate.get("model") != model_match:
+            continue
+        if not mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
+            continue
+        if not db.cas_assign_agent(candidate["id"], thread_id):
+            continue
+        # Reuse == warm process + CLEAN context: drop the accumulated
+        # transcript before handing the pane a new task. Harness-gated —
+        # only Claude Code has '/clear'; other harnesses skip it.
+        if requested_harness == "claude":
+            mgr._run_tmux("send-keys", "-t", candidate["pane_id"], "/clear", "Enter")
+        reset_dir = target_repo or os.path.expanduser("~")
+        mgr._run_tmux("send-keys", "-t", candidate["pane_id"], f"cd {reset_dir}", "Enter")
+        return candidate
+    return None
+
+
 def acquire_agent(
     db,
     thread_id: str,
@@ -52,31 +87,23 @@ def acquire_agent(
     agent_cfg = _com._get_settings().get("agent", {})
     requested_harness = harness or agent_cfg.get("harness") or "claude"
 
+    def _reuse(model_match):
+        return _reuse_idle_agent(
+            db, mgr, thread_id, role=role, target_repo=target_repo,
+            requested_harness=requested_harness, model_match=model_match,
+        )
+
     agent = None
     if not fresh:
-        for candidate in db.get_ranked_idle_agents(thread_id, role=role):
-            agent_repo = candidate.get("repo_path")
-            if agent_repo is None:
-                continue
-            if target_repo and agent_repo != target_repo:
-                continue
-            if role and candidate.get("role") != role:
-                continue
-            if candidate.get("harness") != requested_harness:
-                continue
-            if not mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
-                continue
-            if not db.cas_assign_agent(candidate["id"], thread_id):
-                continue
-            # Reuse == warm process + CLEAN context: drop the accumulated
-            # transcript before handing the pane a new task. Harness-gated —
-            # only Claude Code has '/clear'; other harnesses skip it.
-            if requested_harness == "claude":
-                mgr._run_tmux("send-keys", "-t", candidate["pane_id"], "/clear", "Enter")
-            reset_dir = target_repo or os.path.expanduser("~")
-            mgr._run_tmux("send-keys", "-t", candidate["pane_id"], f"cd {reset_dir}", "Enter")
-            agent = candidate
-            break
+        if model:
+            # Headroom preference (no idle-TTL / no anti-starvation): a launch-
+            # model match wins; else prefer a right-model cold-spawn while the pool
+            # has headroom; else (saturated) fall back to ANY idle pane — never starve.
+            agent = _reuse(model)
+            if agent is None and len(db.get_all_agents()) >= MAX_BACKGROUND_AGENTS:
+                agent = _reuse(None)
+        else:
+            agent = _reuse(None)  # NULL model = today's behavior (reuse any match)
 
     if agent is None:
         # Only the spawn branch grows the pool, so enforce the cap HERE — a
@@ -102,13 +129,11 @@ def acquire_agent(
             kw["repo_path"] = target_repo
         db.update_agent(agent["id"], **kw)
     else:
-        _extra: dict = {}
-        if model:
-            _extra["model"] = model
+        # Warm reuse: never overwrite agents.model — the pane's launch model is
+        # IMMUTABLE (a reused process cannot re-model) and the headroom preference
+        # matches against it. Only repo_path may be (re)bound.
         if repo:
-            _extra["repo_path"] = target_repo
-        if _extra:
-            db.update_agent(agent["id"], **_extra)
+            db.update_agent(agent["id"], repo_path=target_repo)
 
     db.set_conversation_background(thread_id)
     return db.get_agent(agent["id"])

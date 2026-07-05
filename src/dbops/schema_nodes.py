@@ -94,13 +94,15 @@ CREATE TABLE IF NOT EXISTS nodes (
 
   -- Loop-entity V1 (Phase 1): nodes.role (dispatch role, default 'coder') and
   -- nodes.delivery (completion contract, default 'merge') are ADDED BY Migration
-  -- 72 — deliberately NOT carried here. The CREATE_NODES DDL is frozen at
-  -- Migration 63 (fail_envelope): every later column (66/67/70/71 + these) is
-  -- migration-only, so a fresh DB acquires them via the SAME ALTER-append path as
-  -- an already-migrated DB (init_db always runs run_migrations). Adding them here
-  -- would place them mid-table on fresh DBs but end-of-table on migrated DBs,
-  -- diverging `SELECT *` column order. Both default to CURRENT behavior so
-  -- existing graphs are byte-for-byte unchanged.
+  -- 72 — deliberately NOT carried here. Loop-entity V2 (Release 1 / P2):
+  -- nodes.model (requested dispatch model, DEFAULT NULL — distinct from
+  -- last_dispatched_model above) is ADDED BY Migration 74, same rationale. The
+  -- CREATE_NODES DDL is frozen at Migration 63 (fail_envelope): every later column
+  -- (66/67/70/71/72/74 + these) is migration-only, so a fresh DB acquires them via
+  -- the SAME ALTER-append path as an already-migrated DB (init_db always runs
+  -- run_migrations). Adding them here would place them mid-table on fresh DBs but
+  -- end-of-table on migrated DBs, diverging `SELECT *` column order. All default
+  -- to CURRENT behavior so existing graphs are byte-for-byte unchanged.
 
   -- Kind discriminator (P8 M2): ONE wide table holds every kind (NOT split
   -- per-kind). This CHECK enforces that verify_cmd — the execution-only column —

@@ -285,6 +285,13 @@ def test_migration_idempotent():
     cols = [r[1] for r in info]
     assert "model" in cols
     assert cols.count("model") == 1, "duplicate model column"
-    # DEFAULT NULL (today's behavior — harness/role-resolved).
+    # DEFAULT NULL (today's behavior — harness/role-resolved). PRAGMA reports the
+    # default expression as text, so an explicit `DEFAULT NULL` reads as 'NULL'.
     model_col = [r for r in info if r[1] == "model"][0]
-    assert model_col[4] is None, "nodes.model must DEFAULT NULL"
+    assert model_col[4] in (None, "NULL"), "nodes.model must DEFAULT NULL"
+    # a fresh row leaves model NULL (not some non-null default).
+    conn.execute(
+        "INSERT INTO nodes (id, kind, title, objective, state, created_at, updated_at) "
+        "VALUES ('n1','topic','t','','open','now','now')"
+    )
+    assert conn.execute("SELECT model FROM nodes WHERE id='n1'").fetchone()[0] is None

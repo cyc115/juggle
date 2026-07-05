@@ -61,3 +61,8 @@ def apply_tail_migrations(conn: sqlite3.Connection) -> None:
     # Migration 73 (loop-entity V1 Phase 1): loops table + run-seq/breaker columns.
     from dbops.migration_73_loops import migrate_73_loops
     migrate_73_loops(conn)
+
+    # Migration 74 (loop-entity V2 Release 1 / P2): additive nodes.model column
+    # (requested model, TOPIC grain — distinct from nodes.last_dispatched_model).
+    from dbops.migration_74_node_model import migrate_74_node_model
+    migrate_74_node_model(conn)

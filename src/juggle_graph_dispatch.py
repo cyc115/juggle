@@ -97,12 +97,16 @@ from juggle_graph_hydration import (  # noqa: E402, F401
 
 
 def _dispatch_via_pool(db, thread_id: str, prompt: str, task: dict) -> None:
-    """Dispatch ``prompt`` via dispatch_node(), resolving the role PER NODE
-    (loop-entity Phase 2 — no longer hardcoded coder; researcher gets no
-    worktree). Raises CapacityError (pool full → defer) or RuntimeError."""
+    """Dispatch ``prompt`` via dispatch_node(), resolving the role AND model PER
+    NODE (loop-entity Phase 2 role; V2/P2 model). NULL model → harness default
+    (unchanged). Raises CapacityError (pool full → defer) or RuntimeError."""
     from juggle_dispatch_core import dispatch_node
 
-    dispatch_node(db, thread_id, prompt, task, role=_resolve_dispatch_role(db, task))
+    dispatch_node(
+        db, thread_id, prompt, task,
+        role=_resolve_dispatch_role(db, task),
+        model=_resolve_dispatch_model(db, task),
+    )
 
 
 def _give_up_dispatch(db, task_id: str, err: Exception) -> None:
@@ -322,7 +326,8 @@ def _session_id(db) -> str:
 # (LOC gate, loop-entity V2/P2), re-exported here so graph_tick + callers/tests
 # keep importing ``_resolve_dispatch_role`` (and the V2/P2 ``_resolve_dispatch_model``)
 # from this module unchanged (bottom import breaks the TASK_ROLE cycle).
-from juggle_graph_dispatch_resolve import _resolve_dispatch_role  # noqa: E402, F401
+from juggle_graph_dispatch_resolve import (  # noqa: E402, F401
+    _resolve_dispatch_model, _resolve_dispatch_role)
 
 # Topic claim/sweep/give-up live in juggle_graph_dispatch_topics (LOC gate),
 # re-exported here for graph_tick + callers/tests (bottom import breaks the cycle).

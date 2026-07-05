@@ -35,3 +35,38 @@ def _resolve_dispatch_role(db, node: dict | None) -> str:
         except Exception:
             role = None
     return role or TASK_ROLE
+
+
+def _resolve_dispatch_model(db, node: dict | None):
+    """The model a node/topic dispatches with (loop-entity V2 / P2), best-effort.
+
+    Prefer a ``model`` the caller already hydrated onto the dict (topic rows carry
+    it, _TOPIC_SELECT). Else read nodes.model by id at TOPIC grain; a kind='task'
+    node with no own model inherits its parent topic's model via ``parent_id``
+    (a topic = one pane = one model). NULL → None (harness default / role-resolved
+    — today's behavior). Fail-soft: a pre-migration DB (no model column) resolves
+    None, so the model is simply not threaded."""
+    node = node or {}
+    model = node.get("model")
+    if model:
+        return model
+    nid = node.get("id")
+    if not nid:
+        return None
+    try:
+        with db._connect() as conn:
+            row = conn.execute(
+                "SELECT model, kind, parent_id FROM nodes WHERE id=?", (nid,)
+            ).fetchone()
+            if row is None:
+                return None
+            if row["model"]:
+                return row["model"]
+            if row["kind"] == "task" and row["parent_id"]:
+                prow = conn.execute(
+                    "SELECT model FROM nodes WHERE id=?", (row["parent_id"],)
+                ).fetchone()
+                return prow["model"] if prow else None
+    except Exception:
+        return None
+    return None
