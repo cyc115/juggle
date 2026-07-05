@@ -32,11 +32,13 @@ from textual.widgets import Footer, Header, Static
 from juggle_db import JuggleDB
 from juggle_settings import get_settings as _get_settings
 from juggle_cockpit_helpers import (
+    _PRIORITY_TIER_MAP,  # noqa: F401 — re-exported; tests import from juggle_cockpit
     _SCROLL_PANES,
     _apply_filter_actions,
     _apply_filter_text,
     _new_blocker_actions,
     _newly_failed_agents,
+    _parse_filter,       # noqa: F401 — re-exported; tests import from juggle_cockpit
     _resolve_actions_by_thread_label,
     _resolve_agent_by_index,
     _resolve_thread_by_label,
