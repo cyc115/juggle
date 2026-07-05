@@ -125,3 +125,23 @@ def test_unknown_id_fails_loud(juggle_db):
     backend = _FakeBackend([])  # no OS tasks, no matching loop
     with pytest.raises(Exception):
         delete_schedule(juggle_db, "does-not-exist", backend=backend)
+
+
+def test_delete_backend_enumeration_error_surfaces(juggle_db):
+    """delete-backend-error-not-masked (2026-07-04 code-review Important-1): when the
+    OS backend fails to ENUMERATE during a delete, the real error must surface — not
+    be swallowed and masqueraded as a misleading 'unknown id' no-op
+    (detect-refuse-preserve). RED pre-fix: _resolve_os caught list_tasks() and
+    returned [], so delete raised ValueError('unknown id') instead of the backend
+    error."""
+    from juggle_cmd_schedule import delete_schedule
+
+    class _BoomBackend:
+        def list_tasks(self):
+            raise RuntimeError("launchctl unavailable")
+
+        def uninstall(self, label):  # pragma: no cover - must never be reached
+            raise AssertionError("must not uninstall when enumeration failed")
+
+    with pytest.raises(RuntimeError, match="launchctl unavailable"):
+        delete_schedule(juggle_db, "some-os-label", backend=_BoomBackend())

@@ -20,24 +20,38 @@ from __future__ import annotations
 from juggle_cli_common import get_db
 
 
-def _resolve_os(backend):
-    """Return ``(backend_or_None, tasks)`` for the OS scheduler.
-
-    A caller may inject a ``backend`` (tests); otherwise the platform default is
-    used. A host with no scheduler backend, or a backend that errors while
-    listing, yields ``(backend, [])`` — mirroring
-    ``juggle_cockpit_sched.fetch_scheduled_tasks``: no OS schedules is NOT an
-    error, just an empty set."""
-    if backend is None:
-        try:
-            from juggle_scheduler import get_backend
-            backend = get_backend()
-        except Exception:
-            return None, []
+def _get_backend(backend):
+    """Resolve the OS scheduler backend, or ``None`` if this host has none
+    available (Linux without systemd/cron, etc.). An injected ``backend`` (tests)
+    is returned as-is."""
+    if backend is not None:
+        return backend
     try:
-        return backend, list(backend.list_tasks())
+        from juggle_scheduler import get_backend
+        return get_backend()
     except Exception:
-        return backend, []
+        return None
+
+
+def _os_tasks(backend, *, strict: bool) -> list:
+    """List the OS scheduled tasks off ``backend`` (``[]`` if no backend).
+
+    ``strict`` deliberately splits the two call sites:
+      - LIST / display (``strict=False``): an enumeration hiccup yields ``[]`` —
+        parity with ``juggle_cockpit_sched.fetch_scheduled_tasks``; a read must
+        never blow up.
+      - DELETE / dispatch (``strict=True``): the failure PROPAGATES. Swallowing
+        it here would misclassify a real, still-installed schedule as an unknown
+        id and report a no-op "unknown schedule" instead of the true backend
+        error (detect-refuse-preserve, not a silent lie)."""
+    if backend is None:
+        return []
+    if strict:
+        return list(backend.list_tasks())
+    try:
+        return list(backend.list_tasks())
+    except Exception:
+        return []
 
 
 def list_schedules(db, *, backend=None) -> list[dict]:
@@ -46,8 +60,7 @@ def list_schedules(db, *, backend=None) -> list[dict]:
     OS schedules (``type='os'``) from the backend's ``list_tasks()``; loops
     (``type='loop'``) from ``list_active_loops()``. Pure — the caller renders."""
     rows: list[dict] = []
-    _, tasks = _resolve_os(backend)
-    for t in tasks:
+    for t in _os_tasks(_get_backend(backend), strict=False):
         rows.append(
             {"type": "os", "id": t.label, "schedule": t.schedule, "status": t.status}
         )
@@ -76,6 +89,10 @@ def delete_schedule(db, sched_id: str, *, purge: bool = False, backend=None) -> 
     if loop is not None:
         project_id = loop["project_id"]
         if purge:
+            # --purge hard-removes the loop ROW. There is no delete_project
+            # primitive, so we close (hide) the project rather than delete its
+            # graph — a deliberate orphan: a closed, loop-less project remains
+            # (recoverable-as-inert via project:open); the loop entity is gone.
             db.close_project(
                 project_id, f"Loop {sched_id} purged (schedule:delete --purge)", {}
             )
@@ -87,8 +104,11 @@ def delete_schedule(db, sched_id: str, *, purge: bool = False, backend=None) -> 
         )
         return {"type": "loop", "action": "soft", "id": sched_id}
 
-    backend, tasks = _resolve_os(backend)
-    if backend is not None and sched_id in {t.label for t in tasks}:
+    # OS branch — strict=True: a backend that fails to ENUMERATE surfaces its real
+    # error here rather than letting a still-installed schedule fall through to a
+    # misleading "unknown id" no-op (Important-1, code review 2026-07-04).
+    backend = _get_backend(backend)
+    if backend is not None and sched_id in {t.label for t in _os_tasks(backend, strict=True)}:
         backend.uninstall(sched_id)
         return {"type": "os", "action": "uninstall", "id": sched_id}
 
