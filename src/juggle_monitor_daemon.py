@@ -192,7 +192,7 @@ def _load_cursor(cursor_path: Path, db_path: Path) -> int:
         return baseline
 
 
-def _handle_term(signum, frame) -> None:
+def _handle_term(_signum, frame) -> None:
     """Clean, idempotent shutdown for SIGTERM/SIGINT.
 
     atexit does NOT run on SIGTERM (Python terminates immediately, exit 143),

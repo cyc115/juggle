@@ -159,11 +159,11 @@ _stall_tracker = _StallTracker()
 _tick_event = threading.Event()
 
 
-def _handle_sigusr1(signum, frame):
+def _handle_sigusr1(_signum, frame):
     _tick_event.set()  # idempotent; coalesces multiple concurrent signals
 
 
-def _handle_sigterm(signum, frame):
+def _handle_sigterm(_signum, frame):
     global _running
     _log.info("Watchdog: SIGTERM received, shutting down")
     _running = False
