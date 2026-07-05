@@ -169,19 +169,19 @@ def scan_verified_sql_sites(src_root: str | Path) -> dict[str, tuple[str, ...]]:
 # Phase 3 rewrites a literal to include 'delivered'.
 VERIFIED_SQL_LITERAL_SITES: dict[str, tuple[str, ...]] = {
     "dbops/db_graph.py": (
-        "\"  WHERE e.node_id=n.id AND e.kind='dep' AND d.state != 'verified') \"",
+        "\"  WHERE e.node_id=n.id AND e.kind='dep' AND d.state NOT IN ('verified','delivered')) \"",
     ),
     "dbops/db_graph_edges.py": (
-        "\"WHERE e.node_id=? AND e.kind='dep' AND d.state != 'verified' \"",
+        "\"WHERE e.node_id=? AND e.kind='dep' AND d.state NOT IN ('verified','delivered') \"",
     ),
     "dbops/db_topics.py": (
-        "\"  AND dt.state != 'verified') \"",
+        "\"  AND dt.state NOT IN ('verified','delivered')) \"",
     ),
     "dbops/orphan_reconcile.py": (
         "\"UPDATE nodes SET merged_sha=?, state='verified', updated_at=? WHERE id=?\",",
     ),
     "juggle_add_node.py": (
-        "\"WHERE e.node_id=? AND e.kind='dep' AND d.state != 'verified' LIMIT 1\",",
+        "\"WHERE e.node_id=? AND e.kind='dep' AND d.state NOT IN ('verified','delivered') LIMIT 1\",",
     ),
     # Phase 3 (2026-07-04): both rollup literals gained 'delivered' so a delivered
     # topic/task counts as done (open-count) — deliver loops never read incomplete.

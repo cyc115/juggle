@@ -54,7 +54,7 @@ def unverified_deps(db, task_id: str) -> list[str]:
         rows = conn.execute(
             "SELECT e.depends_on_id FROM node_edges e "
             "JOIN nodes d ON d.id = e.depends_on_id "
-            "WHERE e.node_id=? AND e.kind='dep' AND d.state != 'verified' "
+            "WHERE e.node_id=? AND e.kind='dep' AND d.state NOT IN ('verified','delivered') "
             "ORDER BY e.depends_on_id",
             (task_id,),
         ).fetchall()

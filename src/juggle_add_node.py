@@ -224,7 +224,7 @@ def _add_task_node(
         # writer, so the new task is 'ready' iff every dep is 'verified'.
         unverified = conn.execute(
             "SELECT 1 FROM node_edges e JOIN nodes d ON d.id=e.depends_on_id "
-            "WHERE e.node_id=? AND e.kind='dep' AND d.state != 'verified' LIMIT 1",
+            "WHERE e.node_id=? AND e.kind='dep' AND d.state NOT IN ('verified','delivered') LIMIT 1",
             (node_id,),
         ).fetchone()
         new_state = "open" if unverified else "ready"

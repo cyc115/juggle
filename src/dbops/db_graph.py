@@ -240,7 +240,7 @@ def ready_eligible(db, project_id: str) -> list[str]:
             "SELECT n.id FROM nodes n WHERE n.kind='task' AND n.project_id=? "
             "AND n.state='open' AND NOT EXISTS ("
             "  SELECT 1 FROM node_edges e JOIN nodes d ON d.id=e.depends_on_id"
-            "  WHERE e.node_id=n.id AND e.kind='dep' AND d.state != 'verified') "
+            "  WHERE e.node_id=n.id AND e.kind='dep' AND d.state NOT IN ('verified','delivered')) "
             "ORDER BY n.created_at, n.id",
             (project_id,),
         ).fetchall()

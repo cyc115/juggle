@@ -300,7 +300,7 @@ def topic_ready_eligible(db, project_id) -> list[str]:
             "  JOIN nodes d ON d.id = e.depends_on_id"
             "  JOIN nodes dt ON dt.id = d.parent_id"
             "  WHERE e.kind='dep' AND n.parent_id = t.id AND d.parent_id != t.id"
-            "  AND dt.state != 'verified') "
+            "  AND dt.state NOT IN ('verified','delivered')) "
             "AND EXISTS ("
             "  SELECT 1 FROM nodes gt"
             f"  WHERE gt.parent_id = t.id AND gt.state IN ({placeholders})) "
