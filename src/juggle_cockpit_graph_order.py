@@ -15,7 +15,7 @@ Two responsibilities, both pure/testable:
    never sleep; ``interval<=0`` bypasses the cache (recompute every call).
 
 The DB-reading side (``gather_project_activity``) lives in
-juggle_cockpit_graph_dag so this module stays pure — no sqlite, no Rich, no time.
+juggle_cockpit_graph_activity so this module stays pure — no sqlite, no Rich, no time.
 """
 from __future__ import annotations
 
