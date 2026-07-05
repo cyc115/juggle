@@ -16,6 +16,16 @@ from juggle_cockpit_graph_dag import (  # noqa: F401 — re-exported for back-co
 )
 from dbops.node_translation import status_for_state
 from juggle_cockpit_tree import load_topic_children as _load_topic_children
+from juggle_cockpit_format import (  # noqa: F401 — re-exported (P5a mechanical extract)
+    format_age,
+    priority_tier,
+    TIER_BLOCKER,
+    TIER_REVIEW,
+    TIER_BACKGROUND,
+    TIER_CURRENT,
+    TIER_IDLE,
+    TIER_DONE,
+)
 
 
 @dataclass(frozen=True)
@@ -72,70 +82,6 @@ class CockpitState:
     graph_by_project: dict = None  # type: ignore  # {id: task counts}, None → no graph
     graph_dag: "GraphDag | None" = None  # armed-project DAG, only in graph mode
     graph_dags: "list | None" = None  # all armed projects' DAGs (multi-project)
-
-
-# ---------------------------------------------------------------------------
-# format_age
-# ---------------------------------------------------------------------------
-
-
-def format_age(secs: int | None) -> str:
-    """Convert seconds to compact age string: '12s', '5m', '2h', '3d'."""
-    if secs is None:
-        return "—"
-    secs = int(secs)
-    if secs < 60:
-        return f"{secs}s"
-    if secs < 3600:
-        return f"{secs // 60}m"
-    if secs < 86400:
-        return f"{secs // 3600}h"
-    return f"{secs // 86400}d"
-
-
-# ---------------------------------------------------------------------------
-# priority_tier
-# ---------------------------------------------------------------------------
-
-TIER_BLOCKER = 0
-TIER_REVIEW = 1
-TIER_BACKGROUND = 2
-TIER_CURRENT = 3
-TIER_IDLE = 5
-TIER_DONE = 6
-
-_IDLE_THRESHOLD_SECS = 2 * 3600  # 2 hours
-
-
-def priority_tier(
-    agent_result: str | None,
-    status: str,
-    last_active_age_secs: int | None,
-    is_current: bool,
-    reviewed: bool = False,
-) -> int:
-    """Compute display-priority tier for a thread. Lower = higher priority."""
-    result = agent_result or ""
-
-    if result.startswith("⚠️ BLOCKER:"):
-        return TIER_BLOCKER
-
-    if status == "done" and result and not is_current and not reviewed:
-        return TIER_REVIEW
-
-    if status == "background":
-        return TIER_BACKGROUND
-
-    if is_current:
-        return TIER_CURRENT
-
-    if last_active_age_secs is not None and last_active_age_secs > _IDLE_THRESHOLD_SECS:
-        return TIER_IDLE
-
-    if status == "done":
-        return TIER_DONE
-
-    return TIER_IDLE
 
 
 # ---------------------------------------------------------------------------
