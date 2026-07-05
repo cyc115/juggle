@@ -29,6 +29,7 @@ from juggle_loop_template_validator import (  # noqa: E402
     LoopTemplateError,
     validate_loop_template,
 )
+from dbops import db_graph, db_topics  # noqa: E402
 
 
 @pytest.fixture
@@ -109,23 +110,73 @@ def test_compute_next_run_from_cadence():
 
 
 # ── Atomic create (§Axis-5) ─────────────────────────────────────────────────────
-def test_multi_topic_create_refused_until_p4b(db):
-    """P4a boundary (2026-07-05): the validator + `loop plan` accept a multi-topic
-    decomposition, but `create_loop_atomic` instantiates a SINGLE topic — it must
-    REFUSE a >1-topic template LOUDLY, never silently instantiate topics[0] and drop
-    the rest (fail-loud; cross-topic instantiation lands in P4b)."""
+def test_multi_topic_create_instantiates_n_topics_and_edges(db):
+    """P4b (2026-07-05): create_loop_atomic instantiates ALL topics of a multi-topic
+    template — N stable topic nodes + each topic's r0 task generation + the cross-
+    topic dependency edges (a topic-level dep becomes a crossing task edge so
+    derived_topic_deps + topic readiness gate correctly). Supersedes the P4a
+    `test_multi_topic_create_refused_until_p4b` deferral (which raised 'SINGLE
+    topic')."""
+    tmpl = {"topics": [
+        {"id": "research", "title": "Research", "delivery": "deliver", "deps": [],
+         "tasks": [{"id": "gather", "title": "gather", "prompt": "p",
+                    "role": "researcher"}]},
+        {"id": "build", "title": "Build", "delivery": "merge", "deps": ["research"],
+         "tasks": [{"id": "impl", "title": "impl", "prompt": "p", "role": "coder"}]},
+    ]}
+    r = create_loop_atomic(db, template=tmpl, cadence="every 1h")
+    loop_id = r["loop_id"]
+    research_t, build_t = f"{loop_id}-research", f"{loop_id}-build"
+
+    # N stable topic nodes (no run-seq prefix), both materialized.
+    assert set(r["topic_ids"]) == {research_t, build_t}
+    assert r["topic_id"] == research_t  # first topic is the primary (back-compat)
+    for tid in (research_t, build_t):
+        assert db_topics.get_topic(db, tid) is not None
+
+    # Each topic's r0 task generation exists (run-seq namespaced).
+    with db._connect() as c:
+        for nid in (f"{loop_id}-r0-gather", f"{loop_id}-r0-impl"):
+            assert c.execute("SELECT COUNT(*) FROM nodes WHERE id=?",
+                             (nid,)).fetchone()[0] == 1
+
+    # The topic-level dep (build → research) is realized as a crossing TASK edge
+    # (build's root → research's leaf), so derived_topic_deps sees it.
+    assert db_topics.derived_topic_deps(db, build_t) == [research_t]
+    assert db_topics.derived_topic_deps(db, research_t) == []
+    assert db_graph.get_deps(db, f"{loop_id}-r0-impl") == [f"{loop_id}-r0-gather"]
+
+
+def test_multi_topic_create_atomic_rollback(db, monkeypatch):
+    """P4b: a mid-create failure while instantiating the SECOND topic rolls the whole
+    multi-topic create back — ZERO orphan rows (no project, no loop, no topic/task
+    nodes). The N-topic loop is created on ONE transaction just like single-topic."""
+    import juggle_cmd_loop_create as lc
+    import juggle_loop_instantiate as li
+
+    calls = {"n": 0}
+    real = li.instantiate_generation
+
+    def _boom_on_second(*a, **k):
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise RuntimeError("injected mid-multi-topic failure")
+        return real(*a, **k)
+    # Patch the reference create_loop_atomic actually calls (imported into lc).
+    monkeypatch.setattr(lc, "instantiate_generation", _boom_on_second)
+
     tmpl = {"topics": [
         {"id": "a", "title": "A", "delivery": "deliver", "deps": [],
          "tasks": [{"id": "x", "title": "x", "prompt": "p", "role": "researcher"}]},
         {"id": "b", "title": "B", "delivery": "merge", "deps": ["a"],
          "tasks": [{"id": "y", "title": "y", "prompt": "p", "role": "coder"}]},
     ]}
-    with pytest.raises(LoopTemplateError, match="SINGLE topic"):
+    with pytest.raises(RuntimeError, match="injected"):
         create_loop_atomic(db, template=tmpl, cadence="every 1h")
-    # nothing was written — fail-loud is also zero-orphan
     with db._connect() as c:
         assert c.execute("SELECT COUNT(*) FROM loops").fetchone()[0] == 0
         assert c.execute("SELECT COUNT(*) FROM projects WHERE kind='loop'").fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM nodes WHERE id LIKE '%-r0-%'").fetchone()[0] == 0
 
 
 def test_loop_project_has_kind_loop(db):

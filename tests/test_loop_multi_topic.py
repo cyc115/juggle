@@ -140,6 +140,22 @@ def test_cross_topic_edge_to_unknown_topic_rejected():
         validate_loop_template(tmpl)
 
 
+def test_duplicate_task_id_across_topics_rejected():
+    """P4b (2026-07-05): task ids must be GLOBALLY unique across topics. A generation
+    materializes each task as ``<L#>-r<seq>-<task_id>``; two topics sharing a base task
+    id would collide on that node id (create_task INSERT OR IGNORE silently drops the
+    second, and a crossing edge to ``<gen>-<id>`` becomes ambiguous). The validator is
+    the gate — reject it deterministically at create, never at instantiation."""
+    tmpl = {"topics": [
+        {"id": "a", "title": "A", "delivery": "deliver", "deps": [],
+         "tasks": [_task("dup", "researcher", delivery="deliver")]},
+        {"id": "b", "title": "B", "delivery": "merge", "deps": ["a"],
+         "tasks": [_task("dup", "coder", delivery="merge")]},
+    ]}
+    with pytest.raises(LoopTemplateError, match="unique"):
+        validate_loop_template(tmpl)
+
+
 # ── Pre-create confirm-card (§6.3) ──────────────────────────────────────────────
 def test_confirm_card_renders_topic_dag():
     """P4a §6.3: schedule:create renders a deterministic confirm-card of the decomposed

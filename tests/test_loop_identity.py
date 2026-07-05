@@ -281,3 +281,37 @@ def test_iteration_outcome_keys_on_generation(db):
     # r0 stays 'success'; r1 is now 'in_flight' — keyed strictly per generation
     assert lf.iteration_outcome(db, pid, loop_id, 0) == ("success", "")
     assert lf.iteration_outcome(db, pid, loop_id, 1)[0] == "in_flight"
+
+
+# ── Multi-topic re-fire fails loud (deferred: full regeneration is future work) ──
+def test_multi_topic_refire_fails_loud_not_silent(db):
+    """P4b (2026-07-05): P4b lands create-time multi-topic + the cross-topic vault
+    handoff; multi-topic re-fire REGENERATION (reopen every stable topic + re-wire the
+    crossing edges each fire) is a deferred follow-up. Until it lands, a fire over a
+    MULTI-topic loop must FAIL LOUD (surface via the never-swallow choke point) rather
+    than silently regenerate only the first topic — which would drop topics and dangle
+    the crossing edges. No run_seq bump, no phantom r1 generation."""
+    tmpl = {"topics": [
+        {"id": "research", "title": "Research", "delivery": "deliver", "deps": [],
+         "tasks": [{"id": "gather", "title": "gather", "prompt": "p",
+                    "role": "researcher", "model": "sonnet", "deps": []}]},
+        {"id": "build", "title": "Build", "delivery": "merge", "deps": ["research"],
+         "tasks": [{"id": "impl", "title": "impl", "prompt": "p",
+                    "role": "coder", "model": "sonnet", "deps": []}]},
+    ]}
+    res = create_loop_atomic(db, template=tmpl, cadence="every 5m")
+    loop_id, pid = res["loop_id"], res["project_id"]
+    # Drive the r0 generation to a success terminal so the fire proceeds to re-fire
+    # (an in-flight prior generation would overlap-skip before reaching regeneration).
+    _set_iter_state(db, pid, loop_id, 0, "verified")
+    with db._connect() as conn:
+        conn.execute("UPDATE loops SET next_run=? WHERE id=?", (PAST, loop_id))
+        conn.commit()
+
+    results = lf.fire_due_loops(db, SESSION, now=NOW)
+
+    assert (loop_id, "error") in results, "a multi-topic re-fire must fail loud"
+    assert db.get_loop(loop_id)["run_seq"] == 0, "no run_seq bump on a refused re-fire"
+    assert _iter_task_count(db, pid, loop_id, 1) == 0, "no phantom r1 generation"
+    assert [i for i in db.get_open_action_items()
+            if i["thread_id"] == res["thread_id"]], "must surface, not silently wedge"
