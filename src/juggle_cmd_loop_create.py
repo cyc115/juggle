@@ -97,6 +97,17 @@ def create_loop_atomic(db, *, template, cadence, name=None, objective="",
     ORPHAN bucket. The thread is created via the shared ``create_thread`` primitive
     on THIS connection, so it commits/rolls back atomically with the loop."""
     norm = validate_loop_template(template)  # raises LoopTemplateError pre-write
+    # The validator + `loop plan` confirm-card accept a multi-topic decomposition
+    # (P4a), but cross-topic instantiation (the second stable topic + the topic-level
+    # dep edge + the vault handoff seam) lands in P4b. Refuse >1 topic LOUDLY here
+    # rather than silently instantiating only topics[0] and dropping the rest.
+    if len(norm["topics"]) != 1:
+        raise LoopTemplateError(
+            f"loop create currently instantiates a SINGLE topic (got "
+            f"{len(norm['topics'])}) — multi-topic cross-topic instantiation lands in "
+            f"P4b. Use `loop plan` to preview the decomposition; a single-topic loop "
+            f"is a one-topic graph with no cross-topic deps."
+        )
     topic = norm["topics"][0]
     next_run = compute_next_run(cadence, now)
 
@@ -186,3 +197,24 @@ def cmd_loop_create(args):
         f"Loop {result['loop_id']} created (project {result['project_id']}, topic "
         f"{result['topic_id']}, next_run {result['next_run']})."
     )
+
+
+def cmd_loop_plan(args):
+    """CLI: ``juggle loop plan --template <file.json> --cadence '<cadence>'``.
+
+    Validates the template and prints the decomposed topic-DAG confirm-card (§6.3) so
+    ``schedule:create`` can show it BEFORE the (frozen-forever) create. Read-only — no
+    DB, no write. A rejected template fails loud here, exactly as it would at create."""
+    from juggle_loop_confirm_card import render_topic_dag_card
+
+    try:
+        template = json.loads(open(args.template, encoding="utf-8").read())
+    except (OSError, ValueError) as e:
+        print(f"Error: could not read template {args.template!r}: {e}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        norm = validate_loop_template(template)
+    except LoopTemplateError as e:
+        print(f"Error: invalid loop template — {e}", file=sys.stderr)
+        sys.exit(1)
+    print(render_topic_dag_card(norm, args.cadence))

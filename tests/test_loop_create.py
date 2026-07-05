@@ -24,7 +24,6 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from juggle_db import JuggleDB  # noqa: E402
-import juggle_cmd_loop_create as lc  # noqa: E402
 from juggle_cmd_loop_create import create_loop_atomic, compute_next_run  # noqa: E402
 from juggle_loop_template_validator import (  # noqa: E402
     LoopTemplateError,
@@ -52,18 +51,10 @@ def _single_topic_template(delivery="deliver", role="researcher", ntasks=1):
 
 
 # ── Deterministic partition validator (§Axis-4) ─────────────────────────────────
-def test_validator_rejects_multi_topic_in_v1():
-    """V1 single-topic scope guard: a 2-topic template is rejected deterministically."""
-    tmpl = {"topics": [
-        {"id": "a", "title": "A", "delivery": "merge",
-         "tasks": [{"id": "x", "title": "x", "prompt": "p", "role": "coder"}]},
-        {"id": "b", "title": "B", "delivery": "merge",
-         "tasks": [{"id": "y", "title": "y", "prompt": "p", "role": "coder"}]},
-    ]}
-    with pytest.raises(LoopTemplateError, match="single-topic"):
-        validate_loop_template(tmpl)
-
-
+# NOTE: the V1 `test_validator_rejects_multi_topic_in_v1` guard was intentionally
+# retired in P4a (plan 2026-07-04: "lift the single-topic guard"). Its successor —
+# `test_two_topic_differing_role_validates` — lives in test_loop_multi_topic.py and
+# pins the NEW contract (N topics validate; partition on (role, delivery)).
 def test_validator_rejects_mixed_role_topic():
     """§Axis-4: a topic mixing researcher+coder member tasks is rejected in code —
     the partition rule is NOT trusted from raw LLM output."""
@@ -118,6 +109,25 @@ def test_compute_next_run_from_cadence():
 
 
 # ── Atomic create (§Axis-5) ─────────────────────────────────────────────────────
+def test_multi_topic_create_refused_until_p4b(db):
+    """P4a boundary (2026-07-05): the validator + `loop plan` accept a multi-topic
+    decomposition, but `create_loop_atomic` instantiates a SINGLE topic — it must
+    REFUSE a >1-topic template LOUDLY, never silently instantiate topics[0] and drop
+    the rest (fail-loud; cross-topic instantiation lands in P4b)."""
+    tmpl = {"topics": [
+        {"id": "a", "title": "A", "delivery": "deliver", "deps": [],
+         "tasks": [{"id": "x", "title": "x", "prompt": "p", "role": "researcher"}]},
+        {"id": "b", "title": "B", "delivery": "merge", "deps": ["a"],
+         "tasks": [{"id": "y", "title": "y", "prompt": "p", "role": "coder"}]},
+    ]}
+    with pytest.raises(LoopTemplateError, match="SINGLE topic"):
+        create_loop_atomic(db, template=tmpl, cadence="every 1h")
+    # nothing was written — fail-loud is also zero-orphan
+    with db._connect() as c:
+        assert c.execute("SELECT COUNT(*) FROM loops").fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM projects WHERE kind='loop'").fetchone()[0] == 0
+
+
 def test_loop_project_has_kind_loop(db):
     r = create_loop_atomic(db, template=_single_topic_template(), cadence="every 1h")
     proj = db.get_project(r["project_id"])
