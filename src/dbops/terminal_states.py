@@ -185,9 +185,14 @@ VERIFIED_SQL_LITERAL_SITES: dict[str, tuple[str, ...]] = {
     ),
     # Phase 3 (2026-07-04): both rollup literals gained 'delivered' so a delivered
     # topic/task counts as done (open-count) — deliver loops never read incomplete.
+    # P3b (2026-07-05): the open-count (opn) literal moved with gather_project_activity
+    # to juggle_cockpit_graph_activity.py (extract-first); the per-topic done-count
+    # stays here on _load_one.
+    "juggle_cockpit_graph_activity.py": (
+        "\"SUM(CASE WHEN state NOT IN ('verified','delivered','cancelled') THEN 1 ELSE 0 END) AS opn, \"",
+    ),
     "juggle_cockpit_graph_dag.py": (
         "\"SUM(CASE WHEN state IN ('verified','delivered','cancelled') THEN 1 ELSE 0 END) AS done, \"",
-        "\"SUM(CASE WHEN state NOT IN ('verified','delivered','cancelled') THEN 1 ELSE 0 END) AS opn, \"",
     ),
     "juggle_learnings_rollup.py": (
         "\"AND state='verified'\",",
