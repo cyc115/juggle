@@ -106,8 +106,8 @@ def count_live_loop_pool(db) -> int:
     Bounded by ``MAX_LOOP_THREADS``, held SEPARATE from the interactive ``MAX_THREADS``
     conversation pool: firing a loop iteration instantiates task nodes under the loop's
     stable topic and reuses its bound thread, so it allocates ZERO interactive slots.
-    A loop between fires (prior generation terminal) frees its slot; a never-fired loop
-    (no task nodes) does not occupy one."""
+    A loop whose current generation is TERMINAL (parked between fires) frees its slot; a
+    loop with a running generation (incl. a freshly-created loop's ``r0``) occupies one."""
     live = 0
     for lp in db.list_active_loops():
         status, _ = iteration_outcome(db, lp["project_id"], lp["id"], lp["run_seq"])
@@ -186,6 +186,21 @@ def _fire_one(db, loop: dict, session_id: str, now: str) -> str:
     if status == "in_flight":
         return _handle_overlap(db, loop, session_id, prior_seq)
 
+    # Loop-pool budget (loop-entity V2 §8, P5b): the prior generation is terminal, so we
+    # WOULD fire a new one now — gate on the DISJOINT loop pool BEFORE any outcome side
+    # effects. At cap → defer the ENTIRE fire (INCLUDING surfacing the prior outcome + the
+    # breaker bump) to a window with room; next_run stays already-advanced (benign
+    # backpressure, like an overlap-skip). Deferring BEFORE the breaker bump is
+    # load-bearing: processing a FAILED prior here without advancing run_seq would
+    # re-surface + re-bump the SAME failed generation every window and spuriously pause the
+    # loop under sustained saturation. Bounds concurrently-live loops WITHOUT touching the
+    # interactive MAX_THREADS; firing stays gated by MAX_BACKGROUND_AGENTS.
+    live = count_live_loop_pool(db)
+    if live >= MAX_LOOP_THREADS:
+        _log.info("Loop %s fire deferred — loop pool at cap (%d live >= %d)",
+                  loop_id, live, MAX_LOOP_THREADS)
+        return "pool_full"
+
     if status == "failed":
         surface_iteration_failure(db, loop, session_id, err=detail, seq=prior_seq)
         n = db.bump_consecutive_failures(loop_id)
@@ -202,18 +217,6 @@ def _fire_one(db, loop: dict, session_id: str, now: str) -> str:
             return "paused"
     else:  # success (or first fire with no prior work)
         db.reset_consecutive_failures(loop_id)
-
-    # Loop-pool budget (loop-entity V2 §8, P5b): refuse to START a new iteration when
-    # the DISJOINT loop pool is at cap. This bounds concurrently-live loops WITHOUT
-    # touching the interactive MAX_THREADS pool; concurrent firing stays gated by
-    # MAX_BACKGROUND_AGENTS. A refused loop keeps its already-advanced next_run and
-    # re-fires next window — the same benign "not now" as an overlap-skip (the prior
-    # iteration's outcome above was already surfaced, so nothing is swallowed).
-    live = count_live_loop_pool(db)
-    if live >= MAX_LOOP_THREADS:
-        _log.info("Loop %s fire deferred — loop pool at cap (%d live >= %d)",
-                  loop_id, live, MAX_LOOP_THREADS)
-        return "pool_full"
 
     _SKIP_COUNTS[loop_id] = 0  # a real fire clears the overlap-skip streak
     new_seq = _fire_next_iteration_atomic(db, loop)  # seq bump + instantiate atomic

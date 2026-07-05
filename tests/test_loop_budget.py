@@ -199,3 +199,47 @@ def test_interactive_threads_unaffected_by_loop_count(db, monkeypatch):
     # And the loop pool is STILL exactly at its cap — interactive threads didn't leak
     # into the loop budget either.
     assert lf.count_live_loop_pool(db) == len(loops)
+
+
+# ── review pin: pool-deferral must not double-count a failed prior generation ────
+def test_pool_full_defers_failed_prior_without_breaker_bump(db, monkeypatch):
+    """P5b review (2026-07-05): the pool gate must run BEFORE the failed-prior outcome
+    handling. If it ran AFTER (as first drafted), a FAILED generation deferred by a full
+    pool would be re-surfaced and re-counted on the breaker EVERY window — climbing to a
+    spurious circuit-breaker pause under sustained saturation, and re-pushing the
+    orchestrator for the identical unchanged failure. RED against that draft."""
+    # A holds the one pool slot (in-flight r0, not due).
+    a_id, a_res = _make_loop(db, next_run=FUTURE)
+    _set_iter_state(db, a_res["project_id"], a_id, 0, "running")
+    # B's prior generation FAILED; B is due; its breaker trips at 2 consecutive failures.
+    b_id, b_res = _make_loop(db, next_run=PAST)
+    with db._connect() as conn:
+        conn.execute("UPDATE loops SET max_consecutive_failures=2 WHERE id=?", (b_id,))
+        conn.commit()
+    _set_iter_state(db, b_res["project_id"], b_id, 0, "failed-verify")
+
+    monkeypatch.setattr(lf, "MAX_LOOP_THREADS", 1)  # pool full — A holds the slot
+
+    def _failed_events():
+        return [n for n in db.get_notifications_for_session(SESSION)
+                if n["message"] and f"[Loop {b_id}]" in n["message"]
+                and "failed:" in n["message"].lower()]
+
+    for _ in range(4):  # several pool-full windows
+        _rearm(db, b_id, PAST)
+        assert _actions(lf.fire_due_loops(db, SESSION, now=NOW), b_id) == ["pool_full"]
+
+    b = db.get_loop(b_id)
+    assert b["consecutive_failures"] == 0, "pool-deferred failure must NOT bump the breaker"
+    assert b["status"] == "active", "pool-full deferral must NOT pause the loop"
+    assert b["run_seq"] == 0
+    assert _failed_events() == [], "a pool-deferred failed generation must not surface repeatedly"
+
+    # Pool frees → the failed prior is surfaced EXACTLY once and B fires its next gen.
+    _set_iter_state(db, a_res["project_id"], a_id, 0, "verified")  # A frees its slot
+    _rearm(db, b_id, PAST)
+    assert _actions(lf.fire_due_loops(db, SESSION, now=NOW), b_id) == ["fired"]
+    b = db.get_loop(b_id)
+    assert b["consecutive_failures"] == 1, "failed prior counts exactly once — on the real fire"
+    assert b["run_seq"] == 1
+    assert len(_failed_events()) == 1, "the failed prior surfaces once, not per deferred window"
