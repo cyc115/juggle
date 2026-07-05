@@ -144,7 +144,9 @@ def _forbidden_glyph_chars():
             owned.update(v)
     for const in (L.GRAPH_READY_SUFFIX, L.GRAPH_DEP_SUFFIX, L.GRAPH_FAIL_SUFFIX,
                   L.UNREAD_BADGE, L.FALLBACK_TOPIC, L.FALLBACK_TASK,
-                  L.FALLBACK_SCHED, L.FALLBACK_NOTIF):
+                  L.FALLBACK_SCHED, L.FALLBACK_NOTIF,
+                  L.LOOP_GLYPH, L.LOOP_PAUSED_GLYPH, L.LOOP_OK_BADGE,
+                  L.LOOP_FAIL_BADGE, L.LOOP_NEVER_BADGE):
         owned.update(const)
     # Only non-ASCII chars are "emoji/glyph" literals; box-drawing/ASCII excluded.
     return {ch for ch in owned if ord(ch) > 0x2014}

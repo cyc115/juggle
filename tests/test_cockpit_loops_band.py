@@ -144,6 +144,21 @@ def test_loop_still_excluded_from_p_slots(db):
     assert any(r.project_id == created["project_id"] for r in (state.loops or []))
 
 
+def test_collapse_never_hides_a_broken_loop():
+    """collapse-surfaces-attention-first (P5a review, 2026-07-05): a paused/failing
+    loop must never be the row the collapse HIDES behind healthy older loops —
+    the band orders attention-first (triage), mirroring the Agents-pane sort."""
+    healthy = [_row(loop_id=f"L{i}", name=f"ok-{i:02d}", status="active",
+                    consecutive_failures=0) for i in range(10)]
+    # broken loop created LAST (would sort to the tail by created_at)
+    broken = _row(loop_id="L99", name="broken-last", status="paused")
+    lines = collapse_loop_lines(healthy + [broken])
+    shown = lines[:-1]  # last line is the '+N more' summary
+    assert any("broken-last" in ln for ln in shown), (
+        f"broken loop was hidden by the collapse: {lines!r}"
+    )
+
+
 def test_many_loops_collapse_to_summary():
     """many-loops-collapse-to-summary (P5a §8, 2026-07-05): dozens of loops must
     NOT render one-row-each unconditionally — collapse to a summary at scale."""

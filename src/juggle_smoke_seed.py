@@ -87,11 +87,15 @@ def _seed_smoke_loops(db, n: int = 8) -> None:
             status = "paused" if i % 4 == 3 else "active"
             consecutive = i % 3               # 0,1,2 → never/ok/failing mix
             last_run = now if i % 2 == 0 else None
+            # run_seq≥1 whenever last_run_at is set — the fire path bumps run_seq
+            # before stamping last_run_at, so a "✓0 (ran 0 times)" badge is
+            # unreachable in production; keep the smoke render honest too.
+            run_seq = i + 1
             conn.execute(
                 "INSERT INTO loops(id,project_id,thread_id,cadence,status,run_seq,"
                 "next_run,last_run_at,consecutive_failures,max_consecutive_failures,"
                 "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,3,?,?)",
-                (f"SL{i}", pid, None, "every 6h", status, i, now, last_run,
+                (f"SL{i}", pid, None, "every 6h", status, run_seq, now, last_run,
                  consecutive, now, now),
             )
         conn.commit()

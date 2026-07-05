@@ -69,15 +69,39 @@ def _fmt_cadence(cadence: str) -> str:
     return s
 
 
+def _fmt_next(next_run) -> str:
+    """Compact next-fire time '→HH:MM' from an ISO next_run (best-effort).
+
+    Rendered LAST in the line so a narrow pane crops it first (the load-bearing
+    badge/pointer survive). Empty string when unparseable / unset."""
+    if not next_run:
+        return ""
+    s = str(next_run)
+    sep = "T" if "T" in s else " "
+    if sep in s:
+        hhmm = s.split(sep, 1)[1][:5]
+        if len(hhmm) == 5 and hhmm[2] == ":":
+            return f"→{hhmm}"
+    return ""
+
+
 def _trunc(s: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _needs_attention(row: LoopRow) -> bool:
+    """A paused (circuit-broken) or failing loop — must never be the one the
+    collapse HIDES (triage-first, mirrors the Agents pane busy>stale>idle sort)."""
+    return row.status == "paused" or bool(
+        row.consecutive_failures and row.consecutive_failures > 0
+    )
 
 
 def loop_line(row: LoopRow, name_width: int = 16) -> str:
     """One compact combined display line for a loop row.
 
-    Layout: ``glyph name cadence ▸Pn badge``. The view renders this inside an
-    ellipsis-cropping cell, so it can never overflow the (narrow) Agents pane;
+    Layout: ``glyph name cadence ▸Pn badge →next``. The view renders this inside
+    an ellipsis-cropping cell, so it can never overflow the (narrow) Agents pane;
     ordering keeps the load-bearing badge/pointer ahead of the croppable tail.
     """
     parts = [loop_glyph(row.status), _trunc(row.name, name_width)]
@@ -88,15 +112,21 @@ def loop_line(row: LoopRow, name_width: int = 16) -> str:
     if ptr:
         parts.append(ptr)
     parts.append(loop_badge(row.consecutive_failures, row.last_run_at, row.run_seq))
+    nxt = _fmt_next(row.next_run)
+    if nxt:
+        parts.append(nxt)
     return " ".join(parts)
 
 
 def collapse_loop_lines(rows: list[LoopRow], limit: int = _LOOP_COLLAPSE_LIMIT) -> list[str]:
     """Return the loop band's display lines, collapsing to a summary at scale.
 
-    ≤ ``limit`` loops → one line each. Above it → the first ``limit-1`` rows plus
-    a summary line ('🔁 +N more (A active, P paused, F failing)') so the pane
-    stays bounded no matter how many standing loops exist (§8)."""
+    Rows are ordered attention-first (paused/failing ahead of healthy, stable
+    within a group) so the collapse never HIDES a broken loop behind a healthy
+    one. ≤ ``limit`` loops → one line each. Above it → the first ``limit-1`` rows
+    plus a summary line ('🔁 +N more (A active, P paused, F failing)') so the
+    pane stays bounded no matter how many standing loops exist (§8)."""
+    rows = sorted(rows, key=lambda r: 0 if _needs_attention(r) else 1)
     if len(rows) <= limit:
         return [loop_line(r) for r in rows]
     shown = rows[: limit - 1]
