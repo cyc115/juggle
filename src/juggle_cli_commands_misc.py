@@ -30,6 +30,7 @@ from juggle_cmd_research import cmd_research
 from juggle_cmd_db_flush import cmd_db_flush
 from juggle_cmd_add_node import cmd_add_node
 from juggle_cmd_migration import cmd_migration_next
+from juggle_cmd_schedule import cmd_schedule_delete, cmd_schedule_list
 
 
 def _schedule_dogfood(a):
@@ -106,6 +107,17 @@ MISC_COMMANDS: tuple[Cmd, ...] = (
         args=(Arg("--dry-run", action="store_true"),),
         aliases=("schedule-reflect",),
         help="Run /schedule:reflect routine (Mon 03:00)"),
+    Cmd("schedule", "list", cmd_schedule_list,
+        aliases=("schedule-list",),
+        help="List OS schedules and loops (type-tagged)"),
+    Cmd("schedule", "delete", cmd_schedule_delete,
+        args=(
+            Arg("id", help="OS-schedule label or loop id (e.g. L1)"),
+            Arg("--purge", action="store_true",
+                help="Hard-remove a loop row (non-recoverable); loops only"),
+        ),
+        aliases=("schedule-delete",),
+        help="Delete a schedule/loop by id (soft; --purge hard-removes a loop)"),
     Cmd(None, "cockpit", cmd_cockpit,
         args=(
             Arg("--db", dest="db_path", default=None, help="Path to juggle.db"),

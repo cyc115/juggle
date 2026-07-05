@@ -140,6 +140,14 @@ class LoopsMixin:
         the orchestrator resumes it."""
         self.set_loop_status(loop_id, "paused")
 
+    def delete_loop(self, loop_id: str) -> None:
+        """Hard-remove the loop row (``schedule:delete --purge``). Non-recoverable:
+        the SOFT delete path (``pause_loop`` + project-close) keeps the row so the
+        loop can be restored; purge destroys the loop entity outright."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM loops WHERE id = ?", (loop_id,))
+            conn.commit()
+
     def set_loop_status(self, loop_id: str, status: str) -> None:
         with self._connect() as conn:
             conn.execute(

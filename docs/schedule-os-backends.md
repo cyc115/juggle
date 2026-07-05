@@ -1,36 +1,35 @@
----
-description: Create a scheduled task that runs on a schedule and appears in the Juggle cockpit (macOS launchd / Linux systemd / cron)
-allowed-tools: Bash, Read, Write
----
+# OS-Schedule Backends Reference (launchd / systemd / cron)
 
-# /juggle:schedule
+Shared reference for the **OS-schedule** branch of `/juggle:schedule:create` — a
+script/binary run on a platform timer (no Juggle agent, no work topic, no
+completion contract). Homed OUTSIDE `commands/` on purpose: command discovery is
+recursive, so a `.md` under `commands/` would register as a phantom slash
+command.
 
-Create a recurring scheduled task using the platform-appropriate backend:
+Platform backends:
 - **macOS** — launchd LaunchAgent (plist in `~/Library/LaunchAgents/`)
 - **Linux (systemd)** — systemd user timer (units in `~/.config/systemd/user/`)
 - **Linux (fallback)** — crontab entry
 
-The task label is prefixed so it appears automatically in the Juggle cockpit's Pool section.
+The task label is prefixed so it appears automatically in the Juggle cockpit's
+Pool section, and in `juggle schedule list` (tagged `OS`).
 
-## Arguments
+## Inputs to extract
 
-`$ARGUMENTS` — natural language instruction, e.g.:
-- `run ~/github/trading-edge/scripts/news-ingest every 15 minutes`
-- `news-ingest: ~/github/trading-edge/scripts/news-ingest every 15m`
-- `run /path/to/script daily at 09:00`
-
-## What to do
-
-Parse `$ARGUMENTS` to extract:
-1. **label** — short kebab-case name (e.g. `trading-edge-news-ingest`). Derive from script filename if not explicit.
-2. **program** — absolute path to the script/binary (expand `~` to `/Users/mikechen`)
+From the natural-language requirement, derive:
+1. **label** — short kebab-case name (e.g. `trading-edge-news-ingest`). Derive
+   from the script filename if not explicit.
+2. **program** — absolute path to the script/binary (expand `~` to
+   `/Users/mikechen`).
 3. **interval** — one of:
    - `every Nm` / `every N minutes` → `StartInterval` = N×60
    - `every Nh` / `every N hours` → `StartInterval` = N×3600
    - `daily at HH:MM` → `StartCalendarInterval` with Hour+Minute
    - `every Ns` / `every N seconds` → `StartInterval` = N
 
-Then:
+---
+
+## macOS — launchd
 
 ### 0. Harden the script (REQUIRED — do this before writing the plist)
 
@@ -64,7 +63,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] START" | tee -a "$LOG"
 
 Write to `/Users/mikechen/Library/LaunchAgents/me.mikechen.<label>.plist`:
 
-\`\`\`xml
+```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -91,29 +90,29 @@ Write to `/Users/mikechen/Library/LaunchAgents/me.mikechen.<label>.plist`:
     </dict>
 </dict>
 </plist>
-\`\`\`
+```
 
-Where \`SCHEDULE_KEY\` is either:
-- \`<key>StartInterval</key><integer>N</integer>\` for interval-based
-- \`<key>StartCalendarInterval</key><dict><key>Hour</key><integer>H</integer><key>Minute</key><integer>M</integer></dict>\` for daily
+Where `SCHEDULE_KEY` is either:
+- `<key>StartInterval</key><integer>N</integer>` for interval-based
+- `<key>StartCalendarInterval</key><dict><key>Hour</key><integer>H</integer><key>Minute</key><integer>M</integer></dict>` for daily
 
 ### 2. Load it
 
-\`\`\`bash
+```bash
 launchctl unload ~/Library/LaunchAgents/me.mikechen.<label>.plist 2>/dev/null || true
 launchctl load ~/Library/LaunchAgents/me.mikechen.<label>.plist
 launchctl list me.mikechen.<label>
-\`\`\`
+```
 
 ### 3. Report
 
 Print:
 - Plist path
-- Label: \`me.mikechen.<label>\`
+- Label: `me.mikechen.<label>`
 - Schedule: human-readable (e.g. "every 15m", "daily 09:00")
 - Log: path
-- Status from \`launchctl list\`
-- "Appears in Juggle cockpit as: \`<label>\`"
+- Status from `launchctl list`
+- "Appears in Juggle cockpit as: `<label>`"
 
 ---
 
@@ -121,7 +120,7 @@ Print:
 
 On Linux with systemd, run instead:
 
-\`\`\`python
+```python
 from juggle_scheduler import get_backend, ScheduleSpec
 backend = get_backend()  # auto-selects SystemdUserBackend or CronBackend
 backend.install(ScheduleSpec(
@@ -130,20 +129,21 @@ backend.install(ScheduleSpec(
     interval_secs=<N>,        # every N seconds, OR
     calendar={"hour": H, "minute": M},  # daily at HH:MM
 ))
-\`\`\`
+```
 
 Units are written to `~/.config/systemd/user/juggle-<label>.{service,timer}`.
 Logs: `~/.juggle/logs/juggle-<label>.log`
 
 **Important:** For tasks to fire when you are logged out, enable linger once:
-\`\`\`bash
+```bash
 sudo loginctl enable-linger $USER
 # Verify: loginctl show-user $USER | grep Linger
-\`\`\`
+```
 
 To view logs: `journalctl --user -u juggle-<label> -f`
 
-To remove: `python3 -c "from juggle_scheduler import get_backend; get_backend().uninstall('<label>')"`
+To remove: use `juggle schedule delete <label>` (or
+`python3 -c "from juggle_scheduler import get_backend; get_backend().uninstall('<label>')"`).
 
 ---
 

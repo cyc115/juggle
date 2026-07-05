@@ -21,8 +21,9 @@ Classify the requirement into exactly ONE type:
 
 - **OS SCHEDULE** — runs an existing **script/binary** on a timer. No Juggle agent,
   no work topic, no completion contract. Keywords: a concrete file path, "run
-  <script>", "cron", ingestion/backup/sync jobs. → hand off to `/juggle:schedule`
-  (the launchd/systemd/cron backend is UNCHANGED — do not reimplement it here).
+  <script>", "cron", ingestion/backup/sync jobs. → follow the OS-schedule backend
+  reference at `${CLAUDE_PLUGIN_ROOT}/docs/schedule-os-backends.md`
+  (launchd/systemd/cron — the backend playbook; do not reimplement it here).
 
 - **LOOP** — a recurring **unit of agent work** (a topic) that Juggle dispatches,
   drives to completion, and re-fires each cadence. Keywords: "research/summarize/
@@ -82,7 +83,8 @@ Wait for confirmation. If the user says it's the other type, re-route.
 
 ## Step 4 — Create
 
-- **OS SCHEDULE** → follow `/juggle:schedule` verbatim (launchd/systemd/cron).
+- **OS SCHEDULE** → follow the OS-schedule backend reference at
+  `${CLAUDE_PLUGIN_ROOT}/docs/schedule-os-backends.md` (launchd/systemd/cron).
 - **LOOP** → transactional, atomic create:
 
 ```bash
