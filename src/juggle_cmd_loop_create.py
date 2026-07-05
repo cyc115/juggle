@@ -16,8 +16,10 @@ only a real transactional rollback delivers. The low-level node writers
 ``replace_edges``) all honour a caller-passed ``conn`` and do NOT commit (``_cx``),
 so threading one connection through them makes the create truly all-or-nothing.
 
-Node ids are run-seq namespaced ``<L#>-r0-<base-id>`` (Phase 1 run_seq) so a later
-re-fire (Phase 5) never collides with the guarded-upsert refusal.
+Stable-topic model (V2 §0b): the loop gets ONE long-lived topic with a STABLE id
+``<L#>-<topic>`` (no run prefix), created ONCE here; each fire attaches a new
+run-seq namespaced TASK generation ``<L#>-r<seq>-<task>`` under it (the r-prefix on
+the TASK ids is the collision guard vs the guarded-upsert refusal on re-fire).
 
 The OS-schedule path is unchanged — it reuses ``juggle_scheduler`` and does NOT
 route through here. The unified ``schedule:create`` router (``commands/schedule/

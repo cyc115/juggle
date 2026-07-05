@@ -38,8 +38,9 @@ def _reconstruct_topic(db, loop: dict) -> dict:
     with db._connect() as conn:
         topic_row = conn.execute(
             "SELECT id, title, objective, role, delivery FROM nodes "
-            "WHERE kind='topic' AND project_id=? ORDER BY created_at, id LIMIT 1",
-            (project_id,),
+            "WHERE kind='topic' AND project_id=? AND id LIKE ? "
+            "ORDER BY created_at, id LIMIT 1",
+            (project_id, f"{loop_id}-%"),
         ).fetchone()
         if topic_row is None:
             raise ValueError(f"loop {loop_id!r} has no stable topic to re-fire")
@@ -97,12 +98,32 @@ def _reset_topic_integrate_state(db, conn, topic_id: str) -> None:
 
 
 def _reopen_and_reset_if_terminal(db, conn, topic_id: str) -> None:
-    """Reopen the stable topic (if parked in a terminal state) AND clear its durable
-    integrate state, ON the caller's txn — atomic with the generation instantiate.
-    ``verified→(reopen)→open→integrating`` is legal (db_topics_marking.py:78-89)."""
+    """Make the stable topic fire-ready for the next generation, ON the caller's txn:
+    ``open`` already is; a reopenable terminal is reopened + its durable integrate
+    state cleared (``verified→(reopen)→open→integrating`` is legal,
+    db_topics_marking.py:78-89).
+
+    FAIL LOUD on any other state (code review 2026-07-04). ``iteration_outcome``
+    classifies fire-eligibility on TASK states, but reopen/reset gates on the TOPIC
+    state — and the two can disagree (gen-N's task rows terminal while the topic-
+    level integrate is still 'integrating', or a non-reopenable terminal like
+    'done'/'cancelled'/'archived'). Instantiating gen N+1 under such a NON-'open'
+    topic would wedge it (topic_ready_eligible requires state='open') AND skip the
+    integrate-state reset — leaking gen N into N+1. Raising rolls the whole atomic
+    fire back and routes it through fire_due_loops' never-swallow choke point instead
+    of silently wedging."""
     topic = db_topics.get_topic(db, topic_id, conn=conn)
-    if not topic or topic["state"] not in _REOPENABLE_TERMINALS:
-        return
+    if topic is None:
+        raise ValueError(f"loop stable topic not found: {topic_id!r}")
+    state = topic["state"]
+    if state == "open":
+        return  # first fire (r0 create) / already reopened — instantiate directly
+    if state not in _REOPENABLE_TERMINALS:
+        raise ValueError(
+            f"loop topic {topic_id!r} not fire-ready for regeneration "
+            f"(state={state!r}); expected 'open' or a reopenable terminal — the "
+            f"prior generation's topic is still active or non-reopenable"
+        )
     db_topics.topic_transition(db, topic_id, "reopen", conn=conn)
     _reset_topic_integrate_state(db, conn, topic_id)
 

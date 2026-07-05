@@ -236,6 +236,33 @@ def test_fire_fails_after_reopen_leaves_topic_terminal(db, monkeypatch):
     assert _iter_task_count(db, pid, loop_id, 1) == 1
 
 
+# ── A fire over a non-fire-ready topic surfaces instead of silently wedging ──────
+def test_fire_over_active_topic_surfaces_not_wedges(db):
+    """Code-review regression (2026-07-04): iteration_outcome classifies on TASK
+    states, but reopen/reset gates on the TOPIC state — the two can disagree. If a
+    fire lands while the stable topic is still ACTIVE (gen-N's topic-integrate in
+    flight: tasks terminal but topic 'integrating') the reopen is skipped, so a
+    naive fire would instantiate gen N+1 under a non-'open' topic that can NEVER
+    dispatch (topic_ready_eligible requires state='open') — a silent wedge that also
+    skips the integrate-state reset. Must fail loud → surface via the never-swallow
+    choke point; no phantom generation, no run_seq bump."""
+    loop_id, res = _make_loop(db)
+    pid, stable = res["project_id"], res["topic_id"]
+    _set_iter_state(db, pid, loop_id, 0, "verified")  # gen r0 tasks terminal
+    with db._connect() as conn:  # ...but the topic-level integrate is still in flight
+        conn.execute("UPDATE nodes SET state='integrating' WHERE id=? AND kind='topic'",
+                     (stable,))
+        conn.commit()
+
+    lf.fire_due_loops(db, SESSION, now=NOW)
+
+    assert _iter_task_count(db, pid, loop_id, 1) == 0, "no phantom gen-r1 under a non-open topic"
+    assert db.get_loop(loop_id)["run_seq"] == 0, "run_seq bump rolled back"
+    assert t.get_topic(db, stable)["state"] == "integrating", "topic left untouched (not wedged)"
+    items = [i for i in db.get_open_action_items() if i["thread_id"] == res["thread_id"]]
+    assert items, "an unfire-able topic state must surface, not silently wedge"
+
+
 # ── iteration_outcome keys on the run-namespaced generation (unaffected) ─────────
 def test_iteration_outcome_keys_on_generation(db):
     """§0b: the stable topic does not break iteration_outcome — it keys on the
