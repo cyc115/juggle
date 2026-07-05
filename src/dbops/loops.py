@@ -58,6 +58,17 @@ class LoopsMixin:
             ).fetchone()
             return dict(row) if row else None
 
+    def get_loop_by_project(self, project_id: str) -> dict | None:
+        """The loop owning ``project_id`` (a loop ⇄ its ``kind='loop'`` project are
+        1:1), or None for a non-loop project. Read seam for the cross-topic vault
+        handoff (loop-entity V2 §1): dispatch resolves a node's loop_id + run_seq from
+        the node's project to compute its ``loop_run_dir``."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM loops WHERE project_id = ?", (project_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
     def list_active_loops(self) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(

@@ -54,3 +54,17 @@ def get_loop_output_root() -> Path:
     """
     val = get_settings()["paths"].get("loop_output_dir", LOOP_OUTPUT_DIR_DEFAULT)
     return _resolve_home_relative(val)
+
+
+def loop_run_dir(base: Path, loop_id: str, run_ts: str, topic_id: str) -> Path:
+    """Cross-topic handoff payload path for a loop run (spec §1.4) — PURE.
+
+    Returns ``base / loop_id / run_ts / f"{topic_id}.md"``. No I/O; NO
+    ``get_settings`` inside — the config resolver (``get_loop_output_root``) is
+    called ONCE at the dispatch/config boundary and passed in as ``base`` (§1.6), so
+    the path is a pure function of ``(loop_id, run_ts, topic_id)`` and retrieval never
+    parses prose. With the stable-topic model (§0b) ``topic_id`` is stable across
+    runs, so ``run_ts`` (= run_seq) disambiguates each fire's directory under the same
+    loop/topic.
+    """
+    return Path(base) / loop_id / str(run_ts) / f"{topic_id}.md"

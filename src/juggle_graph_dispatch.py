@@ -99,9 +99,16 @@ from juggle_graph_hydration import (  # noqa: E402, F401
 def _dispatch_via_pool(db, thread_id: str, prompt: str, task: dict) -> None:
     """Dispatch ``prompt`` via dispatch_node(), resolving the role AND model PER
     NODE (loop-entity Phase 2 role; V2/P2 model). NULL model → harness default
-    (unchanged). Raises CapacityError (pool full → defer) or RuntimeError."""
-    from juggle_dispatch_core import dispatch_node
+    (unchanged). Raises CapacityError (pool full → defer) or RuntimeError.
 
+    For a node of a ``kind='loop'`` project, prepend the cross-topic vault-handoff
+    run-dir injection (loop-entity V2 §1.5) — the write path for the upstream topic,
+    the read path (via handoff pointer) for downstream topics. A non-loop node gets
+    ``""`` (no injection). This lives in the DISPATCH path, not the fire/cap path."""
+    from juggle_dispatch_core import dispatch_node
+    from juggle_loop_dispatch import inject_loop_run_dir
+
+    prompt = inject_loop_run_dir(db, task, prompt)  # str OR TopicPromptPayload
     dispatch_node(
         db, thread_id, prompt, task,
         role=_resolve_dispatch_role(db, task),
