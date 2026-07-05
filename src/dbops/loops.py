@@ -163,3 +163,26 @@ class LoopsMixin:
                 (ts or _now(), _now(), loop_id),
             )
             conn.commit()
+
+
+def live_generation_like(conn, project_id: str) -> str | None:
+    """LIKE-pattern scoping a LOOP project's task-node reads to its CURRENT run_seq
+    generation (``<loop_id>-r<seq>-%``), or ``None`` when ``project_id`` is not a
+    loop project (loop-entity V2 §7.2, 2026-07-05).
+
+    A loop's ONE stable topic accumulates a new run-namespaced task generation per
+    fire, so every loop-progress rollup must scope to the live generation — the same
+    key ``iteration_outcome`` uses (``juggle_loop_fire``) — else it reads the whole
+    accumulated history (the ``168/170`` noise). Pure read over the caller's ``conn``;
+    fail-soft to ``None`` on a pre-migration DB (no ``loops`` table) so non-loop and
+    legacy callers keep today's unscoped behaviour.
+    """
+    try:
+        row = conn.execute(
+            "SELECT id, run_seq FROM loops WHERE project_id = ?", (project_id,)
+        ).fetchone()
+    except Exception:
+        return None
+    if row is None:
+        return None
+    return f"{row[0]}-r{row[1]}-%"

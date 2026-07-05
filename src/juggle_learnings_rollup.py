@@ -68,22 +68,33 @@ def _session_id(db) -> str:
 
 
 def _task_state_counts(db, project_id: str) -> tuple[int, int, int]:
-    """(total, verified, in_progress) task-node counts for the project."""
+    """(total, verified, in_progress) task-node counts for the project.
+
+    For a LOOP project the counts scope to the live run_seq generation
+    (``<loop_id>-r<seq>-%``, §7.2) so the learnings watermark tracks the current
+    generation rather than drifting by every accumulated prior generation; non-loop
+    projects are unscoped (``loop_like`` is None)."""
+    from dbops.loops import live_generation_like
+
     with db._connect() as conn:
+        loop_like = live_generation_like(conn, project_id)
+        gen_and = " AND id LIKE ?" if loop_like else ""
+        gen_p = (loop_like,) if loop_like else ()
         total = conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE kind='task' AND project_id=?",
-            (project_id,),
+            f"SELECT COUNT(*) FROM nodes WHERE kind='task' AND project_id=?{gen_and}",
+            (project_id, *gen_p),
         ).fetchone()[0]
         verified = conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE kind='task' AND project_id=? "
+            "SELECT COUNT(*) FROM nodes WHERE kind='task' AND project_id=?"
+            f"{gen_and} "
             "AND state='verified'",
-            (project_id,),
+            (project_id, *gen_p),
         ).fetchone()[0]
         placeholders = ",".join("?" * len(_IN_PROGRESS))
         in_progress = conn.execute(
             f"SELECT COUNT(*) FROM nodes WHERE kind='task' AND project_id=? "
-            f"AND state IN ({placeholders})",
-            (project_id, *sorted(_IN_PROGRESS)),
+            f"AND state IN ({placeholders}){gen_and}",
+            (project_id, *sorted(_IN_PROGRESS), *gen_p),
         ).fetchone()[0]
     return total, verified, in_progress
 

@@ -77,16 +77,24 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
     if not topic_rows:
         return None
 
-    # Per-parent child counts from nodes.
+    # Per-parent child counts from nodes. For a LOOP project the ONE stable topic
+    # accumulates a fresh task generation per fire, so scope the child reads to the
+    # live run_seq generation (<loop_id>-r<seq>-%) — else the rollup aggregates every
+    # prior generation (the 168/170 noise, §7.2). None ⇒ non-loop, unscoped as today.
+    from dbops.loops import live_generation_like
+
     topic_ids = tuple(r["id"] for r in topic_rows)
     ph = ",".join("?" * len(topic_ids))
+    loop_like = live_generation_like(conn, pid)
+    gen_and = " AND id LIKE ?" if loop_like else ""
+    gen_p = (loop_like,) if loop_like else ()
     try:
         count_rows = conn.execute(
             "SELECT parent_id, "
             "SUM(CASE WHEN state IN ('verified','delivered','cancelled') THEN 1 ELSE 0 END) AS done, "
             "COUNT(*) AS total "
-            f"FROM nodes WHERE parent_id IN ({ph}) GROUP BY parent_id",
-            topic_ids,
+            f"FROM nodes WHERE parent_id IN ({ph}){gen_and} GROUP BY parent_id",
+            (*topic_ids, *gen_p),
         ).fetchall()
     except Exception:
         count_rows = []
@@ -127,12 +135,13 @@ def _load_one(conn, pid: str) -> "GraphDag | None":
         if e not in edges:
             edges.append(e)
 
-    # Children per parent (member_tasks for the detail modal).
+    # Children per parent (member_tasks for the detail modal) — same live-generation
+    # scoping as the count above, so the modal never lists stale prior generations.
     try:
         child_rows = conn.execute(
             "SELECT id, title, state, parent_id "
-            f"FROM nodes WHERE parent_id IN ({ph}) ORDER BY created_at, id",
-            topic_ids,
+            f"FROM nodes WHERE parent_id IN ({ph}){gen_and} ORDER BY created_at, id",
+            (*topic_ids, *gen_p),
         ).fetchall()
     except Exception:
         child_rows = []

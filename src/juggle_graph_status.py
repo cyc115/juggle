@@ -12,7 +12,7 @@ not the legacy graph_tasks table — the write-cut no longer populates it.
 
 from __future__ import annotations
 
-from dbops.terminal_states import TERMINAL_SUCCESS_STATES as _DONE_STATES
+from dbops.terminal_states import COMPLETION_TERMINAL_STATES as _DONE_STATES
 
 FAILED_STATES = ("failed-exec", "failed-integration", "failed-verify")
 # dispatching/integrating are transient execution states — fold into "running"
@@ -31,7 +31,10 @@ def counts_from_states(states: list[str]) -> dict:
     """Aggregate raw task-node state values into display counts. Pure."""
     return {
         "total": len(states),
-        # "done" numerator: BOTH success-terminals (verified + delivered, Phase 3)
+        # "done" numerator: the COMPLETION terminals — both success-terminals
+        # (verified + delivered, Phase 3) AND cancelled (P3b reconcile, 2026-07-05:
+        # the executed graph_dag rollup already counts cancelled done, so both
+        # rollups now agree via COMPLETION_TERMINAL_STATES).
         "verified": sum(1 for s in states if s in _DONE_STATES),
         "failed": sum(1 for s in states if s in FAILED_STATES),
         "blocked": sum(1 for s in states if s == "blocked-failed"),
@@ -42,13 +45,22 @@ def counts_from_states(states: list[str]) -> dict:
 
 
 def graph_counts(db, project_id: str) -> dict | None:
-    """Counts for ``project_id``, or None (no tasks / pre-migration DB)."""
+    """Counts for ``project_id``, or None (no tasks / pre-migration DB).
+
+    For a LOOP project the read scopes to the live run_seq generation
+    (``<loop_id>-r<seq>-%``, §7.2) so accumulated prior generations don't inflate the
+    count (the loop reads 2/3, not 168/170); non-loop projects are unscoped."""
+    from dbops.loops import live_generation_like
+
     try:
         with db._connect() as conn:
-            rows = conn.execute(
-                "SELECT state FROM nodes WHERE kind='task' AND project_id=?",
-                (project_id,),
-            ).fetchall()
+            loop_like = live_generation_like(conn, project_id)
+            sql = "SELECT state FROM nodes WHERE kind='task' AND project_id=?"
+            params: tuple = (project_id,)
+            if loop_like:
+                sql += " AND id LIKE ?"
+                params = (project_id, loop_like)
+            rows = conn.execute(sql, params).fetchall()
     except Exception:
         return None  # pre-migration DB without nodes
     states = [r[0] for r in rows]
