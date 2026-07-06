@@ -269,3 +269,30 @@ def test_complete_agent_seam_compresses_verbose_notification_2026_07_05(seam_db)
     assert agent_notifs, f"expected a 1-line notification, got {notifs}"
     for n in notifs:
         assert len(n["message"].splitlines()) <= 1, n["message"]
+
+
+def test_notify_seam_compresses_over_budget_message_2026_07_05(
+    seam_db, tmp_path, monkeypatch
+):
+    """2026-07-05: an over-budget `notify` message must land as the 1-line
+    cockpit budget, not the raw multi-paragraph blob."""
+    import juggle_cli_common as _common
+    from juggle_cmd_agents import cmd_notify
+
+    db, _tid, label = seam_db
+    # Force the non-spool path (this suite runs inside a juggle-juggle-* worktree).
+    for var in ("JUGGLE_IS_AGENT", "JUGGLE_ORCHESTRATOR", "JUGGLE_AGENT_WORKTREE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.chdir(tmp_path)
+    db.set_active(True)
+    args = type("A", (), {})()
+    args.thread_id = label
+    args.message = VERBOSE_NOTIFICATION_INPUT
+
+    monkeypatch.setattr(_common, "get_db", lambda: db)
+    cmd_notify(args)
+
+    notifs = db.get_notifications_for_session("s1")
+    assert notifs, "expected a notification"
+    for n in notifs:
+        _assert_notification_ok(n["message"])
