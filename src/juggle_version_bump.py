@@ -75,7 +75,12 @@ def _commit_messages(repo: str, since: str, until: str = "HEAD") -> list[str]:
     )
     if result.returncode != 0 or not result.stdout:
         return []
-    return [m for m in result.stdout.split("\x00") if m.strip()]
+    # `git log` inserts a `\n` BETWEEN records, so splitting on the %x00
+    # terminator leaves every segment after the first with a leading blank
+    # line. classify_commit reads splitlines()[0], which would then be '' for
+    # every commit except the newest — the bump reflected ONLY the tip commit
+    # (2026-07-05 NE incident). strip() each segment to drop that artifact.
+    return [m.strip() for m in result.stdout.split("\x00") if m.strip()]
 
 
 def apply_version_bump(repo: str, since: str, until: str = "HEAD") -> str | None:

@@ -149,6 +149,41 @@ def test_apply_version_bump_feat_commits_and_writes_version(tmp_path):
     assert "bump to 1.3.0" in log
 
 
+def test_apply_version_bump_earlier_fix_bumps_when_newest_is_nonbumping(tmp_path):
+    """Regression pin — 2026-07-05: operator integrate NE landed 4 fix: commits
+    without bumping version. Root cause: _commit_messages split on the %x00
+    record terminator, but `git log` inserts a `\\n` BETWEEN records, so every
+    segment after the newest carried a leading blank line and classify_commit's
+    first-line lookup saw '' → None. The bump thus reflected ONLY the newest
+    commit in the range; when that newest commit was a non-bumping one
+    (test:/refactor:) the whole landing silently no-op'd. This pins the
+    multi-commit range where the NEWEST commit does not warrant a bump but an
+    earlier fix: does — the patch bump MUST still fire."""
+    from juggle_version_bump import apply_version_bump
+    repo = _init_repo_with_plugin(tmp_path, version="1.120.0")
+    base = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
+                           capture_output=True, text=True).stdout.strip()
+    # Mirror NE's topology: a fix: commit, then a refactor:, then a test: TIP.
+    (Path(repo) / "fix.py").write_text("x = 1\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "fix(spool): D3 — supersede success-sign set")
+    (Path(repo) / "refactor.py").write_text("y = 2\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "refactor(spool): extract journal helpers")
+    (Path(repo) / "test.py").write_text("z = 3\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "test(spool): drop unused imports")
+
+    result = apply_version_bump(repo, since=base)
+
+    assert result == "1.120.1"
+    data = json.loads((Path(repo) / ".claude-plugin" / "plugin.json").read_text())
+    assert data["version"] == "1.120.1"
+    log = subprocess.run(["git", "-C", repo, "log", "--oneline", "-1"],
+                          capture_output=True, text=True).stdout
+    assert "bump to 1.120.1" in log
+
+
 def test_apply_version_bump_reads_current_version_at_since_not_stale(tmp_path):
     """The version comes from the repo's checked-out plugin.json at call time
     (already rebased onto latest main), not from any cached/prior value —
