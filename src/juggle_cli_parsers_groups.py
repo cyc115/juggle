@@ -18,6 +18,7 @@ from juggle_cmd_runs import register_runs_parsers
 from juggle_cmd_spool import register_spool_parsers
 from juggle_cli_parsers_project import register_project_parsers
 from juggle_cli_parsers_loop import register_loop_parsers
+from juggle_cli_parsers_vcs import register_vcs_parsers
 
 
 def register_resource_groups(subparsers) -> None:
@@ -30,4 +31,5 @@ def register_resource_groups(subparsers) -> None:
     register_spool_parsers(subparsers)
     register_project_parsers(subparsers)
     register_loop_parsers(subparsers)
+    register_vcs_parsers(subparsers)
     juggle_cmd_autopilot.register(subparsers)
