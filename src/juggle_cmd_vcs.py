@@ -105,9 +105,9 @@ def cmd_vcs_init(args) -> None:
     repo = _repo(args)
     d = detect_repo(repo)
     recipe = getattr(args, "recipe", None) or d.recipe
-    vcs_name = getattr(args, "vcs", None) or d.vcs
+    vcs_name = getattr(args, "vcs", None) or d.vcs or recipe
 
-    if recipe == "agentic" or (vcs_name is None and recipe is None):
+    if recipe == "agentic" or vcs_name is None:
         print(
             "Unknown VCS — no builtin and no bundled recipe. Seed a coder agent "
             "with docs/create-your-own-vcs-backend.md to implement the 15-method "

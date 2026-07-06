@@ -103,6 +103,7 @@ class ToyHarness:
         meta = toy._read_json(Path(ws) / toy._WS_META)
         store = toy._load_store(ws)
         root = toy._repo_root_of(ws)
+        assert meta is not None and store is not None and root is not None
         meta["head"] = toy._new_rev(store, meta["head"], toy._working_files(Path(ws)))
         toy._write_json(Path(ws) / toy._WS_META, meta)
         toy._save_store(root, store)
@@ -113,6 +114,7 @@ class ToyHarness:
     def advance_trunk(self, repo, name, content):
         store = toy._load_store(repo)
         root = toy._repo_root_of(repo)
+        assert store is not None and root is not None
         snap = dict(store["commits"][store["trunk"]]["snapshot"])
         snap[name] = content
         store["trunk"] = toy._new_rev(store, store["trunk"], snap)

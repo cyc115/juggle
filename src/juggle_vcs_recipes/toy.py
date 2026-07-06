@@ -224,9 +224,9 @@ class ToyBackend:
         wsp = Path(ws)
         meta = _read_json(wsp / _WS_META)
         store = _load_store(ws)
-        if meta is None or store is None:
-            return _UpdateResult(ok=False, detail="no workspace/store")
         root = _repo_root_of(ws)
+        if meta is None or store is None or root is None:
+            return _UpdateResult(ok=False, detail="no workspace/store")
         commits = store["commits"]
         head_snap = commits[meta["head"]]["snapshot"]
         # Self-recover from any interrupted update BEFORE retrying (idempotent).

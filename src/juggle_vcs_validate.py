@@ -12,6 +12,7 @@ Must not own: the harnesses (juggle_vcs_harness) or the kit itself
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import vcs_conformance
@@ -39,7 +40,7 @@ class ConformanceReport:
         return [(n, e) for n, ok, e in self.results if not ok]
 
 
-def _kit_tests() -> list[tuple[str, object]]:
+def _kit_tests() -> list[tuple[str, Callable[..., object]]]:
     """Every ``test_*`` function in the shared kit, in deterministic order."""
     return sorted(
         (n, f)
