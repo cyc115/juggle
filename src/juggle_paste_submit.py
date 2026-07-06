@@ -27,18 +27,49 @@ FAST_SWEEP_FLOOR_SECS = 8.0
 # --- dispatch-side structural detection (used by juggle_tmux) --------------
 
 
+def _bottom_input_box(bottom: str) -> list[str]:
+    """Return the interior ``│``-framed lines of the bottom-most input box.
+
+    The Claude input widget is the LAST contiguous run of ``│``-framed lines and
+    always carries a ``❯``/``>`` prompt glyph — unlike a stray ``│``-framed table
+    in the transcript above. Scanned bottom-up so a footer or a NOTIFICATION
+    rendered below/around the box (non-``│`` lines) is skipped. Returns ``[]``
+    when no input box is present.
+
+    This anchor is the fix for the 2026-07-06 paste-submit race (#3): the box
+    frame is bottom-pinned and cannot scroll away, so it survives a background
+    notification that pushes the statusline readiness/submission markers out of
+    the captured tail — unlike keying on those markers.
+    """
+    block: list[str] = []
+    for raw in reversed(bottom.splitlines()):
+        s = raw.strip()
+        if s.startswith("│"):
+            block.append(s)
+        elif block:
+            break
+    block.reverse()
+    if not block:
+        return []
+    if not any("❯" in ln or ln.strip("│").strip().startswith(">") for ln in block):
+        return []  # a stray │-framed transcript table, not the input widget
+    return block
+
+
+def input_box_present(bottom: str) -> bool:
+    """True if a drawn input box (bottom-pinned ``│ ❯ … │`` widget) is visible."""
+    return bool(_bottom_input_box(bottom))
+
+
 def input_box_has_content(bottom: str) -> bool:
     """True if the drawn input box still holds a non-blank line.
 
-    Scans the ``│``-framed box-interior lines and returns True if any still has
-    visible glyphs after stripping the frame, the ``❯``/``>`` prompt glyph, and
-    whitespace. An empty box (``│ ❯                  │``) reads as empty. This is
-    the structural signal that is independent of any collapsed-paste wording.
+    Scans the bottom-most input box's interior lines and returns True if any
+    still has visible glyphs after stripping the frame, the ``❯``/``>`` prompt
+    glyph, and whitespace. An empty box (``│ ❯                  │``) reads as
+    empty. Structural signal, independent of any collapsed-paste wording.
     """
-    for raw in bottom.splitlines():
-        s = raw.strip()
-        if not s.startswith("│"):
-            continue
+    for s in _bottom_input_box(bottom):
         inner = s.strip("│").strip().lstrip("❯>").strip()
         if inner:
             return True
@@ -49,11 +80,15 @@ def input_box_stuck(bottom: str, head: str, ready_markers) -> bool:
     """True if the input box still holds unsubmitted text.
 
     Enumerated fast-path hints (collapsed-paste placeholder / INSERT banner /
-    prompt head / a non-empty bare ``❯``/``>`` line) PLUS a STRUCTURAL fallback:
-    a readiness marker present (box drawn) AND a non-blank box-interior line, so
-    a NEW placeholder ('paste again to expand', 2026-07-03) still trips even
-    though its literal string is not enumerated.
+    prompt head / a non-empty bare ``❯``/``>`` line) PLUS a STRUCTURAL,
+    SCROLL-STABLE fallback: the bottom-pinned input-box frame still holds a
+    non-blank interior line. Keyed on the box FRAME itself, not on a readiness
+    marker — a background notification can scroll the 'shift+tab to cycle' footer
+    off the captured tail, but the box frame cannot scroll away (2026-07-06
+    paste-submit race #3). ``ready_markers`` is retained for call-site
+    compatibility; the frame anchor supersedes it.
     """
+    del ready_markers  # frame-anchored detection no longer needs the marker gate
     if (
         "[Pasted text" in bottom
         or "-- INSERT --" in bottom
@@ -64,7 +99,55 @@ def input_box_stuck(bottom: str, head: str, ready_markers) -> bool:
         )
     ):
         return True
-    return any(m in bottom for m in ready_markers) and input_box_has_content(bottom)
+    return input_box_has_content(bottom)
+
+
+def classify_pane_submission(
+    bottom: str,
+    head: str,
+    ready_markers,
+    submission_markers,
+    activity_markers,
+    active_pattern: str,
+) -> str:
+    """Pure classifier: ``'submitted' | 'stuck' | 'unknown'`` from a pane tail.
+
+    The agent-verifiable seam for paste-submit verification (no live tmux race).
+    SCROLL-STABLE contract (2026-07-06 paste-submit race #3): a background
+    notification can push the statusline readiness/submission markers out of the
+    fixed capture tail, so submission is NOT proven by those markers alone. The
+    input BOX is bottom-pinned and cannot scroll away:
+
+      * box drawn + still holds unsubmitted glyphs -> ``'stuck'``  (re-send Enter)
+      * box drawn + demonstrably empty             -> ``'submitted'``
+
+    A stale 'Press up to edit queued messages' footer counts as success ONLY when
+    the box is empty — a residual paste beneath it is still ``'stuck'``.
+    """
+    import re
+
+    # 1. Residual text in the bottom-pinned box => NOT submitted, regardless of a
+    #    scrolled statusline marker or a stale queued-messages footer.
+    if input_box_stuck(bottom, head, ready_markers):
+        return "stuck"
+    # 2. Explicit positive markers (fast path, when still in the captured tail).
+    if any(m in line for m in submission_markers for line in bottom.splitlines()):
+        return "submitted"
+    if active_pattern and re.search(active_pattern, bottom):
+        return "submitted"
+    if any(m in bottom for m in activity_markers):
+        return "submitted"
+    # 3. Queued footer with an EMPTY box => message accepted into the queue.
+    if "Press up to edit queued messages" in bottom:
+        return "submitted"
+    # 4. Scroll-stable success: a drawn-and-empty input box proves the text left
+    #    the box even when every statusline marker scrolled off behind a notice.
+    if input_box_present(bottom) and not input_box_has_content(bottom):
+        return "submitted"
+    # 5. Legacy positive contract: readiness marker present + empty box.
+    if any(m in bottom for m in ready_markers) and not input_box_has_content(bottom):
+        return "submitted"
+    return "unknown"
 
 
 # --- watchdog fast-sweep predicate (used by juggle_watchdog.classify) ------

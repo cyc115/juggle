@@ -3,7 +3,6 @@
 
 import logging
 import os
-import re
 import subprocess
 import time
 import uuid
@@ -44,8 +43,9 @@ _PROMPT_HEAD_CHARS = 40
 # Structural paste-without-submit detection (2026-07-03) lives in
 # juggle_paste_submit (LOC gate); imported here for wait_for_submission.
 from juggle_paste_submit import (  # noqa: E402
-    input_box_has_content as _input_box_has_content,
-    input_box_stuck as _input_box_stuck,
+    classify_pane_submission as _classify_pane_submission,
+    input_box_has_content as _input_box_has_content,  # noqa: F401 — re-exported
+    input_box_stuck as _input_box_stuck,  # noqa: F401 — re-exported
 )
 
 
@@ -258,18 +258,17 @@ class JuggleTmuxManager:
     ) -> bool:
         """Verify a pasted prompt was submitted; retry Enter if stuck.
 
-        Success: a _SUBMISSION_MARKERS token ("esc to interrupt" / "✻" / "✶")
-        appears in the pane output.
+        Delegates each poll's verdict to the SCROLL-STABLE classifier
+        ``classify_pane_submission`` (juggle_paste_submit): success on a
+        submission/activity marker OR a demonstrably empty DRAWN input box; stuck
+        when the bottom-pinned box frame still holds the paste (Enter swallowed,
+        or a stale "Press up to edit queued messages" footer over a full box). On
+        a stuck verdict, sends C-m each poll up to ``max_enter_retries``.
 
-        Stuck: the bottom region still contains input — either a
-        "[Pasted text" collapsed-paste placeholder, the first 40 chars of
-        the prompt (short prompts), or a non-empty ❯/> prompt line. Sends
-        C-m on each stuck poll up to max_enter_retries.
-
-        NOTE: the old "head not in bottom → True" branch has been removed.
-        Claude Code collapses large pastes into "[Pasted text #N +M lines]"
-        so the head is never present in the bottom, causing an immediate
-        false-positive that left tasks unsubmitted at the prompt.
+        The classifier keys on the input-box FRAME, not on statusline markers a
+        background notification can scroll out of the captured tail — the
+        2026-07-06 paste-submit race (#3) that produced a false "task not sent"
+        while the text sat unsubmitted in the box.
 
         Returns True on success, False on timeout.
         """
@@ -286,24 +285,19 @@ class JuggleTmuxManager:
                 "capture-pane", "-p", "-t", pane_id, "-S", f"-{_DETECT_TAIL_LINES}"
             )
             out = getattr(result, "stdout", "") or ""
-            tail = out.splitlines()[-_DETECT_TAIL_LINES:]
-            bottom = "\n".join(tail)
-            # (a) explicit submission markers
-            if any(m in line for m in submission_markers for line in tail):
+            bottom = "\n".join(out.splitlines()[-_DETECT_TAIL_LINES:])
+            # Scroll-stable classifier (2026-07-06 paste-submit race #3): keys on
+            # the bottom-pinned input-box frame, not on statusline markers a
+            # notification can scroll off the captured tail.
+            verdict = _classify_pane_submission(
+                bottom, head, ready_markers, submission_markers,
+                _ACTIVITY_MARKERS, active_pattern,
+            )
+            if verdict == "submitted":
                 return True
-            # (a2) structural active-status line — survives unenumerated glyphs (2026-07-02)
-            if active_pattern and re.search(active_pattern, bottom):
-                return True
-            # (c) queued-messages indicator — prompt landed, agent is mid-turn
-            if "Press up to edit queued messages" in bottom:
-                return True
-            # Structural stuck: enumerated hints + readiness-marker-and-non-empty-box
-            # fallback (2026-07-03 'paste again to expand' marker gap).
-            stuck = _input_box_stuck(bottom, head, ready_markers)
-            # (b) input box clear AND activity markers — agent already consumed prompt
-            if not stuck and any(m in bottom for m in _ACTIVITY_MARKERS):
-                return True
-            if stuck and retries < max_enter_retries:
+            # Stuck: the box still holds the paste (Enter swallowed / a stale
+            # queued-messages footer) — re-send Enter. Bounded by max_enter_retries.
+            if verdict == "stuck" and retries < max_enter_retries:
                 if "-- INSERT --" in bottom:
                     self._run_tmux("send-keys", "-t", pane_id, "Escape")
                     time.sleep(0.1)
@@ -320,17 +314,14 @@ class JuggleTmuxManager:
         """Side-effect confirmation that a prompt was submitted, after the
         marker-poll loop timed out.
 
-        POSITIVE success contract (2026-07-03): submission is proven ONLY by
-          * a submission/activity marker (incl. the structural active-status
-            line) having since rendered, OR
-          * a DEMONSTRABLY empty input box — a readiness marker is drawn AND the
-            box holds no content.
-
-        A box still holding unsubmitted input (any enumerated placeholder OR the
-        structural "readiness marker + non-blank box line") returns False — a
-        genuine stuck-at-prompt. A live agent PROCESS is NOT proof of submission
-        (the incident: an idle-at-prompt agent is alive yet never submitted), so
-        that fallback is gone.
+        POSITIVE success contract: submission is proven ONLY by a
+        submission/activity marker (incl. the structural active-status line) OR a
+        DEMONSTRABLY empty DRAWN input box (bottom-pinned ``│ ❯ … │`` frame with
+        no content) — never "agent process alive". A box still holding
+        unsubmitted input returns False (a genuine stuck-at-prompt). Shares the
+        scroll-stable ``classify_pane_submission`` seam with the poll loop so the
+        empty-box success no longer depends on a readiness marker that a
+        notification can scroll off (2026-07-06 paste-submit race #3).
         """
         ready_markers, submission_markers = _harness_markers()
         active_pattern = _active_status_pattern()
@@ -339,15 +330,14 @@ class JuggleTmuxManager:
         )
         out = getattr(result, "stdout", "") or ""
         bottom = "\n".join(out.splitlines()[-_DETECT_TAIL_LINES:])
-        active_hit = active_pattern and re.search(active_pattern, bottom)
-        if any(m in bottom for m in submission_markers + _ACTIVITY_MARKERS) or active_hit:
-            return True
-        if _input_box_stuck(bottom, head, ready_markers):
-            return False
-        # No stuck text. Success ONLY if the box is demonstrably empty (readiness
-        # marker drawn, no content) — never "agent process alive".
-        return any(m in bottom for m in ready_markers) and not _input_box_has_content(
-            bottom
+        # Same scroll-stable classifier as the poll loop; success ONLY on a
+        # positive marker or a demonstrably empty DRAWN box — never "process alive".
+        return (
+            _classify_pane_submission(
+                bottom, head, ready_markers, submission_markers,
+                _ACTIVITY_MARKERS, active_pattern,
+            )
+            == "submitted"
         )
 
     def _paste_buffer(self, pane_id: str, src_path: str, buf_name: str | None = None) -> None:
