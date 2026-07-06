@@ -138,10 +138,19 @@ def cmd_complete_agent(args):
     if _new_status is not None:
         db.set_thread_status(thread_uuid, _new_status)
 
-    # 5. Create notification row (informational, session TTL)
+    # 5. Create notification row (informational, session TTL). Compress the
+    # agent's raw result_summary to the canonical 1-line budget (2026-07-05
+    # verbose-item incident) — full detail is already stored as a thread
+    # message above, so the compressed item just points the eye at it.
+    from juggle_item_compress import compress_item
     title = thread.get("title") or "thread"
+    _clabel = thread.get("user_label") or args.thread_id
+    _notif_msg = compress_item(
+        "notification", _clabel, f"{title}: {args.result_summary}",
+        thread_ref=_clabel,
+    )
     db.emit_event(
-        thread_id=thread_uuid, message=f"{title}: {args.result_summary}",
+        thread_id=thread_uuid, message=_notif_msg,
         session_id=session_id, kind=_ek.AGENT_COMPLETE,
     )
 

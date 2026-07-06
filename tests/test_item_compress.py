@@ -189,3 +189,83 @@ def test_llm_returns_none_falls_back(monkeypatch, with_key):
 def test_empty_text_returns_empty(with_key):
     assert jic.compress_item("notification", "SL", "") == ""
     assert jic.compress_item("action", "SL", None) == ""
+
+
+# --- Regression pins at the WRITE seams -------------------------------------
+# Incident 2026-07-05: the verbose PR #62 [SL] item — the [auto-decision] path
+# pasted the orchestrator reply verbatim and the completion notification used
+# the agent's raw `agent complete` string, both blowing the cockpit budget.
+
+
+@pytest.fixture
+def seam_db(tmp_path, monkeypatch):
+    """A tmp JuggleDB with no LLM key → the seams take the deterministic path
+    (no real subprocess in the suite)."""
+    from juggle_db import JuggleDB
+
+    monkeypatch.delenv("OPENROUTER_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    db = JuggleDB(str(tmp_path / "juggle.db"))
+    db.init_db()
+    tid = db.create_thread("PR #62 weekly-autofix review", session_id="s1")
+    db.set_current_thread(tid)
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO session (key, value) VALUES ('session_id', 's1')"
+        )
+        conn.commit()
+    label = db.get_thread(tid).get("user_label")
+    return db, tid, label
+
+
+def test_prose_decision_seam_compresses_verbose_item_2026_07_05(seam_db):
+    """2026-07-05 verbose PR#62 [SL] item: record_prose_decision must file an
+    action item within the ≤5-line budget, not the verbatim multi-paragraph
+    prose."""
+    from juggle_hooks_prose import record_prose_decision
+
+    db, _tid, _label = seam_db
+    verbose = VERBOSE_ACTION_INPUT + "\n\nYour call — should I proceed?"
+    record_prose_decision(db, verbose)
+
+    items = [
+        i for i in db.get_open_action_items()
+        if i["message"].startswith("[auto-decision]")
+    ]
+    assert len(items) == 1
+    body = items[0]["message"][len("[auto-decision] "):]
+    assert len(body.splitlines()) <= jic.ACTION_MAX_LINES, body
+
+
+def test_complete_agent_seam_compresses_verbose_notification_2026_07_05(seam_db):
+    """2026-07-05: the AGENT_COMPLETE notification must be the 1-line budget,
+    not the agent's raw multi-paragraph `agent complete` string."""
+    import juggle_cli_common as _common
+    from juggle_cmd_agents_complete import cmd_complete_agent
+
+    db, tid, label = seam_db
+    args = type("A", (), {})()
+    args.thread_id = label
+    args.result_summary = VERBOSE_NOTIFICATION_INPUT
+    args.retain_text = None
+    args.open_questions = None
+    args.handoff = None
+    args.role = "coder"
+
+    import juggle_spool_cli_common as _spool
+    # Force the non-spool path.
+    _orig = _common.get_db
+    _common.get_db = lambda: db
+    _spool_orig = _spool.spool_event_if_agent
+    _spool.spool_event_if_agent = lambda *a, **k: False
+    try:
+        cmd_complete_agent(args)
+    finally:
+        _common.get_db = _orig
+        _spool.spool_event_if_agent = _spool_orig
+
+    notifs = db.get_notifications_for_session("s1")
+    agent_notifs = [n for n in notifs if "\n" not in n["message"]]
+    assert agent_notifs, f"expected a 1-line notification, got {notifs}"
+    for n in notifs:
+        assert len(n["message"].splitlines()) <= 1, n["message"]

@@ -195,9 +195,14 @@ def cmd_notify(args):
             "SELECT value FROM session WHERE key = 'session_id'"
         ).fetchone()
     session_id = srow["value"] if srow else ""
+    # Compress an over-budget notify message to the canonical 1-line budget
+    # (2026-07-05 verbose-item incident); short messages pass through untouched.
+    from juggle_item_compress import compress_item
+    _nlabel = thread.get("user_label") or thread_uuid[:6]
+    _msg = compress_item("notification", _nlabel, args.message, thread_ref=_nlabel)
     db.emit_event(
         thread_id=thread_uuid,
-        message=args.message,
+        message=_msg,
         session_id=session_id,
         kind=_ek.MANUAL,
     )
