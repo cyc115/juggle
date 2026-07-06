@@ -147,3 +147,43 @@ def _classify_failure(error: str) -> str:
         if t in low:
             return "transient"
     return "persistent"
+
+
+def file_role_action_items(db, thread_uuid, agent, args, open_questions) -> None:
+    """File the role-based post-completion review action item (if any).
+
+    Extracted verbatim from cmd_complete_agent (2026-07-05 LOC-gate): a
+    researcher with open questions / a planner / a plan- or draft-shaped coder
+    summary gets a "review before proceeding" item; a clean coder run gets none.
+    """
+    role = (agent.get("role") if agent else None) or getattr(args, "role", None)
+    if role == "researcher" and open_questions:
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"Review: {args.result_summary}",
+            type_="review",
+            priority="normal",
+        )
+    elif role == "planner":
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"Review plan before dispatching coder: {args.result_summary}",
+            type_="decision",
+            priority="normal",
+        )
+    elif role not in ("researcher", "planner"):
+        summary = args.result_summary or ""
+        if _matches_plan(summary):
+            db.add_action_item(
+                thread_id=thread_uuid,
+                message=f"Review before dispatching coder: {args.result_summary}",
+                type_="decision",
+                priority="normal",
+            )
+        elif _matches_draft(summary) and not _looks_complete(summary):
+            db.add_action_item(
+                thread_id=thread_uuid,
+                message=f"Review/iterate: {args.result_summary}",
+                type_="manual_step",
+                priority="normal",
+            )

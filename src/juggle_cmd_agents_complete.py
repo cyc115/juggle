@@ -154,38 +154,8 @@ def cmd_complete_agent(args):
         session_id=session_id, kind=_ek.AGENT_COMPLETE,
     )
 
-    # 6a. Role-based action items
-    role = (agent.get("role") if agent else None) or getattr(args, "role", None)
-    if role == "researcher" and open_questions:
-        db.add_action_item(
-            thread_id=thread_uuid,
-            message=f"Review: {args.result_summary}",
-            type_="review",
-            priority="normal",
-        )
-    elif role == "planner":
-        db.add_action_item(
-            thread_id=thread_uuid,
-            message=f"Review plan before dispatching coder: {args.result_summary}",
-            type_="decision",
-            priority="normal",
-        )
-    elif role not in ("researcher", "planner"):
-        summary = args.result_summary or ""
-        if _com._matches_plan(summary):
-            db.add_action_item(
-                thread_id=thread_uuid,
-                message=f"Review before dispatching coder: {args.result_summary}",
-                type_="decision",
-                priority="normal",
-            )
-        elif _com._matches_draft(summary) and not _com._looks_complete(summary):
-            db.add_action_item(
-                thread_id=thread_uuid,
-                message=f"Review/iterate: {args.result_summary}",
-                type_="manual_step",
-                priority="normal",
-            )
+    # 6a. Role-based action items (extracted to _com — 2026-07-05 LOC-gate).
+    _com.file_role_action_items(db, thread_uuid, agent, args, open_questions)
 
     # 6b. Graph-task marking (project autopilot Phase 1): map the integrate
     # outcome onto the bound task's state machine, store the handoff, and
