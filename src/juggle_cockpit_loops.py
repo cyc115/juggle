@@ -65,6 +65,11 @@ def loop_pointer(project_id: str) -> str:
 
 
 def _fmt_cadence(cadence: str) -> str:
+    from juggle_loop_cadence import format_weekly
+
+    wk = format_weekly(cadence)  # "Mon 09:00" for a weekly cadence, else None
+    if wk:
+        return wk
     s = (cadence or "").replace("every ", "").replace("daily at ", "daily ").strip()
     return s
 

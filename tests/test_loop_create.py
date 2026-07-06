@@ -109,6 +109,98 @@ def test_compute_next_run_from_cadence():
         compute_next_run("daily at 30:70", now)  # code-review #3: range guard
 
 
+# ── Weekly / day-of-week cadence ─────────────────────────────────────────────────
+# All pins: 2026-07-06 — a WEEKLY loop ("weekly on monday at 09:00") was un-createable;
+# compute_next_run rejected every day-of-week cadence with 'unparseable cadence'.
+def test_weekly_next_from_earlier_weekday():
+    """2026-07-06 weekly cadence unparseable: next Monday computed from a Wednesday now."""
+    from datetime import datetime
+    now = datetime(2026, 7, 8, 12, 0, 0)  # Wednesday
+    # 2026-07-13 is the next Monday.
+    assert compute_next_run("weekly on monday at 09:00", now).startswith("2026-07-13T09:00")
+
+
+def test_weekly_same_weekday_before_time_is_today():
+    """2026-07-06 weekly cadence unparseable: same weekday, now BEFORE HH:MM -> today."""
+    from datetime import datetime
+    now = datetime(2026, 7, 13, 8, 0, 0)  # Monday, before 09:00
+    assert compute_next_run("weekly on monday at 09:00", now).startswith("2026-07-13T09:00")
+
+
+def test_weekly_same_weekday_at_time_rolls_plus_7d():
+    """2026-07-06 weekly cadence unparseable: firing EXACTLY at Mon 09:00 rolls +7d
+    (never a 0-second loop) — mirrors the daily branch's <= now guard."""
+    from datetime import datetime
+    now = datetime(2026, 7, 13, 9, 0, 0)  # Monday, exactly 09:00
+    assert compute_next_run("weekly on monday at 09:00", now).startswith("2026-07-20T09:00")
+
+
+def test_weekly_abbrev_and_case_insensitive():
+    """2026-07-06 weekly cadence unparseable: full name AND 3-letter abbrev both parse,
+    case-insensitive."""
+    from datetime import datetime
+    now = datetime(2026, 7, 8, 12, 0, 0)  # Wednesday
+    assert compute_next_run("weekly on FRIDAY at 17:30", now).startswith("2026-07-10T17:30")
+    assert compute_next_run("weekly on fri at 17:30", now).startswith("2026-07-10T17:30")
+    assert compute_next_run("weekly on Fri at 17:30", now).startswith("2026-07-10T17:30")
+
+
+def test_weekly_every_weekday_alias():
+    """2026-07-06 weekly cadence unparseable: 'every <weekday> at HH:MM' is an alias and
+    must NOT collide with the 'every N<unit>' interval regex."""
+    from datetime import datetime
+    now = datetime(2026, 7, 8, 12, 0, 0)  # Wednesday
+    assert compute_next_run("every sunday at 06:00", now).startswith("2026-07-12T06:00")
+    # the interval form still parses (no weekday collision)
+    assert compute_next_run("every 15m", now).startswith("2026-07-08T12:15")
+
+
+def test_weekly_unknown_weekday_fails_loud():
+    """2026-07-06 weekly cadence unparseable: an unknown weekday raises LoopTemplateError,
+    never a bare traceback."""
+    from datetime import datetime
+    now = datetime(2026, 7, 8, 12, 0, 0)
+    with pytest.raises(LoopTemplateError, match="weekday"):
+        compute_next_run("weekly on funday at 09:00", now)
+
+
+def test_weekly_out_of_range_time_fails_loud():
+    """2026-07-06 weekly cadence unparseable: an out-of-range time raises LoopTemplateError."""
+    from datetime import datetime
+    now = datetime(2026, 7, 8, 12, 0, 0)
+    with pytest.raises(LoopTemplateError, match="invalid time"):
+        compute_next_run("weekly on monday at 30:70", now)
+
+
+def test_weekly_missing_time_fails_loud():
+    """2026-07-06 weekly cadence unparseable: a weekly-shaped string missing the time
+    raises LoopTemplateError (not a silent never-fire loop)."""
+    from datetime import datetime
+    now = datetime(2026, 7, 8, 12, 0, 0)
+    with pytest.raises(LoopTemplateError):
+        compute_next_run("weekly on monday", now)
+
+
+def test_fmt_cadence_renders_weekly_compactly():
+    """2026-07-06 weekly cadence unparseable: cockpit _fmt_cadence renders weekly as
+    'Mon 09:00' (not the long raw 'weekly on monday at 09:00')."""
+    from juggle_cockpit_loops import _fmt_cadence
+    assert _fmt_cadence("weekly on monday at 09:00") == "Mon 09:00"
+    assert _fmt_cadence("every sunday at 06:00") == "Sun 06:00"
+    # existing formats unchanged
+    assert _fmt_cadence("every 15m") == "15m"
+    assert _fmt_cadence("daily at 09:30") == "daily 09:30"
+
+
+def test_confirm_card_renders_weekly_readably():
+    """2026-07-06 weekly cadence unparseable: the loop plan confirm-card renders a weekly
+    cadence readably ('Mon 09:00')."""
+    from juggle_loop_confirm_card import render_topic_dag_card
+    norm = validate_loop_template(_single_topic_template(ntasks=1))
+    card = render_topic_dag_card(norm, "weekly on monday at 09:00")
+    assert "Mon 09:00" in card
+
+
 # ── Atomic create (§Axis-5) ─────────────────────────────────────────────────────
 def test_multi_topic_create_instantiates_n_topics_and_edges(db):
     """P4b (2026-07-05): create_loop_atomic instantiates ALL topics of a multi-topic

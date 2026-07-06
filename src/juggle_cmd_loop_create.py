@@ -39,6 +39,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from dbops.schema import _now
+from juggle_loop_cadence import parse_weekly
 from juggle_loop_instantiate import (
     create_stable_topic,
     instantiate_generation,
@@ -58,15 +59,29 @@ _DAILY_RE = re.compile(r"daily\s+at\s+(\d{1,2}):(\d{2})", re.IGNORECASE)
 def compute_next_run(cadence: str, now: datetime | None = None) -> str:
     """Derive the first ``next_run`` ISO timestamp from a cadence string.
 
-    Supports ``every Nm|Nh|Ns|Nd`` (and the spelled-out units) and ``daily at
-    HH:MM``. Fail-loud on an unparseable cadence — a loop with no schedulable
-    next_run would silently never fire (critique §Axis-6: next_run is the timer).
+    Supports ``every Nm|Nh|Ns|Nd`` (and the spelled-out units), ``daily at HH:MM``,
+    and the weekly day-of-week forms ``weekly on <weekday> at HH:MM`` / ``every
+    <weekday> at HH:MM`` (juggle_loop_cadence.parse_weekly). Fail-loud on an
+    unparseable cadence — a loop with no schedulable next_run would silently never
+    fire (critique §Axis-6: next_run is the timer).
 
     Defaults to UTC-aware ``datetime.now(timezone.utc)`` so the emitted ISO string
     is byte-comparable with ``dbops.schema._now()`` — Phase 5's fire check compares
     ``next_run`` against ``_now()``, and a naive/local timestamp here would make
     that comparison wrong (tz offset + missing ``+00:00`` suffix)."""
     now = now or datetime.now(timezone.utc)
+    # Weekly day-of-week — checked BEFORE the interval regex (the weekday token is
+    # letter-led so it cannot collide with ``every N<unit>``, but order guards it).
+    wk = parse_weekly(cadence or "")  # raises LoopTemplateError on a malformed weekly
+    if wk is not None:
+        wd, hh, mm = wk
+        cand = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        cand = cand + timedelta(days=(wd - now.weekday()) % 7)
+        if cand <= now:
+            # Firing exactly at the target instant rolls to the NEXT week (+7d) — never
+            # a 0-second loop, mirroring the daily branch's <= now guard.
+            cand = cand + timedelta(days=7)
+        return cand.isoformat()
     m = _DAILY_RE.search(cadence or "")
     if m:
         hh, mm = int(m.group(1)), int(m.group(2))

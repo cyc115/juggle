@@ -347,3 +347,22 @@ def test_no_due_loops_is_a_noop(db):
     assert _iter_task_count(db, pid, loop_id, 1) == 0
     assert db.get_loop(loop_id)["run_seq"] == 0
     assert db.get_notifications_for_session(SESSION) == []
+
+
+# 2020-01-06 and 2020-01-13 are both Mondays; the offset-carrying ISO strings mirror
+# the daily branch's UTC-aware contract (byte-comparable with dbops.schema._now()).
+_MON_0900 = "2020-01-06T09:00:00+00:00"
+_NEXT_MON_0900 = "2020-01-13T09:00:00+00:00"
+
+
+def test_weekly_refire_advances_exactly_7d(db):
+    """2026-07-06 weekly cadence unparseable: firing a Mon-09:00 weekly loop AT Mon
+    09:00 must recompute next_run to the NEXT Mon 09:00 (+7d) via compute_next_run —
+    weekly must advance exactly one week each fire, never a 0-second re-fire."""
+    loop_id, res = _make_loop(db, cadence="weekly on monday at 09:00", next_run=_MON_0900)
+    pid = res["project_id"]
+    _set_iter_state(db, pid, loop_id, 0, "verified")  # prior iteration succeeded
+
+    lf.fire_due_loops(db, SESSION, now=_MON_0900)  # due exactly at the fire instant
+    assert db.get_loop(loop_id)["run_seq"] == 1     # fired the next iteration
+    assert db.get_loop(loop_id)["next_run"] == _NEXT_MON_0900

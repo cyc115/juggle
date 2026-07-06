@@ -13,6 +13,15 @@ Pure data in / str out — the input is ``validate_loop_template``'s normalised 
 """
 from __future__ import annotations
 
+from juggle_loop_cadence import format_weekly
+
+
+def _display_cadence(cadence: str) -> str:
+    """Card label for the cadence — a weekly day-of-week form renders compactly
+    (``'Mon 09:00'``); every other form echoes raw (interval/daily are already
+    readable, and the raw echo is the confirm-before-freeze contract)."""
+    return format_weekly(cadence) or cadence
+
 
 def _model_label(model) -> str:
     """Human label for a topic's model — an unset (None) model is best-effort at
@@ -30,7 +39,7 @@ def render_topic_dag_card(template: dict, cadence: str) -> str:
     n = len(topics)
     lines = [
         f"Loop plan — {n} topic{'s' if n != 1 else ''}",
-        f"Cadence:  {cadence}",
+        f"Cadence:  {_display_cadence(cadence)}",
         "",
         "Topics:",
     ]
