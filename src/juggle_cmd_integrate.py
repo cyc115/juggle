@@ -16,7 +16,7 @@ from juggle_integrate_lock import (  # noqa: F401 — re-exported for callers
 )
 from juggle_integrate_envelope import (
     FailContext, STEP_DIRTY_WORKTREE, STEP_EMPTY_BRANCH, STEP_NO_MAIN_BRANCH,
-    STEP_REBASE_CONFLICT, STEP_SUBMIT_FAILED, STEP_TEST_FAILURE, STEP_UNEXPECTED,
+    STEP_REBASE_CONFLICT, STEP_TEST_FAILURE, STEP_UNEXPECTED,
     record_refusal, resolve_attempt_shas,
 )
 from juggle_integrate_diffstat import capture_diffstat
@@ -223,42 +223,17 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             worktree_path, base=rebase_onto, mode=submit_mode,
             push=(push_mode == "direct"),
         )
-        if result.status == "failed":
-            return _fail(STEP_SUBMIT_FAILED, result.detail, log_tail=result.detail)
-
-        if result.status == "submitted":
-            # PR mode: worktree removed, branch ref left for the PR — main
-            # untouched, local main branch/repo binding kept on the thread.
-            backend.remove_workspace(main_repo_path, worktree_path)
-            db.update_thread(thread_uuid, worktree_path="", worktree_branch=worktree_branch,
-                             main_repo_path=main_repo_path)
-            release_repo_lock(lock_path)
-            return True, f"Branch {worktree_branch} pushed to origin for PR (no local merge)"
-
-        # status == "landed": direct/none — record merged_sha, clean up.
-        # Recorded AFTER the push (defect C, 2026-07-01): _record_merged_sha
-        # checks ancestry against canonical origin/<main>, so recording BEFORE
-        # the push tested against an origin/<main> that did not yet contain the
-        # commit → merged_sha left NULL and the topic wedged at 'integrating'.
-        # Still BEFORE the worktree fields are cleared below (thread → topic
-        # binding still resolves).
-        _record_merged_sha(db, thread_uuid, main_repo_path, result.landed_rev)
-
-        # ── 8. Remove worktree + branch ───────────────────────────────────────
-        backend.remove_workspace(main_repo_path, worktree_path)
-
-        # ── 9. Clear worktree fields on thread ────────────────────────────────
-        db.update_thread(thread_uuid, worktree_path="", worktree_branch="", main_repo_path="")
-
-        # ── 10. Self-repo: restart watchdog + monitor ─────────────────────────
-        from juggle_cli_common import SRC_DIR as _SRC_DIR
-        juggle_own_repo = str(Path(_SRC_DIR).parent.resolve())
-        if Path(main_repo_path).resolve() == Path(juggle_own_repo).resolve():
-            _restart_juggle_daemons()
-
-        release_repo_lock(lock_path)
-        local_main = rebase_onto.split("/")[-1]
-        return True, f"Integrated {worktree_branch} → {local_main} (push_mode={push_mode})"
+        # ── 6b. Interpret the SubmitResult (failed/submitted/landed) + side
+        # effects — extracted to juggle_integrate_submit (LOC gate, 2026-07-05);
+        # the submitted arm additionally drives async-land publish.
+        from juggle_integrate_submit import finalize_submit_result
+        return finalize_submit_result(
+            db, backend, result,
+            thread_uuid=thread_uuid, worktree_path=worktree_path,
+            worktree_branch=worktree_branch, main_repo_path=main_repo_path,
+            rebase_onto=rebase_onto, push_mode=push_mode,
+            fail=_fail, release=lambda: release_repo_lock(lock_path),
+        )
 
     except Exception as e:
         return _fail(STEP_UNEXPECTED, f"Unexpected error during integrate: {e}", log_tail=str(e))
