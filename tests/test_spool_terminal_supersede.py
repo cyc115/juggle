@@ -45,6 +45,13 @@ def _verified_task(db, task_id="a"):
     return task_id
 
 
+def _cancelled_task(db, task_id="c"):
+    g.create_task(db, task_id=task_id, project_id="INBOX", title="C", prompt="do c")
+    g.task_transition(db, task_id, "cancel")  # open → cancelled
+    assert g.get_task(db, task_id)["state"] == "cancelled"
+    return task_id
+
+
 def _journal_outcome(db, uuid):
     with db._connect() as conn:
         row = conn.execute(
@@ -70,6 +77,24 @@ def test_mark_task_replay_on_verified_task_is_superseded_not_dead_lettered(db, s
         for i in db.get_open_action_items()
     )
     # the source file is consumed (unlinked), not left pending
+    assert read_pending(spool) == []
+
+
+def test_mark_task_replay_on_cancelled_task_is_superseded_not_dead_lettered(db, spool):
+    """RCA D3 2026-07-04: supersede/advance sets not complementary → legit replay
+    dead-letters. A success mark replay against a task the user/reconcile moved to
+    'cancelled' (a NON-failure terminal outside the old {verified,delivered,
+    integrated-unlanded} supersede set) while its agent finished must be superseded,
+    not dead-lettered — same sign as the completion, state already terminal."""
+    task_id = _cancelled_task(db)
+    uuid = write_event(spool, "graph_mark_task", "agent-1", "",
+                       {"task_id": task_id, "fail": False, "handoff": "x landed"})
+
+    stats = drain_spool(db)
+
+    assert stats["dead"] == 0, "cancelled-target success replay must NOT dead-letter"
+    assert _journal_outcome(db, uuid) == "superseded"
+    assert list((spool / "dead").glob("*.json")) == []
     assert read_pending(spool) == []
 
 

@@ -81,11 +81,20 @@ def test_terminal_reopen_topic_states_unchanged():
 
 
 def test_success_terminal_membership_unchanged():
-    """juggle_spool_apply._SUCCESS_TERMINAL — spool replay/supersede success set."""
+    """juggle_spool_apply._SUCCESS_TERMINAL — spool replay/supersede success-sign set.
+    D3 (2026-07-04): broadened from {verified,delivered,integrated-unlanded} to the
+    FULL non-failure terminal set (adds done/cancelled/archived) so a legit completion
+    replay against a reconciled/cancelled/archived target is superseded, not
+    dead-lettered. This IS the reviewed, behaviour-changing pin edit the regression-pin
+    gate allows — it must equal TERMINAL_STATES − FAILURE_TERMINAL_STATES."""
     import juggle_spool_apply as m
 
-    expected = frozenset({"verified", "delivered", "integrated-unlanded"})  # +delivered
+    expected = frozenset(
+        {"verified", "delivered", "integrated-unlanded",
+         "done", "cancelled", "archived"}  # +done/cancelled/archived (D3)
+    )
     assert ts.SUCCESS_REPLAY_TERMINAL_STATES == expected
+    assert ts.SUCCESS_REPLAY_TERMINAL_STATES == ts.TERMINAL_STATES - ts.FAILURE_TERMINAL_STATES
     assert m._SUCCESS_TERMINAL is ts.SUCCESS_REPLAY_TERMINAL_STATES
 
 
@@ -154,6 +163,23 @@ def test_non_terminal_statuses_by_omission_unchanged():
     )
     assert ts.NON_TERMINAL_DISPLAY_STATUSES == expected
     assert m._NON_TERMINAL_STATUSES is ts.NON_TERMINAL_DISPLAY_STATUSES
+
+
+def test_no_replay_state_falls_through_to_spurious_dead_letter():
+    """RCA D3 2026-07-04: supersede/advance sets not complementary → legit replay
+    dead-letters. Every markable task state must be EITHER advanceable-to-integrating
+    (mark_completion walks it) OR classified terminal for supersede (success-sign
+    replay set ∪ failure set). A state in neither → mark_completion raises → the
+    spool handler's sys.exit(1) → a legit, agreeing completion spuriously dead-lettered.
+    Residual before the fix: {done, cancelled, archived}."""
+    from dbops.db_graph_marking import _ADVANCE_TO_INTEGRATING
+
+    covered = (
+        frozenset(_ADVANCE_TO_INTEGRATING)
+        | ts.SUCCESS_REPLAY_TERMINAL_STATES
+        | ts.FAILURE_TERMINAL_STATES
+    )
+    assert covered == ts.TERMINAL_STATES | ts.IN_FLIGHT_STATES
 
 
 def test_node_machine_terminal_targets_subset_of_canonical():

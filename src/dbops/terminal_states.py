@@ -84,8 +84,19 @@ TERMINAL_REOPEN_TOPIC_STATES = (
     TERMINAL_SUCCESS_STATES | FAILURE_TERMINAL_STATES | ASYNC_PENDING_STATES
 )
 
-# Spool replay/supersede success terminals (juggle_spool_apply._SUCCESS_TERMINAL).
-SUCCESS_REPLAY_TERMINAL_STATES = TERMINAL_SUCCESS_STATES | ASYNC_PENDING_STATES
+# Spool replay/supersede SUCCESS-SIGN terminals (juggle_spool_apply._SUCCESS_TERMINAL).
+# A success-intent mark/complete replay whose target already sits in ANY non-failure
+# terminal is a SUPERSEDED no-op, not a dead-letter. D3 (2026-07-04): the old set
+# {verified,delivered,integrated-unlanded} omitted done/cancelled/archived, so a legit
+# completion whose task had been reconciled/cancelled/archived-to-terminal before the
+# drain spuriously dead-lettered (mark_completion raised → sys.exit → dead/). This set
+# is now EXACTLY the non-failure terminals (TERMINAL_STATES − FAILURE_TERMINAL_STATES),
+# so advance ∪ success-sign ∪ failure covers every markable state
+# (test_no_replay_state_falls_through_to_spurious_dead_letter).
+SUCCESS_REPLAY_TERMINAL_STATES = (
+    TERMINAL_SUCCESS_STATES | ASYNC_PENDING_STATES
+    | DONE_ROLLUP_STATES | CANCELLED_STATES | ARCHIVED_STATES
+)
 
 # Task counts-as-complete for topic rollup (reconcile._COMPLETION_TASK_STATES) and
 # the frontier/plan-layout DONE_STATES. verified + cancelled.
