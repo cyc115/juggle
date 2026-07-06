@@ -89,7 +89,54 @@ def bump_attempts(event_path: Path, attempts: int) -> None:
     os.rename(tmp_path, event_path)  # atomic on the same filesystem
 
 
-def move_to_dead(spool_dir: Path, event_path: Path, reason: str) -> None:
+# D5: a top-level *.json read_pending can't parse (corrupt / half-written) is
+# skipped every tick and inflates the pending count forever. Sweep it to dead/
+# once it survives this many drains — counted in TICKS via a '<name>.deadcheck'
+# sidecar (the file itself is unparseable, so no in-file stamp is possible), so a
+# genuinely-transient half-written file gets a few ticks to settle first.
+_UNPARSEABLE_SWEEP_TICKS = 3
+
+
+def sweep_unparseable_pending(spool_dir: Path, seen_names: set[str]) -> list[str]:
+    """Move top-level *.json files NOT in ``seen_names`` (i.e. read_pending could
+    not parse them) to dead/ once they survive _UNPARSEABLE_SWEEP_TICKS drains.
+    Returns the file names swept this call. Best-effort — a sidecar read/write
+    error resets that file's tick count rather than raising."""
+    if not spool_dir.exists():
+        return []
+    swept: list[str] = []
+    for path in sorted(spool_dir.glob("*.json")):
+        if path.name in seen_names:
+            continue  # read_pending parsed it — a live pending event, not corrupt
+        marker = path.with_name(f"{path.name}.deadcheck")
+        try:
+            ticks = int(marker.read_text()) if marker.exists() else 0
+        except (ValueError, OSError):
+            ticks = 0
+        ticks += 1
+        if ticks >= _UNPARSEABLE_SWEEP_TICKS:
+            move_to_dead(spool_dir, path, "unparseable pending file")
+            marker.unlink(missing_ok=True)
+            swept.append(path.name)
+        else:
+            try:
+                marker.write_text(str(ticks))
+            except OSError:
+                pass
+    return swept
+
+
+def move_to_dead(
+    spool_dir: Path, event_path: Path, reason: str, *,
+    journal_outcome: str | None = None,
+    applied_at: str | None = None,
+    boot_head: str | None = None,
+) -> None:
+    """Relocate a pending file to dead/ with its dead_reason. D4 (2026-07-04): the
+    optional journal_outcome/applied_at/boot_head make the dead file SELF-DESCRIBING
+    — a post-mortem needs only the file, not the (tmpfs-losable) spool_journal. Absent
+    stamps are omitted (not written as null) so the D5 unparseable-sweep path, which
+    has no journal row, doesn't plant misleading null keys."""
     dead_dir = spool_dir / "dead"
     dead_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -97,6 +144,13 @@ def move_to_dead(spool_dir: Path, event_path: Path, reason: str) -> None:
     except (json.JSONDecodeError, OSError):
         payload = {"uuid": event_path.stem, "type": "unknown"}
     payload["dead_reason"] = reason
+    for key, value in (
+        ("journal_outcome", journal_outcome),
+        ("applied_at", applied_at),
+        ("boot_head", boot_head),
+    ):
+        if value is not None:
+            payload[key] = value
     dest = dead_dir / event_path.name
     dest.write_text(json.dumps(payload))
     event_path.unlink(missing_ok=True)

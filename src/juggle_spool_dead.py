@@ -12,9 +12,11 @@ path (juggle_spool_cli_common) — recovery is a read+requeue surface only.
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from dbops.spool import move_to_dead
 from juggle_spool_paths import spool_dead_dir, spool_dir
 
 # ── transient-missing retry classifier (T-fix-spool-drain-systemexit) ──────────
@@ -95,6 +97,52 @@ def file_applying_interrupt_triage_items(
             type_="failure",
             priority="high",
         )
+
+
+# ── D4a: self-describing dead files ────────────────────────────────────────────
+# A dead file must survive a lost (tmpfs) spool_journal: stamp the journal outcome,
+# its applied_at, and the process boot-HEAD so a post-mortem needs only the file.
+_BOOT_HEAD: str | None = None
+_BOOT_HEAD_RESOLVED = False
+
+
+def _boot_head() -> str | None:
+    """Short SHA of the plugin source HEAD at process boot (resolved once, cached —
+    the watchdog drains every tick, so this must NOT shell out per tick). Best-effort:
+    any git/OS error yields None and the stamp is simply omitted."""
+    global _BOOT_HEAD, _BOOT_HEAD_RESOLVED
+    if not _BOOT_HEAD_RESOLVED:
+        _BOOT_HEAD_RESOLVED = True
+        try:
+            src_root = Path(__file__).resolve().parent
+            out = subprocess.run(
+                ["git", "-C", str(src_root), "rev-parse", "--short", "HEAD"],
+                capture_output=True, text=True, timeout=5, check=True,
+            )
+            _BOOT_HEAD = out.stdout.strip() or None
+        except (OSError, subprocess.SubprocessError):
+            _BOOT_HEAD = None
+    return _BOOT_HEAD
+
+
+def _journal_dead_fields(db, uuid: str) -> tuple[str | None, str | None]:
+    """(outcome, applied_at) for a uuid's spool_journal row, or (None, None)."""
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT outcome, applied_at FROM spool_journal WHERE uuid = ?", (uuid,)
+        ).fetchone()
+    return (row["outcome"], row["applied_at"]) if row else (None, None)
+
+
+def stamp_dead_letter(db, spool_dir_path: Path, event_path: Path, uuid: str,
+                      reason: str) -> None:
+    """move_to_dead a failed real event, stamping the D4a self-describing forensics
+    (journal outcome/applied_at + boot-HEAD) so the dead file stands alone."""
+    outcome, applied_at = _journal_dead_fields(db, uuid)
+    move_to_dead(
+        spool_dir_path, event_path, reason,
+        journal_outcome=outcome, applied_at=applied_at, boot_head=_boot_head(),
+    )
 
 
 # ── low-frequency backlog reminder (RCA D1 req 3) ──────────────────────────────

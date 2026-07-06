@@ -90,6 +90,36 @@ def test_drain_dead_letters_malformed_event_and_files_action_item(db, spool):
     assert any("spool" in (i.get("message") or "").lower() for i in open_items)
 
 
+def test_drain_sweeps_unparseable_pending_to_dead(db, spool):
+    """RCA D5 2026-07-04: corrupt pending file skipped every tick forever. A
+    top-level *.json that read_pending can't parse (corrupt / half-written) inflated
+    `spool: N` on every drain with no path out. After surviving _UNPARSEABLE_SWEEP_TICKS
+    drains it must move to dead/ with dead_reason 'unparseable pending file' and stop
+    counting as pending."""
+    import json
+
+    from dbops.spool import _UNPARSEABLE_SWEEP_TICKS
+
+    corrupt = spool / "20260101T000000.000000-agent-abc.json"
+    corrupt.write_text("{not valid json")
+
+    # Early ticks give a half-written file time to settle — not swept yet.
+    drain_spool(db)
+    assert corrupt.exists(), "must not sweep a fresh unparseable file on the first tick"
+
+    for _ in range(_UNPARSEABLE_SWEEP_TICKS):
+        drain_spool(db)
+
+    assert not corrupt.exists()
+    dead_files = list((spool / "dead").glob("*.json"))
+    assert any(
+        json.loads(p.read_text()).get("dead_reason") == "unparseable pending file"
+        for p in dead_files
+    )
+    # No longer inflating the pending count.
+    assert read_pending(spool) == []
+
+
 def test_drain_applies_agent_complete_via_existing_cmd_complete_agent(db, spool):
     tid = _make_thread(db)
     write_event(spool, "agent_complete", "agent-1", tid, {

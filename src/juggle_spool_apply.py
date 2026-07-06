@@ -13,7 +13,12 @@ import contextlib
 import io
 import logging
 
-from dbops.spool import SpoolEvent, bump_attempts, read_pending, move_to_dead
+from dbops.spool import (
+    SpoolEvent,
+    bump_attempts,
+    read_pending,
+    sweep_unparseable_pending,
+)
 from dbops.terminal_states import SUCCESS_REPLAY_TERMINAL_STATES as _SUCCESS_TERMINAL
 from juggle_spool_dead import (
     _APPLYING_INTERRUPT_CODE,
@@ -22,6 +27,7 @@ from juggle_spool_dead import (
     file_applying_interrupt_triage_items,
     file_dead_letter_action_items,
     maybe_file_dead_backlog_reminder,
+    stamp_dead_letter,
 )
 from juggle_spool_journal import (
     journal_insert_applying as _journal_insert_applying,
@@ -246,7 +252,9 @@ def drain_spool(db) -> dict:
     stats = {"applied": 0, "skipped_dup": 0, "superseded": 0, "retried": 0, "dead": 0}
     dead: list[tuple[str, str, str, str]] = []  # generic (thread_id, uuid, type, msg)
     interrupted: list[tuple[str, str, str, str]] = []  # D2: applying-interrupted reals
-    for event in read_pending(spool_dir()):
+    pending = read_pending(spool_dir())
+    seen_names = {ev.path.name for ev in pending if ev.path is not None}
+    for event in pending:
         ok, msg = apply_event(db, event)
         if ok:
             if "already applied" in msg:
@@ -268,11 +276,16 @@ def drain_spool(db) -> dict:
         else:
             stats["dead"] += 1
             if event.path is not None:
-                move_to_dead(spool_dir(), event.path, msg)
+                stamp_dead_letter(db, spool_dir(), event.path, event.uuid, msg)
             row = (event.thread_id or "", event.uuid, event.type, msg)
             # An interrupted-mid-apply real completion (D2) gets a dedicated HIGH
             # triage item, NOT the capped/grouped generic junk pile.
             (interrupted if msg.startswith(_APPLYING_INTERRUPT_CODE) else dead).append(row)
+    # D5: sweep long-lived unparseable pending files (never in read_pending) to
+    # dead/ so a corrupt file stops inflating `spool: N` and surfaces via D1.
+    for name in sweep_unparseable_pending(spool_dir(), seen_names):
+        stats["dead"] += 1
+        dead.append(("", name, "unparseable", "unparseable pending file"))
     file_dead_letter_action_items(db, dead)
     file_applying_interrupt_triage_items(db, interrupted)
     # Surface a stale dead-letter backlog even on ticks that dead-lettered
