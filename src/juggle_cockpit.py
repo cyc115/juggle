@@ -18,6 +18,7 @@ import os
 import signal
 import subprocess
 import sys
+import time  # noqa: F401 - patch target for test_cockpit_profile
 from pathlib import Path
 
 SRC_DIR = Path(__file__).parent
