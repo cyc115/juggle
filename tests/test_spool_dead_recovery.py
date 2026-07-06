@@ -69,6 +69,41 @@ def test_cmd_list_dead_json(capsys):
     assert len(out) == 1 and out[0]["dead_reason"] == "r1"
 
 
+# ── D2: applying-interrupted dedicated triage surface ─────────────────────────
+
+
+def test_applying_interrupt_files_dedicated_high_triage_item(db):
+    """2026-07-03 10:49/11:24: real completions interrupted mid-apply dead-lettered
+    as anonymous junk. An 'applying' spool_journal row means a prior apply crashed
+    mid-flight — the event is a GENUINE completion, not junk. drain must (a) stamp the
+    dead file with the machine-readable code=applying-interrupted, and (b) file a
+    DEDICATED HIGH action item naming the thread + the exact `--force-applying`
+    recovery command, distinct from the capped/grouped generic dead-letter items."""
+    tid = db.create_thread("topic", session_id="s")
+    uuid = write_event(spool_dir(), "agent_complete", "agent-1", tid,
+                       {"thread_id": tid, "result_summary": "did the thing"})
+    # Simulate the interrupted-mid-apply crash: journal row stuck at 'applying'.
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO spool_journal(uuid, event_type, applied_at, outcome) "
+            "VALUES (?,?,?,'applying')",
+            (uuid, "agent_complete", "2026-07-03T10:49:00"),
+        )
+        conn.commit()
+
+    stats = drain_spool(db)
+
+    assert stats["dead"] == 1
+    high = [i for i in db.get_open_action_items()
+            if i.get("priority") == "high" and "--force-applying" in (i.get("message") or "")]
+    assert len(high) == 1, "exactly one DEDICATED high triage item"
+    assert uuid in high[0]["message"]      # the exact replay target
+    assert tid in high[0]["message"]       # names the thread
+    # The dead file is self-labelling for triage tooling.
+    dead_payload = json.loads(next(spool_dead_dir().glob("*.json")).read_text())
+    assert dead_payload["dead_reason"].startswith("code=applying-interrupted")
+
+
 # ── replay round-trip ────────────────────────────────────────────────────────
 
 

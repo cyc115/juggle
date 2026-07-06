@@ -68,6 +68,35 @@ def file_dead_letter_action_items(db, dead: list[tuple[str, str, str, str]]) -> 
     )
 
 
+# ── D2: applying-interrupted dedicated triage surface ──────────────────────────
+# A dead file whose apply was INTERRUPTED mid-flight (spool_journal stuck at
+# 'applying', e.g. the 2026-07-03 10:49/11:24 crashes) is a GENUINE completion,
+# not junk — recoverable only by inspecting side effects then `replay
+# --force-applying`. apply_event tags its message with this code so drain routes it
+# to a DEDICATED, uncapped HIGH item (never grouped into the generic junk pile).
+_APPLYING_INTERRUPT_CODE = "code=applying-interrupted"
+
+
+def file_applying_interrupt_triage_items(
+    db, interrupted: list[tuple[str, str, str, str]]
+) -> None:
+    """interrupted: (thread_id, uuid, type, msg) tuples whose apply was interrupted
+    mid-flight. File ONE dedicated HIGH item each — naming the thread and the exact
+    recovery command — because each is a real completion a human must triage, not
+    anonymous junk to collapse into the capped grouped alert."""
+    for thread_id, uuid, etype, _msg in interrupted:
+        db.add_action_item(
+            thread_id=thread_id or None,
+            message=(
+                f"🚑 Spool {etype} {uuid} apply was interrupted mid-flight "
+                f"(thread {thread_id or '—'}) — a REAL completion, not junk. Inspect its "
+                f"side effects, then recover: `juggle spool replay {uuid} --force-applying`."
+            ),
+            type_="failure",
+            priority="high",
+        )
+
+
 # ── low-frequency backlog reminder (RCA D1 req 3) ──────────────────────────────
 _DEAD_REMINDER_INTERVAL_S = 24 * 3600
 _REMINDER_MARKER = ".dead_reminder_at"

@@ -16,8 +16,10 @@ import logging
 from dbops.spool import SpoolEvent, bump_attempts, read_pending, move_to_dead
 from dbops.terminal_states import SUCCESS_REPLAY_TERMINAL_STATES as _SUCCESS_TERMINAL
 from juggle_spool_dead import (
+    _APPLYING_INTERRUPT_CODE,
     _RETRY_MAX_ATTEMPTS,
     _is_transient_missing,
+    file_applying_interrupt_triage_items,
     file_dead_letter_action_items,
     maybe_file_dead_backlog_reminder,
 )
@@ -171,11 +173,15 @@ def apply_event(db, event: SpoolEvent) -> tuple[bool, str]:
     if state in ("applied", "superseded"):
         return True, f"{event.uuid} already applied — skipped"
     if state == "applying":
+        # Machine-readable prefix (D2): drain classifies this as an interrupted
+        # REAL completion (not junk) and files a dedicated --force-applying triage
+        # item, distinct from the generic capped/grouped dead-letter pile.
         return False, (
-            f"{event.uuid} ({event.type}) found in 'applying' state — a prior apply "
-            "attempt was interrupted mid-flight (process crash). Refusing to blind-retry: "
-            "some handlers have non-transactional side effects (e.g. git integrate/push) "
-            "that may already be partially applied. Dead-lettered for manual triage."
+            f"{_APPLYING_INTERRUPT_CODE} {event.uuid} ({event.type}) found in 'applying' "
+            "state — a prior apply attempt was interrupted mid-flight (process crash). "
+            "Refusing to blind-retry: some handlers have non-transactional side effects "
+            "(e.g. git integrate/push) that may already be partially applied. "
+            "Dead-lettered for manual triage."
         )
 
     superseded = _superseded_replay(db, event)
@@ -238,7 +244,8 @@ def drain_spool(db) -> dict:
     signal; spool_journal is the idempotency backstop for the rare case a file
     survives a successful apply, e.g. a crash between apply and unlink)."""
     stats = {"applied": 0, "skipped_dup": 0, "superseded": 0, "retried": 0, "dead": 0}
-    dead: list[tuple[str, str, str, str]] = []  # (thread_id, uuid, type, msg)
+    dead: list[tuple[str, str, str, str]] = []  # generic (thread_id, uuid, type, msg)
+    interrupted: list[tuple[str, str, str, str]] = []  # D2: applying-interrupted reals
     for event in read_pending(spool_dir()):
         ok, msg = apply_event(db, event)
         if ok:
@@ -262,10 +269,14 @@ def drain_spool(db) -> dict:
             stats["dead"] += 1
             if event.path is not None:
                 move_to_dead(spool_dir(), event.path, msg)
-            dead.append((event.thread_id or "", event.uuid, event.type, msg))
+            row = (event.thread_id or "", event.uuid, event.type, msg)
+            # An interrupted-mid-apply real completion (D2) gets a dedicated HIGH
+            # triage item, NOT the capped/grouped generic junk pile.
+            (interrupted if msg.startswith(_APPLYING_INTERRUPT_CODE) else dead).append(row)
     file_dead_letter_action_items(db, dead)
+    file_applying_interrupt_triage_items(db, interrupted)
     # Surface a stale dead-letter backlog even on ticks that dead-lettered
     # nothing new — throttled to once-daily so it never re-files every tick
     # (RCA D1 req 3). Skipped when fresh items above already cover this drain.
-    maybe_file_dead_backlog_reminder(db, new_dead=len(dead))
+    maybe_file_dead_backlog_reminder(db, new_dead=len(dead) + len(interrupted))
     return stats
