@@ -12,7 +12,6 @@ import argparse
 import contextlib
 import io
 import logging
-from datetime import datetime, timezone
 
 from dbops.spool import SpoolEvent, bump_attempts, read_pending, move_to_dead
 from dbops.terminal_states import SUCCESS_REPLAY_TERMINAL_STATES as _SUCCESS_TERMINAL
@@ -22,42 +21,14 @@ from juggle_spool_dead import (
     file_dead_letter_action_items,
     maybe_file_dead_backlog_reminder,
 )
+from juggle_spool_journal import (
+    journal_insert_applying as _journal_insert_applying,
+    journal_set_outcome as _journal_set_outcome,
+    journal_state as _journal_state,
+)
 from juggle_spool_paths import spool_dir
 
 _log = logging.getLogger(__name__)
-
-
-def _journal_state(db, uuid: str) -> str | None:
-    with db._connect() as conn:
-        row = conn.execute(
-            "SELECT outcome FROM spool_journal WHERE uuid = ?", (uuid,)
-        ).fetchone()
-    return row["outcome"] if row else None
-
-
-def _journal_insert_applying(db, uuid: str, event_type: str) -> None:
-    # UPSERT to 'applying' (not INSERT OR IGNORE): a retried event keeps its
-    # prior 'failed' row, but this attempt reruns the handler, so the row must
-    # read 'applying' for the duration — else a mid-retry crash leaves 'failed'
-    # and the next drain blind-retries a half-applied write (DA Res #2). Only
-    # None/'failed' rows reach here (earlier guards short-circuit the rest).
-    with db._connect() as conn:
-        conn.execute(
-            "INSERT INTO spool_journal(uuid, event_type, applied_at, outcome) "
-            "VALUES (?, ?, ?, 'applying') "
-            "ON CONFLICT(uuid) DO UPDATE SET outcome='applying', applied_at=excluded.applied_at",
-            (uuid, event_type, datetime.now(timezone.utc).isoformat()),
-        )
-        conn.commit()
-
-
-def _journal_set_outcome(db, uuid: str, outcome: str) -> None:
-    with db._connect() as conn:
-        conn.execute(
-            "UPDATE spool_journal SET outcome = ?, applied_at = ? WHERE uuid = ?",
-            (outcome, datetime.now(timezone.utc).isoformat(), uuid),
-        )
-        conn.commit()
 
 
 # Every attribute any replayed cmd_* handler reads MUST be seeded here (or via
