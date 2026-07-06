@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from dbops.graph_guards import resolve_landed_sha
 
 
-def reconcile_out_of_band_merges(db, *, main: str = "main") -> list[str]:
+def reconcile_out_of_band_merges(db, *, main: str | None = None) -> list[str]:
     """Stamp ``merged_sha`` + advance to 'verified' for completed topics whose
     work is already on main. Returns reconciled node ids.
 

@@ -281,3 +281,63 @@ def test_synchronous_landed_path_still_verifies_in_one_shot(db, tmp_path, monkey
     assert topic["state"] != "integrated-unlanded"
     # merged_sha recorded via the synchronous landed path; reconcile/mark drives verified.
     assert topic["merged_sha"] == landed_sha
+
+
+# -- PIN: reconcile must NOT demote an in-flight integrated-unlanded topic ----
+
+def test_reconcile_does_not_demote_integrated_unlanded(db, tmp_path, monkeypatch):
+    """PIN (async-land path dead — submitted ticket dropped, 2026-07-05):
+    reconcile_topic_state must treat 'integrated-unlanded' as terminal FOR
+    DERIVATION (poller-owned), exactly like 'verified'. Pre-fix it had no guard
+    for the async-pending state, so an in-flight async-land topic (member tasks
+    completion-terminal, merged_sha NULL) derived 'integrating' and got demoted —
+    ejecting it from the land poller's sweep (filters 'integrated-unlanded') INTO
+    the reintegrate sweep (filters 'integrating'), which re-drives a detached
+    integrate against a torn-down worktree while the diff still lands (split-brain).
+    Reachable in the up-to-72h land window via `juggle doctor` / manual
+    `juggle graph reconcile` (both run reconcile_project_topics UNFILTERED)."""
+    from dbops import db_topics_reconcile as tr
+
+    repo = _merged_repo(tmp_path)
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    _integrating_topic(db, "T-rec", repo, worktree_path=wt)
+    thread_id = tp.get_topic(db, "T-rec")["thread_id"]
+    _run_async_integrate(db, monkeypatch, tmp_path, thread_id, ticket="D77")
+    assert tp.get_topic(db, "T-rec")["state"] == "integrated-unlanded"
+
+    state = tr.reconcile_topic_state(db, "T-rec")
+
+    assert state == "integrated-unlanded", "reconcile must not demote a poller-owned topic"
+    topic = tp.get_topic(db, "T-rec")
+    assert topic["state"] == "integrated-unlanded"
+    assert topic["submitted_rev"] == "D77"
+    # reconcile_project_topics (the juggle doctor / manual-reconcile entrypoint) too.
+    tr.reconcile_project_topics(db, "INBOX")
+    assert tp.get_topic(db, "T-rec")["state"] == "integrated-unlanded"
+
+
+# -- PIN: the landed oracle honors the configured trunk (git-ism sweep) -------
+
+def test_resolve_landed_sha_uses_configured_trunk(tmp_path, monkeypatch):
+    """PIN (async-land path dead — submitted ticket dropped, 2026-07-05): the
+    two-tier landed oracle (reconcile self-heal / orphan reconcile) must resolve
+    ancestry against the CONFIGURED trunk, not a hardcoded 'main'. Pre-fix
+    resolve_landed_sha defaulted main='main', so a non-'main'-trunk repo (e.g.
+    Sapling develop) false-negatived every landed branch and left topics wedged."""
+    from dbops import landed
+
+    repo = _merged_repo(tmp_path, branch="develop")
+    _git(repo, "checkout", "-q", "-b", "cyc_feat")
+    (Path(repo) / "g.txt").write_text("feat\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "feat")
+    feat_sha = _head_sha(repo, "cyc_feat")
+    _git(repo, "checkout", "-q", "develop")
+    _git(repo, "merge", "-q", "--ff-only", "cyc_feat")
+
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"repos": {repo: {"trunk": "develop"}}}))
+    monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(cfg))
+
+    assert landed.resolve_landed_sha(repo, "cyc_feat") == feat_sha

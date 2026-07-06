@@ -25,12 +25,13 @@ from pathlib import Path
 
 from dbops.graph_guards import (
     _backend_for_fail_closed,
+    _repo_trunk,
     resolve_branch_sha,
     sha_is_ancestor,
 )
 
 
-def branch_content_landed(repo: str, branch: str, *, main: str = "main") -> bool:
+def branch_content_landed(repo: str, branch: str, *, main: str | None = None) -> bool:
     """Tier-2 landed check: every commit on ``branch`` has a content-equivalent
     already on ``main`` (``git cherry`` / patch-id), i.e. the work landed via a
     rebase / cherry-pick / squash under a DIFFERENT sha. Fail-closed on a
@@ -45,10 +46,12 @@ def branch_content_landed(repo: str, branch: str, *, main: str = "main") -> bool
     backend = _backend_for_fail_closed(repo)
     if backend is None or not hasattr(backend, "commits_landed"):
         return False
+    if main is None:
+        main = _repo_trunk(repo)
     return backend.commits_landed(repo, branch, main)
 
 
-def resolve_landed_sha(repo: str, branch: str, *, main: str = "main") -> str:
+def resolve_landed_sha(repo: str, branch: str, *, main: str | None = None) -> str:
     """Two-tier LANDED oracle → a REAL ancestor-of-``main`` sha proving
     ``branch``'s work is on main, or '' when it is genuinely unmerged.
 
@@ -59,7 +62,11 @@ def resolve_landed_sha(repo: str, branch: str, *, main: str = "main") -> str:
     tip — a genuine ancestor that CONTAINS the equivalents, never the unmerged
     branch tip. This keeps verified ⟺ merged (the recorded sha is always an
     ancestor of main) while recognising a rebased landing so the re-integrate
-    driver records it instead of RE-MERGING already-landed work. Fail-closed."""
+    driver records it instead of RE-MERGING already-landed work. Fail-closed.
+    ``main`` defaults to the repo's CONFIGURED trunk (git-ism sweep, SPEC
+    2026-07-05) so a non-"main" trunk doesn't false-negative every landing."""
+    if main is None:
+        main = _repo_trunk(repo)
     tip = resolve_branch_sha(repo, branch)
     if tip and sha_is_ancestor(repo, tip, main=main):
         return tip

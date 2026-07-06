@@ -25,6 +25,7 @@ from dbops.state_write import write_state
 # COMPLETION terminals (DA-B1): a task counts as complete for topic rollup when
 # verified OR cancelled. Sourced from the canonical dbops.terminal_states module
 # (Phase 0). 'cancelled' is NEVER added to the failed/active sets.
+from dbops.terminal_states import ASYNC_PENDING_STATES
 from dbops.terminal_states import COMPLETION_TERMINAL_STATES as _COMPLETION_TASK_STATES
 
 _FAILED_TASK_STATES = frozenset({
@@ -194,6 +195,11 @@ def reconcile_topic_state(db, topic_id: str) -> str:
     # repo/branch is gone would derive 'integrating' and flap.
     if topic.get("state") == "verified":
         return "verified"
+    # 'integrated-unlanded' is poller-owned + terminal FOR DERIVATION (SPEC
+    # 2026-07-05): deriving 'integrating' would demote it out of the land-poller
+    # sweep into reintegrate (split-brain). The poller flips it to verified on land.
+    if topic.get("state") in ASYNC_PENDING_STATES:
+        return topic["state"]
 
     # Fix 2 (2026-07-03 integrate-wedge, RCA §Q2.3): a recorded FAILURE verdict is
     # terminal FOR DERIVATION — never re-derive it back to 'integrating' from
