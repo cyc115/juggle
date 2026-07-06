@@ -15,6 +15,33 @@ class NotificationsMixin:
     """Mixin for notifications_v2 and action_items operations."""
 
     # ---------------------------------------------------------------
+    # Concise cockpit item formatter (2026-07-05 verbose-item incident)
+    # ---------------------------------------------------------------
+
+    def _label_for(self, conn, thread_id) -> str:
+        """Short thread label for a compressed item's header/pointer."""
+        if not thread_id:
+            return "?"
+        row = conn.execute(
+            "SELECT user_label FROM nodes WHERE id = ? AND kind = 'conversation'",
+            (thread_id,),
+        ).fetchone()
+        lbl = (row["user_label"] if row else None) or str(thread_id)[:6]
+        return lbl or "?"
+
+    def _compress_cockpit_item(self, conn, kind: str, thread_id, message: str) -> str:
+        """Compress an over-budget action item / notification to the canonical
+        cockpit budget at the WRITE seam (transparent to callers). Short items
+        pass through untouched; the compressor is fail-open and never raises, so
+        item creation is never blocked."""
+        from juggle_item_compress import compress_seam_item, is_over_budget
+
+        if not message or not is_over_budget(kind, message):
+            return message
+        label = self._label_for(conn, thread_id)
+        return compress_seam_item(kind, label, message, thread_ref=label)
+
+    # ---------------------------------------------------------------
     # Notifications v2
     # ---------------------------------------------------------------
 
@@ -37,6 +64,7 @@ class NotificationsMixin:
             handled_by = handled_by_for_kind(kind)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
+            message = self._compress_cockpit_item(conn, "notification", thread_id, message)
             cur = conn.execute(
                 "INSERT INTO notifications_v2 "
                 "(thread_id, message, created_at, session_id, kind, handled_by) "
@@ -118,6 +146,7 @@ class NotificationsMixin:
     ) -> int:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
+            message = self._compress_cockpit_item(conn, "action", thread_id, message)
             cur = conn.execute(
                 "INSERT INTO action_items (thread_id, message, type, priority, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",

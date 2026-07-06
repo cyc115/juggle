@@ -74,20 +74,9 @@ def record_prose_decision(db, last_msg: str) -> None:
         # filed a [tuid:…] item, so the decision is surfaced — don't double-file.
         if any(i.get("message", "").startswith("[tuid:") for i in open_items):
             return
-
-        # Compress a verbose verbatim decision to the canonical ≤5-line action
-        # budget (2026-07-05 verbose-item incident) — full prose stays in the
-        # thread. Dedup on the COMPRESSED body so the stored text and the hash
-        # stay in lockstep (short decisions pass through unchanged, so the
-        # deterministic dedup below still holds turn-to-turn).
-        from juggle_item_compress import compress_item
-        thread = db.get_thread(thread_id)
-        label = (thread.get("user_label") if thread else None) or "?"
-        compressed = compress_item("action", label, last_msg, thread_ref=label)
-
         # Dedup vs self by CONTENT HASH: same decision already open from a prior
         # Stop must not spam a second item (2026-06-30 action-item reliability).
-        this_hash = _content_hash(compressed)
+        this_hash = _content_hash(last_msg)
         for i in open_items:
             msg = i.get("message", "")
             if msg.startswith(_AUTO_DECISION_PREFIX):
@@ -97,7 +86,7 @@ def record_prose_decision(db, last_msg: str) -> None:
 
         db.add_action_item(
             thread_id=thread_id,
-            message=f"{_AUTO_DECISION_PREFIX} {compressed}",
+            message=f"{_AUTO_DECISION_PREFIX} {last_msg}",
             type_="decision",
             priority="normal",
         )

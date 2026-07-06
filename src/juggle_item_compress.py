@@ -30,9 +30,14 @@ NOTIFICATION_MAX_LINES = 1
 NOTIFICATION_MAX_CHARS = 280
 NOTIFICATION_MARKER = "✓"
 ACTION_HEADER_MARKER = "⚡"
-# A char cap used only to DECIDE whether free text needs compressing (both
-# kinds). The action OUTPUT itself is bounded by lines, not chars.
-_OVERFLOW_CHARS = NOTIFICATION_MAX_CHARS
+# Leading status glyphs a notification may already carry (✓ done, ✗ failure,
+# ⟳ retry, ⚠ warning, ℹ info, ⏸ waiting). enforce_notification PRESERVES an
+# existing one instead of mislabeling a failure with the success ✓.
+_STATUS_GLYPHS = frozenset("✓✗⟳⚠ℹⓘ⏸●▶★")
+# A leading structural sentinel that CODE parses (e.g. "[auto-decision] ",
+# "[tuid:…] ") — compress_seam_item preserves it verbatim so the hook/dedup
+# machinery that keys off it keeps working after the item is compressed.
+_SENTINEL_RE = re.compile(r"\[[^\]]+\]\s+")
 
 
 # --- Few-shot prompt (both canonical examples baked in verbatim) ------------
@@ -89,13 +94,22 @@ def _has_llm_key() -> bool:
 
 
 def is_over_budget(kind: str, text: str) -> bool:
-    """True when free text exceeds the kind's budget and needs compressing."""
+    """True when free text exceeds the kind's budget and needs compressing.
+
+    Both triggers are IDEMPOTENT (a compressed item never re-triggers), so the
+    DB write seam can re-enter safely:
+      - ACTION       — bounded by LINES only (the canonical action runs ~380
+        chars across ≤5 lines, so a char trigger would re-shrink it).
+      - NOTIFICATION — bounded by CHARS only (>280). A char trigger — NOT a
+        line trigger — lets a SHORT code-structured multi-line notification
+        (e.g. a learnings rollup) pass through intact while still catching the
+        real bloat: multi-paragraph verbatim dumps, which are char-heavy.
+    """
     if not text:
         return False
-    lines = text.splitlines()
     if kind == "notification":
-        return len(lines) > NOTIFICATION_MAX_LINES or len(text) > NOTIFICATION_MAX_CHARS
-    return len(lines) > ACTION_MAX_LINES or len(text) > _OVERFLOW_CHARS
+        return len(text) > NOTIFICATION_MAX_CHARS
+    return len(text.splitlines()) > ACTION_MAX_LINES
 
 
 def compress_item(
@@ -123,6 +137,27 @@ def compress_item(
     return _enforce_action(label, source, thread_ref or label)
 
 
+def compress_seam_item(
+    kind: str, label: str, message, thread_ref: str | None = None
+) -> str:
+    """Write-seam wrapper around compress_item.
+
+    Preserves a leading structural sentinel that CODE parses (``[auto-decision]``,
+    ``[tuid:…]``) so the hook/dedup machinery keying off it survives compression,
+    then compresses the remainder. Short/in-budget messages pass through
+    untouched. Never raises (compress_item is fail-open).
+    """
+    message = message or ""
+    if not is_over_budget(kind, message):
+        return message
+    m = _SENTINEL_RE.match(message)
+    prefix = m.group(0) if m else ""
+    body = message[len(prefix):]
+    if not body.strip():
+        return message
+    return prefix + compress_item(kind, label, body, thread_ref=thread_ref or label)
+
+
 def _try_llm(kind: str, label: str, text: str) -> str | None:
     """Run the few-shot compressor. Returns None on any error (fail-open)."""
     try:
@@ -145,7 +180,9 @@ def _enforce_notification(label: str, text: str, thread_ref: str) -> str:
     """Guarantee: exactly 1 line, <=280 chars, leading ✓. Idempotent on valid
     input; truncates-with-pointer on overflow."""
     line = " ".join(text.split())  # collapse ALL whitespace → single line
-    if not line.startswith(NOTIFICATION_MARKER):
+    # Preserve an existing leading status glyph (✗ failure, ⟳ retry, …); only
+    # stamp the success ✓ when the text carries no status marker of its own.
+    if not line or line[0] not in _STATUS_GLYPHS:
         line = f"{NOTIFICATION_MARKER} [{label}] {line}"
     if len(line) <= NOTIFICATION_MAX_CHARS:
         return line

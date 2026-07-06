@@ -415,8 +415,14 @@ def test_action_item_stores_full_long_text(db):
     assert "get-messages" not in item["message"]
 
 
-def test_notification_stores_full_long_text(db):
-    """Notification text is stored in full — no truncation or pointer suffix."""
+def test_notification_over_budget_compressed_no_legacy_pointer(db, monkeypatch):
+    """2026-07-05 supersession: an over-budget notification is compressed to the
+    1-line budget at the write seam, WITHOUT the legacy 'full detail'/
+    'get-messages' truncation pointer (2026-06-16 core preserved). An action
+    item is bounded by LINES, so the long single-line action above is still
+    stored verbatim."""
+    monkeypatch.delenv("OPENROUTER_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     tid = db.create_thread("trunc-notif-topic", session_id="s")
     long_text = "y" * 600
     nid = db.add_notification_v2(
@@ -426,7 +432,7 @@ def test_notification_stores_full_long_text(db):
     )
     notifs = db.get_notifications_for_session("s")
     notif = next(n for n in notifs if n["id"] == nid)
-    assert notif["message"] == long_text
+    assert "\n" not in notif["message"] and len(notif["message"]) <= 280
     assert "full detail" not in notif["message"]
     assert "get-messages" not in notif["message"]
 

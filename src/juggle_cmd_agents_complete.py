@@ -138,24 +138,45 @@ def cmd_complete_agent(args):
     if _new_status is not None:
         db.set_thread_status(thread_uuid, _new_status)
 
-    # 5. Create notification row (informational, session TTL). Compress the
-    # agent's raw result_summary to the canonical 1-line budget (2026-07-05
-    # verbose-item incident) — full detail is already stored as a thread
-    # message above, so the compressed item just points the eye at it.
-    from juggle_item_compress import compress_item
+    # 5. Create notification row (informational, session TTL)
     title = thread.get("title") or "thread"
-    _clabel = thread.get("user_label") or args.thread_id
-    _notif_msg = compress_item(
-        "notification", _clabel, f"{title}: {args.result_summary}",
-        thread_ref=_clabel,
-    )
     db.emit_event(
-        thread_id=thread_uuid, message=_notif_msg,
+        thread_id=thread_uuid, message=f"{title}: {args.result_summary}",
         session_id=session_id, kind=_ek.AGENT_COMPLETE,
     )
 
-    # 6a. Role-based action items (extracted to _com — 2026-07-05 LOC-gate).
-    _com.file_role_action_items(db, thread_uuid, agent, args, open_questions)
+    # 6a. Role-based action items
+    role = (agent.get("role") if agent else None) or getattr(args, "role", None)
+    if role == "researcher" and open_questions:
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"Review: {args.result_summary}",
+            type_="review",
+            priority="normal",
+        )
+    elif role == "planner":
+        db.add_action_item(
+            thread_id=thread_uuid,
+            message=f"Review plan before dispatching coder: {args.result_summary}",
+            type_="decision",
+            priority="normal",
+        )
+    elif role not in ("researcher", "planner"):
+        summary = args.result_summary or ""
+        if _com._matches_plan(summary):
+            db.add_action_item(
+                thread_id=thread_uuid,
+                message=f"Review before dispatching coder: {args.result_summary}",
+                type_="decision",
+                priority="normal",
+            )
+        elif _com._matches_draft(summary) and not _com._looks_complete(summary):
+            db.add_action_item(
+                thread_id=thread_uuid,
+                message=f"Review/iterate: {args.result_summary}",
+                type_="manual_step",
+                priority="normal",
+            )
 
     # 6b. Graph-task marking (project autopilot Phase 1): map the integrate
     # outcome onto the bound task's state machine, store the handoff, and

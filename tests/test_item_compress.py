@@ -191,6 +191,46 @@ def test_empty_text_returns_empty(with_key):
     assert jic.compress_item("action", "SL", None) == ""
 
 
+# --- compress_seam_item: the transparent DB write-seam wrapper --------------
+
+
+def test_seam_preserves_auto_decision_sentinel(monkeypatch):
+    """The [auto-decision] sentinel that the Stop-hook dedup/clear machinery
+    keys off MUST survive compression (else the item can't be auto-acked)."""
+    monkeypatch.delenv("OPENROUTER_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    msg = "[auto-decision] " + VERBOSE_ACTION_INPUT
+    out = jic.compress_seam_item("action", "SL", msg)
+    assert out.startswith("[auto-decision] "), out
+    body = out[len("[auto-decision] "):]
+    assert len(body.splitlines()) <= jic.ACTION_MAX_LINES, body
+
+
+def test_seam_preserves_failure_glyph(monkeypatch):
+    """A ✗ failure notification must NOT be relabeled with the success ✓."""
+    monkeypatch.delenv("OPENROUTER_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    msg = "✗ [SL] Unrecoverable — " + ("x" * 400)
+    out = jic.compress_seam_item("notification", "SL", msg)
+    assert out.startswith("✗"), out
+    assert "\n" not in out and len(out) <= jic.NOTIFICATION_MAX_CHARS
+
+
+def test_seam_short_message_passes_through():
+    short = "merged PR #412"
+    assert jic.compress_seam_item("notification", "SL", short) == short
+
+
+def test_seam_compression_is_idempotent(monkeypatch):
+    """Re-entry on an already-compressed item is a no-op (the DB write seam may
+    compress a value that was already compressed upstream)."""
+    monkeypatch.delenv("OPENROUTER_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    once = jic.compress_seam_item("action", "SL", VERBOSE_ACTION_INPUT)
+    twice = jic.compress_seam_item("action", "SL", once)
+    assert twice == once
+
+
 # --- Regression pins at the WRITE seams -------------------------------------
 # Incident 2026-07-05: the verbose PR #62 [SL] item — the [auto-decision] path
 # pasted the orchestrator reply verbatim and the completion notification used
