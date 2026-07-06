@@ -35,7 +35,10 @@ class DetectResult:
 _MARKERS: list[tuple[str, str, str, bool, str | None]] = [
     (".git", "git", "sync", False, None),
     (".sl", "sapling", "async", True, "sapling"),
-    (".hg", "hg", "sync", False, None),
+    # hg's in-tree backend is a LEDGER-ONLY stub (head/is_dirty/make_safety_branch),
+    # not a full 15-method backend — an hg repo needs a real plugin, so route it to
+    # the agentic fallback rather than falsely reporting a "builtin ready" repo.
+    (".hg", "hg", "sync", False, "agentic"),
     (".jj", "jj", "async", True, "agentic"),
     (".toyvcs", "toy", "sync", False, "toy"),
 ]

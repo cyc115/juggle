@@ -61,3 +61,13 @@ def test_detect_unknown_repo_falls_back_to_agentic(tmp_path):
     d = detect_repo(str(tmp_path))
     assert d.vcs is None
     assert d.recipe == "agentic"  # no bundled recipe — the seeded-agent fallback
+
+
+def test_detect_hg_routes_to_agentic_not_ready(tmp_path):
+    # The in-tree HgVCS is a ledger-only stub (head/is_dirty/make_safety_branch),
+    # NOT a full 15-method backend — so an hg repo needs a real plugin (agentic),
+    # never a "builtin ready" shape-check pass.
+    (tmp_path / ".hg").mkdir()
+    d = detect_repo(str(tmp_path))
+    assert d.vcs == "hg"
+    assert d.recipe == "agentic"
