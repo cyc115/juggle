@@ -17,6 +17,7 @@ from __future__ import annotations
 import sys
 
 from dbops import event_kinds as _ek
+from dbops.terminal_states import ASYNC_PENDING_STATES
 from dbops.terminal_states import TASK_TERMINAL_STATES as _TASK_TERMINAL
 from dbops.terminal_states import is_success_terminal
 
@@ -146,12 +147,19 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
     # deliver-branch walks it to 'delivered' instead of verify_fail→failed-verify.
     # A merge topic is unchanged: its tasks are 'verified' (still success-terminal).
     all_success = bool(tasks) and all(is_success_terminal(n["state"]) for n in tasks)
+    # Async-land (SPEC 2026-07-05): if integrate PUBLISHED the work to an external
+    # land queue it recorded the topic's submitted_rev — thread it so completion
+    # lands on the NON-terminal 'integrated-unlanded' (the land poller confirms +
+    # flips to verified) instead of racing the fail-closed verified gate. None for
+    # the synchronous git-direct path (unchanged integrate_ok -> verified edge).
+    submitted_rev = (topic.get("submitted_rev") or "").strip() or None
     try:
         state = db_topics.mark_topic_completion(
             db, topic["id"],
             integrate_ok=integrate_ok or verify_failed,
             verify_ok=(not verify_failed) and all_success,
             handoff=handoff,
+            submitted_rev=submitted_rev,
         )
     except db_topics.UnmergedVerifyRefused as e:
         # Defect C (2026-07-01): integrate reported success but no merged_sha was
@@ -185,7 +193,8 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
         _t = db_topics.get_topic(db, topic["id"]) or {}
         db.close_run(
             thread_uuid, output=handoff, diffstat=_t.get("diffstat"),
-            status="completed" if is_success_terminal(state) else "failed",
+            status="completed" if (is_success_terminal(state)
+                                   or state in ASYNC_PENDING_STATES) else "failed",
         )
     except Exception:
         pass
@@ -199,6 +208,16 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
         db.emit_event(
             thread_id=thread_uuid,
             message=f"⬢ topic {topic['id']} {verb}",
+            session_id=session_id,
+            kind=_ek.TOPIC_STATUS,
+        )
+    elif state in ASYNC_PENDING_STATES:
+        # Async-land publish (SPEC 2026-07-05): submitted to the land queue,
+        # awaiting the land poller's land confirmation — NOT a failure, NOT yet
+        # verified. Emit status only; the poller emits the verified event on land.
+        db.emit_event(
+            thread_id=thread_uuid,
+            message=f"⬢ topic {topic['id']} submitted (awaiting land)",
             session_id=session_id,
             kind=_ek.TOPIC_STATUS,
         )

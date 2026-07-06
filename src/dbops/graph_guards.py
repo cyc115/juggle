@@ -41,7 +41,19 @@ def _backend_for_fail_closed(repo: str):
         return None
 
 
-def branch_merged_to_main(repo: str, branch: str, *, main: str = "main") -> bool:
+def _repo_trunk(repo: str) -> str:
+    """Configured trunk/branch name the ancestor gate checks against (SPEC
+    2026-07-05 git-ism sweep): juggle_repo_vcs.repo_trunk, lazily imported +
+    fail-soft to git's "main" so this deep-dbops guard module stays importable
+    without a config import cycle."""
+    try:
+        from juggle_repo_vcs import repo_trunk
+        return repo_trunk(repo)
+    except Exception:
+        return "main"
+
+
+def branch_merged_to_main(repo: str, branch: str, *, main: str | None = None) -> bool:
     """True iff ``branch`` is a LIVE ref that is an ancestor of ``main``.
 
     Strictly fail-closed (T-verified-merged-sha, 2026-06-16): the old
@@ -60,6 +72,8 @@ def branch_merged_to_main(repo: str, branch: str, *, main: str = "main") -> bool
         return False
     if backend.resolve(repo, branch) is None:
         return False  # branch ref gone — NOT proof of merge (fail-closed)
+    if main is None:
+        main = _repo_trunk(repo)
     return backend.is_ancestor(repo, branch, main)
 
 
@@ -74,7 +88,7 @@ def resolve_branch_sha(repo: str, branch: str) -> str:
     return backend.resolve(repo, branch) or ""
 
 
-def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
+def sha_is_ancestor(repo: str, sha: str, *, main: str | None = None) -> bool:
     """True iff commit ``sha`` exists in ``repo`` and is an ancestor of ``main``.
 
     The single source of truth for 'verified ⟺ merged'. Fail-closed on a
@@ -85,6 +99,8 @@ def sha_is_ancestor(repo: str, sha: str, *, main: str = "main") -> bool:
     backend = _backend_for_fail_closed(repo)
     if backend is None:
         return False
+    if main is None:
+        main = _repo_trunk(repo)
     return backend.is_ancestor(repo, sha, main)
 
 
@@ -149,7 +165,7 @@ def _resolve_topic_repo(db, topic: dict) -> str:
         return ""
 
 
-def topic_is_merged(db, topic_id: str, *, main: str = "main") -> bool:
+def topic_is_merged(db, topic_id: str, *, main: str | None = None) -> bool:
     """G1 single gate: a topic is merged IFF it has a recorded ``merged_sha``
     that is an ancestor of ``main``. Nothing else.
 

@@ -196,6 +196,13 @@ class GitVCS:
         # branch name BEFORE any side effect — for every mode, mirroring the
         # original guard's placement ahead of the push_mode branch (2026-06-14
         # ZA incident: external state left main checked out on a stray branch).
+        # ``expected_main`` is the trunk SHORT name DERIVED FROM ``base`` (the
+        # rebase target the caller passed, e.g. "origin/main" -> "main", or a
+        # configured "origin/develop" -> "develop") — the git backend reads the
+        # trunk via this parameter, never juggle config (backend purity). The
+        # backend-agnostic ancestor gate reads the CONFIGURABLE trunk from repo
+        # config (juggle_repo_vcs.repo_trunk); "main" here is only git's own
+        # default when the main repo is on a detached HEAD (SPEC 2026-07-05).
         local_main = _run(["git", "-C", main_repo, "symbolic-ref", "--short", "HEAD"], main_repo) or "main"
         expected_main = base.split("/")[-1]
         if local_main != expected_main:
