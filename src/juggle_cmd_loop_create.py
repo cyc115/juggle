@@ -102,8 +102,8 @@ def compute_next_run(cadence: str, now: datetime | None = None) -> str:
         unit = m.group(2).lower()[0]  # s/m/h/d — first letter disambiguates
         return (now + timedelta(seconds=n * _CADENCE_UNIT_SECONDS[unit])).isoformat()
     raise LoopTemplateError(
-        f"unparseable cadence {cadence!r} — expected 'every Nm|Nh|Ns|Nd' or "
-        f"'daily at HH:MM'"
+        f"unparseable cadence {cadence!r} — expected 'every Nm|Nh|Ns|Nd', "
+        f"'daily at HH:MM', or 'weekly on <weekday> at HH:MM'"
     )
 
 
