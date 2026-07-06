@@ -19,6 +19,10 @@ DEFAULTS + load order; this owns only the async-land/trunk policy resolution.
 """
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+
 from juggle_settings import get_settings
 
 
@@ -49,3 +53,52 @@ def repo_async_land(repo_path: str, backend) -> bool:
         return bool(override)
     caps = getattr(backend, "capabilities", None)
     return bool(caps is not None and caps.async_land)
+
+
+def _config_path() -> Path:
+    """The config.json path (``_JUGGLE_CONFIG_PATH`` override), same resolution
+    as juggle_settings — so read and write hit the same file."""
+    return Path(
+        os.environ.get(
+            "_JUGGLE_CONFIG_PATH", str(Path.home() / ".juggle" / "config.json")
+        )
+    )
+
+
+def write_repo_vcs_config(
+    repo_path: str,
+    *,
+    vcs: str,
+    trunk: str,
+    async_land: bool,
+    submit_cmd: str | None = None,
+    land_status_cmd: str | None = None,
+) -> None:
+    """Bind ``repo_path`` to a VCS backend in config.json (vcs-backend-init
+    step 3). Writes the EXACT keys the readers above consume — ``vcs`` (backend
+    override), ``trunk`` (ancestor-gate ref), ``async_land`` (publish policy) —
+    plus optional ``submit_cmd``/``land_status_cmd`` operator hints, merged into
+    ``repos.<repo_path>`` without disturbing any other config. Empty commands are
+    omitted (git needs none). Fail-loud on an unwritable path (never a silent
+    no-op that leaves the repo unbound)."""
+    path = _config_path()
+    try:
+        cfg = json.loads(path.read_text())
+    except (OSError, ValueError):
+        cfg = {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+
+    block: dict = {"vcs": vcs, "trunk": trunk, "async_land": bool(async_land)}
+    if submit_cmd:
+        block["submit_cmd"] = submit_cmd
+    if land_status_cmd:
+        block["land_status_cmd"] = land_status_cmd
+
+    repos = cfg.setdefault("repos", {})
+    existing = repos.get(str(repo_path), {})
+    existing.update(block)
+    repos[str(repo_path)] = existing
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cfg, indent=2))
