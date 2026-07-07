@@ -595,6 +595,13 @@ def execute_recovery(
     last_task = live.get("last_task")
     label = _get_thread_label(db, thread_id) if thread_id else agent_id[:8]
 
+    # Fix B (2026-07-07 completed-agents-leak): NEVER re-dispatch already-landed
+    # work — release the stale agent + mark done, no replacement (see reap_done).
+    if thread_id:
+        from juggle_watchdog_reap_done import release_if_work_landed
+        if release_if_work_landed(db, mgr, live, thread_id, label, session_id):
+            return
+
     # Never-tasked agent: silently decommission — no snapshot, no thread=failed,
     # no action item.  The orchestrator hadn't sent work yet so this is not a
     # real failure.  Guard: skip decommission during cold-boot grace period so

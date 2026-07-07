@@ -141,6 +141,49 @@ def _release_completed_agent(
     )
 
 
+def release_if_work_landed(
+    db: Any, mgr: Any, live: dict, thread_id: str, label: str, session_id: str
+) -> bool:
+    """Re-dispatch guard (fix B, 2026-07-07 completed-agents-leak) for the
+    stalled/crashed recovery path: if the bound topic's work already landed, this
+    is a FINISHED topic — decommission the stale pane + agent (free the slot),
+    close the ledger run, mark the thread done, and return True so the caller
+    skips re-dispatch. NO failure mark / action item. Returns False (work NOT
+    landed) so recovery proceeds normally. Best-effort; never raises."""
+    try:
+        topic = _tp.get_topic_by_thread(db, thread_id)
+    except Exception:
+        return False
+    if not topic_work_landed(topic):
+        return False
+
+    agent_id = live["id"]
+    try:
+        mgr.kill_pane(live["pane_id"])
+    except Exception:
+        pass
+    db.delete_agent(agent_id)
+    try:
+        from juggle_agent_reap import close_thread_run_backstop
+        close_thread_run_backstop(db, thread_id, output="already landed — no re-dispatch")
+    except Exception:
+        pass
+    db.update_thread(thread_id, status="closed")  # status→state maps closed→done
+    try:
+        db.emit_event(
+            thread_id=thread_id, session_id=session_id, kind=_ek.WATCHDOG_RECOVERY,
+            message=(f"[Watchdog] [{label}] work already landed — released stale agent, "
+                     f"no re-dispatch (routine cleanup)"),
+        )
+    except Exception:
+        pass
+    _log.info(
+        "Watchdog: skipped re-dispatch for %s — thread %s already landed",
+        agent_id[:8], thread_id[:8],
+    )
+    return True
+
+
 def _thread_label(db: Any, thread_id: str | None, agent_id: str) -> str:
     if not thread_id:
         return agent_id[:8]
