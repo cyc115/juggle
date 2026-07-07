@@ -379,28 +379,13 @@ def _classify_agent_state(pane_content: str, pane_exists: bool) -> str:
     return "never_fired"
 
 
-def _agent_is_non_interactive(agent: dict) -> bool:
-    """Return True if the agent's persisted harness is non-interactive (one-shot).
-
-    Resolves the adapter from the **persisted** harness id (so a recycled claude
-    pane still shows as interactive even if current config says reasonix).
-    """
-    try:
-        harness_id = agent.get("harness")
-        if not harness_id:
-            return False
-        # Resolve using the agent's OWN harness config, not the current global default.
-        from juggle_settings import get_settings
-        agent_cfg = get_settings().get("agent", {})
-        harnesses = agent_cfg.get("harnesses") or {}
-        hcfg = harnesses.get(harness_id)
-        if hcfg is not None:
-            # Use the adapter type from config to determine interactivity
-            is_interactive = hcfg.get("interactive", True)
-            return not is_interactive
-        return False
-    except Exception:
-        return False
+# Harness-interactivity classification lives in juggle_agent_interactivity (SSOT).
+# Re-exported under the historical private name so `from juggle_watchdog import
+# _agent_is_non_interactive` and `patch("juggle_watchdog._agent_is_non_interactive")`
+# keep working for every caller + test.
+from juggle_agent_interactivity import (  # noqa: E402
+    agent_is_non_interactive as _agent_is_non_interactive,
+)
 
 
 # ---------------------------------------------------------------------------
