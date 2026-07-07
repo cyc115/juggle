@@ -58,7 +58,7 @@ GRANDFATHERED: dict[str, int] = {
     "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
     "src/juggle_graph_dispatch.py": 355,  # 410->355 loop-entity Phase 2: extracted the flat-task fallback to juggle_graph_dispatch_flat.py (freed budget for per-node _resolve_dispatch_role); reserves headroom for the Phase-2 role-resolution helper (2026-07-04)
-    "src/juggle_watchdog_daemon.py": 487,  # +3 fix-paste-submit-detect: irreducible tick wiring for the paste-submit fast-sweep (import + secs_since kwarg + unsubmitted branch); bulk extracted to juggle_paste_submit.py (2026-07-03)
+    "src/juggle_watchdog_daemon.py": 481,  # agent-health sweeps (stall + completed reaper) extracted to juggle_watchdog_sweeps.py (2026-07-07); paste-submit fast-sweep wiring extracted to juggle_paste_submit.py (2026-07-03)
     "src/dbops/db_topics.py": 367,  # +1 irl-repair T4: re-export set_topic_fail_envelope from db_topics_marking (2026-07-03)
     "src/juggle_context.py": 345,
     "src/juggle_watchdog_singleton.py": 367,

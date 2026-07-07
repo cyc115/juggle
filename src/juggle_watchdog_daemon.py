@@ -282,13 +282,11 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
 
         # "quiet" — no action
 
-    # Loop 1b: stalled-pane detector — nudge busy agents idling at the prompt
-    # (finished work but never finalized). Guarded so a bug never downs the tick.
-    try:
-        from juggle_watchdog_stall import check_stalled_agents
-        check_stalled_agents(db, mgr, _stall_tracker, now=now_ts, session_id=session_id)
-    except Exception:
-        _log.exception("Watchdog: stall detector tick failed — continuing")
+    # Loop 1b/1c: agent-health sweeps — stall-nudge busy agents idling at the
+    # prompt, then reap completed-but-unreleased agents on landed topics. Each is
+    # independently guarded inside the driver so a bug never downs the tick.
+    from juggle_watchdog_sweeps import run_agent_health_sweeps
+    run_agent_health_sweeps(db, mgr, _stall_tracker, now=now_ts, session_id=session_id)
 
     # Loop 2: orphaned thread detection
     _orphan_threshold = float(os.environ.get("JUGGLE_ORPHAN_THRESHOLD", "300"))
