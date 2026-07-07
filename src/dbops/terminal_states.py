@@ -149,15 +149,21 @@ def is_in_flight(state: str) -> bool:
 # candidate? Extracting it here keeps the three sites from re-deriving (and
 # drifting on) the check. Failure terminals stay EXCLUDED (a failed topic may be
 # legitimately re-dispatched).
+LANDED_TERMINAL_STATES = (
+    TERMINAL_SUCCESS_STATES | DONE_ROLLUP_STATES | ASYNC_PENDING_STATES
+)
 
 
 def topic_work_landed(topic) -> bool:
     """True iff a bound topic's work has already landed, so cleaning up its agent
-    is routine — not a failure or a retry candidate. ``topic`` is a topic-row
-    mapping (or None)."""
+    is routine — not a failure or a retry candidate: a merged_sha is recorded, OR
+    the topic sits in a landed/success terminal (verified / delivered / done /
+    integrated-unlanded). ``topic`` is a topic-row mapping (or None)."""
     if not topic:
         return False
-    return topic.get("state") == "verified" and bool(topic.get("merged_sha"))
+    if topic.get("merged_sha"):
+        return True
+    return topic.get("state") in LANDED_TERMINAL_STATES
 
 
 # ── Raw-SQL 'verified' literal inventory (Phase-3 checklist / regression guard) ──
