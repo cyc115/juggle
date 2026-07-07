@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from juggle_context import get_thread_state
 from juggle_db import JuggleDB
 
 
