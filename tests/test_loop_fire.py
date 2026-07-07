@@ -366,3 +366,22 @@ def test_weekly_refire_advances_exactly_7d(db):
     lf.fire_due_loops(db, SESSION, now=_MON_0900)  # due exactly at the fire instant
     assert db.get_loop(loop_id)["run_seq"] == 1     # fired the next iteration
     assert db.get_loop(loop_id)["next_run"] == _NEXT_MON_0900
+
+
+# 2020-01-03 is a Friday, 2020-01-06 the following Monday — a workday cron firing at
+# Fri 02:00 must skip the weekend and land on Mon 02:00 (croniter, strictly-after).
+_FRI_0200 = "2020-01-03T02:00:00+00:00"
+_NEXT_MON_0200 = "2020-01-06T02:00:00+00:00"
+
+
+def test_cron_refire_advances_to_next_occurrence(db):
+    """2026-07-07 cron/workday cadence unparseable: a `cron: 0 2 * * 1-5` loop firing AT
+    Fri 02:00 must recompute next_run to Mon 02:00 (weekend skipped) via
+    compute_next_run — a cron loop advances to its NEXT cron occurrence each fire."""
+    loop_id, res = _make_loop(db, cadence="cron: 0 2 * * 1-5", next_run=_FRI_0200)
+    pid = res["project_id"]
+    _set_iter_state(db, pid, loop_id, 0, "verified")  # prior iteration succeeded
+
+    lf.fire_due_loops(db, SESSION, now=_FRI_0200)  # due exactly at the fire instant
+    assert db.get_loop(loop_id)["run_seq"] == 1    # fired the next iteration
+    assert db.get_loop(loop_id)["next_run"] == _NEXT_MON_0200

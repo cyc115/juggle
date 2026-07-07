@@ -52,7 +52,11 @@ trusted from you):
 - **delivery** — `deliver` (non-merge work: a digest/report/notification whose proof
   is a `verify_cmd`/attestation, NO merge) or `merge` (lands to main, verified⟺merged).
   A "write me a digest / notify me" loop is almost always `deliver`.
-- **cadence** — `every 15m` / `every 6h` / `daily at 08:00`.
+- **cadence** — `every 15m` / `every 6h` / `daily at 08:00` / `weekly on <weekday> at
+  HH:MM` / `cron: <m h dom mon dow>`. The `cron:` escape hatch expresses ANY schedule
+  via a standard 5-field cron expression (croniter): `cron: 0 2 * * 1-5` = 02:00
+  Mon-Fri (workdays), `cron: 0 9 * * 1` = 09:00 Monday, `cron: */15 * * * *` = every
+  15 min. An invalid/empty `cron:` expression is rejected fail-loud at create/plan.
 
 The validator REJECTS a topic mixing `(role, delivery)` or `model`, a cross-topic
 edge that is cyclic / self-referential / points at an unknown topic — do not try to

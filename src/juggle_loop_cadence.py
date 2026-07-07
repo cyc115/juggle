@@ -34,6 +34,48 @@ _WEEKDAYS = {
 }
 _WEEKDAY_ABBR = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
+# ``cron: <5-field expr>`` power escape hatch — a case-insensitive ``cron:`` prefix
+# then a standard ``m h dom mon dow`` expression (e.g. ``cron: 0 2 * * 1-5`` = 02:00
+# Mon-Fri). Detection is pure-string here (no croniter import) so display sites stay
+# dependency-light; the actual next-fire math + grammar validation live in
+# ``compute_next_run`` (where croniter is imported).
+_CRON_RE = re.compile(r"^\s*cron:\s*(?P<expr>.*)$", re.IGNORECASE | re.DOTALL)
+
+
+def parse_cron(cadence: str) -> str | None:
+    """Return the raw cron expression if ``cadence`` is a ``cron:`` form, else ``None``.
+
+    Raises ``LoopTemplateError`` on a ``cron:`` prefix with an EMPTY expression (a loop
+    with no schedulable next_run would silently never fire). Grammar validity of a
+    non-empty expression is NOT checked here — ``compute_next_run`` validates it via
+    croniter — so this stays a pure, import-light prefix detector for the display sites."""
+    m = _CRON_RE.match(cadence or "")
+    if m is None:
+        return None
+    expr = m.group("expr").strip()
+    if not expr:
+        raise LoopTemplateError(
+            f"empty cron expression in cadence {cadence!r} — expected "
+            f"'cron: <m h dom mon dow>' (e.g. 'cron: 0 2 * * 1-5')"
+        )
+    return expr
+
+
+def format_cron(cadence: str) -> str | None:
+    """Compact label for a cron cadence (``'cron: 0 2 * * 1-5'``), else ``None``.
+
+    Display-only — swallows a malformed (empty-expr) cadence to ``None`` so the renderer
+    falls back to its raw/other format; the create/plan path is where a bad cadence fails
+    loud. Echoes the raw expression (a cron line is already the clearest label)."""
+    try:
+        expr = parse_cron(cadence)
+    except LoopTemplateError:
+        return None
+    if expr is None:
+        return None
+    return f"cron: {expr}"
+
+
 # ``weekly on <wd> at HH:MM`` OR the ``every <wd> at HH:MM`` alias. The weekday token
 # is letters-only (``[a-z]{3,9}``) so ``every 15m`` (digit-led) can never match here —
 # but compute_next_run still orders this check BEFORE the interval regex to be safe.

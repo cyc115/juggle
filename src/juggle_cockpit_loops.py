@@ -65,8 +65,11 @@ def loop_pointer(project_id: str) -> str:
 
 
 def _fmt_cadence(cadence: str) -> str:
-    from juggle_loop_cadence import format_weekly
+    from juggle_loop_cadence import format_cron, format_weekly
 
+    cr = format_cron(cadence)  # "cron: 0 2 * * 1-5" for a cron cadence, else None
+    if cr:
+        return cr
     wk = format_weekly(cadence)  # "Mon 09:00" for a weekly cadence, else None
     if wk:
         return wk

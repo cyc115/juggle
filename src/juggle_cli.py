@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.12,<3.14"
-# dependencies = ["rich", "httpx", "pyte", "pyyaml"]
+# dependencies = ["rich", "httpx", "pyte", "pyyaml", "croniter"]
 # ///
 """
 Juggle CLI - called by LLM via Bash tool for state changes.

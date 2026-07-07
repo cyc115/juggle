@@ -39,7 +39,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from dbops.schema import _now
-from juggle_loop_cadence import parse_weekly
+from juggle_loop_cadence import parse_cron, parse_weekly
 from juggle_loop_instantiate import (
     create_stable_topic,
     instantiate_generation,
@@ -60,16 +60,33 @@ def compute_next_run(cadence: str, now: datetime | None = None) -> str:
     """Derive the first ``next_run`` ISO timestamp from a cadence string.
 
     Supports ``every Nm|Nh|Ns|Nd`` (and the spelled-out units), ``daily at HH:MM``,
-    and the weekly day-of-week forms ``weekly on <weekday> at HH:MM`` / ``every
-    <weekday> at HH:MM`` (juggle_loop_cadence.parse_weekly). Fail-loud on an
-    unparseable cadence — a loop with no schedulable next_run would silently never
-    fire (critique §Axis-6: next_run is the timer).
+    the weekly day-of-week forms ``weekly on <weekday> at HH:MM`` / ``every <weekday>
+    at HH:MM`` (juggle_loop_cadence.parse_weekly), and the general ``cron: <m h dom
+    mon dow>`` escape hatch (croniter — ANY schedule, e.g. ``cron: 0 2 * * 1-5`` =
+    02:00 Mon-Fri). Fail-loud on an unparseable cadence — a loop with no schedulable
+    next_run would silently never fire (critique §Axis-6: next_run is the timer).
 
     Defaults to UTC-aware ``datetime.now(timezone.utc)`` so the emitted ISO string
     is byte-comparable with ``dbops.schema._now()`` — Phase 5's fire check compares
     ``next_run`` against ``_now()``, and a naive/local timestamp here would make
     that comparison wrong (tz offset + missing ``+00:00`` suffix)."""
     now = now or datetime.now(timezone.utc)
+    # General cron — checked FIRST (the ``cron:`` prefix is unambiguous) so it never
+    # mis-parses as an interval/weekly form. parse_cron raises LoopTemplateError on an
+    # empty expr; croniter validates the grammar (bad expr → LoopTemplateError, never a
+    # bare CroniterBadCronError tracebacking past cmd_loop_create's except handler). A
+    # tz-aware ``now`` yields a tz-aware next fire (ISO carries +00:00, byte-comparable
+    # with dbops.schema._now()); get_next returns the occurrence STRICTLY after ``now``.
+    expr = parse_cron(cadence or "")
+    if expr is not None:
+        from croniter import CroniterError, croniter
+        try:
+            itr = croniter(expr, now)
+            return itr.get_next(datetime).isoformat()
+        except (CroniterError, ValueError) as e:
+            raise LoopTemplateError(
+                f"invalid cron expression {expr!r} in cadence {cadence!r}: {e}"
+            ) from e
     # Weekly day-of-week — checked BEFORE the interval regex (the weekday token is
     # letter-led so it cannot collide with ``every N<unit>``, but order guards it).
     wk = parse_weekly(cadence or "")  # raises LoopTemplateError on a malformed weekly
@@ -103,7 +120,7 @@ def compute_next_run(cadence: str, now: datetime | None = None) -> str:
         return (now + timedelta(seconds=n * _CADENCE_UNIT_SECONDS[unit])).isoformat()
     raise LoopTemplateError(
         f"unparseable cadence {cadence!r} — expected 'every Nm|Nh|Ns|Nd', "
-        f"'daily at HH:MM', or 'weekly on <weekday> at HH:MM'"
+        f"'daily at HH:MM', 'weekly on <weekday> at HH:MM', or 'cron: <m h dom mon dow>'"
     )
 
 

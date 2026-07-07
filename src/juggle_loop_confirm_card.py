@@ -13,14 +13,15 @@ Pure data in / str out — the input is ``validate_loop_template``'s normalised 
 """
 from __future__ import annotations
 
-from juggle_loop_cadence import format_weekly
+from juggle_loop_cadence import format_cron, format_weekly
 
 
 def _display_cadence(cadence: str) -> str:
-    """Card label for the cadence — a weekly day-of-week form renders compactly
-    (``'Mon 09:00'``); every other form echoes raw (interval/daily are already
-    readable, and the raw echo is the confirm-before-freeze contract)."""
-    return format_weekly(cadence) or cadence
+    """Card label for the cadence — a cron form renders as ``'cron: <expr>'`` and a
+    weekly day-of-week form compactly (``'Mon 09:00'``); every other form echoes raw
+    (interval/daily are already readable, and the raw echo is the confirm-before-freeze
+    contract)."""
+    return format_cron(cadence) or format_weekly(cadence) or cadence
 
 
 def _model_label(model) -> str:

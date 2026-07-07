@@ -201,6 +201,92 @@ def test_confirm_card_renders_weekly_readably():
     assert "Mon 09:00" in card
 
 
+# ── General cron cadence ─────────────────────────────────────────────────────────
+# All pins: 2026-07-07 cron/workday cadence unparseable — before this, "2 am on
+# workdays" (or any multi-day / arbitrary schedule) had NO cadence form.
+def test_cron_workday_from_midweek():
+    """2026-07-07 cron/workday cadence unparseable: `cron: 0 2 * * 1-5` from a Wednesday
+    -> next weekday 02:00 (croniter, strictly after now)."""
+    from datetime import datetime
+    now = datetime(2026, 7, 8, 12, 0, 0)  # Wednesday
+    # next 02:00 on a workday is Thursday 2026-07-09.
+    assert compute_next_run("cron: 0 2 * * 1-5", now).startswith("2026-07-09T02:00")
+
+
+def test_cron_workday_friday_skips_weekend():
+    """2026-07-07 cron/workday cadence unparseable: `cron: 0 2 * * 1-5` firing AT Fri
+    02:00 -> Mon 02:00 (weekend skipped, strictly-after re-fire)."""
+    from datetime import datetime
+    now = datetime(2026, 7, 10, 2, 0, 0)  # Friday 02:00 exactly
+    assert compute_next_run("cron: 0 2 * * 1-5", now).startswith("2026-07-13T02:00")
+
+
+def test_cron_weekly_equivalence():
+    """2026-07-07 cron/workday cadence unparseable: `cron: 0 9 * * 1` == weekly on
+    monday at 09:00 (next Monday 09:00)."""
+    from datetime import datetime
+    now = datetime(2026, 7, 8, 12, 0, 0)  # Wednesday
+    assert compute_next_run("cron: 0 9 * * 1", now).startswith("2026-07-13T09:00")
+
+
+def test_cron_daily_equivalence():
+    """2026-07-07 cron/workday cadence unparseable: `cron: 0 8 * * *` == daily at 08:00."""
+    from datetime import datetime
+    now = datetime(2026, 7, 4, 6, 0, 0)
+    assert compute_next_run("cron: 0 8 * * *", now).startswith("2026-07-04T08:00")
+
+
+def test_cron_interval_equivalence_and_case_insensitive():
+    """2026-07-07 cron/workday cadence unparseable: `cron: */15 * * * *` == +15m, and the
+    `CRON:` prefix is case-insensitive."""
+    from datetime import datetime
+    now = datetime(2026, 7, 4, 8, 0, 0)
+    assert compute_next_run("cron: */15 * * * *", now).startswith("2026-07-04T08:15")
+    assert compute_next_run("CRON: */15 * * * *", now).startswith("2026-07-04T08:15")
+
+
+def test_cron_invalid_expr_fails_loud():
+    """2026-07-07 cron/workday cadence unparseable: an invalid cron expr raises
+    LoopTemplateError (never a bare CroniterBadCronError past the except handler)."""
+    from datetime import datetime
+    now = datetime(2026, 7, 4, 8, 0, 0)
+    with pytest.raises(LoopTemplateError, match="cron"):
+        compute_next_run("cron: 99 99 * * *", now)
+
+
+def test_cron_empty_expr_fails_loud():
+    """2026-07-07 cron/workday cadence unparseable: a `cron:` with no expression raises
+    LoopTemplateError (a loop with no schedulable next_run would silently never fire)."""
+    from datetime import datetime
+    now = datetime(2026, 7, 4, 8, 0, 0)
+    with pytest.raises(LoopTemplateError, match="cron"):
+        compute_next_run("cron:   ", now)
+
+
+def test_cron_emits_utc_aware_iso():
+    """2026-07-07 cron/workday cadence unparseable: with a tz-aware `now` the emitted ISO
+    carries +00:00 (byte-comparable with dbops.schema._now())."""
+    from datetime import datetime, timezone
+    now = datetime(2026, 7, 8, 12, 0, 0, tzinfo=timezone.utc)
+    assert compute_next_run("cron: 0 2 * * 1-5", now).endswith("+00:00")
+
+
+def test_fmt_cadence_renders_cron():
+    """2026-07-07 cron/workday cadence unparseable: cockpit _fmt_cadence renders a cron
+    cadence readably as `cron: <expr>`."""
+    from juggle_cockpit_loops import _fmt_cadence
+    assert _fmt_cadence("cron: 0 2 * * 1-5") == "cron: 0 2 * * 1-5"
+
+
+def test_confirm_card_renders_cron():
+    """2026-07-07 cron/workday cadence unparseable: the loop plan confirm-card renders a
+    cron cadence readably."""
+    from juggle_loop_confirm_card import render_topic_dag_card
+    norm = validate_loop_template(_single_topic_template(ntasks=1))
+    card = render_topic_dag_card(norm, "cron: 0 2 * * 1-5")
+    assert "cron: 0 2 * * 1-5" in card
+
+
 # ── Atomic create (§Axis-5) ─────────────────────────────────────────────────────
 def test_multi_topic_create_instantiates_n_topics_and_edges(db):
     """P4b (2026-07-05): create_loop_atomic instantiates ALL topics of a multi-topic
