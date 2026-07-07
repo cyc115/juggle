@@ -124,7 +124,13 @@ class ThreadsMixin:
         rows = conn.execute(
             "SELECT state FROM nodes WHERE kind='conversation'"
         ).fetchall()
-        active_count = sum(1 for r in rows if r["state"] != "archived")
+        # Count only genuinely-LIVE conversations against the cap (2026-07-07
+        # incident: counting `state != 'archived'` let terminal 'done'/'failed-exec'
+        # rows occupy cap slots, so the cap became unescapable once >= MAX_THREADS
+        # terminal conversations accumulated — archiving 17 freed nothing). The live
+        # predicate is idx_nodes_live_label's (open/running/background), so the count
+        # and the no-shared-live-slug uniqueness invariant stay in lock-step.
+        active_count = sum(1 for r in rows if r["state"] in _LIVE_NODE_STATES)
         if active_count >= MAX_THREADS:
             return None
         user_label = self._next_wheel_slug(conn)

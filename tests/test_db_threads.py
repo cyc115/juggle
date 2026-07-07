@@ -112,6 +112,132 @@ def test_set_get_current_thread(db):
     assert db.get_current_thread() == "A"
 
 
+# ------------------------------------------------------------------
+# Thread-cap live-count + terminal-archive pins
+# ------------------------------------------------------------------
+# Incident 2026-07-07: `thread archive` no-op on terminal threads → cap
+# unescapable. The cap count counted every conversation whose state != 'archived',
+# so 'done'/'failed-exec' terminal conversations still occupied live cap slots and
+# `thread create` failed "Maximum of N threads already exist." once >= MAX_THREADS
+# terminal conversations accumulated. Fix: count only genuinely-live states
+# (open/running/background), consistent with idx_nodes_live_label.
+
+
+def test_terminal_threads_do_not_count_toward_cap(db, monkeypatch):
+    """2026-07-07 thread archive no-op on terminal threads → cap unescapable.
+
+    A cap fully occupied by terminal ('done'/'failed-exec') conversations must NOT
+    block a new create — only genuinely-live (open/running/background) conversations
+    consume cap slots. RED on pre-fix code (count used ``state != 'archived'``, so
+    terminal rows counted and create raised)."""
+    import dbops.threads as threads_mod
+
+    monkeypatch.setattr(threads_mod, "MAX_THREADS", 3)
+    ids = [db.create_thread(f"t{i}", session_id="s1") for i in range(3)]
+    db.set_thread_status(ids[0], "closed")  # -> node state 'done'
+    db.set_thread_status(ids[1], "closed")  # -> node state 'done'
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET state='failed-exec' WHERE id=?", (ids[2],)
+        )
+        conn.commit()
+    # ALL three cap slots are terminal (0 live). A new create must fit.
+    new = db.create_thread("fresh", session_id="s1")
+    assert db.get_thread(new)["state"] == "open"
+
+
+def test_open_running_background_count_toward_cap(db, monkeypatch):
+    """2026-07-07 thread archive no-op on terminal threads → cap unescapable.
+
+    The narrowed count must still gate on ALL live states: MAX_THREADS live
+    (open/running/background) conversations block a new create."""
+    import dbops.threads as threads_mod
+
+    monkeypatch.setattr(threads_mod, "MAX_THREADS", 3)
+    a = db.create_thread("a", session_id="s1")  # open
+    b = db.create_thread("b", session_id="s1")
+    c = db.create_thread("c", session_id="s1")
+    db.set_thread_status(b, "running")
+    db.set_conversation_background(c)
+    assert {db.get_thread(t)["state"] for t in (a, b, c)} == {
+        "open", "running", "background"
+    }
+    with pytest.raises(ValueError, match="Maximum of 3"):
+        db.create_thread("overflow", session_id="s1")
+
+
+def test_archive_thread_from_terminal_states(db):
+    """2026-07-07 thread archive no-op on terminal threads → cap unescapable.
+
+    archive_thread must transition a conversation to state='archived' from ANY
+    prior state, including terminal 'done'/'failed-exec', observable in
+    get_all_threads and get_archive_candidates."""
+    done_id = db.create_thread("done one", session_id="s1")
+    db.set_thread_status(done_id, "closed")
+    assert db.get_thread(done_id)["state"] == "done"
+    failed_id = db.create_thread("failed one", session_id="s1")
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET state='failed-exec' WHERE id=?", (failed_id,)
+        )
+        conn.commit()
+
+    for tid in (done_id, failed_id):
+        db.archive_thread(tid)
+        t = db.get_thread(tid)
+        assert t["state"] == "archived"
+        assert t["show_in_list"] == 0
+
+    by_id = {t["id"]: t for t in db.get_all_threads()}
+    assert by_id[done_id]["state"] == "archived"
+    assert by_id[failed_id]["state"] == "archived"
+    # Archived rows drop out of the archive-candidate set.
+    cand_ids = {t["id"] for t in db.get_archive_candidates()}
+    assert done_id not in cand_ids and failed_id not in cand_ids
+
+
+def test_archive_frees_cap_slot_for_terminal_thread(db, monkeypatch):
+    """2026-07-07 thread archive no-op on terminal threads → cap unescapable.
+
+    Archiving a live conversation drops it out of the live count, freeing a cap
+    slot so a new create succeeds."""
+    import dbops.threads as threads_mod
+
+    monkeypatch.setattr(threads_mod, "MAX_THREADS", 2)
+    a = db.create_thread("a", session_id="s1")
+    db.create_thread("b", session_id="s1")
+    with pytest.raises(ValueError, match="Maximum of 2"):
+        db.create_thread("overflow", session_id="s1")
+    db.archive_thread(a)  # a leaves the live set
+    new = db.create_thread("after-archive", session_id="s1")
+    assert db.get_thread(new)["state"] == "open"
+
+
+def test_archive_then_create_no_shared_live_label(db, monkeypatch):
+    """2026-07-07 thread archive no-op on terminal threads → cap unescapable.
+
+    Archiving a terminal thread then creating must never produce two LIVE
+    conversations sharing a user_label (idx_nodes_live_label invariant)."""
+    import dbops.threads as threads_mod
+
+    monkeypatch.setattr(threads_mod, "MAX_THREADS", 2)
+    a = db.create_thread("A", session_id="s1")
+    db.create_thread("B", session_id="s1")
+    db.set_thread_status(a, "closed")  # terminal
+    db.archive_thread(a)
+    db.create_thread("C", session_id="s1")  # fits: a archived, B live
+    from dbops.slug_alloc import LIVE_NODE_STATES
+
+    live_labels = [
+        t["user_label"]
+        for t in db.get_all_threads()
+        if t["state"] in LIVE_NODE_STATES and t["user_label"]
+    ]
+    assert len(live_labels) == len(set(live_labels)), (
+        f"live slug collision: {live_labels}"
+    )
+
+
 # UUID + label schema tests
 # ------------------------------------------------------------------
 
