@@ -124,6 +124,17 @@ def _release_completed_agent(
     except Exception:
         pass
 
+    # Reconcile a still-'background' thread to done: its topic already landed, so
+    # leaving it background would make the orphan detector (check_orphaned_threads,
+    # which scans state='background' with no busy agent) re-dispatch the landed
+    # work — the very bug this fix closes on the stalled path (fix B).
+    try:
+        thread = db.get_thread(thread_id)
+        if thread and thread.get("state") == "background":
+            db.update_thread(thread_id, status="closed")  # status→state maps closed→done
+    except Exception:
+        pass
+
     try:
         db.emit_event(
             thread_id=thread_id,

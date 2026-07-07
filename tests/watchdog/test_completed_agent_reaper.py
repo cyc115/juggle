@@ -79,6 +79,9 @@ def test_completed_topic_idle_agent_is_released(db):
     agent = db.get_agent(agent_id)
     assert agent["status"] == "idle"
     assert agent["assigned_thread"] is None
+    # Thread reconciled to done so the orphan detector (scans state='background')
+    # can never re-dispatch the already-landed work.
+    assert db.get_thread(tid)["state"] == "done"
 
 
 def test_reaper_ignores_agent_mid_turn(db):
@@ -92,6 +95,28 @@ def test_reaper_ignores_agent_mid_turn(db):
     _reap(db, WORKING_PANE)
 
     assert db.get_agent(agent_id)["status"] == "busy"
+
+
+def test_reaped_landed_thread_is_not_reorphaned(db):
+    """After the reaper releases a landed agent, the orphan detector must NOT
+    re-dispatch the topic: reconciling the thread to 'done' removes it from the
+    orphan scan (state='background'). Pins the reaper↔orphan-path interaction so
+    the completed-agents-leak fix isn't defeated by a second re-dispatch path."""
+    from juggle_watchdog import check_orphaned_threads
+
+    tid = db.create_thread("done-topic", session_id="s")
+    db.update_thread(tid, status="background", last_dispatched_task="impl",
+                     last_dispatched_role="coder")
+    _bind_topic(db, tid, "T-done", state="verified", merged_sha="deadbeef")
+    agent_id = _busy_agent_on(db, tid)
+
+    _reap(db, IDLE_PANE)
+
+    mgr = MagicMock()
+    mgr.spawn_agent = MagicMock(return_value={"id": "x", "pane_id": "%9", "status": "busy"})
+    # Threshold 0 → every eligible background thread would be re-dispatched.
+    check_orphaned_threads(db, orphan_threshold=0.0, mgr=mgr)
+    mgr.spawn_agent.assert_not_called()
 
 
 def test_reaper_ignores_agent_on_active_topic(db):

@@ -3,15 +3,15 @@
 Groups the two busy-agent sweeps the daemon runs each tick, each independently
 guarded so a bug in one never downs the tick (or the other):
 
-  1. STALL nudge   (juggle_watchdog_stall.check_stalled_agents) — a busy agent
-     idling at the prompt mid-task is nudged to finalize, then escalated.
-  2. COMPLETED reap (juggle_watchdog_reap_done.reap_completed_agents) — a busy
+  1. COMPLETED reap (juggle_watchdog_reap_done.reap_completed_agents) — a busy
      agent idle at the prompt whose bound topic already LANDED is returned to the
      pool as routine cleanup (2026-07-07 completed-agents-leak).
+  2. STALL nudge   (juggle_watchdog_stall.check_stalled_agents) — a busy agent
+     idling at the prompt mid-task is nudged to finalize, then escalated.
 
-Order matters: stall runs first (it may nudge an agent that is genuinely still
-finalizing); the reaper only acts on agents whose topic is already terminal, so
-the two never contend for the same agent.
+Order matters: the reaper runs FIRST so an agent whose topic already landed is
+released this tick rather than pointlessly nudged to "finalize" work that is
+already done. The stall detector then only sees agents still owning live work.
 """
 from __future__ import annotations
 
@@ -31,13 +31,13 @@ def run_agent_health_sweeps(
 ) -> None:
     """Run both busy-agent sweeps for one tick, each guarded independently."""
     try:
-        from juggle_watchdog_stall import check_stalled_agents
-        check_stalled_agents(db, mgr, stall_tracker, now=now, session_id=session_id)
-    except Exception:
-        _log.exception("Watchdog: stall detector tick failed — continuing")
-
-    try:
         from juggle_watchdog_reap_done import reap_completed_agents
         reap_completed_agents(db, mgr, session_id=session_id)
     except Exception:
         _log.exception("Watchdog: completed-agent reaper tick failed — continuing")
+
+    try:
+        from juggle_watchdog_stall import check_stalled_agents
+        check_stalled_agents(db, mgr, stall_tracker, now=now, session_id=session_id)
+    except Exception:
+        _log.exception("Watchdog: stall detector tick failed — continuing")
