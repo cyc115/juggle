@@ -142,6 +142,24 @@ def is_in_flight(state: str) -> bool:
     return state in IN_FLIGHT_STATES
 
 
+# ── "agent's bound work has landed" seam (2026-07-07 completed-agents-leak) ──────
+# The single signal shared by the watchdog completed-agent reaper, the stalled
+# re-dispatch guard, and release-reconcile: has this agent's bound TOPIC already
+# landed, so that cleaning up the agent is routine — never abandonment / a retry
+# candidate? Extracting it here keeps the three sites from re-deriving (and
+# drifting on) the check. Failure terminals stay EXCLUDED (a failed topic may be
+# legitimately re-dispatched).
+
+
+def topic_work_landed(topic) -> bool:
+    """True iff a bound topic's work has already landed, so cleaning up its agent
+    is routine — not a failure or a retry candidate. ``topic`` is a topic-row
+    mapping (or None)."""
+    if not topic:
+        return False
+    return topic.get("state") == "verified" and bool(topic.get("merged_sha"))
+
+
 # ── Raw-SQL 'verified' literal inventory (Phase-3 checklist / regression guard) ──
 # These raw SQL string literals compare state to 'verified' and CANNOT import a
 # Python set. Phase 0 does NOT rewrite them (behaviour-drift risk); instead this

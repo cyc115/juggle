@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import juggle_cmd_agents_common as _com
 from dbops import event_kinds as _ek
 from dbops import db_topics as _tp
+from dbops import terminal_states as _terminal_states
 
 
 def cmd_get_agent(args):
@@ -158,9 +159,7 @@ def cmd_release_agent(args):
         thread = db.get_thread(assigned)
         if thread and thread["state"] == "background":
             topic = _tp.get_topic_by_thread(db, assigned)
-            topic_terminal = bool(
-                topic and topic["state"] == "verified" and topic.get("merged_sha")
-            )
+            topic_terminal = _terminal_states.topic_work_landed(topic)
             label = thread.get("user_label") or thread.get("label") or assigned[:8]
             # Newest run only (get_runs is id-DESC): a completed CURRENT dispatch
             # means the agent finished; a still-open ('dispatched') or 'failed'
