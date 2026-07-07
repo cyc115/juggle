@@ -19,7 +19,7 @@ from dbops.schema import (
     _thread_age_seconds,
 )
 from dbops.conv_node_mirror import mirror_conv_insert, mirror_conv_update
-from dbops.slug_alloc import LIVE_SLUG_STATES, next_wheel_slug
+from dbops.slug_alloc import LIVE_NODE_STATES, LIVE_SLUG_STATES, next_wheel_slug
 from dbops.state_write import write_state
 
 # Read MAX_THREADS via module reference so tests can patch dbops.threads.MAX_THREADS
@@ -49,7 +49,12 @@ _OPEN_THREAD_STATES = LIVE_SLUG_STATES
 # `state` column uses node vocab. 'open' ≡ legacy 'active' (bijective map in
 # dbops.node_translation). The legacy `threads` WRITE path (create/unarchive/
 # slug_alloc) still uses status vocab — it is cut in the later write-cut node.
-_LIVE_NODE_STATES = ("open", "running", "background")
+#
+# SINGLE source of truth: dbops.slug_alloc.LIVE_NODE_STATES, which is kept in
+# lock-step with the partial unique index idx_nodes_live_label (Migration 54).
+# Aliased (not re-literaled) so the cap count, the read-collapse scans, and the
+# slug-allocation live-set can never diverge on what "live" means.
+_LIVE_NODE_STATES = LIVE_NODE_STATES
 
 
 class ThreadsMixin:
