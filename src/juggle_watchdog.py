@@ -807,6 +807,8 @@ def check_orphaned_threads(
     """
     from datetime import datetime, timezone, timedelta
 
+    from dbops.terminal_states import topic_work_landed
+
     now = datetime.now(timezone.utc)
     dedup_cutoff = (now - timedelta(hours=dedup_window_hours)).isoformat()
 
@@ -847,7 +849,6 @@ def check_orphaned_threads(
 
         # Landed-ad-hoc guard (2026-07-07 #5558/#5564): skip action item +
         # auto-recovery for work already merged — never a real orphan.
-        from dbops.terminal_states import topic_work_landed
         if topic_work_landed(thread):
             continue
 
