@@ -25,27 +25,53 @@ def reconcile_adhoc_integrate(db, thread_uuid: str, merged_sha: str | None) -> N
     """Reconcile an ad-hoc (non-graph) thread's conversation node after a
     SUCCESSFUL integrate (2026-07-07 #5558/#5564).
 
-    An ad-hoc thread has no kind='topic' node bound, so integrate's
-    ``_record_merged_sha`` topic lookup is a no-op — nothing else reconciled
-    the conversation node, leaving it ``state='background'`` forever after its
-    work landed. The watchdog's orphan scan then filed a spurious [RQ] action
-    item (or re-dispatched) on already-merged work.
+    An ad-hoc thread has no db_graph task NOR db_topics topic bound to it, so
+    integrate's ``_record_merged_sha`` topic lookup is a no-op — nothing else
+    reconciled the conversation node, leaving it ``state='background'``
+    forever after its work landed. The watchdog's orphan scan then filed a
+    spurious [RQ] action item (or re-dispatched) on already-merged work.
+
+    Ad-hoc-ness uses the SAME check as ``close_adhoc_run``
+    (juggle_cmd_agents_graph) — a thread bound via EITHER a db_graph task OR a
+    db_topics topic (e.g. a graph-autopilot topic dispatched directly via
+    ``db_topics.set_topic_thread``, which carries no db_graph task binding at
+    all) is graph-owned and reconciles through its own topic machinery
+    instead; touching it here would risk force-closing a live feature topic
+    (the 2026-06-21 anti-hijack incident this project already fixed once).
 
     Stamps ``merged_sha`` on the conversation node itself — the same field
     ``dbops.terminal_states.topic_work_landed`` reads — and closes the thread
     via the existing thread-close path (``set_thread_status`` -> state='done',
     a landed terminal) so it is never mistaken for an abandoned background
     thread again. Idempotent: a no-op once the thread has already landed.
-    """
-    from dbops.terminal_states import topic_work_landed
 
-    thread = db.get_thread(thread_uuid)
-    if not thread or topic_work_landed(thread):
-        return
-    if merged_sha:
-        db.update_thread(thread_uuid, merged_sha=merged_sha)
-    if thread.get("state") == "background":
-        db.set_thread_status(thread_uuid, "closed")
+    Fail-soft (mirrors ``_record_merged_sha``): best-effort reconciliation of
+    an already-successful merge, never blocks/fails integrate — an exception
+    here must not turn a landed integrate into a reported failure.
+    """
+    try:
+        from dbops import db_graph, db_topics
+        from dbops.terminal_states import topic_work_landed
+
+        is_graph = bool(
+            db_graph.get_task_by_thread(db, thread_uuid)
+            or db_topics.get_topic_by_thread(db, thread_uuid)
+        )
+        if is_graph:
+            return
+        thread = db.get_thread(thread_uuid)
+        if not thread or topic_work_landed(thread):
+            return
+        if merged_sha:
+            db.update_thread(thread_uuid, merged_sha=merged_sha)
+        if thread.get("state") == "background":
+            db.set_thread_status(thread_uuid, "closed")
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "reconcile_adhoc_integrate failed for thread %s — integrate already "
+            "landed, continuing", thread_uuid,
+        )
 
 
 def ensure_topic_child(

@@ -63,3 +63,45 @@ def test_reconcile_adhoc_integrate_idempotent_on_already_terminal_node(juggle_db
 
     assert second["state"] == first["state"]
     assert second["merged_sha"] == first["merged_sha"]
+
+
+def test_reconcile_adhoc_integrate_skips_topic_bound_thread(juggle_db):
+    """A graph-autopilot topic dispatched directly to its conversation thread
+    (db_topics.set_topic_thread — no db_graph task binding at all, per
+    juggle_graph_dispatch's real dispatch path) is graph-owned, not ad-hoc —
+    it reconciles through its own topic machinery. Must use the SAME
+    ad-hoc check as close_adhoc_run (db_graph task OR db_topics topic), not
+    just the db_graph half, or a live feature topic risks getting
+    force-closed here (the 2026-06-21 anti-hijack incident this project
+    already fixed once)."""
+    from dbops import db_topics
+
+    tid = juggle_db.create_thread(topic="feature", session_id="s")
+    juggle_db.add_message(tid, role="user", content="please build the login page")
+    juggle_db.set_conversation_background(tid)
+    db_topics.create_topic(juggle_db, topic_id="T-graph", project_id="INBOX", title="F")
+    db_topics.set_topic_thread(juggle_db, "T-graph", tid)
+
+    lc.reconcile_adhoc_integrate(juggle_db, tid, "deadbeef")
+
+    after = juggle_db.get_thread(tid)
+    assert after["state"] == "background"
+    assert not after.get("merged_sha")
+
+
+def test_reconcile_adhoc_integrate_is_fail_soft(monkeypatch):
+    """Mirrors _record_merged_sha's documented fail-soft contract: best-effort
+    reconciliation of an ALREADY-successful merge must never raise — an
+    exception here (e.g. a lightweight/partial db double, as several existing
+    _run_integrate tests use) must not turn a landed integrate into a
+    reported failure."""
+    from unittest.mock import Mock
+
+    db = Mock()
+
+    def _raises(*a, **kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("dbops.db_graph.get_task_by_thread", _raises)
+
+    lc.reconcile_adhoc_integrate(db, "thread-1", "deadbeef")  # must not raise
