@@ -24,6 +24,7 @@ from juggle_cmd_context import (
     cmd_next_action,
     cmd_retain,
 )
+from juggle_cmd_brief import cmd_brief
 from juggle_cmd_misc import cmd_agent_tools, cmd_cockpit
 from juggle_cmd_metrics import cmd_metrics
 from juggle_cmd_research import cmd_research
@@ -46,6 +47,15 @@ def _schedule_reflect(a):
 
 
 MISC_COMMANDS: tuple[Cmd, ...] = (
+    Cmd(None, "brief", cmd_brief,
+        args=(
+            Arg("id", nargs="?", default=None,
+                help="Topic slug (e.g. SS) or project id (e.g. P4); omit for session snapshot"),
+            Arg("--json", dest="json_out", action="store_true",
+                help="Emit the structured state dict (deterministic contract)"),
+            Arg("--db", dest="db_path", default=None, help="Path to juggle.db"),
+        ),
+        help="One-shot orchestrator context: session snapshot, or a topic/project probe"),
     Cmd("context", "show", cmd_get_context, aliases=("get-context",),
         help="Print context string"),
     Cmd("db", "init", cmd_init_db, aliases=("init-db",), help="Initialize DB schema"),
