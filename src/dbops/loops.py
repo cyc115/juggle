@@ -170,19 +170,66 @@ class LoopsMixin:
             conn.commit()
 
     def purge_loop(self, loop_id: str) -> None:
-        """Hard, non-recoverable cascade-delete of a loop (``schedule:delete
-        --purge``) — the single seam the CLI calls.
+        """Hard, non-recoverable cascade-delete of a loop and EVERYTHING it owns,
+        in ONE atomic transaction (``schedule:delete --purge``) — the single seam
+        the CLI calls.
 
-        Removes the ``loops`` row and closes the loop's project. (This is the
-        behaviour-preserving extraction of the old CLI purge branch; the full
-        cascade-delete lands in the fix commit.)"""
+        Incident 2026-07-07 (loop --purge orphaned nodes + id-reuse collision):
+        the old path removed only the ``loops`` row and SOFT-closed the project,
+        orphaning every graph node (the stable topic + all run-seq task
+        generations + the loop project's conversation node), their ``node_edges``,
+        the ``projects`` row, and the loop-owned ``agent_runs``. The freed L-id was
+        then reused, whose fresh nodes collided with the survivors
+        (``UNIQUE constraint failed: nodes.id``). This removes the WHOLE subgraph so
+        id-reuse is collision-free.
+
+        Everything the loop owns is keyed off ``project_id`` = the loop's project
+        (every generation's topic/task nodes + the conversation node all carry it):
+          1. ``node_edges`` referencing any owned node (node_id OR depends_on_id);
+          2. dangling ``agents.assigned_thread`` refs to the removed conversation
+             nodes (pool agents survive — they are shared workers — but must not
+             dangle onto a soon-reused node id);
+          3. loop-owned ``agent_runs`` (by project OR topic/task id);
+          4. all owned ``nodes``;
+          5. the ``projects`` row (HARD-removed, not soft-closed — purge is
+             non-recoverable);
+          6. the ``loops`` row.
+        """
         loop = self.get_loop(loop_id)
         if loop is None:
             raise ValueError(f"unknown loop: {loop_id!r}")
-        self.close_project(
-            loop["project_id"], f"Loop {loop_id} purged (schedule:delete --purge)", {}
-        )
-        self.delete_loop(loop_id)
+        project_id = loop["project_id"]
+        with self._connect() as conn:
+            node_ids = [
+                r[0] for r in conn.execute(
+                    "SELECT id FROM nodes WHERE project_id = ?", (project_id,)
+                ).fetchall()
+            ]
+            if node_ids:
+                ph = ",".join("?" * len(node_ids))
+                conn.execute(
+                    f"DELETE FROM node_edges WHERE node_id IN ({ph}) "
+                    f"OR depends_on_id IN ({ph})",
+                    node_ids + node_ids,
+                )
+                conn.execute(
+                    f"UPDATE agents SET assigned_thread = NULL, status = 'idle' "
+                    f"WHERE assigned_thread IN ({ph})",
+                    node_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM agent_runs WHERE project_id = ? "
+                    f"OR topic_id IN ({ph}) OR task_id IN ({ph})",
+                    [project_id] + node_ids + node_ids,
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM agent_runs WHERE project_id = ?", (project_id,)
+                )
+            conn.execute("DELETE FROM nodes WHERE project_id = ?", (project_id,))
+            conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            conn.execute("DELETE FROM loops WHERE id = ?", (loop_id,))
+            conn.commit()
 
     def set_loop_status(self, loop_id: str, status: str) -> None:
         with self._connect() as conn:
