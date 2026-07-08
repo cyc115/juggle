@@ -192,6 +192,39 @@ def _load_cursor(cursor_path: Path, db_path: Path) -> int:
         return baseline
 
 
+def run_once(db_path: Path | None = None, cursor_path: Path | None = None) -> None:
+    """One-shot poll: print unconsumed events since the shared cursor, then return.
+
+    Cron fallback for machines where the Monitor tool is unavailable (telemetry
+    disabled). Reuses the exact ``_poll_once`` event surface and the SAME
+    per-session cursor file as the streaming daemon (``_cursor_for``/
+    ``_load_cursor``/``_save_cursor``), so a --once poll and the streaming
+    daemon never double-emit one event. Silent (no output) when nothing new.
+    db_path/cursor_path are injectable for tests; default to the real
+    per-session paths for CLI use.
+    """
+    if db_path is None:
+        db_path = _db_path()
+    if cursor_path is None:
+        cursor_path = _cursor_for(_session_id())
+
+    last_seen_id = _load_cursor(cursor_path, db_path)
+    try:
+        from juggle_db_connect import open_connection
+        conn = open_connection(db_path)
+    except sqlite3.OperationalError:
+        return
+
+    results, new_last_seen_id = _poll_once(conn, last_seen_id)
+    conn.close()
+
+    for _thread_id, line in results:
+        print(line, flush=True)
+
+    if new_last_seen_id != last_seen_id:
+        _save_cursor(cursor_path, new_last_seen_id)
+
+
 def _handle_term(_signum, frame) -> None:
     """Clean, idempotent shutdown for SIGTERM/SIGINT.
 
