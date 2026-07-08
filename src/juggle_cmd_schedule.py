@@ -89,14 +89,10 @@ def delete_schedule(db, sched_id: str, *, purge: bool = False, backend=None) -> 
     if loop is not None:
         project_id = loop["project_id"]
         if purge:
-            # --purge hard-removes the loop ROW. There is no delete_project
-            # primitive, so we close (hide) the project rather than delete its
-            # graph — a deliberate orphan: a closed, loop-less project remains
-            # (recoverable-as-inert via project:open); the loop entity is gone.
-            db.close_project(
-                project_id, f"Loop {sched_id} purged (schedule:delete --purge)", {}
-            )
-            db.delete_loop(sched_id)
+            # --purge hard-removes the loop and EVERYTHING it owns (nodes across
+            # every generation, their edges, the project row, and loop-owned
+            # ledger rows) in ONE atomic transaction — see dbops.loops.purge_loop.
+            db.purge_loop(sched_id)
             return {"type": "loop", "action": "purge", "id": sched_id}
         db.pause_loop(sched_id)
         db.close_project(

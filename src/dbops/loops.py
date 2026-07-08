@@ -169,6 +169,21 @@ class LoopsMixin:
             conn.execute("DELETE FROM loops WHERE id = ?", (loop_id,))
             conn.commit()
 
+    def purge_loop(self, loop_id: str) -> None:
+        """Hard, non-recoverable cascade-delete of a loop (``schedule:delete
+        --purge``) — the single seam the CLI calls.
+
+        Removes the ``loops`` row and closes the loop's project. (This is the
+        behaviour-preserving extraction of the old CLI purge branch; the full
+        cascade-delete lands in the fix commit.)"""
+        loop = self.get_loop(loop_id)
+        if loop is None:
+            raise ValueError(f"unknown loop: {loop_id!r}")
+        self.close_project(
+            loop["project_id"], f"Loop {loop_id} purged (schedule:delete --purge)", {}
+        )
+        self.delete_loop(loop_id)
+
     def set_loop_status(self, loop_id: str, status: str) -> None:
         with self._connect() as conn:
             conn.execute(
