@@ -16,12 +16,9 @@ from juggle_brief_collect import (
     agent_idle_at_prompt,
     last_pane_line,
 )
+from dbops.terminal_states import FAILURE_TERMINAL_STATES
 from juggle_brief_diagnose import diagnose
 from juggle_brief_git import worktree_facts
-
-_FAILURE_STATES = {
-    "failed-exec", "failed-integration", "failed-verify", "blocked-failed",
-}
 
 
 def collect_topic_state(db, topic_id: str) -> dict | None:
@@ -121,7 +118,9 @@ def collect_project_state(db, project_id: str) -> dict | None:
             next_node = {"id": titled[0][0], "title": titled[0][1]}
             break
 
-    failing_nodes = [nid for nid, _ in _titled(db, project_id, tuple(_FAILURE_STATES))]
+    failing_nodes = [
+        nid for nid, _ in _titled(db, project_id, tuple(FAILURE_TERMINAL_STATES))
+    ]
 
     return {
         "id": project_id,
