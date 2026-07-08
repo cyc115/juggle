@@ -50,7 +50,7 @@ GRANDFATHERED: dict[str, int] = {
     # schema, a Migration-45 call in apply_recent_migrations, and argparse wiring
     # cannot be extracted out of their owning modules. Migration 45's body WAS
     # extracted to dbops/migration_selfheal_status_check.py (491->443 here).
-    "src/juggle_settings.py": 460,  # +4 orphan-guard grace-period config (watchdog.orphan_grace_minutes) (2026-07-02)
+    "src/juggle_settings.py": 383,  # 460->383: agent settings.json overlay defaults extracted to juggle_agent_overlay_defaults.py, freeing budget for legacy_monitor config (2026-07-07)
     "src/juggle_cockpit_view.py": 461,
     "src/juggle_cockpit_model.py": 439,
     "src/dbops/migrations_recent.py": 390,  # 398->390 P8 c4: extracted the Migration-50.. P8 block to dbops/migrations_p8.py (apply_p8_migrations) so the collapse chain grows there, not here (2026-06-29)

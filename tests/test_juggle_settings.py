@@ -234,3 +234,27 @@ def test_integrate_defaults_are_full_suite_no_quarantine():
     assert integ["quarantine_tests"] == [], (
         "DEFAULTS quarantine_tests must be empty (no subset/deselect)"
     )
+
+
+def test_legacy_monitor_disabled_by_default():
+    """legacy-monitor-cron plan (2026-07-07): the cron fallback for the Monitor
+    tool must ship OFF — no behavior change until an operator opts in via
+    /juggle:doctor:enable-legacy-monitor."""
+    from juggle_settings import DEFAULTS
+
+    legacy = DEFAULTS["legacy_monitor"]
+    assert legacy["enabled"] is False
+    assert legacy["cadence"] == "*/5 * * * *"
+
+
+def test_legacy_monitor_cadence_overridable_via_config(tmp_path, monkeypatch):
+    import json
+
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"legacy_monitor": {"cadence": "*/10 * * * *"}}))
+    monkeypatch.setenv("_JUGGLE_CONFIG_PATH", str(config))
+    from juggle_settings import get_settings
+
+    s = get_settings()
+    assert s["legacy_monitor"]["cadence"] == "*/10 * * * *"
+    assert s["legacy_monitor"]["enabled"] is False
