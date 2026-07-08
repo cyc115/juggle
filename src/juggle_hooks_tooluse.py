@@ -21,8 +21,12 @@ from juggle_verify_cap import enforce_verify_spawn_cap
 # Use _cfg.<name>() everywhere — do NOT bind these as local names, so that
 # tests can monkeypatch juggle_hooks_config.<name> and have the patches take
 # effect inside these handlers.
-_record_error_safe = lambda *a, **k: _cfg._record_error_safe(*a, **k)
-_get_session_id = lambda *a, **k: _cfg._get_session_id(*a, **k)
+def _record_error_safe(*a, **k):
+    return _cfg._record_error_safe(*a, **k)
+
+
+def _get_session_id(*a, **k):
+    return _cfg._get_session_id(*a, **k)
 
 
 def is_active() -> bool:  # thin delegate — reads _cfg at call time

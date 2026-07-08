@@ -261,13 +261,13 @@ def get_adapter(role: str | None = None, agent_cfg: dict | None = None) -> Harne
     if agent_cfg is None:
         agent_cfg = get_settings().get("agent", {})
 
-    harnesses = agent_cfg.get("harnesses") or {}
+    harness_defs = agent_cfg.get("harnesses") or {}
     hid = (
         (agent_cfg.get("harness_by_role") or {}).get(role)
         or agent_cfg.get("harness")
         or "claude"
     )
-    hcfg = harnesses.get(hid)
+    hcfg = harness_defs.get(hid)
     if hcfg is None:
         # Unknown / missing harness id → fall back to the shipped claude config
         # so a partial agent_cfg (no `harnesses` block) keeps working unchanged.

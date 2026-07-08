@@ -15,8 +15,12 @@ import juggle_hooks_config as _cfg
 
 # Delegate through _cfg so tests can monkeypatch juggle_hooks_config.<name>
 # and have the patches take effect here without reloading this module.
-_record_error_safe = lambda *a, **k: _cfg._record_error_safe(*a, **k)
-_get_session_id = lambda *a, **k: _cfg._get_session_id(*a, **k)
+def _record_error_safe(*a, **k):
+    return _cfg._record_error_safe(*a, **k)
+
+
+def _get_session_id(*a, **k):
+    return _cfg._get_session_id(*a, **k)
 
 
 def is_active() -> bool:

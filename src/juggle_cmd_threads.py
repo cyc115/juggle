@@ -8,9 +8,6 @@ import sys
 from pathlib import Path
 import threading
 
-_log = logging.getLogger(__name__)
-_Path = Path
-
 from juggle_cmd_projects import assign_project_background
 from juggle_cli_common import (
     SRC_DIR,
@@ -23,6 +20,9 @@ from juggle_db import DEFAULT_DATA_DIR as _DATA_DIR
 from juggle_settings import get_settings as _get_settings
 from dbops.schema import is_auto_topic_eligible
 from juggle_spool_apply import drain_spool
+
+_log = logging.getLogger(__name__)
+_Path = Path
 
 
 def _get_version():
@@ -179,7 +179,7 @@ def _create_node_for_thread(db, thread_id: str, topic: str) -> None:
 def cmd_create_thread(args):
     if not is_auto_topic_eligible(args.topic):
         print(
-            f"[juggle] Skipped: topic looks like orchestrator chatter and will not create a thread.",
+            "[juggle] Skipped: topic looks like orchestrator chatter and will not create a thread.",
             file=sys.stderr,
         )
         sys.exit(1)

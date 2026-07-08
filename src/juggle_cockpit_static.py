@@ -12,6 +12,12 @@ from __future__ import annotations
 import re
 
 from juggle_cockpit_model import CockpitState
+from juggle_cockpit_view import (
+    render_actions,
+    render_agents,
+    render_notifications,
+    render_topics,
+)
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -24,12 +30,6 @@ def _strip_ansi(s: str) -> str:
     dangling escapes. Strip them before any ljust/slice width operation.
     """
     return _ANSI_RE.sub("", s)
-from juggle_cockpit_view import (
-    render_actions,
-    render_agents,
-    render_notifications,
-    render_topics,
-)
 
 
 def render_static_from_state(state: CockpitState, width: int = 120) -> str:

@@ -33,6 +33,14 @@ dev = [
 [tool.uv]
 package = false
 
+[tool.ruff.lint.per-file-ignores]
+# These entry-point modules do `sys.path.insert(0, SRC_DIR)` before importing
+# their own sibling src/ modules — the imports MUST stay below that insert, so
+# they can never be "top of file" per E402's rule.
+"src/juggle_cli.py" = ["E402"]
+"src/juggle_cmd_projects.py" = ["E402"]
+"src/juggle_cockpit.py" = ["E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

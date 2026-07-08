@@ -11,8 +11,6 @@ from dataclasses import dataclass
 from typing import Callable
 
 from textual import events
-
-_log = logging.getLogger(__name__)
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
@@ -21,10 +19,12 @@ from textual.widgets import Input, Label, Static
 # Unified node-detail modal extracted to its own module (LOC gate); re-exported
 # here so ``from juggle_cockpit_modals import _NodeDetailModal`` keeps working,
 # along with the session summary cache.
-from juggle_cockpit_modal_node import (  # noqa: E402,F401
+from juggle_cockpit_modal_node import (  # noqa: F401 — re-exported
     _NodeDetailModal,
     _topic_summary_cache,
 )
+
+_log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
