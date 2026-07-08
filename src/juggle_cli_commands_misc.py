@@ -199,9 +199,10 @@ MISC_COMMANDS: tuple[Cmd, ...] = (
         ),
         aliases=("db-flush",),
         help="Flush live (tmpfs) DB to durable disk path"),
-    Cmd("monitor", "cron-spec", cmd_monitor_cron_spec,
+    Cmd("monitor", "show-cron-spec", cmd_monitor_cron_spec,
         args=(
             Arg("--json", dest="json_out", action="store_true", help="Emit {cron, prompt} JSON"),
         ),
+        aliases=("monitor-cron-spec",),
         help="Print the CronCreate spec (cadence + poll prompt) for the legacy-monitor fallback"),
 )

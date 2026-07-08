@@ -46,6 +46,7 @@ COMPOUND_VERBS = frozenset({
     "set-summarized-count",  # thread   — stem: set
     "archive-candidates",    # thread   — stem: archive
     "list-stale",            # thread   — stem: list
+    "show-cron-spec",        # monitor  — stem: show
 })
 
 # ── §2.3 retained non-canonical verbs (documented divergence) ─────────────────
