@@ -32,11 +32,12 @@ def cmd_get_agent(args):
     existing_ids = {a["id"] for a in db.get_all_agents()}
 
     import juggle_dispatch_core as _dc
+    import juggle_agent_reclaim as _reclaim
     from juggle_graph_dispatch import CapacityError
     from juggle_db import MAX_BACKGROUND_AGENTS
 
-    try:
-        agent = _dc.acquire_agent(
+    def _acquire():
+        return _dc.acquire_agent(
             db,
             thread_uuid,
             role=args.role,
@@ -46,11 +47,30 @@ def cmd_get_agent(args):
             fresh=getattr(args, "fresh", False),
             effort=getattr(args, "effort", None),
         )
-    except CapacityError:
+
+    def _pool_full():
         print(
             f"Error: Agent pool full ({MAX_BACKGROUND_AGENTS} max). Wait for one to finish."
         )
         sys.exit(1)
+
+    try:
+        agent = _acquire()
+    except CapacityError:
+        # Pool at cap: reclaim ONE reclaimable idle agent (LRU) to free a slot
+        # and retry acquisition exactly ONCE (2026-07-07: idle researchers must
+        # not block `agent get --role coder`). If NOTHING is reclaimable — all
+        # agents busy, or the only idle ones own unmerged worktree work — the
+        # pool is genuinely full: fail loud rather than destroy work.
+        if not _reclaim.reclaim_one_idle_agent(db):
+            _pool_full()
+        try:
+            agent = _acquire()
+        except CapacityError:
+            _pool_full()
+        except RuntimeError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
     except RuntimeError as e:
         print(f"Error: {e}")
         sys.exit(1)
