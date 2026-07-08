@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Juggle — monitor cron-spec: the canonical CronCreate spec emitter.
+"""Juggle — monitor show-cron-spec: the canonical CronCreate spec emitter.
 
 Cron fallback for the Monitor tool (2026-07-07 legacy-monitor-cron plan): on
 machines with telemetry disabled, /juggle:start can't stream agent events via
@@ -28,6 +28,6 @@ POLL_PROMPT = (
 
 
 def cmd_monitor_cron_spec(args):
-    """`juggle monitor cron-spec --json` — print {"cron", "prompt"} for CronCreate."""
+    """`juggle monitor show-cron-spec --json` — print {"cron", "prompt"} for CronCreate."""
     cadence = get_settings()["legacy_monitor"]["cadence"]
     print(json.dumps({"cron": cadence, "prompt": POLL_PROMPT}))

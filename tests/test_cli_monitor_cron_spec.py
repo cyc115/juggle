@@ -1,4 +1,4 @@
-"""Tests for `juggle monitor cron-spec --json` (legacy-monitor-cron plan,
+"""Tests for `juggle monitor show-cron-spec --json` (legacy-monitor-cron plan,
 2026-07-07): the CronCreate spec emitter that keeps the poll prompt + cadence
 code-owned (not duplicated prose in commands/*.md).
 """
