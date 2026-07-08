@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from dbops import event_kinds as ek
 from juggle_db import JuggleDB
-from juggle_monitor_daemon import _load_cursor, _poll_once, _save_cursor, run_once
+from juggle_monitor_daemon import _load_cursor, _poll_once, run_once
 
 
 def _db(tmp_path):
@@ -29,32 +29,31 @@ def _done_thread(d, title):
     return tid
 
 
-def _armed_cursor(tmp_path, name="monitor-once.cursor"):
-    """A cursor file already baselined at 0 — mirrors a monitor that was set up
-    against an empty/known DB state, so seeded events afterward are genuinely
-    NEW (not swallowed by the daemon's first-run history-skip baseline)."""
-    cursor_path = tmp_path / name
-    _save_cursor(cursor_path, 0)
-    return cursor_path
-
-
 def test_once_prints_new_events_then_advances_cursor(tmp_path, capsys):
+    """The literal plan acceptance scenario: seed events against a DB that has
+    NEVER had a monitor cursor (no cursor file at all yet) — the first --once
+    ever run must still surface them. (Unlike the streaming daemon's own
+    first-run, which intentionally baselines at MAX(id) to avoid replaying
+    history to a live consumer, --once IS the delivery mechanism for whatever
+    piled up before its first poll — skipping it would silently drop real
+    completions.)"""
     d = _db(tmp_path)
-    cursor_path = _armed_cursor(tmp_path)
     tid = _done_thread(d, "fix the thing")
     d.emit_event(tid, "fix the thing: all done", "s", kind=ek.AGENT_COMPLETE)
 
+    cursor_path = tmp_path / "monitor-once.cursor"
+    assert not cursor_path.exists()
     run_once(db_path=Path(d.db_path), cursor_path=cursor_path)
 
     out = capsys.readouterr().out.strip()
     label = d.get_thread(tid)["user_label"]
     assert out == f"[{label}] coder: fix the thing"
-    assert int(cursor_path.read_text().strip()) > 0
+    assert cursor_path.exists()
 
 
 def test_once_is_silent_when_nothing_new(tmp_path, capsys):
     d = _db(tmp_path)
-    cursor_path = _armed_cursor(tmp_path)
+    cursor_path = tmp_path / "monitor-once.cursor"
 
     run_once(db_path=Path(d.db_path), cursor_path=cursor_path)
 
@@ -63,7 +62,7 @@ def test_once_is_silent_when_nothing_new(tmp_path, capsys):
 
 def test_once_never_reemits_on_rerun(tmp_path, capsys):
     d = _db(tmp_path)
-    cursor_path = _armed_cursor(tmp_path)
+    cursor_path = tmp_path / "monitor-once.cursor"
     tid = _done_thread(d, "fix the thing")
     d.emit_event(tid, "fix the thing: all done", "s", kind=ek.AGENT_COMPLETE)
 
@@ -79,7 +78,7 @@ def test_once_shares_cursor_with_streaming_daemon(tmp_path, capsys):
     """A --once poll and the streaming daemon's own _poll_once, pointed at the
     SAME (session-shared) cursor file, must never double-emit one event."""
     d = _db(tmp_path)
-    cursor_path = _armed_cursor(tmp_path, "monitor-shared.cursor")
+    cursor_path = tmp_path / "monitor-shared.cursor"
     tid = _done_thread(d, "fix the thing")
     d.emit_event(tid, "fix the thing: all done", "s", kind=ek.AGENT_COMPLETE)
 

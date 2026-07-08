@@ -202,12 +202,22 @@ def run_once(db_path: Path | None = None, cursor_path: Path | None = None) -> No
     daemon never double-emit one event. Silent (no output) when nothing new.
     db_path/cursor_path are injectable for tests; default to the real
     per-session paths for CLI use.
+
+    Unlike the streaming daemon's OWN first run (which baselines a brand-new
+    cursor at MAX(id) so a live consumer isn't replayed old history — see
+    ``_load_cursor``), --once's first-ever poll baselines at 0: --once IS the
+    delivery mechanism for whatever piled up before legacy_monitor was armed,
+    so skipping it would silently drop real completions. Pre-seeding the
+    cursor file at 0 before the shared ``_load_cursor`` call keeps this a
+    one-line divergence rather than a forked cursor implementation.
     """
     if db_path is None:
         db_path = _db_path()
     if cursor_path is None:
         cursor_path = _cursor_for(_session_id())
 
+    if not cursor_path.exists():
+        _save_cursor(cursor_path, 0)
     last_seen_id = _load_cursor(cursor_path, db_path)
     try:
         from juggle_db_connect import open_connection
