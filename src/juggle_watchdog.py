@@ -14,10 +14,8 @@ Split modules (re-exported here for backward-compat):
 
 from __future__ import annotations
 
-import hashlib as _hashlib
 import logging
 import os
-import re
 import subprocess  # noqa: F401 — patch-target anchor (tests patch juggle_watchdog.subprocess.run)
 import time as _time
 from pathlib import Path
@@ -37,6 +35,14 @@ from juggle_watchdog_inspect import (  # noqa: E402, F401
     _config_dir,
     _handle_crashed,
     inspect_agent,
+)
+from juggle_watchdog_paneparse import (  # noqa: E402, F401
+    _has_active_spinner,
+    _has_box_top,
+    _has_execution_markers,
+    _hash_tail,
+    _parse_context_pct,
+    _strip_ansi,
 )
 
 _log = logging.getLogger(__name__)
@@ -62,7 +68,6 @@ _MIN_STALL_THRESHOLD_SECS: dict[str, float] = {
     "researcher": 180.0, # 3 min
 }
 _MIN_STALL_FALLBACK_SECS = 180.0
-_EXECUTION_MARKERS = ("Thinking", "Running", "→", "↓", "Tool call", "✓", "⚡")
 _CLAUDE_UI_MARKERS = (
     "Welcome",
     "Bypass permissions",
@@ -72,8 +77,6 @@ _CLAUDE_UI_MARKERS = (
     "shortcuts",
     "claude.ai/code",
 )
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-_BOX_TOP_RE = re.compile(r"^╭─+╮\s*$")
 # Sentinel: caller did not supply last_send_task_at, so backward-compat applies.
 _NO_DISPATCH_INFO: object = object()
 
@@ -82,20 +85,6 @@ _NO_DISPATCH_INFO: object = object()
 # Overridable via env var JUGGLE_AGENT_CONTEXT_RECYCLE_PCT (e.g. "0.75").
 _CONTEXT_RECYCLE_THRESHOLD: float = float(
     os.environ.get("JUGGLE_AGENT_CONTEXT_RECYCLE_PCT", "0.80")
-)
-
-# Matches the CC pane footer context usage: e.g. "Sonnet 4.6(164.0k/200.0k)"
-_CTX_USAGE_RE = re.compile(r"\((\d+(?:\.\d+)?)(k?)/(\d+(?:\.\d+)?)(k?)\)")
-
-# Matches CC thinking spinner: timer pattern "(26s ·" / "(6m 17s ·" or known
-# thinking-word synonyms. Timer detection is generic; synonyms are a fallback.
-_THINKING_RE = re.compile(
-    r"(?:"
-    r"\(\d+(?:m \d+)?s[\s\xb7]"  # (26s · or (6m 17s · (U+00B7 middle dot)
-    r"|\bThinking\b"
-    r"|\b(?:Befuddling|Burrowing|Saut[eé]ed|Cooked|Churned|Brewed|Baked|Crunched?"
-    r"|Garnishing|Newspapering|Stewing|Billowing|Sprouting|Warping)\b"
-    r")"
 )
 
 # Grace period before a never-tasked agent can be decommissioned.
@@ -149,41 +138,6 @@ def _clear_cold_start_failures(thread_id: str | None) -> None:
         _cascade_filed.discard(thread_id)
 
 
-def _strip_ansi(s: str) -> str:
-    return _ANSI_RE.sub("", s)
-
-
-def _hash_tail(content: str, lines: int = 10) -> str:
-    tail = "\n".join(content.splitlines()[-lines:])
-    return _hashlib.sha256(tail.encode()).hexdigest()[:16]
-
-
-def _has_execution_markers(tail: str) -> bool:
-    return any(m in tail for m in _EXECUTION_MARKERS)
-
-
-def _parse_context_pct(content: str) -> float | None:
-    """Parse context usage fraction from a CC pane footer.
-
-    Matches patterns like 'Sonnet 4.6(164.0k/200.0k)'.
-    Returns float in [0, 1], or None if not parseable.
-    """
-    m = _CTX_USAGE_RE.search(content)
-    if not m:
-        return None
-    used_val, used_k, total_val, total_k = m.groups()
-    used = float(used_val) * (1000.0 if used_k else 1.0)
-    total = float(total_val) * (1000.0 if total_k else 1.0)
-    if total == 0:
-        return None
-    return used / total
-
-
-def _has_active_spinner(content: str) -> bool:
-    """Return True if content shows a CC active-thinking spinner or timer."""
-    return bool(_THINKING_RE.search(content))
-
-
 def recovery_action(
     *,
     context_pct: float | None,
@@ -207,10 +161,6 @@ def recovery_action(
     if context_pct is not None and context_pct >= context_recycle_threshold:
         return "recycle"
     return "nudge"
-
-
-def _has_box_top(content: str) -> bool:
-    return any(_BOX_TOP_RE.match(line) for line in content.splitlines())
 
 
 # ---------------------------------------------------------------------------
@@ -895,12 +845,8 @@ def check_orphaned_threads(
         if orphaned_for < orphan_threshold:
             continue
 
-        # Landed-ad-hoc guard (2026-07-07 #5558/#5564): work already merged
-        # (merged_sha stamped — e.g. by juggle_topic_lifecycle
-        # .reconcile_adhoc_integrate — or the node otherwise sits in a landed
-        # terminal) is routine cleanup lag, never abandonment. Skip BOTH the
-        # action item and any auto-recovery re-dispatch. An UNMERGED orphan
-        # never satisfies this and is still flagged below.
+        # Landed-ad-hoc guard (2026-07-07 #5558/#5564): skip action item +
+        # auto-recovery for work already merged — never a real orphan.
         from dbops.terminal_states import topic_work_landed
         if topic_work_landed(thread):
             continue

@@ -33,7 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # branch cyc_refactor-tokens). MAY ONLY SHRINK — see module docstring.
 GRANDFATHERED: dict[str, int] = {
     "src/juggle_cockpit.py": 1075,
-    "src/juggle_watchdog.py": 1043,  # _agent_is_non_interactive extracted to juggle_agent_interactivity (2026-07-07)
+    "src/juggle_watchdog.py": 1005,  # 1043->999 (+6 landed-ad-hoc orphan guard): pane-content parsers extracted to juggle_watchdog_paneparse.py (2026-07-08); a few lines of budget kept as headroom
     "src/juggle_tmux.py": 881,
     # speedup-tier M1 (2026-06-21) re-baseline: isolating the dry-run sample dir
     # to tmp_path needs one `import os` per schedule routine (the env override is
