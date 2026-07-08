@@ -17,6 +17,12 @@ Monitor: ${CLAUDE_PLUGIN_ROOT}/scripts/juggle-agent-monitor
 ```
 Each line is one pushable event (`handled_by` = orchestrator/user). Completion lines keep the back-compat format: `[LABEL] researcher: <title>` → "Review ready — [LABEL]: <title>" | `[LABEL] coder/planner: <title>` → "[LABEL] done — <title>". Other kinds (task/topic status, violations, manual notify, `learnings_rollup`) print their message text as-is. More than 3 same-kind events in one poll coalesce into a single summary line. Retrieve result and surface to user.
 
+**Legacy-monitor cron fallback (opt-in, gated on `legacy_monitor.enabled` in `~/.juggle/config.json`; default disabled — today's behavior is unchanged when off):** if `legacy_monitor.enabled` is true, still try the Monitor tool above first. Only if that Monitor call fails or is unavailable (e.g. telemetry disabled), fall back:
+```bash
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py monitor show-cron-spec --json
+```
+Take the `{"cron": ..., "prompt": ...}` JSON verbatim and `CronCreate` it (do not paraphrase the prompt — it is code-owned so a cron-driven poll relays identically to a live Monitor event). This is a session-only, 7-day-expiry, idle-fires-only job — arm it once per `/juggle:start` alongside the rest of this section, same re-arm-not-stack rule as the Monitor tool above. See `/juggle:doctor:enable-legacy-monitor` to toggle the flag.
+
 A `learnings_rollup` line (`⬢ learnings rollup (<project>): N new learning(s) to triage`, followed by `<node-id>: <text>` lines) is orchestrator-owned — triage it, see **Learnings-rollup triage** below.
 
 Auto-create Topic A from first substantive message: `thread create "<label>"`
