@@ -11,14 +11,13 @@ id resolves to nothing. Shared IO helpers live in ``juggle_brief_collect``.
 from __future__ import annotations
 
 from juggle_brief_collect import (
-    _commits_ahead,
     _parse_json_list,
-    _run,
     agent_age,
     agent_idle_at_prompt,
     last_pane_line,
 )
 from juggle_brief_diagnose import diagnose
+from juggle_brief_git import worktree_facts
 
 _FAILURE_STATES = {
     "failed-exec", "failed-integration", "failed-verify", "blocked-failed",
@@ -54,7 +53,7 @@ def collect_topic_state(db, topic_id: str) -> dict | None:
     has_failure_action = any(it.get("type") == "failure" for it in actions)
 
     notifications = _topic_notifications(db, tid)
-    worktree = _topic_worktree(thread)
+    worktree = worktree_facts(thread)
     work_landed = _topic_work_landed(db, tid)
 
     topic_state = {
@@ -88,32 +87,6 @@ def _topic_notifications(db, tid: str) -> list[dict]:
         return [{"message": r["message"], "created_at": r["created_at"]} for r in rows]
     except Exception:
         return []
-
-
-def _topic_worktree(thread: dict) -> dict:
-    from pathlib import Path
-
-    path = (thread.get("worktree_path") or "").strip()
-    branch = (thread.get("worktree_branch") or "").strip()
-    exists = bool(path) and Path(path).exists()
-    dirty, unmerged = False, 0
-    if exists:
-        try:
-            from vcs import backend_for
-
-            main = (thread.get("main_repo_path") or "").strip() or path
-            trunk = backend_for(main).trunk(main) or "HEAD"
-            unmerged = _commits_ahead(path, trunk)
-            dirty = bool(_run(["git", "-C", path, "status", "--porcelain"]))
-        except Exception:
-            pass
-    return {
-        "branch": branch or "-",
-        "exists": exists,
-        "dirty": dirty,
-        "unmerged_commits": unmerged,
-        "tests_green": None,
-    }
 
 
 def _topic_work_landed(db, tid: str) -> bool:

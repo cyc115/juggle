@@ -154,81 +154,6 @@ def _selfheal_health(db) -> dict:
     return {"count": count, "top_sigs": top}
 
 
-def _git_health(db, active_threads: list[dict]) -> dict:
-    """Git branch/dirty of the main repo + worktree clean/unmerged/orphan tally.
-    Best-effort — an absent/broken repo degrades to zeros, never raises."""
-    from vcs import backend_for
-
-    bound = {
-        (t.get("worktree_branch") or "").strip()
-        for t in active_threads
-        if (t.get("worktree_branch") or "").strip()
-    }
-    repo = ""
-    for t in active_threads:
-        repo = (t.get("main_repo_path") or "").strip()
-        if repo:
-            break
-    if not repo:
-        repo = str(__import__("pathlib").Path(__file__).resolve().parent.parent)
-
-    branch, dirty = "?", False
-    worktrees = {"clean": 0, "unmerged": 0, "orphan": 0}
-    try:
-        backend = backend_for(repo)
-        main = backend.primary_root(repo)
-        branch = _run(["git", "-C", main, "symbolic-ref", "--short", "HEAD"]) or "?"
-        dirty = bool(backend.dirty_files(main))
-        trunk = backend.trunk(main) or "HEAD"
-        entries = _list_worktrees(main)
-        for path, wbranch in entries[1:]:  # entries[0] is the main worktree
-            ahead = _commits_ahead(path, trunk)
-            wdirty = bool(_run(["git", "-C", path, "status", "--porcelain"]))
-            if wbranch and wbranch not in bound:
-                worktrees["orphan"] += 1
-            elif ahead > 0 or wdirty:
-                worktrees["unmerged"] += 1
-            else:
-                worktrees["clean"] += 1
-    except Exception:
-        pass
-    return {"git_branch": branch, "dirty": dirty, "worktrees": worktrees}
-
-
-def _run(cmd) -> str:
-    import subprocess
-
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-        return r.stdout.strip() if r.returncode == 0 else ""
-    except Exception:
-        return ""
-
-
-def _list_worktrees(main: str) -> list[tuple[str, str]]:
-    out = _run(["git", "-C", main, "worktree", "list", "--porcelain"])
-    entries: list[tuple[str, str]] = []
-    path, branch = "", ""
-    for line in out.splitlines():
-        if line.startswith("worktree "):
-            if path:
-                entries.append((path, branch))
-            path, branch = line[len("worktree "):].strip(), ""
-        elif line.startswith("branch "):
-            branch = line[len("branch "):].strip().split("/")[-1]
-    if path:
-        entries.append((path, branch))
-    return entries
-
-
-def _commits_ahead(path: str, trunk: str) -> int:
-    out = _run(["git", "-C", path, "rev-list", "--count", f"{trunk}..HEAD"])
-    try:
-        return int(out or "0")
-    except ValueError:
-        return 0
-
-
 def collect_session_state(db) -> dict:
     """Assemble the no-arg session snapshot dict (active topics only, agents
     reconciled). Reuses db.get_all_threads / get_all_agents / get_open_action_items
@@ -286,7 +211,12 @@ def collect_session_state(db) -> dict:
     ]
 
     session_id = _session_id(db)
-    health = _git_health(db, active)
+    from pathlib import Path
+
+    from juggle_brief_git import git_health
+
+    fallback_repo = str(Path(__file__).resolve().parent.parent)
+    health = git_health(active, fallback_repo)
     health["selfheal"] = _selfheal_health(db)
 
     return {
