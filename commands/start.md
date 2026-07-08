@@ -133,6 +133,14 @@ Pull broader context first if a learning is terse: `graph learnings --topic <t>`
 
 **Status requests (live-state first):** When the user asks for status, an update, "where are we", or "is X done", do NOT answer from the notification feed or action items alone — those lag reality. ALWAYS reconcile against LIVE state via the juggle CLI before reporting: `agent list` (which agents are busy/idle), `tmux capture-pane -t <pane> -p | tail` (what each working agent is actually doing), `thread list` and `thread messages <id> --limit 5`, plus the relevant repo git state (branches/worktrees/unmerged commits). Notifications/action items are a supplement, not the source of truth. If completed-but-unintegrated work exists (agent done, branch unmerged), finish the finalization (merge/push/GC) as part of answering, then report the reconciled truth.
 
+**Deep agent inspection (raw pane read):** When `agent list` isn't enough — an agent looks stalled or shows `busy` but you're unsure it's truly working — read its live tmux pane (the pane is ground truth; DB `status` can lag):
+1. Pane id from `agent list` (the `%NNNNN` column, e.g. `%11509`).
+2. `tmux capture-pane -t %11509 -p | grep -v '^$' | tail -15`
+   - bottom line is just an empty shell prompt (`❯`/`$`/`➜`) with no streaming output ⇒ **idle** (done-but-unreleased or waiting), NOT working — reconcile/reap it (`agent release`/`agent decommission`) instead of waiting on it.
+   - live tool call / spinner / partial output ⇒ genuinely working; leave it.
+3. More history: `tmux capture-pane -t %11509 -p -S -300 | tail -60` (scrollback).
+4. `capture-pane` errors "can't find pane" ⇒ the agent's tmux window is gone (dead/reaped).
+
 ---
 
 ## Category 3: Major Project (Superpowers Workflow)
