@@ -31,6 +31,7 @@ from juggle_cmd_research import cmd_research
 from juggle_cmd_db_flush import cmd_db_flush
 from juggle_cmd_add_node import cmd_add_node
 from juggle_cmd_migration import cmd_migration_next
+from juggle_cmd_monitor import cmd_monitor_cron_spec
 from juggle_cmd_schedule import cmd_schedule_delete, cmd_schedule_list
 
 
@@ -198,4 +199,9 @@ MISC_COMMANDS: tuple[Cmd, ...] = (
         ),
         aliases=("db-flush",),
         help="Flush live (tmpfs) DB to durable disk path"),
+    Cmd("monitor", "cron-spec", cmd_monitor_cron_spec,
+        args=(
+            Arg("--json", dest="json_out", action="store_true", help="Emit {cron, prompt} JSON"),
+        ),
+        help="Print the CronCreate spec (cadence + poll prompt) for the legacy-monitor fallback"),
 )
