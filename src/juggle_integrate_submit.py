@@ -57,10 +57,14 @@ def _advance_topic_submitted(db, thread_uuid, ticket) -> None:
 
 def finalize_submit_result(db, backend, result, *, thread_uuid, worktree_path,
                            worktree_branch, main_repo_path, rebase_onto,
-                           push_mode, fail, release):
+                           push_mode, fail, release, task=None):
     """Interpret ``result`` (a vcs_types.SubmitResult) into ``(ok, msg)`` plus its
     side effects. ``fail`` is _run_integrate's refusal closure (files a fail
-    envelope + releases the lock); ``release`` releases the merge-queue lock."""
+    envelope + releases the lock); ``release`` releases the merge-queue lock.
+    ``task`` is the graph-task binding (None for an ad-hoc thread) — a landed
+    ad-hoc integrate additionally reconciles the conversation node's
+    background-wedge (2026-07-07 #5558/#5564; see juggle_topic_lifecycle
+    .reconcile_adhoc_integrate)."""
     from juggle_integrate_envelope import STEP_SUBMIT_FAILED
     from juggle_cmd_integrate import _record_merged_sha, _restart_juggle_daemons
 
@@ -94,6 +98,15 @@ def finalize_submit_result(db, backend, result, *, thread_uuid, worktree_path,
     # Still BEFORE the worktree fields are cleared below (thread → topic
     # binding still resolves).
     _record_merged_sha(db, thread_uuid, main_repo_path, result.landed_rev)
+
+    # Ad-hoc (no graph task bound) thread: _record_merged_sha's topic lookup
+    # is a no-op (no kind='topic' node), so nothing else reconciles the
+    # conversation node's 'background' state — do it here (2026-07-07
+    # #5558/#5564), BEFORE the worktree fields are cleared below, same as the
+    # merged_sha recording above.
+    if task is None:
+        from juggle_topic_lifecycle import reconcile_adhoc_integrate
+        reconcile_adhoc_integrate(db, thread_uuid, result.landed_rev)
 
     # Remove worktree + branch, then clear worktree fields on the thread.
     backend.remove_workspace(main_repo_path, worktree_path)

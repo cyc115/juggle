@@ -233,6 +233,7 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             worktree_branch=worktree_branch, main_repo_path=main_repo_path,
             rebase_onto=rebase_onto, push_mode=push_mode,
             fail=_fail, release=lambda: release_repo_lock(lock_path),
+            task=task,
         )
 
     except Exception as e:

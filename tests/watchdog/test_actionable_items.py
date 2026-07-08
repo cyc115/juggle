@@ -260,6 +260,64 @@ def test_orphan_recovery_exhausted_emits_decision_action_item(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 4b. Landed-ad-hoc guard (2026-07-07 #5558/#5564) — a background conversation
+# node whose work already landed/merged is not a real orphan.
+# ---------------------------------------------------------------------------
+
+
+def test_orphan_scan_skips_landed_background_thread(tmp_path):
+    """A background thread whose work has already landed (merged_sha
+    stamped, e.g. by juggle_topic_lifecycle.reconcile_adhoc_integrate) must
+    not get a spurious [RQ] orphan action item nor an auto-recovery
+    re-dispatch — the work is done, not abandoned."""
+    from juggle_db import JuggleDB
+    from juggle_watchdog import check_orphaned_threads
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+
+    thread_id = db.create_thread("landed ad-hoc test", session_id="")
+    db.update_thread(
+        thread_id, status="background", last_active_at="2020-01-01T00:00:00",
+        last_dispatched_task="redo work", last_dispatched_role="coder",
+        merged_sha="deadbeef",
+    )
+
+    mgr = MagicMock()
+    new_agent = {"id": "c" * 32, "pane_id": "%10"}
+    mgr.spawn_agent.return_value = new_agent
+
+    with patch.object(db, "add_action_item") as mock_action:
+        orphaned = check_orphaned_threads(
+            db, orphan_threshold=1.0, mgr=mgr, max_recovery_attempts=2,
+        )
+
+    mock_action.assert_not_called()
+    mgr.spawn_agent.assert_not_called()
+    assert thread_id not in orphaned
+
+
+def test_orphan_scan_still_flags_unmerged_background_thread(tmp_path):
+    """MUST NOT regress: a background thread with genuinely UNMERGED work
+    (no merged_sha, no landed terminal state) past threshold is still a real
+    orphan and must still be flagged."""
+    from juggle_db import JuggleDB
+    from juggle_watchdog import check_orphaned_threads
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+
+    thread_id = db.create_thread("unmerged orphan test", session_id="")
+    db.update_thread(
+        thread_id, status="background", last_active_at="2020-01-01T00:00:00",
+    )
+
+    orphaned = check_orphaned_threads(db, orphan_threshold=1.0, mgr=None)
+
+    assert thread_id in orphaned
+
+
+# ---------------------------------------------------------------------------
 # 5. Singleton — second start kills watchdog PIDs only
 # ---------------------------------------------------------------------------
 

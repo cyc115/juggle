@@ -21,6 +21,33 @@ def decide_thread_close(db, thread: dict, thread_uuid: str) -> str | None:
     return None
 
 
+def reconcile_adhoc_integrate(db, thread_uuid: str, merged_sha: str | None) -> None:
+    """Reconcile an ad-hoc (non-graph) thread's conversation node after a
+    SUCCESSFUL integrate (2026-07-07 #5558/#5564).
+
+    An ad-hoc thread has no kind='topic' node bound, so integrate's
+    ``_record_merged_sha`` topic lookup is a no-op — nothing else reconciled
+    the conversation node, leaving it ``state='background'`` forever after its
+    work landed. The watchdog's orphan scan then filed a spurious [RQ] action
+    item (or re-dispatched) on already-merged work.
+
+    Stamps ``merged_sha`` on the conversation node itself — the same field
+    ``dbops.terminal_states.topic_work_landed`` reads — and closes the thread
+    via the existing thread-close path (``set_thread_status`` -> state='done',
+    a landed terminal) so it is never mistaken for an abandoned background
+    thread again. Idempotent: a no-op once the thread has already landed.
+    """
+    from dbops.terminal_states import topic_work_landed
+
+    thread = db.get_thread(thread_uuid)
+    if not thread or topic_work_landed(thread):
+        return
+    if merged_sha:
+        db.update_thread(thread_uuid, merged_sha=merged_sha)
+    if thread.get("state") == "background":
+        db.set_thread_status(thread_uuid, "closed")
+
+
 def ensure_topic_child(
     db,
     *,

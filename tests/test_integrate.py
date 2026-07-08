@@ -617,6 +617,46 @@ def test_integrate_direct_records_merged_sha_after_push_pin(git_repo_with_remote
     assert r.returncode == 0, "recorded merged_sha must be an ancestor of the pushed main"
 
 
+def test_integrate_adhoc_thread_leaves_background_pin(git_repo_with_remote, tmp_path):
+    """2026-07-07 #5558/#5564: an ad-hoc (chat-dispatched) thread has no
+    kind='topic' node bound, so _record_merged_sha's topic lookup is a no-op
+    and nothing else reconciled its conversation node — it stayed
+    state='background' forever after a successful direct integrate, so the
+    watchdog's orphan scan later filed a spurious [RQ] action item (or
+    re-dispatched) on already-landed work. A successful integrate must
+    reconcile the ad-hoc conversation node out of 'background' to a landed
+    terminal."""
+    from juggle_cmd_integrate import _run_integrate
+    from juggle_db import JuggleDB
+    from dbops.terminal_states import topic_work_landed
+
+    local, remote = git_repo_with_remote
+    wt = _make_worktree(local, str(tmp_path), "AH")
+    _add_commit(wt, "feat.py", "y = 2\n", "feat: add feature")
+
+    db = JuggleDB(db_path=str(tmp_path / "j_ah.db"))
+    db.init_db()
+    tid = db.create_thread("t", session_id="s")
+    db.update_thread(
+        tid, worktree_path=wt, worktree_branch="cyc_AH", main_repo_path=local,
+        status="background",
+    )
+
+    thread = db.get_thread(tid)
+    assert thread["state"] == "background"
+    with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "direct", "test_cmd": ""}):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok, msg = _run_integrate(thread, db)
+
+    assert ok, msg
+    after = db.get_thread(tid)
+    assert after["state"] != "background", (
+        "ad-hoc thread must leave 'background' after a successful integrate"
+    )
+    assert topic_work_landed(after), "landed ad-hoc thread must satisfy topic_work_landed"
+
+
 def test_integrate_happy_path_pr_mode(git_repo_with_remote, tmp_path):
     """pr mode: branch pushed to origin, local main NOT advanced."""
     from juggle_cmd_integrate import _run_integrate

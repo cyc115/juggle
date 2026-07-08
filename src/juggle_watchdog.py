@@ -895,6 +895,16 @@ def check_orphaned_threads(
         if orphaned_for < orphan_threshold:
             continue
 
+        # Landed-ad-hoc guard (2026-07-07 #5558/#5564): work already merged
+        # (merged_sha stamped — e.g. by juggle_topic_lifecycle
+        # .reconcile_adhoc_integrate — or the node otherwise sits in a landed
+        # terminal) is routine cleanup lag, never abandonment. Skip BOTH the
+        # action item and any auto-recovery re-dispatch. An UNMERGED orphan
+        # never satisfies this and is still flagged below.
+        from dbops.terminal_states import topic_work_landed
+        if topic_work_landed(thread):
+            continue
+
         with db._connect() as conn:
             recent = conn.execute(
                 "SELECT id FROM watchdog_events "
