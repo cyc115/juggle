@@ -7,7 +7,6 @@ subcommand and doctor hook.
 """
 from __future__ import annotations
 
-import argparse
 import json
 import subprocess
 import sys

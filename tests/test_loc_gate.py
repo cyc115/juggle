@@ -13,7 +13,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
 GATE = REPO_ROOT / "scripts" / "loc_gate.py"

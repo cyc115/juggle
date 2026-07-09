@@ -1,12 +1,10 @@
 """Tests for juggle_hindsight.py — Hindsight HTTP API client."""
 
 import json
-import os
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from threading import Thread
-from unittest.mock import patch
 
 import pytest
 
@@ -14,7 +12,7 @@ SRC_DIR = str(Path(__file__).parent.parent / "src")
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-from juggle_hindsight import HindsightClient, HindsightError
+from juggle_hindsight import HindsightClient
 
 
 class MockHindsightHandler(BaseHTTPRequestHandler):

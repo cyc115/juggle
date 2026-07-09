@@ -1,6 +1,5 @@
 """Tests for PreCompact checkpoint: write, restore, cleanup, and guard logic."""
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -145,7 +144,6 @@ class TestStaleReaper:
         cp_path.write_text(json.dumps(old_payload))
 
         # Simulate what handle_session_start does for the reaper block
-        import importlib
         with patch.object(juggle_hooks_config, "_CHECKPOINT_PATH", cp_path):
             if cp_path.exists():
                 try:

@@ -37,7 +37,7 @@ def test_build_match_profile_prompt_includes_negative_framing():
     assert "NOT" in prompt or "negative" in prompt.lower() or "sibling" in prompt.lower()
 
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 def test_synth_project_writes_match_profile(tmp_path):

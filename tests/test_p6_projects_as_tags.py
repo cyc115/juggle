@@ -130,7 +130,6 @@ def test_add_task_missing_topic_on_topic_project_no_refusal(db_with_project):
     # Create a real topic so has_real_topic=True
     db_topics.create_topic(db_with_project, topic_id="t1", project_id=pid, title="T1")
 
-    import json
     args = _make_add_task_args(
         db_with_project, project=pid, topic=None, json_out=True
     )

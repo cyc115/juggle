@@ -7,9 +7,8 @@ Fix 2: git_commit(paths=...) to stage only specific files
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 

@@ -4,7 +4,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from unittest import mock
 
 SRC_DIR = str(Path(__file__).parent.parent.parent / "src")
 if SRC_DIR not in sys.path:

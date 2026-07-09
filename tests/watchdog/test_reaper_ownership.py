@@ -21,7 +21,7 @@ def _load_watchdog_module():
     """
     import importlib.machinery
     import importlib.util
-    import tempfile, logging
+    import tempfile
 
     loader = importlib.machinery.SourceFileLoader(
         "juggle_agent_watchdog",

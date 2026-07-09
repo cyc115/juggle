@@ -1,7 +1,6 @@
 """Tests for JuggleDB tmpfs bootstrap wiring (Task 5)."""
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 

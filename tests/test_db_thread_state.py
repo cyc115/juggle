@@ -1,6 +1,5 @@
 """JuggleDB tests: get_thread_state badge logic (split from test_juggle_db.py, 2026-06-10)."""
 
-import json
 import sys
 from pathlib import Path
 

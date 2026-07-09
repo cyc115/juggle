@@ -1,6 +1,5 @@
 """CLI tests: open-in-editor + _parse_path_with_line (split from test_juggle_cli.py, 2026-06-10)."""
 
-import json
 import os
 import subprocess
 import sys
@@ -12,7 +11,6 @@ import pytest
 SRC_DIR_TOP = str(Path(__file__).parent.parent / "src")
 if SRC_DIR_TOP not in sys.path:
     sys.path.insert(0, SRC_DIR_TOP)
-from juggle_cli import _last_sentences
 
 CLI = str(Path(__file__).parent.parent / "src" / "juggle_cli.py")
 SRC_DIR = str(Path(__file__).parent.parent / "src")

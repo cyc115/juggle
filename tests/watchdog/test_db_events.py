@@ -136,7 +136,9 @@ def test_add_watchdog_event(db):
 
 
 def test_get_agent_sets_busy_since(tmp_path):
-    import os, subprocess, sys
+    import os
+    import subprocess
+    import sys
 
     db_path = tmp_path / "test.db"
     d = JuggleDB(str(db_path))
@@ -176,7 +178,9 @@ def test_get_agent_sets_busy_since(tmp_path):
 
 def test_send_task_stores_last_task_and_pane_hash(tmp_path):
     """send-task writes last_task, last_send_task_pane_hash (16 hex chars), last_send_task_at."""
-    import os, subprocess, sys
+    import os
+    import subprocess
+    import sys
 
     db_path = tmp_path / "test.db"
     task_file = tmp_path / "task.txt"
@@ -207,7 +211,9 @@ def test_send_task_stores_last_task_and_pane_hash(tmp_path):
 
 
 def test_complete_agent_inserts_completion(tmp_path):
-    import os, subprocess, sys
+    import os
+    import subprocess
+    import sys
 
     db_path = tmp_path / "test.db"
 
@@ -284,7 +290,9 @@ def test_release_agent_copies_dispatch_payload(tmp_path):
 
 
 def test_set_watchdog_minutes(tmp_path):
-    import os, subprocess, sys
+    import os
+    import subprocess
+    import sys
 
     db_path = tmp_path / "test.db"
     d = JuggleDB(str(db_path))
@@ -303,7 +311,9 @@ def test_set_watchdog_minutes(tmp_path):
 
 
 def test_set_watchdog_off(tmp_path):
-    import os, subprocess, sys
+    import os
+    import subprocess
+    import sys
 
     db_path = tmp_path / "test.db"
     d = JuggleDB(str(db_path))

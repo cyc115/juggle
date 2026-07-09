@@ -304,7 +304,8 @@ def test_cli_add_node_json_output(db):
         project=None, deps=None, required_by=None, verify_cmd=None,
         parent=None, json_out=True, db_path=str(db.db_path),
     )
-    import io, contextlib
+    import io
+    import contextlib
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         cmd_add_node(args)

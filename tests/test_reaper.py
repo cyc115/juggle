@@ -1,6 +1,5 @@
 """Tests for stale-agent reaping at 12h TTL."""
 
-import os
 import sys
 from datetime import datetime, timedelta, timezone
 from unittest import mock

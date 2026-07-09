@@ -33,7 +33,6 @@ def _fail():
 
 
 
-import os
 
 
 def test_send_message_mock_returns_true(mgr):

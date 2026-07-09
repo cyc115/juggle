@@ -1,10 +1,8 @@
 """Tests for juggle_schedule_autofix."""
-import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
@@ -107,7 +105,6 @@ def test_issue_dedup_skips_existing():
 # ---------------------------------------------------------------------------
 
 def test_is1_bandit_empty_output():
-    import subprocess
     mock_result = MagicMock()
     mock_result.stdout = "{}"
     mock_result.returncode = 0

@@ -1,6 +1,4 @@
 """Conftest for schedule tests — sets _JUGGLE_TEST_DB to an in-memory path."""
-import os
-import tempfile
 import pytest
 
 

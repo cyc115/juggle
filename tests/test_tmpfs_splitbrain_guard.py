@@ -6,14 +6,12 @@ hard-fail at startup rather than silently falling back or corrupting data.
 import os
 import sys
 import pytest
-from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 def test_splitbrain_guard_raises_when_tmpfs_dir_missing(tmp_path):
     """JuggleDB raises if mode=tmpfs and tmpfs_dir does not exist."""
-    from juggle_db_path import resolve_db_paths
     durable = tmp_path / "juggle.db"
     missing_dir = tmp_path / "nonexistent_shm"
     # missing_dir is not created
@@ -24,7 +22,6 @@ def test_splitbrain_guard_raises_when_tmpfs_dir_missing(tmp_path):
 
 def test_splitbrain_guard_raises_when_tmpfs_dir_unwritable(tmp_path):
     """JuggleDB raises if mode=tmpfs and tmpfs_dir is not writable."""
-    from juggle_db_path import resolve_db_paths
     durable = tmp_path / "juggle.db"
     locked_dir = tmp_path / "locked_shm"
     locked_dir.mkdir(mode=0o444)  # read-only

@@ -2,7 +2,6 @@
 
 import sys
 from pathlib import Path
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest

@@ -1,11 +1,10 @@
 """Tests for Task 1 schema additions (notifications_v2, action_items, threads columns)."""
 # fmt: off
 
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -121,8 +120,6 @@ def test_dismiss_orphan_action_items_clears_null_thread(db):
 
 def test_dismiss_orphan_action_items_skips_already_dismissed(db):
     """Already-dismissed orphans must not be re-counted."""
-    import datetime
-    from juggle_db import JuggleDB
 
     db.add_action_item(None, "orphan already done", type_="question")
     with db._connect() as conn:

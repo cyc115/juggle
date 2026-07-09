@@ -5,7 +5,6 @@ _NodeDetailModal._fetch_summary seam.)
 """
 import os
 import sys
-import types
 import unittest.mock as mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -38,7 +37,6 @@ def test_fetch_summary_uses_app_call_from_thread(monkeypatch):
     Regression: before the fix, this raised AttributeError because ModalScreen
     has no call_from_thread — only App does.
     """
-    import juggle_cockpit_modals as mod
 
     obj = _make_modal_instance()
 

@@ -245,7 +245,6 @@ def test_cmd_start_stores_orchestrator_session_id(tmp_path, monkeypatch):
     orchestrator_session_id.
     """
     import juggle_cmd_threads
-    import juggle_settings
 
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", ORCH_SESSION)
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path))

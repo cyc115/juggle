@@ -1,8 +1,6 @@
 """Tests for juggle_db_path resolver (Task 2)."""
 import os
-import platform
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -45,7 +43,6 @@ def test_tmpfs_mode_live_name_includes_instance(tmp_path):
 def test_tmpfs_mode_macos_falls_back_to_direct(tmp_path):
     """tmpfs mode on macOS falls back to direct mode with a warning."""
     from juggle_db_path import resolve_db_paths
-    import logging
     durable = tmp_path / "juggle.db"
     result = resolve_db_paths("tmpfs", "/dev/shm", durable, "test",
                               _platform="darwin")

@@ -1,13 +1,11 @@
 """JuggleDB tests: archive_thread, get_archive_candidates, unarchive_thread (split from test_juggle_db.py, 2026-06-10)."""
 
-import json
 import sys
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from juggle_context import get_thread_state
 from juggle_db import JuggleDB
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -378,7 +378,6 @@ def test_fetch_scheduled_tasks_uses_backend(tmp_path):
     mock_backend = MagicMock()
     mock_backend.list_tasks.return_value = [mock_info]
     with patch("juggle_cockpit_model.get_backend", mock_backend, create=True):
-        import importlib
         import juggle_cockpit_model
         with patch("juggle_scheduler.get_backend", return_value=mock_backend):
             tasks = juggle_cockpit_model.fetch_scheduled_tasks()

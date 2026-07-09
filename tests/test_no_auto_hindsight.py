@@ -5,13 +5,10 @@ These tests MUST FAIL before the implementation is applied.
 """
 
 import argparse
-import importlib
-import os
 import sqlite3
 import sys
 import threading
 from pathlib import Path
-from unittest import mock
 
 import pytest
 

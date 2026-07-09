@@ -5,10 +5,8 @@ Tests 1-8 per the spec; all use an isolated tmp_path DB.
 """
 
 import datetime as _dt
-import json
 import os
 import sys
-import time as _time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 

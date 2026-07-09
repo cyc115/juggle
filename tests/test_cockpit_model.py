@@ -1,4 +1,5 @@
-import sys, os
+import sys
+import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -188,7 +189,7 @@ def test_priority_tier_done_already_reviewed():
 import sqlite3
 import time as _time
 from datetime import datetime, timezone
-from juggle_cockpit_model import snapshot, CockpitState
+from juggle_cockpit_model import snapshot
 
 
 def _make_in_memory_db():

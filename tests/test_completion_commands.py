@@ -318,4 +318,4 @@ def test_finalize_worktree_non_ff_leaves_worktree(tmp_path):
     success, msg = _finalize_worktree(thread)
     # Should fail because main diverged (ff-only won't work)
     assert not success, f"Should fail for non-ff: {msg}"
-    assert wt_path.exists(), f"Worktree should still exist on non-ff"
+    assert wt_path.exists(), "Worktree should still exist on non-ff"

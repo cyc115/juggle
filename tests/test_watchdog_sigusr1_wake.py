@@ -15,7 +15,6 @@ import sys
 import time
 import threading
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -42,7 +41,7 @@ def test_sigusr1_sets_tick_event():
 
     P4 regression pin: handler must be installed and must set the event.
     """
-    from juggle_watchdog_daemon import _tick_event, _handle_sigusr1
+    from juggle_watchdog_daemon import _tick_event
 
     _tick_event.clear()
     os.kill(os.getpid(), signal.SIGUSR1)

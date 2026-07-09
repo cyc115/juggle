@@ -42,7 +42,6 @@ def test_bell_enabled_attr_exists():
 @pytest.mark.asyncio
 async def test_bell_fires_on_new_blocker(tmp_path):
     """New tier-0 action on 2nd _refresh fires self.bell(); 1st tick does not."""
-    from unittest.mock import patch
     from juggle_db import JuggleDB
     from juggle_cockpit import CockpitApp
 
@@ -79,7 +78,6 @@ async def test_bell_fires_on_new_blocker(tmp_path):
 @pytest.mark.asyncio
 async def test_bell_fires_on_agent_failure(tmp_path):
     """Agent transitioning busy→stale on 2nd _refresh fires self.bell()."""
-    from unittest.mock import patch
     from juggle_db import JuggleDB
     from juggle_cockpit import CockpitApp
 
@@ -117,7 +115,6 @@ async def test_bell_fires_on_agent_failure(tmp_path):
 @pytest.mark.asyncio
 async def test_bell_no_fire_on_first_tick(tmp_path):
     """First _refresh (prev state empty) does NOT call self.bell()."""
-    from unittest.mock import patch
     from juggle_db import JuggleDB
     from juggle_cockpit import CockpitApp
 

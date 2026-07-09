@@ -20,11 +20,10 @@ All tests use isolated tmp git repos; no prod DB.
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import Mock, patch, call
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import pytest
 
 from juggle_db import JuggleDB
 from dbops import db_topics

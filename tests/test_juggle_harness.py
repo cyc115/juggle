@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-import juggle_harness
 from juggle_harness import TemplateHarnessAdapter, get_adapter, _ORCHESTRATOR_REPO_ROOT
 from harnesses.claude import ClaudeCodeAdapter
 

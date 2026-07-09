@@ -5,14 +5,13 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 SRC_DIR_TOP = str(Path(__file__).parent.parent / "src")
 if SRC_DIR_TOP not in sys.path:
     sys.path.insert(0, SRC_DIR_TOP)
-from juggle_cli import _last_sentences
 
 CLI = str(Path(__file__).parent.parent / "src" / "juggle_cli.py")
 SRC_DIR = str(Path(__file__).parent.parent / "src")

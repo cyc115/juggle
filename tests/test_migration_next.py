@@ -5,7 +5,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import pytest
 
 
 def _conn(tmp_path) -> sqlite3.Connection:

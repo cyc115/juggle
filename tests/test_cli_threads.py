@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,7 +19,6 @@ SRC_DIR = str(Path(__file__).parent.parent / "src")
 
 def run_cli(args, db_path):
     """Run juggle_cli.py with a test DB path, override DB_PATH via env."""
-    import os
 
     env = os.environ.copy()
     # Patch by passing db_path via a temporary monkeypatch in subprocess

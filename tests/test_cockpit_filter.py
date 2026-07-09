@@ -1,7 +1,6 @@
 """Functional Pilot tests for cockpit action_filter state cycling. Split from test_cockpit_features_v2.py (2026-06-10)."""
 import os
 import sys
-from unittest.mock import patch
 
 import pytest
 

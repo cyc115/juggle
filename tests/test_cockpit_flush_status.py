@@ -1,7 +1,6 @@
 """Tests for cockpit flush-status helper (Task 9)."""
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -34,7 +33,6 @@ def test_get_flush_status_line_after_flush(tmp_path):
 def test_get_flush_status_line_stale_alert(tmp_path):
     """Returns an alert marker when flush is stale (old timestamp)."""
     from juggle_cockpit_flush_status import get_flush_status_line, _STALE_THRESHOLD_S
-    from juggle_db import JuggleDB
     from juggle_cmd_db_flush import _ts_path
     from datetime import datetime, timezone, timedelta
 

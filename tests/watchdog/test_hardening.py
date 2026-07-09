@@ -141,7 +141,7 @@ def test_execute_recovery_aborts_if_pane_hash_changes(db, tmp_path):
     Regression: agent ran a long test suite, watchdog declared it stalled,
     spawned a recovery agent that duplicated the just-merged work.
     """
-    from juggle_watchdog import execute_recovery, write_recovery_snapshot
+    from juggle_watchdog import execute_recovery
 
     session_id = "sess-test"
     thread_id = db.create_thread("slow-coder", session_id=session_id)
@@ -380,7 +380,6 @@ def test_cmd_get_agent_does_not_reuse_wrong_role(db, tmp_path, monkeypatch):
     args.repo = "/repo"
 
     import juggle_cmd_agents_common as _com_mod
-    import juggle_tmux as _tmux_mod
     import juggle_cli_common as _common_mod
 
     monkeypatch.setattr(_com_mod, "get_db", lambda: db)

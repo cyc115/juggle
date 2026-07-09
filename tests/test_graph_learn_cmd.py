@@ -105,7 +105,6 @@ def test_learn_unknown_node_rejects_nonzero(db):
 
 def test_learn_parser_registered():
     """`graph learn <node-id> <text>` must be wired into the graph parser."""
-    from juggle_cli_spec import build_parser
     from juggle_cli_commands_misc import MISC_COMMANDS  # noqa: F401
     import argparse as _ap
 
