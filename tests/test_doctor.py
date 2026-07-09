@@ -278,3 +278,45 @@ def test_doctor_preserves_archived_labels(tmp_path, monkeypatch):
     assert rows2["t1"] == "AA"
     assert rows2["t2"] == "AB"
     assert rows2["t3"] == "AC"
+
+
+def test_doctor_repairs_duplicate_held_labels(tmp_path, monkeypatch):
+    """2026-07-08 incident: doctor must repair a pre-existing duplicate label
+    shared by two NON-ARCHIVED conversations (a 'done' row never archived +
+    a fresh live row) — the exact prod shape (label 'TB' held by a done row
+    from days earlier and a brand-new background row)."""
+    import juggle_cmd_doctor as doc
+    import juggle_db
+
+    db_path = tmp_path / "dup_label.db"
+    _make_current_db(db_path)
+
+    monkeypatch.setattr(juggle_db, "DB_PATH", str(db_path))
+    monkeypatch.setattr(doc, "CONFIG_PATH", tmp_path / "nope.json")
+
+    class _Args:
+        dry_run = False
+
+    # First pass: bring the DB up to the current (nodes-backed) schema.
+    assert doc.cmd_doctor(_Args()) == 0
+
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "INSERT INTO nodes(id, kind, title, state, user_label, created_at, updated_at) "
+        "VALUES ('old', 'conversation', 'old task', 'done', 'ZZ', '2026-07-02 04:03', '2026-07-02 04:03')"
+    )
+    conn.execute(
+        "INSERT INTO nodes(id, kind, title, state, user_label, created_at, updated_at) "
+        "VALUES ('new', 'conversation', 'new task', 'background', 'ZZ', '2026-07-08 21:23', '2026-07-08 21:23')"
+    )
+    conn.commit()
+    conn.close()
+
+    assert doc.cmd_doctor(_Args()) == 0
+
+    conn = sqlite3.connect(str(db_path))
+    labels = {r[0]: r[1] for r in conn.execute(
+        "SELECT id, user_label FROM nodes WHERE id IN ('old','new')")}
+    conn.close()
+    assert labels["old"] == "ZZ", "the OLDER holder keeps its label"
+    assert labels["new"] != "ZZ", "the newer duplicate must be reassigned"

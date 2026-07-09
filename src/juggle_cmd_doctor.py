@@ -229,6 +229,23 @@ def cmd_doctor(args) -> int:
         except Exception as e:
             print(f"graph parentage: skipped ({e})")
 
+    # 3.6 Repair duplicate NON-ARCHIVED conversation labels (2026-07-08 incident:
+    # next_wheel_slug only skipped open/running/background, so a 'done'-but-
+    # unarchived row's slug could be recycled to a brand new thread). Idempotent,
+    # no-op when there is nothing to repair.
+    if not dry:
+        try:
+            from dbops.repair_dup_labels import repair_duplicate_held_labels
+            with JuggleDB(DB_PATH)._connect() as _conn:
+                _n = repair_duplicate_held_labels(_conn)
+                _conn.commit()
+            print(
+                f"dup labels: reassigned {_n} duplicate(s)" if _n
+                else "dup labels: none found"
+            )
+        except Exception as e:
+            print(f"dup labels: skipped ({e})")
+
     # 4. Reconcile graph topic states (repair drift between task tier + topic tier)
     from dbops import db_topics as dbt
 

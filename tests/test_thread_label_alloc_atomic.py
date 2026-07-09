@@ -192,3 +192,74 @@ def test_widen_migration_repairs_existing_duplicate_live_labels(db):
             "SELECT sql FROM sqlite_master WHERE name = 'idx_nodes_live_label'"
         ).fetchone()["sql"]
     assert "background" in sql
+
+
+# ---------------------------------------------------------------------------
+# (d) 2026-07-08 incident: a DONE (closed)-but-unarchived thread's label was
+# recycled to a brand-new thread. Prod evidence (read-only query): label 'TB'
+# was held by THREE conversation nodes — a 'done' row from 2026-07-02 that was
+# never archived, an 'archived' row from 2026-07-04, and a fresh 'background'
+# row created 2026-07-08. Only 'open'/'running'/'background' were treated as
+# "held" by next_wheel_slug, so the 'done' row's slug was free for reuse —
+# producing two NON-ARCHIVED rows sharing a label (ambiguous in `thread list`
+# and for label-based CLI resolution, even though get_thread_by_user_label's
+# newest-live-wins tiebreak still resolves it correctly). Fix: a slug is held
+# by ANY non-archived conversation, not just the live subset — only archiving
+# frees it.
+# ---------------------------------------------------------------------------
+def test_done_but_unarchived_label_not_recycled_to_new_thread(db):
+    old = db.create_thread("old task", session_id="s")
+    held = db.get_thread(old)["user_label"]
+    db.set_thread_status(old, "closed")  # -> node state 'done', NOT archived
+    assert db.get_thread(old)["state"] == "done"
+
+    _rewind_wheel_to(db, held)  # next allocation would revisit this slug
+
+    new = db.create_thread("new task", session_id="s")
+    assert db.get_thread(new)["user_label"] != held
+
+
+def test_repair_reassigns_done_but_unarchived_duplicate(db):
+    """dbops.repair_dup_labels.repair_duplicate_held_labels must break a
+    pre-existing 'done'+'background' duplicate (the exact 2026-07-08 prod
+    shape) — keeping the oldest holder, reassigning the newer one."""
+    from dbops.repair_dup_labels import repair_duplicate_held_labels
+
+    now = datetime.now(timezone.utc).isoformat()
+    older_id, newer_id = str(uuid.uuid4()), str(uuid.uuid4())
+    with db._connect() as conn:
+        for tid, state, created in (
+            (older_id, "done", "2026-07-02 04:03"),
+            (newer_id, "background", "2026-07-08 21:23"),
+        ):
+            conn.execute(
+                "INSERT INTO nodes(id, kind, title, state, user_label, "
+                "created_at, updated_at) VALUES (?, 'conversation', 'dup', ?, 'ZZ', ?, ?)",
+                (tid, state, created, now),
+            )
+        conn.commit()
+
+    with db._connect() as conn:
+        reassigned = repair_duplicate_held_labels(conn)
+        conn.commit()
+
+    assert reassigned == 1
+    assert db.get_thread(older_id)["user_label"] == "ZZ"
+    assert db.get_thread(newer_id)["user_label"] != "ZZ"
+
+
+def test_unarchive_does_not_steal_slug_from_done_unarchived_holder(db):
+    """unarchive_thread's held-set scan must also cover 'done' (not just
+    live), or restoring an archived thread's OWN slug can collide with a
+    'done'-but-unarchived row that has since taken it over the wheel."""
+    a = db.create_thread("thread A", session_id="s")
+    label_a = db.get_thread(a)["user_label"]
+    db.archive_thread(a)  # keeps label_a, state='archived'
+
+    _rewind_wheel_to(db, label_a)
+    b = db.create_thread("thread B", session_id="s")
+    assert db.get_thread(b)["user_label"] == label_a  # wheel reused the freed slug
+    db.set_thread_status(b, "closed")  # -> 'done', NOT archived — still holds it
+
+    db.unarchive_thread(a)
+    assert db.get_thread(a)["user_label"] != label_a

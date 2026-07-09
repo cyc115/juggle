@@ -392,41 +392,60 @@ class ThreadsMixin:
     def unarchive_thread(self, thread_id: str) -> str:
         """Unarchive: status=active, show_in_list=1.
 
-        T-slug-wheel: the archived row kept its slug, so reuse it when no LIVE
-        thread currently holds it; otherwise allocate a fresh slug off the wheel
-        to satisfy the partial unique 'no two live share a slug' invariant."""
+        T-slug-wheel: the archived row kept its slug, so reuse it when no other
+        NON-ARCHIVED row currently holds it (2026-07-08: widened past the live
+        subset — open/running/background — because a 'done'-but-unarchived row
+        can have taken over the slug via the wheel while this one sat archived);
+        otherwise allocate a fresh slug off the wheel. BEGIN IMMEDIATE makes the
+        read-decide-write atomic across processes (2026-07-08: this read-then-
+        write was previously a plain deferred transaction, a TOCTOU gap next to
+        create_thread's atomic allocation)."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         with self._connect() as conn:
-            # P8 c4-write-cut: nodes is the sole conversation store — resolve the
-            # existing label and the live-set from kind='conversation' nodes.
-            cur = conn.execute(
-                "SELECT user_label FROM nodes WHERE id = ? AND kind='conversation'",
+            conn.isolation_level = None  # manual transaction control
+            last_exc: Exception | None = None
+            for _attempt in range(_ALLOC_ATTEMPTS):
+                try:
+                    conn.execute("BEGIN IMMEDIATE")
+                except sqlite3.OperationalError as exc:
+                    last_exc = exc  # busy; retry
+                    continue
+                try:
+                    new_label = self._unarchive_pick_label(conn, thread_id)
+                    # status='active' maps to state='open'; the unique
+                    # idx_nodes_live_label holds because new_label is free
+                    # among non-archived nodes.
+                    mirror_conv_update(
+                        conn, thread_id, status="active", show_in_list=1,
+                        user_label=new_label, last_active_at=now,
+                    )
+                    conn.execute("COMMIT")
+                    return new_label
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
+            raise RuntimeError(
+                f"unarchive_thread: could not allocate a slug after "
+                f"{_ALLOC_ATTEMPTS} attempts"
+            ) from last_exc
+
+    def _unarchive_pick_label(self, conn, thread_id: str) -> str:
+        """Caller holds the write lock. Reuse the row's own slug unless some
+        OTHER non-archived row now holds it; else allocate a fresh one."""
+        cur = conn.execute(
+            "SELECT user_label FROM nodes WHERE id = ? AND kind='conversation'",
+            (thread_id,),
+        ).fetchone()
+        existing = cur["user_label"] if cur else None
+        held = {
+            row["user_label"]
+            for row in conn.execute(
+                "SELECT user_label FROM nodes WHERE kind='conversation' "
+                "AND user_label IS NOT NULL AND state != 'archived' AND id != ?",
                 (thread_id,),
-            ).fetchone()
-            existing = cur["user_label"] if cur else None
-            _ph = ",".join("?" * len(_LIVE_NODE_STATES))
-            live = {
-                row["user_label"]
-                for row in conn.execute(
-                    "SELECT user_label FROM nodes WHERE kind='conversation' "
-                    "AND user_label IS NOT NULL"
-                    f" AND state IN ({_ph}) AND id != ?",
-                    (*_LIVE_NODE_STATES, thread_id),
-                ).fetchall()
-            }
-            new_label = (
-                existing
-                if existing and existing not in live
-                else self._next_wheel_slug(conn)
-            )
-            # status='active' maps to state='open' (live); the unique
-            # idx_nodes_live_label holds because new_label is free among live nodes.
-            mirror_conv_update(
-                conn, thread_id, status="active", show_in_list=1,
-                user_label=new_label, last_active_at=now,
-            )
-            conn.commit()
-        return new_label
+            ).fetchall()
+        }
+        return existing if existing and existing not in held else self._next_wheel_slug(conn)
 
     # ---------------------------------------------------------------
     # Stale / archive-candidate queries

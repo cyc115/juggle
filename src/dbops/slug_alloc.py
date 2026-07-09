@@ -11,7 +11,14 @@ and to keep dbops.threads under the LOC budget.
 
 The functions take a raw sqlite3 connection. Callers that allocate a new slug
 MUST already hold the write lock (BEGIN IMMEDIATE) so the read-modify-write of
-``label_seq`` and the live-set scan are serialized across processes.
+``label_seq`` and the held-set scan are serialized across processes.
+
+2026-07-08 incident: the wheel's held-set scan (``_held_labels``) was widened
+AGAIN, this time past LIVE_NODE_STATES to "any non-archived state" — a
+'done'/'failed-exec' conversation that hasn't been archived yet still holds
+its slug. LIVE_NODE_STATES/LIVE_SLUG_STATES below remain the right set for
+their OTHER consumers (thread-cap counting, the open-thread dedup guard) —
+only the slug-uniqueness scan needed widening.
 """
 
 from __future__ import annotations
@@ -34,16 +41,22 @@ LIVE_NODE_STATES = ("open", "running", "background")
 _THREE_CHAR_SPACE = 26 ** 3
 
 
-def _live_labels(conn) -> set[str]:
-    """Slugs currently held by a LIVE conversation node (P8 c4-write-cut: reads
-    nodes, the sole conversation store, not the retired threads table)."""
-    ph = ",".join("?" * len(LIVE_NODE_STATES))
+def _held_labels(conn) -> set[str]:
+    """Slugs currently held by any NON-ARCHIVED conversation node.
+
+    2026-07-08 incident: a 'done'-but-unarchived conversation's slug was
+    treated as free (only open/running/background were "live"), so a brand
+    new thread recycled it while the done row was still sitting un-archived —
+    two non-archived rows sharing a label (ambiguous in `thread list` and for
+    label-based CLI resolution). Only 'archived' frees a slug now; every other
+    state (open/running/background/done/failed-exec/...) holds it, matching
+    the T-slug-wheel invariant that only archiving recycles-by-design (P8
+    c4-write-cut: reads nodes, the sole conversation store)."""
     return {
         r["user_label"]
         for r in conn.execute(
-            f"SELECT user_label FROM nodes WHERE kind='conversation' "
-            f"AND user_label IS NOT NULL AND state IN ({ph})",
-            LIVE_NODE_STATES,
+            "SELECT user_label FROM nodes WHERE kind='conversation' "
+            "AND user_label IS NOT NULL AND state != 'archived'"
         ).fetchall()
     }
 
@@ -51,26 +64,26 @@ def _live_labels(conn) -> set[str]:
 def next_wheel_slug(conn) -> str:
     """Allocate the next free slug, atomically advancing ``label_seq``.
 
-    Skips slugs held by any LIVE thread (LIVE_SLUG_STATES). On 2-char
-    exhaustion (all 676 AA..ZZ held by live threads) widens to a 3-letter slug
-    — graceful degradation, never crashes. The caller must hold the write lock.
+    Skips slugs held by any non-archived conversation (see _held_labels). On
+    2-char exhaustion (all 676 AA..ZZ held) widens to a 3-letter slug —
+    graceful degradation, never crashes. The caller must hold the write lock.
     """
     row = conn.execute(
         "SELECT value FROM juggle_meta WHERE key = 'label_seq'"
     ).fetchone()
     seq = int(row["value"]) if row and row["value"] is not None else 0
-    live = _live_labels(conn)
+    held = _held_labels(conn)
     for _ in range(WHEEL_SIZE):
         slug = _slug_from_wheel(seq)
         seq += 1
-        if slug not in live:
+        if slug not in held:
             conn.execute(
                 "INSERT INTO juggle_meta(key, value) VALUES ('label_seq', ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 (str(seq),),
             )
             return slug
-    return _next_wide_slug(live)
+    return _next_wide_slug(held)
 
 
 def _wide_slug(i: int) -> str:
@@ -82,21 +95,21 @@ def _wide_slug(i: int) -> str:
     )
 
 
-def _next_wide_slug(live: set[str]) -> str:
-    """First 3-letter slug (AAA..ZZZ) not held by a live thread.
+def _next_wide_slug(held: set[str]) -> str:
+    """First 3-letter slug (AAA..ZZZ) not in ``held``.
 
-    Backstop for when all 676 two-letter slots are held by LIVE threads. With
-    any sane MAX_THREADS the 2-char space never fills; this exists so the
-    create path degrades gracefully. ``label_seq`` (the 2-char wheel pointer)
-    is intentionally left untouched — normal allocation resumes once a 2-char
+    Backstop for when all 676 two-letter slots are held. With any sane
+    MAX_THREADS the 2-char space never fills; this exists so the create path
+    degrades gracefully. ``label_seq`` (the 2-char wheel pointer) is
+    intentionally left untouched — normal allocation resumes once a 2-char
     slug frees up.
     """
     for i in range(_THREE_CHAR_SPACE):
         slug = _wide_slug(i)
-        if slug not in live:
+        if slug not in held:
             return slug
     raise RuntimeError(
-        "slug space exhausted: all 2- and 3-letter slugs held by live threads"
+        "slug space exhausted: all 2- and 3-letter slugs held"
     )
 
 

@@ -132,7 +132,9 @@ def test_label_persists_on_update_thread_close(db):
 def test_newest_wins_resolution(db):
     older = db.create_thread("old", session_id="s")  # 'AA'
     assert _label(db, older) == "AA"
-    db.set_thread_status(older, "closed")  # frees the slug for reuse (not live)
+    # 2026-07-08: only archiving frees a slug now — 'closed' (done) alone no
+    # longer does (that gap was the incident this behavior change fixes).
+    db.archive_thread(older)
 
     # Reuse the wheel position so a NEW thread also lands on 'AA'.
     _set_seq(db, 0)
@@ -197,32 +199,38 @@ def test_counter_monotonic_across_deletes(db):
 # ---------------------------------------------------------------------------
 # 7. Allocation succeeds with >676 closed threads holding labels.
 #    (Regression pin: _next_excel_label raised once 702 persisted labels
-#     existed; _next_wheel_slug must only skip LIVE holders.)
+#     existed; _next_wheel_slug must gracefully widen rather than crash.)
 # ---------------------------------------------------------------------------
 def test_allocation_succeeds_with_many_closed_threads(db):
-    """Wheel allocation works even when >676 closed threads hold labels.
+    """Wheel allocation degrades gracefully (never crashes) when >676 closed
+    threads hold labels.
 
     2026-06-16: add-task / init_db path triggered _next_excel_label which
     raised 'All 702 user labels in use' once 702 persisted labels existed.
-    _next_wheel_slug skips ONLY live ('active'/'running') slugs, so it
-    tolerates arbitrarily many closed-thread labels.
+
+    2026-07-08: closed('done')-but-unarchived rows now HOLD their slug (the
+    same widened invariant that fixed the incident in
+    test_thread_label_alloc_atomic.test_done_but_unarchived_label_not_recycled_
+    to_new_thread) — so 700 closed threads genuinely exhaust the 676-slot
+    2-char wheel, and allocation must widen to a 3-char slug rather than
+    reuse one of the held 2-char labels.
     """
-    # Seed 700 closed threads — fills most two-letter wheel positions.
+    # Seed 700 closed threads — exhausts the two-letter wheel (676 slots).
     for i in range(700):
         tid = db.create_thread(f"seed-{i}", session_id="s")
         db.set_thread_status(tid, "closed")
 
-    # Allocation must succeed: the wheel finds a free live slot.
+    # Allocation must succeed: the wheel widens to 3-char, never crashes.
     new_tid = db.create_thread("live-new", session_id="s")
     label = db.get_thread(new_tid)["user_label"]
     assert label is not None
-    assert len(label) == 2 and label.isalpha()
+    assert len(label) == 3 and label.isalpha()
 
-    # A second new thread must also succeed.
+    # A second new thread must also succeed, with a distinct slug.
     new_tid2 = db.create_thread("live-new2", session_id="s")
     label2 = db.get_thread(new_tid2)["user_label"]
     assert label2 is not None
-    assert label2 != label  # distinct slugs for distinct live threads
+    assert label2 != label
 
 
 def test_init_db_idempotent_with_all_702_labels_used(tmp_path, monkeypatch):
@@ -231,8 +239,12 @@ def test_init_db_idempotent_with_all_702_labels_used(tmp_path, monkeypatch):
     2026-06-16: Migration 16 re-ran _next_excel_label against 702 persisted labels
     (A-Z + AA-ZZ), raising 'All 702 user labels in use' on a NULL-label row. P8
     terminal: slugs persist on conversation nodes (threads dropped, Migration 55);
-    a saturated label set held by NON-live (closed) conversations must NOT break a
-    re-init, and a new live conversation can still reuse a freed slug.
+    a saturated label set held by closed conversations must NOT break a re-init.
+
+    2026-07-08: closed('done')-but-unarchived rows now HOLD their slug (the
+    incident this behavior change fixes), so the full AA-ZZ 2-char wheel is
+    genuinely exhausted here — allocation must widen to a 3-char slug rather
+    than reuse one of the 702 held labels.
     """
     import string
     import uuid
@@ -254,8 +266,8 @@ def test_init_db_idempotent_with_all_702_labels_used(tmp_path, monkeypatch):
     now = datetime.now(timezone.utc).isoformat()
     with d._connect() as conn:
         for lbl in excel_labels:
-            # CLOSED ('done') conversation nodes hold every label — not live, so
-            # the slug wheel may reuse them.
+            # CLOSED ('done') conversation nodes hold every label — non-archived,
+            # so the slug wheel must skip them (2026-07-08).
             conn.execute(
                 "INSERT INTO nodes(id, kind, title, state, user_label, "
                 "created_at, updated_at) VALUES (?, 'conversation', 't', 'done', ?, ?, ?)",
@@ -272,7 +284,8 @@ def test_init_db_idempotent_with_all_702_labels_used(tmp_path, monkeypatch):
     # A second init_db (what `juggle graph add-task` calls) must not raise.
     d.init_db()
 
-    # A new LIVE conversation still allocates — the wheel reuses a non-live slug.
+    # A new conversation still allocates — the wheel widens to 3-char since
+    # every 2-char slot is held by a closed-but-unarchived row.
     new_tid = d.create_thread("live-after-saturation", session_id="s")
     label = d.get_thread(new_tid)["user_label"]
-    assert label is not None and len(label) == 2 and label.isalpha()
+    assert label is not None and len(label) == 3 and label.isalpha()
