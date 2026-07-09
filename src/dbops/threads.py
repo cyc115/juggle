@@ -70,9 +70,17 @@ class ThreadsMixin:
         """Return the id of an OPEN thread whose title is a lexical duplicate of
         `topic`, or None. Scoped to `project_id` when known, else global.
 
-        Safety: only OPEN threads are eligible, and a thread that already OWNS a
+        Safety: only OPEN threads are eligible, a thread that already OWNS a
         graph topic or task is excluded — those are real in-flight work and must
-        never be collapsed into another topic.
+        never be collapsed into another topic — and (2026-07-09, D2 incident) a
+        thread with a currently BUSY agent assigned is excluded too: an idle
+        ad-hoc conversation is a legitimate reuse target (the 2026-06-15 intent
+        — collapsing "[A] slug wheel" and the tick's own "[T-slug-wheel] Topic
+        Slug Wheel..." dispatch into one thread), but a thread an agent is
+        actively mid-flight on is not, no matter how strong the lexical match —
+        reusing it would rebind + re-dispatch into a live agent's conversation
+        (run misattribution, same class of hazard the F2 fan-in guard defends
+        against for topic-to-topic reuse in reusable_thread()).
         """
         _ph = ",".join("?" * len(_LIVE_NODE_STATES))
         with self._connect() as conn:
@@ -100,8 +108,15 @@ class ThreadsMixin:
                 }
             except sqlite3.OperationalError:
                 owned = set()  # node_edges absent on a pre-migration DB
+            busy: set[str] = {
+                r["assigned_thread"]
+                for r in conn.execute(
+                    "SELECT assigned_thread FROM agents "
+                    "WHERE status='busy' AND assigned_thread IS NOT NULL"
+                ).fetchall()
+            }
         for row in rows:
-            if row["id"] in owned:
+            if row["id"] in owned or row["id"] in busy:
                 continue
             candidate = row["title"] or ""
             if _title_similarity(topic, candidate) >= THREAD_DEDUP_THRESHOLD:
@@ -143,7 +158,7 @@ class ThreadsMixin:
 
     def create_thread(
         self, topic: str, session_id: str, project_id: str | None = None,
-        *, conn=None, skip_dedup: bool = False
+        *, conn=None
     ) -> str:
         """Create a new thread. Returns the UUID of the new thread.
 
@@ -153,20 +168,9 @@ class ThreadsMixin:
         Dedup guard: if an OPEN (same-project, when `project_id` is given)
         thread already exists whose title is a lexical duplicate of `topic`,
         no new row is inserted and that existing thread's id is returned.
-
-        ``skip_dedup=True`` (2026-07-09 incident D2): the graph tick MUST NOT
-        use this guard — its candidate pool is, by construction, threads that
-        have NEVER been bound to a topic/task via a kind='dispatch' edge (any
-        thread that ever was stays permanently "owned" and excluded), i.e. it
-        can only ever match genuinely ad-hoc conversations. The tick already
-        has its own deliberate, topic_id-keyed reuse policy
-        (juggle_graph_dispatch_topics.reusable_thread, F2 fan-in guard) — the
-        lexical dedup was silently hijacking unrelated LIVE ad-hoc threads
-        whose title happened to share 2+ content words with a tick-minted
-        dispatch title, rebinding + re-dispatching into them (run
-        misattribution, agent-in-flight collision). Tick call sites
-        (juggle_graph_dispatch, juggle_graph_dispatch_flat) pass this; the
-        ad-hoc `thread create` CLI path keeps the guard (its intended use).
+        2026-07-09 (D2): a thread with a currently BUSY agent assigned is
+        never a reuse target, even on a lexical match — see
+        ``_find_duplicate_open_thread``.
 
         When ``conn`` is passed the conversation node is written on the CALLER'S
         connection/transaction (no BEGIN/COMMIT of our own), so thread creation can
@@ -176,7 +180,7 @@ class ThreadsMixin:
         rollback discards the thread too). Over-cap still fails loud via
         ``_raise_thread_cap`` — which rolls the caller's transaction back.
         """
-        existing = None if skip_dedup else self._find_duplicate_open_thread(topic, project_id)
+        existing = self._find_duplicate_open_thread(topic, project_id)
         if existing is not None:
             return existing
         new_id = str(uuid.uuid4())
