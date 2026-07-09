@@ -18,8 +18,9 @@ from __future__ import annotations
 import sys
 
 # P9 X2 (2026-06-30): the legacy alias→[resource, verb] table is now EMPTY. The
-# entries were previously DERIVED from COMMANDS.aliases + the entry-module verb
-# aliases; that derivation is deleted. ``aliases --json`` reads this and emits {}.
+# entries were previously DERIVED from the (N3: since-removed) Cmd "aliases" field
+# plus the entry-module verb aliases; that derivation is deleted. ``aliases --json``
+# reads this and emits {}.
 ALIASES: dict[str, list[str]] = {}
 
 

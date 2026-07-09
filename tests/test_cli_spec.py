@@ -63,14 +63,19 @@ def _noop(args):  # a real handler reference (not a lambda) for clarity
 
 
 def test_cmd_fields_and_defaults():
-    c = Cmd("thread", "create", _noop, args=(Arg("topic"),), aliases=("create-thread",),
-            help="Create a topic thread")
+    c = Cmd("thread", "create", _noop, args=(Arg("topic"),), help="Create a topic thread")
     assert c.resource == "thread"
     assert c.verb == "create"
     assert c.handler is _noop
     assert c.args == (Arg("topic"),)
-    assert c.aliases == ("create-thread",)
     assert c.passthrough is False  # default
+
+
+def test_cmd_has_no_aliases_field():
+    # N3: the inert legacy-alias field was removed — it must not exist at all,
+    # not merely be empty.
+    field_names = {f.name for f in dataclasses.fields(Cmd)}
+    assert "aliases" not in field_names
 
 
 def test_cmd_top_level_global_verb_has_none_resource():
@@ -89,5 +94,5 @@ def test_cmd_and_arg_are_frozen():
 
 
 def test_cmd_is_hashable_pure_data():
-    c = Cmd("thread", "create", _noop, args=(Arg("topic"),), aliases=("create-thread",))
+    c = Cmd("thread", "create", _noop, args=(Arg("topic"),))
     assert isinstance(hash(c), int)  # frozen + hashable → usable in sets/dicts

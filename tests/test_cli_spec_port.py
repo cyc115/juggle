@@ -1,15 +1,19 @@
 """P9 R3→G1: the LIVE CLI resolves every COMMANDS entry to its handler.
 
 R3 ported the 4 walls into COMMANDS; R4 wired build_cli_parser(); G1 renamed the
-flat names to the uniform resource-verb grammar (Cmd.resource/verb) and recorded
-the legacy flat name in Cmd.aliases. The fidelity invariant now: for EVERY Cmd in
-the table, the live CLI parser navigates [resource, verb] (or [verb] for a flat
-top-level verb) to that exact handler with a matching arg signature, and the
-group/entry-verb registration does not shadow it.
+flat names to the uniform resource-verb grammar (Cmd.resource/verb). The fidelity
+invariant now: for EVERY Cmd in the table, the live CLI parser navigates
+[resource, verb] (or [verb] for a flat top-level verb) to that exact handler with
+a matching arg signature, and the group/entry-verb registration does not shadow
+it.
+
+N3 removed the inert ``Cmd.aliases`` field (the legacy-alias layer it fed was
+already removed in X2) — nothing here derives a "legacy names" set anymore.
 """
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import os
 import sys
 
@@ -17,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from juggle_cli import build_cli_parser  # noqa: E402
 from juggle_cli_commands import COMMANDS  # noqa: E402
-from juggle_cli_spec import build_parser  # noqa: E402
+from juggle_cli_spec import Cmd, build_parser  # noqa: E402
 
 
 def _subparsers(parser):
@@ -75,16 +79,12 @@ def test_live_leaf_signature_matches_the_commands_table():
         assert _sig(live_leaf) == _sig(cmds_leaf), f"signature mismatch for {label!r}"
 
 
-def test_canonical_names_only_legacy_aliases_not_registered():
-    # The grammar tree is canonical-only; legacy flat names resolve via the A1/G1
-    # pre-parse shim, NOT as parser choices. EXCEPTION: a legacy name that equals a
-    # canonical resource group name (`research` is both the `research run` alias and
-    # the resource) legitimately appears as the group — the shim's already-canonical
-    # guard prevents double-rewrite.
-    names = set(_subparsers(build_cli_parser()).choices)
-    canonical_resources = {c.resource for c in COMMANDS if c.resource}
-    legacy = {a for c in COMMANDS for a in c.aliases} - canonical_resources
-    assert not (legacy & names), f"legacy names leaked into the parser tree: {legacy & names}"
+def test_cmd_has_no_aliases_field():
+    # N3: Cmd.aliases was removed entirely (not just emptied) — pin the field's
+    # absence so a future re-add of a "legacy alias" concept is a deliberate
+    # decision, not an accidental regression.
+    field_names = {f.name for f in dataclasses.fields(Cmd)}
+    assert "aliases" not in field_names
 
 
 def test_every_command_has_a_resource_or_is_a_kept_flat_verb():
@@ -92,5 +92,3 @@ def test_every_command_has_a_resource_or_is_a_kept_flat_verb():
     for c in COMMANDS:
         if c.resource is None:
             assert c.verb in KEPT_FLAT, f"unexpected flat verb {c.verb!r}"
-        else:
-            assert c.aliases, f"{c.resource} {c.verb} should carry its legacy alias"

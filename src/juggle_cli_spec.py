@@ -14,7 +14,7 @@ hand-written register() walls); ``build_parser`` lazily pulls the aggregated
 Spec: docs CLI-grammar-migration §3 (spec-table sketch).
 
     Cmd("thread", "create", cmd_create_thread,
-        args=(Arg("topic"),), aliases=("create-thread",), help="Create a topic thread")
+        args=(Arg("topic"),), help="Create a topic thread")
     Cmd(None, "verify", cmd_verify, passthrough=True)   # top-level global verb
 """
 
@@ -80,16 +80,14 @@ class Cmd:
     """One CLI command in the uniform ``juggle <resource> <verb>`` grammar.
 
     ``resource is None`` marks a top-level global verb (e.g. ``start``, ``verify``,
-    ``doctor``) that reads better flat. ``aliases`` holds legacy flat names the
-    backward-compat shim (A1) will rewrite to ``[resource, verb]``. ``passthrough``
-    flags a command parsed with ``parse_known_args`` (only ``verify`` today).
+    ``doctor``) that reads better flat. ``passthrough`` flags a command parsed with
+    ``parse_known_args`` (only ``verify`` today).
     """
 
     resource: str | None
     verb: str
     handler: Callable[[Any], Any]
     args: tuple[Arg, ...] = ()
-    aliases: tuple[str, ...] = ()
     help: str = ""
     passthrough: bool = False
 

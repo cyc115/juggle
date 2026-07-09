@@ -107,14 +107,15 @@ def test_resource_without_verb_errors():
         parser.parse_args(["thread"])
 
 
-# ── aliases are NOT argparse aliases (handled by the A1 pre-parse shim) ────────
+# ── legacy flat names never appear as parser choices (N3: Cmd.aliases removed) ─
 
 
-def test_build_parser_ignores_aliases():
-    """Legacy aliases live in the A1 argv-rewrite shim, NOT the parser tree — the
-    canonical verb parses; the legacy flat name is not a valid subcommand here."""
+def test_build_parser_rejects_legacy_flat_name():
+    """The parser tree is canonical-only — a legacy flat name like "create-thread"
+    is not a valid subcommand (there is no Cmd.aliases field anymore to derive one
+    from)."""
     parser = build_parser([
-        Cmd("thread", "create", _h_create, aliases=("create-thread",)),
+        Cmd("thread", "create", _h_create),
     ])
     assert parser.parse_args(["thread", "create"]).func is _h_create
     with pytest.raises(SystemExit):

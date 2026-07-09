@@ -38,7 +38,7 @@ def _integrate_dispatch(a):
 
 # NOTE (P9 G1): these tables span THREE resources — agent (pool/dispatch),
 # action (action items), watchdog (daemon control) — plus the top-level flat
-# `integrate`. Legacy flat names are recorded as aliases for the A1 shim.
+# `integrate`.
 AGENT_COMMANDS: tuple[Cmd, ...] = (
     Cmd("agent", "complete", cmd_complete_agent,
         args=(
@@ -55,7 +55,6 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
             Arg("--role", dest="role", default=None, choices=_ROLE_CHOICES,
                 help="Agent role override (used when agent was not registered via get-agent)"),
         ),
-        aliases=("complete-agent",),
         help="Mark agent task as complete"),
     Cmd(None, "integrate", _integrate_dispatch,
         args=(
@@ -79,7 +78,6 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
             Arg("--recovery-dispatched", action="store_true", default=False,
                 help="Orchestrator dispatched a recovery agent — notify only, no action item"),
         ),
-        aliases=("fail-agent",),
         help="Mark agent task as failed"),
     Cmd("action", "create", cmd_request_action,
         args=(
@@ -90,23 +88,18 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
             Arg("--priority", dest="priority", default="normal",
                 choices=("low", "normal", "high")),
         ),
-        aliases=("request-action",),
         help="Create a persistent action item"),
     Cmd("action", "notify", cmd_notify,
         args=(
             Arg("thread_id", help="Thread ID or label"),
             Arg("message", help="Notification text"),
         ),
-        aliases=("notify",),
         help="Surface a notification in the cockpit"),
     Cmd("action", "ack", cmd_ack_action,
         args=(Arg("action_id", help="Action item integer id"),),
-        aliases=("ack-action",),
         help="Dismiss an action item"),
-    Cmd("action", "list", cmd_list_actions, aliases=("list-actions",),
-        help="List open action items"),
-    Cmd("agent", "check", cmd_check_agents, aliases=("check-agents",),
-        help="List background agents as JSON"),
+    Cmd("action", "list", cmd_list_actions, help="List open action items"),
+    Cmd("agent", "check", cmd_check_agents, help="List background agents as JSON"),
     Cmd("agent", "spawn", cmd_spawn_agent,
         args=(
             Arg("role", choices=_ROLE_CHOICES),
@@ -115,10 +108,8 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
             Arg("--effort", dest="effort", default=None,
                 help="Reasoning effort: low|medium|high|xhigh|max (default: config agents cascade)"),
         ),
-        aliases=("spawn-agent",),
         help="Spawn a new tmux agent"),
-    Cmd("agent", "list", cmd_list_agents, aliases=("list-agents",),
-        help="List all tmux agents"),
+    Cmd("agent", "list", cmd_list_agents, help="List all tmux agents"),
     Cmd("agent", "get", cmd_get_agent,
         args=(
             Arg("thread_id", help="Thread ID or label"),
@@ -134,7 +125,6 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
             Arg("--fresh", dest="fresh", action="store_true",
                 help="Force a new agent spawn, skipping idle reuse"),
         ),
-        aliases=("get-agent",),
         help="Get best idle agent (or spawn new)"),
     Cmd("agent", "release", cmd_release_agent,
         args=(
@@ -142,11 +132,9 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
             Arg("--force", action="store_true",
                 help="Force release even if thread is still active (operator use only)"),
         ),
-        aliases=("release-agent",),
         help="Return agent to idle pool"),
     Cmd("agent", "decommission", cmd_decommission_agent,
         args=(Arg("agent_id", help="Agent UUID"),),
-        aliases=("decommission-agent",),
         help="Kill agent pane + remove from DB"),
     Cmd("agent", "send-task", cmd_send_task,
         args=(
@@ -167,7 +155,6 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
             Arg("--prompt-version", dest="prompt_version", default=None,
                 help="Human A/B tag stamped on the run for metrics --by prompt-version"),
         ),
-        aliases=("send-task",),
         help="Send prompt file to agent pane"),
     Cmd("agent", "send-message", cmd_send_message,
         args=(
@@ -175,11 +162,9 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
             Arg("text", help="Message text to send to the agent"),
             Arg("--json", dest="json_out", action="store_true", help="Output result as JSON"),
         ),
-        aliases=("send-message",),
         help="Send a steering message to a running agent pane"),
     Cmd("agent", "set-watchdog", cmd_set_watchdog,
         args=(Arg("agent_id"), Arg("value", help="Minutes (int) or 'off'")),
-        aliases=("set-watchdog",),
         help="Set per-agent watchdog threshold or disable it"),
     Cmd("watchdog", "stop", cmd_stop_watchdog,
         args=(
@@ -187,6 +172,5 @@ AGENT_COMMANDS: tuple[Cmd, ...] = (
                 help="Also set the freeze sentinel (no respawn until `juggle start`, "
                      "which clears the freeze and restarts the watchdog)."),
         ),
-        aliases=("stop-watchdog",),
         help="Send SIGTERM to the watchdog daemon"),
 )

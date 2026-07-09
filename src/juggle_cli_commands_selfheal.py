@@ -33,7 +33,6 @@ SELFHEAL_COMMANDS: tuple[Cmd, ...] = (
             Arg("--flat", action="store_true", default=False,
                 help="Flat exact-signature rows (pre-P2 behavior)"),
         ),
-        aliases=("list-selfheal",),
         help="List pending self-heal errors"),
     Cmd("selfheal", "show", _cmd_show_selfheal,
         args=(
@@ -41,7 +40,6 @@ SELFHEAL_COMMANDS: tuple[Cmd, ...] = (
             Arg("--json", action="store_true", default=False,
                 help="Output the full row as a JSON object"),
         ),
-        aliases=("show-selfheal",),
         help="Show one error_event's full detail (command_args + traceback + status + counts)"),
     Cmd("selfheal", "audit", _cmd_selfheal_audit,
         args=(
@@ -50,7 +48,6 @@ SELFHEAL_COMMANDS: tuple[Cmd, ...] = (
                 help="Filter to one action (allowlist_hide|resurface|silent_autohide|lease_set|new_variant)"),
             Arg("--limit", type=int, default=50, help="Max rows (default 50)"),
         ),
-        aliases=("selfheal-audit",),
         help="Show the self-heal audit log"),
     Cmd("selfheal", "set-status", _cmd_selfheal_set_status,
         args=(
@@ -59,14 +56,11 @@ SELFHEAL_COMMANDS: tuple[Cmd, ...] = (
                 help="open|diagnosing|awaiting_approval|non_issue_proposed|non_issue|resolved"),
             Arg("--action-item-id", type=int, dest="action_item_id", default=None),
         ),
-        aliases=("selfheal-set-status",),
         help="Update error_event status"),
     Cmd("selfheal", "reset", _cmd_selfheal_reset_diagnosing,
         args=(Arg("id", type=int, help="error_events.id"),),
-        aliases=("selfheal-reset-diagnosing",),
         help="Reset stuck diagnosing->open"),
     Cmd("selfheal", "propose", _cmd_selfheal_propose_nonissue,
         args=(Arg("id", type=int, help="error_events.id"),),
-        aliases=("selfheal-propose-nonissue",),
         help="Mark an error_event as non_issue_proposed (visible benign proposal)"),
 )
