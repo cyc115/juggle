@@ -66,3 +66,11 @@ def apply_tail_migrations(conn: sqlite3.Connection) -> None:
     # (requested model, TOPIC grain — distinct from nodes.last_dispatched_model).
     from dbops.migration_74_node_model import migrate_74_node_model
     migrate_74_node_model(conn)
+
+    # Migration 75 (2026-07-09 incident D1): widen idx_nodes_live_label to
+    # state != 'archived', matching the 5e0c8f8 held-slug invariant with a
+    # DB-level backstop (was Python-check-only for the done/failed-exec subset).
+    from dbops.migration_75_conv_label_archived_only import (
+        migrate_75_conv_label_archived_only,
+    )
+    migrate_75_conv_label_archived_only(conn)

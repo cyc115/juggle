@@ -69,6 +69,7 @@ def _dispatch_flat_task_fallback(
                         f"[{task_id}] {task['title']}"[:80],
                         session_id=_gd._session_id(db),
                         project_id=pid,
+                        skip_dedup=True,  # D2 2026-07-09: never merge into an ad-hoc thread
                     )
                 except ValueError as e:
                     db_graph.task_transition(db, task_id, "stale_reset")

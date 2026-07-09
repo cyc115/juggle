@@ -301,6 +301,10 @@ def test_doctor_repairs_duplicate_held_labels(tmp_path, monkeypatch):
     assert doc.cmd_doctor(_Args()) == 0
 
     conn = sqlite3.connect(str(db_path))
+    # 2026-07-09 (Migration 75): idx_nodes_live_label now enforces this
+    # invariant at the schema layer too — drop it to plant a pre-existing
+    # duplicate, simulating a DB corrupted before the widened index existed.
+    conn.execute("DROP INDEX IF EXISTS idx_nodes_live_label")
     conn.execute(
         "INSERT INTO nodes(id, kind, title, state, user_label, created_at, updated_at) "
         "VALUES ('old', 'conversation', 'old task', 'done', 'ZZ', '2026-07-02 04:03', '2026-07-02 04:03')"

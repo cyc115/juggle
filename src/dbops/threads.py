@@ -143,7 +143,7 @@ class ThreadsMixin:
 
     def create_thread(
         self, topic: str, session_id: str, project_id: str | None = None,
-        *, conn=None
+        *, conn=None, skip_dedup: bool = False
     ) -> str:
         """Create a new thread. Returns the UUID of the new thread.
 
@@ -154,6 +154,20 @@ class ThreadsMixin:
         thread already exists whose title is a lexical duplicate of `topic`,
         no new row is inserted and that existing thread's id is returned.
 
+        ``skip_dedup=True`` (2026-07-09 incident D2): the graph tick MUST NOT
+        use this guard — its candidate pool is, by construction, threads that
+        have NEVER been bound to a topic/task via a kind='dispatch' edge (any
+        thread that ever was stays permanently "owned" and excluded), i.e. it
+        can only ever match genuinely ad-hoc conversations. The tick already
+        has its own deliberate, topic_id-keyed reuse policy
+        (juggle_graph_dispatch_topics.reusable_thread, F2 fan-in guard) — the
+        lexical dedup was silently hijacking unrelated LIVE ad-hoc threads
+        whose title happened to share 2+ content words with a tick-minted
+        dispatch title, rebinding + re-dispatching into them (run
+        misattribution, agent-in-flight collision). Tick call sites
+        (juggle_graph_dispatch, juggle_graph_dispatch_flat) pass this; the
+        ad-hoc `thread create` CLI path keeps the guard (its intended use).
+
         When ``conn`` is passed the conversation node is written on the CALLER'S
         connection/transaction (no BEGIN/COMMIT of our own), so thread creation can
         be one step of a larger atomic write — e.g. ``create_loop_atomic`` binds a
@@ -162,7 +176,7 @@ class ThreadsMixin:
         rollback discards the thread too). Over-cap still fails loud via
         ``_raise_thread_cap`` — which rolls the caller's transaction back.
         """
-        existing = self._find_duplicate_open_thread(topic, project_id)
+        existing = None if skip_dedup else self._find_duplicate_open_thread(topic, project_id)
         if existing is not None:
             return existing
         new_id = str(uuid.uuid4())

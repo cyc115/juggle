@@ -228,6 +228,12 @@ def test_repair_reassigns_done_but_unarchived_duplicate(db):
     now = datetime.now(timezone.utc).isoformat()
     older_id, newer_id = str(uuid.uuid4()), str(uuid.uuid4())
     with db._connect() as conn:
+        # 2026-07-09 (Migration 75): idx_nodes_live_label now enforces this
+        # invariant at the schema layer too, so planting a pre-existing
+        # duplicate (simulating a pre-Migration-75 DB) requires dropping it
+        # first — same seam test_widen_migration_repairs_existing_duplicate_
+        # live_labels already uses for the Migration 54 case.
+        conn.execute("DROP INDEX IF EXISTS idx_nodes_live_label")
         for tid, state, created in (
             (older_id, "done", "2026-07-02 04:03"),
             (newer_id, "background", "2026-07-08 21:23"),
@@ -263,3 +269,83 @@ def test_unarchive_does_not_steal_slug_from_done_unarchived_holder(db):
 
     db.unarchive_thread(a)
     assert db.get_thread(a)["user_label"] != label_a
+
+
+# ---------------------------------------------------------------------------
+# (e) 2026-07-09 incident (D1, follow-up to 5e0c8f8): idx_nodes_live_label
+# (Migration 54) was never widened to match the 2026-07-08 Python-level
+# held-slug invariant (dbops.slug_alloc._held_labels: any non-archived
+# conversation holds its label). A 'done'/'failed-exec' pair sharing a label
+# had — and, pre-Migration-75, still has — ZERO database-level backstop: only
+# ('open','running','background') is uniqueness-enforced at the schema layer.
+# Any write path that bypasses (or has a latent bug in) the Python-level check
+# — a stale-process race, a future direct write, a migration ordering gap —
+# can silently create the exact "two [AA] rows, one done one background"
+# duplicate seen in the incident, undetected. Migration 75 widens the index to
+# state != 'archived', matching the intended invariant structurally.
+# ---------------------------------------------------------------------------
+def test_schema_rejects_duplicate_done_label_after_widen_migration(db):
+    """Post-Migration-75: two non-archived ('done') conversation rows sharing
+    a label must raise IntegrityError — the DB itself enforces the invariant,
+    not just the allocator's Python-level held-set check."""
+    from dbops.migration_75_conv_label_archived_only import (
+        migrate_75_conv_label_archived_only,
+    )
+
+    with db._connect() as conn:
+        migrate_75_conv_label_archived_only(conn)
+
+    now = datetime.now(timezone.utc).isoformat()
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO nodes(id, kind, title, state, user_label, "
+            "created_at, updated_at) VALUES (?, 'conversation', 'x1', 'done', 'ZZ', ?, ?)",
+            (str(uuid.uuid4()), now, now),
+        )
+        conn.commit()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        with db._connect() as conn:
+            conn.execute(
+                "INSERT INTO nodes(id, kind, title, state, user_label, "
+                "created_at, updated_at) VALUES (?, 'conversation', 'x2', 'done', 'ZZ', ?, ?)",
+                (str(uuid.uuid4()), now, now),
+            )
+            conn.commit()
+
+
+def test_widen_migration_repairs_existing_duplicate_done_labels(db):
+    """Migration 75 must repair a pre-existing done+done label duplicate
+    (planted before the widened index exists) before tightening the index —
+    same defense as Migration 54 did for open+background."""
+    from dbops.migration_75_conv_label_archived_only import (
+        migrate_75_conv_label_archived_only,
+    )
+
+    now = datetime.now(timezone.utc).isoformat()
+    a_id, b_id = str(uuid.uuid4()), str(uuid.uuid4())
+    with db._connect() as conn:
+        conn.execute("DROP INDEX IF EXISTS idx_nodes_live_label")
+        for tid, state, created in ((a_id, "done", "2026-07-02T04:03:00+00:00"),
+                                     (b_id, "background", now)):
+            conn.execute(
+                "INSERT INTO nodes(id, kind, title, state, user_label, "
+                "created_at, updated_at) VALUES (?, 'conversation', 'dup', ?, 'AA', ?, ?)",
+                (tid, state, created, now),
+            )
+        conn.commit()
+
+    with db._connect() as conn:
+        migrate_75_conv_label_archived_only(conn)
+
+    labels = [
+        r["user_label"] for r in db._connect().execute(
+            "SELECT user_label FROM nodes WHERE kind='conversation' AND state != 'archived'"
+        ).fetchall()
+    ]
+    assert len(labels) == len(set(labels)), f"duplicate survived: {labels}"
+    with db._connect() as conn:
+        sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'idx_nodes_live_label'"
+        ).fetchone()["sql"]
+    assert "archived" in sql

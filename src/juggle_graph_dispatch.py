@@ -246,6 +246,7 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
                         f"[{tid}] {topic['title']}"[:80],
                         session_id=_session_id(db),
                         project_id=pid,
+                        skip_dedup=True,  # D2 2026-07-09: never merge into an ad-hoc thread
                     )
             except ValueError as e:
                 db_topics.topic_transition(db, tid, "stale_reset")
