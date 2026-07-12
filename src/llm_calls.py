@@ -3,7 +3,7 @@
 Owns: the one `claude -p` subprocess core (run_claude_p) and the profile-based
 LLM dispatcher (llm_call, OpenRouter primary → claude fallback). Must not own:
 prompt construction or domain logic — callers keep their own wrappers/seams
-(juggle_schedule_common.claude_p, juggle_project_summary._claude_sonnet,
+(schedules.common.claude_p, juggle_project_summary._claude_sonnet,
 juggle_cli_common.llm_call re-export).
 
 Extracted in Phase 1.2 of the 2026-06-10 refactor plan, consolidating four
