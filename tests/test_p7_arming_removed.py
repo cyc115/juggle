@@ -185,7 +185,7 @@ def test_graph_tick_processes_multiple_projects_without_arming(db):
     def fake_dispatch(db_, thread_id, prompt, task):
         dispatched.append(task["id"])
 
-    stats = graph_tick(db, dispatch_fn=fake_dispatch)
+    graph_tick(db, dispatch_fn=fake_dispatch)
     assert "t1" in dispatched, "task from PROJ1 must be dispatched (no arming filter)"
     assert "t2" in dispatched, "task from PROJ2 must be dispatched (no arming filter)"
 

@@ -32,7 +32,8 @@ class MockHindsightHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         content_len = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(content_len)) if content_len else {}
+        if content_len:
+            self.rfile.read(content_len)
         if "/reflect" in self.path:
             resp = {"text": "Mike prefers TDD"}
             self.send_response(200)

@@ -1,11 +1,23 @@
-import sys
 import os
+import sqlite3
+import sys
+import time
+import time as _time
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
-from juggle_cockpit_model import Topic, Action, Agent, Notification, CockpitState
-import time
+from juggle_cockpit_model import (  # noqa: E402
+    Action,
+    Agent,
+    CockpitState,
+    Notification,
+    Topic,
+    format_age,
+    priority_tier,
+    snapshot,
+)
 
 
 def test_topic_dataclass():
@@ -52,8 +64,6 @@ def test_frozen_immutable():
 # ---------------------------------------------------------------------------
 # format_age tests
 # ---------------------------------------------------------------------------
-from juggle_cockpit_model import format_age
-
 
 def test_format_age_seconds():
     assert format_age(45) == "45s"
@@ -94,8 +104,6 @@ def test_format_age_boundary_86400():
 # ---------------------------------------------------------------------------
 # priority_tier tests
 # ---------------------------------------------------------------------------
-from juggle_cockpit_model import priority_tier
-
 
 def test_priority_tier_blocker():
     assert (
@@ -186,11 +194,6 @@ def test_priority_tier_done_already_reviewed():
 # ---------------------------------------------------------------------------
 # snapshot tests
 # ---------------------------------------------------------------------------
-import sqlite3
-import time as _time
-from datetime import datetime, timezone
-from juggle_cockpit_model import snapshot
-
 
 def _make_in_memory_db():
     conn = sqlite3.connect(":memory:")

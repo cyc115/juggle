@@ -12,10 +12,19 @@ Cycles:
 
 import os
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from juggle_cockpit import (  # noqa: E402
+    _apply_filter_actions,
+    _apply_filter_text,
+    _parse_filter,
+    _resolve_agent_by_index,
+)
+from juggle_cockpit_model import Action, Agent, Notification  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -173,10 +182,6 @@ def test_help_modal_no_duplicate_action_rows():
 # Cycle 7 — _resolve_agent_by_index (pure helper)
 # ---------------------------------------------------------------------------
 
-from juggle_cockpit import _resolve_agent_by_index
-from juggle_cockpit_model import Agent
-
-
 def _make_agent(idx: int) -> Agent:
     return Agent(
         id_short=f"abc1234{idx}", role="coder", status="busy",
@@ -202,10 +207,6 @@ def test_resolve_agent_by_index_empty():
 # ---------------------------------------------------------------------------
 # Cycle 8 — Filter pure helpers
 # ---------------------------------------------------------------------------
-
-from juggle_cockpit import _parse_filter, _apply_filter_actions, _apply_filter_text
-from juggle_cockpit_model import Action, Notification
-
 
 def _make_action(id: str, text: str, tier: int, topic: str = "MA") -> Action:
     return Action(id=id, topic_id=topic, text=text, tier=tier, age_secs=10)
@@ -496,9 +497,6 @@ def test_newly_failed_busy_stays_busy():
 # Task 10 — _tmux_focus_pane / _tmux_capture_pane helpers
 # ---------------------------------------------------------------------------
 
-from unittest.mock import patch, MagicMock
-
-
 def test_tmux_focus_pane_success():
     from juggle_cockpit import _tmux_focus_pane
     with patch("subprocess.run") as mock_run:
@@ -755,7 +753,7 @@ async def test_no_tail_widget_in_cockpit(tmp_path):
     db.create_thread("test", session_id="")
 
     app = CockpitApp(db_path=db_path)
-    async with app.run_test(size=(160, 40)) as pilot:
+    async with app.run_test(size=(160, 40)):
         with pytest.raises(NoMatches):
             app.query_one("#tail")
 
@@ -867,7 +865,6 @@ def test_tail_modal_hint_string_mentions_q_and_jk():
     from juggle_cockpit_modals import _TailModal
 
     modal = _TailModal("%7", lambda pane_id, lines=20: "")
-    yielded: list = []
 
     with patch("juggle_cockpit_modals.VerticalScroll") as mock_vs, \
          patch("juggle_cockpit_modals.Static") as mock_static, \

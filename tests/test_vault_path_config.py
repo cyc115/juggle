@@ -92,7 +92,6 @@ def test_migrate_config_deep_copy():
         "domains": {"initial_domain_paths": [["/Documents/personal", "vault"]]},
         "paths": {},
     }
-    original_paths_id = id(original["paths"])
     _migrate_config(original)
     # input should not have been mutated
     assert "domains" in original

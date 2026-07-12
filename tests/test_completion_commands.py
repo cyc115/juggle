@@ -1,6 +1,7 @@
 """Tests for Task 3 completion CLI commands."""
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -36,7 +37,7 @@ def db(tmp_path, monkeypatch):
 
 def test_add_notification_v2_creates_row(db):
     tid = db.create_thread("t", session_id="s")
-    nid = db.add_notification_v2(thread_id=tid, message="merged PR", session_id="sess1")
+    db.add_notification_v2(thread_id=tid, message="merged PR", session_id="sess1")
     rows = db.get_notifications_for_session("sess1")
     assert len(rows) == 1
     assert rows[0]["message"] == "merged PR"
@@ -44,7 +45,7 @@ def test_add_notification_v2_creates_row(db):
 
 def test_add_action_item_creates_open_row(db):
     tid = db.create_thread("t", session_id="s")
-    aid = db.add_action_item(
+    db.add_action_item(
         thread_id=tid, message="push to prod", type_="manual_step", priority="high"
     )
     items = db.get_open_action_items()
@@ -218,9 +219,6 @@ def test_cmd_close_thread_sets_closed_state(db, capsys):
 
 
 # ── Fix 3: Worktree finalization tests ──────────────────────────────────────
-
-import subprocess
-from pathlib import Path
 
 def test_finalize_worktree_no_metadata_skips(tmp_path):
     """Thread has no worktree_path → success, no-op."""

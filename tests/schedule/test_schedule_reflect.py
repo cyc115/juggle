@@ -141,7 +141,7 @@ def test_cost_cap_in_rf1_continues_with_remaining(tmp_path):
          patch("schedules.common.JUGGLE_DIR", tmp_path), \
          patch("schedules.common.git_commit", return_value=False), \
          patch("schedules.common.git_push", return_value=True):
-        result = reflect.run(dry_run=True)
+        reflect.run(dry_run=True)
 
     # RF-8 should have run even though RF-1 raised CostCapExceeded
     assert len(rf8_calls) == 1

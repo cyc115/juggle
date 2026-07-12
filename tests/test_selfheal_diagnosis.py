@@ -107,7 +107,6 @@ def test_get_diagnosis_candidates_ordered_by_count_desc(tmp_path):
 
 def test_select_returns_none_when_disabled():
     from juggle_selfheal import select_diagnosis_candidate
-    row = {"id": 1, "count": 10}
     assert select_diagnosis_candidate([], in_flight_exists=False, enabled=False) is None
 
 

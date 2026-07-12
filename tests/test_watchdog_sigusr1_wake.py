@@ -240,11 +240,11 @@ def test_30s_backstop_fires_without_sigusr1():
     SHORT = 0.05  # 50ms fake "poll interval" for testing
 
     # Simulate one backstop tick: wait times out, clear, poll
-    woke = _tick_event.wait(timeout=SHORT)
+    _tick_event.wait(timeout=SHORT)
     _tick_event.clear()
     fake_poll(None, None)
 
-    # woke can be True or False (no signal sent); tick must still fire
+    # wait() can return True or False (no signal sent); tick must still fire
     assert len(tick_calls) == 1, "Backstop tick did not fire after timeout"
 
 

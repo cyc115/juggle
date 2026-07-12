@@ -1,6 +1,7 @@
 """Tests for A1–A3 auto-action-item generation (v1.21.2)."""
 
 import argparse
+import json as _json
 import sys
 from pathlib import Path
 
@@ -328,8 +329,6 @@ def test_a2_plain_done_all_tests_committed_no_action(db):
 # ---------------------------------------------------------------------------
 # Fix A: researcher without open_questions → notification only (no action item)
 # ---------------------------------------------------------------------------
-
-import json as _json
 
 
 def test_complete_agent_researcher_no_open_questions_creates_notification_not_action(db):

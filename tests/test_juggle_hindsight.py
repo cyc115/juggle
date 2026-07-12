@@ -12,7 +12,7 @@ SRC_DIR = str(Path(__file__).parent.parent / "src")
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-from juggle_hindsight import HindsightClient
+from juggle_hindsight import HindsightClient  # noqa: E402
 
 
 class MockHindsightHandler(BaseHTTPRequestHandler):
@@ -33,7 +33,8 @@ class MockHindsightHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         content_len = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(content_len)) if content_len else {}
+        if content_len:
+            self.rfile.read(content_len)
 
         if "/memories/recall" in self.path:
             auth = self.headers.get("Authorization", "")

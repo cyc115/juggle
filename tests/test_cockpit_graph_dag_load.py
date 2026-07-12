@@ -80,7 +80,7 @@ def test_dag_loads_all_projects(db):
     """P7: load_graph_dags returns DAGs for ALL projects with tasks."""
     _make_project_graph(db, "proj1")
     _make_project_graph(db, "proj2")
-    state = snapshot(db, load_graph_dag=True)
+    snapshot(db, load_graph_dag=True)
     # graph_dag is the first project's DAG (compat shim)
     # The full list is via load_graph_dags
     from juggle_cockpit_graph_dag import load_graph_dags

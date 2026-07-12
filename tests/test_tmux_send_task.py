@@ -126,7 +126,7 @@ def test_send_task_does_not_raise_when_agent_already_running(mgr):
         patch("time.sleep"),
     ):
         # Must not raise RuntimeError
-        pane_hash = mgr.send_task("%763", "implement the new feature")
+        mgr.send_task("%763", "implement the new feature")
 
 
 # --- false-negative: Enter landed but the input-box heuristic lagged ---------

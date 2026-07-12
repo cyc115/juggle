@@ -207,7 +207,7 @@ def test_missing_repo_or_ticket_is_an_error_not_a_crash(db):
 
 
 def test_ignores_topics_not_in_unlanded_state(db, tmp_path, monkeypatch):
-    repo = _merged_repo(tmp_path)
+    _merged_repo(tmp_path)
     tp.create_topic(db, topic_id="T7", project_id="INBOX", title="Topic T7")
     fake = FakeBackend()
     monkeypatch.setattr(lp, "backend_for", lambda r: fake)

@@ -336,7 +336,6 @@ def test_get_ranked_idle_agents_wrong_role_not_returned_as_reuse(db):
     candidates = db.get_ranked_idle_agents("some-thread-id", role="coder")
 
     # The planner should either not appear, or be skippable by role check
-    wrong_role = [c for c in candidates if c["role"] != "coder"]
     # The real enforcement is in cmd_get_agent (the caller filters), but
     # we want to confirm the DB helper exposes the role so callers CAN filter.
     # Assert that a hard role-match filter in the caller would leave no wrong candidates.

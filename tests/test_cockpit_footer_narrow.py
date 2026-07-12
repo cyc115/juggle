@@ -34,7 +34,7 @@ async def test_footer_exists_at_narrow_width(tmp_path):
     from juggle_cockpit import CockpitApp
     from textual.widgets import Footer
 
-    db = _make_db(tmp_path)
+    _make_db(tmp_path)
     app = CockpitApp(db_path=str(tmp_path / "juggle.db"))
     async with app.run_test(size=(40, 20)) as pilot:
         await pilot.pause(0.1)
@@ -59,7 +59,7 @@ async def test_footer_required_hints_visible_at_narrow_width(tmp_path):
     from juggle_cockpit import CockpitApp
     from textual.widgets._footer import FooterKey
 
-    db = _make_db(tmp_path)
+    _make_db(tmp_path)
     app = CockpitApp(db_path=str(tmp_path / "juggle.db"))
     async with app.run_test(size=(40, 20)) as pilot:
         await pilot.pause(0.1)
@@ -89,7 +89,7 @@ async def test_footer_fits_within_40_cols(tmp_path):
     from juggle_cockpit import CockpitApp
     from textual.widgets import Footer
 
-    db = _make_db(tmp_path)
+    _make_db(tmp_path)
     app = CockpitApp(db_path=str(tmp_path / "juggle.db"))
     async with app.run_test(size=(80, 20)) as pilot:
         await pilot.pause(0.1)

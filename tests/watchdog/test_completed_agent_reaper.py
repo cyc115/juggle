@@ -108,7 +108,7 @@ def test_reaped_landed_thread_is_not_reorphaned(db):
     db.update_thread(tid, status="background", last_dispatched_task="impl",
                      last_dispatched_role="coder")
     _bind_topic(db, tid, "T-done", state="verified", merged_sha="deadbeef")
-    agent_id = _busy_agent_on(db, tid)
+    _busy_agent_on(db, tid)
 
     _reap(db, IDLE_PANE)
 

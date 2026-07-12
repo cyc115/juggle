@@ -167,7 +167,6 @@ def test_cmd_send_task_resolves_adapter_from_agent_harness(tmp_path):
     db.get_thread.return_value = None
 
     cfg = _agent_cfg("claude")  # config default is claude; agent has reasonix
-    oneshot_calls = []
 
     args = MagicMock()
     args.agent_id = "agent-1"

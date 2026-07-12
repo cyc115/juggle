@@ -14,7 +14,7 @@ def db(tmp_path):
 
 
 def test_topics_ordered_active_running_closed_archived(db):
-    a = db.create_thread("active", session_id="sessA")  # A
+    db.create_thread("active", session_id="sessA")  # A
     r = db.create_thread("running", session_id="sessA")  # B
     c = db.create_thread("closed", session_id="sessA")  # C
     x = db.create_thread("archived", session_id="sessA")  # D

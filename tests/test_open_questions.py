@@ -17,9 +17,9 @@ SRC_DIR = str(Path(__file__).parent.parent / "src")
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-from juggle_db import JuggleDB
-import juggle_hooks
-import juggle_hooks_config
+from juggle_db import JuggleDB  # noqa: E402
+import juggle_hooks  # noqa: E402
+import juggle_hooks_config  # noqa: E402
 
 
 def _open_questions(thread) -> list:

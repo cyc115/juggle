@@ -202,8 +202,6 @@ def test_auto_create_not_triggered_for_researcher(git_repo, tmp_path):
     prompt_file = tmp_path / "prompt.txt"
     prompt_file.write_text("research this")
     args = _minimal_send_task_args(str(prompt_file), "researcher", git_repo)
-    agent = _minimal_agent("researcher", git_repo)
-    thread = _minimal_thread()
 
     with patch("juggle_cmd_agents_common.get_db") as mock_get_db:
         db = Mock()

@@ -14,7 +14,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from juggle_watchdog_singleton import ensure_watchdog, restart_watchdog
+from juggle_watchdog_singleton import ensure_watchdog, restart_watchdog  # noqa: E402
 
 
 def _noop_spawn(db_path, *, repo_path=None):

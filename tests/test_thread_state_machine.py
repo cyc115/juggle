@@ -47,7 +47,7 @@ def test_touch_last_active_updates_timestamp(db):
 
 def test_get_threads_by_status(db):
     a = db.create_thread("a", session_id="s")
-    b = db.create_thread("b", session_id="s")
+    db.create_thread("b", session_id="s")
     db.set_thread_status(a, "running")
     rs = db.get_threads_by_status("running")
     assert [t["id"] for t in rs] == [a]

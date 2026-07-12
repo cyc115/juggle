@@ -11,8 +11,8 @@ SRC_DIR = str(Path(__file__).parent.parent / "src")
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-import juggle_cli
-import juggle_vault_paths
+import juggle_cli  # noqa: E402
+import juggle_vault_paths  # noqa: E402
 
 
 def test_cmd_vault_path_prints_root(capsys, monkeypatch):

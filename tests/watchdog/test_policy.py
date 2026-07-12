@@ -154,7 +154,6 @@ def test_nudge_backoff_suppresses_repeat(tmp_path):
     # First call: should fire
     nudge_and_notify(db, mgr, agent, content="Cogitated\nWorking")
     assert mgr._run_tmux.called, "First nudge should fire"
-    first_call_count = mgr._run_tmux.call_count
     assert db.get_open_action_items() == []  # still no action items
 
     # Second call immediately: should be suppressed by backoff

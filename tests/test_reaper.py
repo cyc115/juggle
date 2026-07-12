@@ -1,6 +1,7 @@
 """Tests for stale-agent reaping at 12h TTL."""
 
 import sys
+import time as _time_mod
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 from pathlib import Path
@@ -186,9 +187,6 @@ def test_reaper_reaps_decommission_pending_agent():
 
     assert reaped == 1
     mock_mgr.decommission_agent.assert_called_once_with(mock_db, "pending-agent")
-
-
-import time as _time_mod
 
 
 def test_pass2_skips_orphan_pane_within_boot_grace():

@@ -11,7 +11,7 @@ import pytest
 SRC_DIR_TOP = str(Path(__file__).parent.parent / "src")
 if SRC_DIR_TOP not in sys.path:
     sys.path.insert(0, SRC_DIR_TOP)
-from juggle_cli import _last_sentences
+from juggle_cli import _last_sentences  # noqa: E402
 
 CLI = str(Path(__file__).parent.parent / "src" / "juggle_cli.py")
 SRC_DIR = str(Path(__file__).parent.parent / "src")

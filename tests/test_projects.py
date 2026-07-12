@@ -1,4 +1,5 @@
 import sys
+import types
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -412,9 +413,6 @@ def test_project_edit_existing_flags_regression(tmp_path):
 # ---------------------------------------------------------------------------
 # Phase 5: bulk + archived assign
 # ---------------------------------------------------------------------------
-
-import types
-
 
 def _make_args(**kw):
     ns = types.SimpleNamespace()

@@ -617,7 +617,6 @@ def test_session_start_includes_selfheal_count(tmp_path):
          patch("sys.exit"):
         handle_session_start({"reason": "resume"})
 
-    combined = " ".join(output_lines)
     found = False
     for line in output_lines:
         try:
