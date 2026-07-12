@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-12 (autofix)
+- fix: DB-enforced non-archived label uniqueness + tick dedup hijack (2026-07-09)
+- fix: narrow D2 busy-agent exclusion fix — tick dedup only for busy agents
+- refactor(cli): remove inert Cmd.aliases dead data
+- refactor(tests): ruff autofix unused/dup imports
+
 ## 2026-07-05 (autofix)
 - **feat(loops)**: atomic reopen-regenerate + four-seam integrate reset; stable-topic create; delivered upstream satisfies cross-topic dep-readiness; watchdog CAS-safe firing + failure circuit-breaker; transactional schedule:create router + deliver completion
 - **feat(dispatch)**: general per-node model persist + best-effort headroom preference; per-node role dispatch (researcher gets no worktree)
