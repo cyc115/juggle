@@ -38,7 +38,7 @@ async def test_action_focus_pane_calls_tmux_with_correct_pane_id(tmp_path):
     """f → type 1 → enter → _tmux_focus_pane called with agent's pane_id."""
     from juggle_db import JuggleDB
     from juggle_cockpit import CockpitApp
-    import juggle_cockpit
+    import juggle_cockpit_actions
 
     db_path = str(tmp_path / "juggle.db")
     db = JuggleDB(db_path=db_path)
@@ -54,7 +54,7 @@ async def test_action_focus_pane_calls_tmux_with_correct_pane_id(tmp_path):
         return True
 
     async with app.run_test(size=(160, 40)) as pilot:
-        with patch.object(juggle_cockpit, "_tmux_focus_pane", mock_focus):
+        with patch.object(juggle_cockpit_actions, "_tmux_focus_pane", mock_focus):
             await pilot.press("f")
             await pilot.pause(0.1)
             await pilot.press("1")
@@ -67,7 +67,7 @@ async def test_action_focus_pane_calls_tmux_with_correct_pane_id(tmp_path):
 @pytest.mark.asyncio
 async def test_action_tail_toggle_pushes_modal_and_injects_capture(tmp_path):
     """t → 1 → enter pushes _TailModal; injected capture_fn calls _tmux_capture_pane."""
-    import juggle_cockpit
+    import juggle_cockpit_actions
     from juggle_cockpit import CockpitApp
     from juggle_cockpit_modals import _TailModal
     from juggle_db import JuggleDB
@@ -86,7 +86,7 @@ async def test_action_tail_toggle_pushes_modal_and_injects_capture(tmp_path):
         return "line1\nline2"
 
     async with app.run_test(size=(160, 40)) as pilot:
-        with patch.object(juggle_cockpit, "_tmux_capture_pane", mock_capture):
+        with patch.object(juggle_cockpit_actions, "_tmux_capture_pane", mock_capture):
             await pilot.press("t")
             await pilot.pause(0.1)
             await pilot.press("1")

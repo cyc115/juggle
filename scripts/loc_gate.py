@@ -32,7 +32,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Grandfathered offenders at their line counts as of 2026-06-10 (plan baseline,
 # branch cyc_refactor-tokens). MAY ONLY SHRINK — see module docstring.
 GRANDFATHERED: dict[str, int] = {
-    "src/juggle_cockpit.py": 1075,
+    "src/juggle_cockpit.py": 693,  # 1075->693 N7: action_* handlers + on_key (~380 LOC) extracted to juggle_cockpit_actions.py (2026-07-12)
+    "src/juggle_cockpit_actions.py": 414,  # N7: CockpitActionsMixin — pure move of action_* handlers + on_key from juggle_cockpit.py; cohesive keybinding-handler seam, not manufactured (2026-07-12)
     "src/juggle_watchdog.py": 1005,  # 1043->999 (+6 landed-ad-hoc orphan guard): pane-content parsers extracted to juggle_watchdog_paneparse.py (2026-07-08); a few lines of budget kept as headroom
     "src/juggle_tmux.py": 881,
     # speedup-tier M1 (2026-06-21) re-baseline: isolating the dry-run sample dir
