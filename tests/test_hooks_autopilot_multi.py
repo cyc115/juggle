@@ -60,8 +60,8 @@ def test_injection_budget_split_keeps_total_bounded(db):
             tp.create_topic(db, topic_id=f"{pid}-t{i}", project_id=pid, title=f"t{i}")
     _disarm_all_but(db, *pids)  # arm exactly P1+P2+P3 (exclude INBOX)
     ctx = ha._armed_graph_context()
-    lines = [l for l in ctx.splitlines() if l.startswith("Graph [")]
-    assert len(lines) == 3 and sum(len(l) for l in lines) <= 540
+    lines = [ln for ln in ctx.splitlines() if ln.startswith("Graph [")]
+    assert len(lines) == 3 and sum(len(ln) for ln in lines) <= 540
 
 
 def test_disarmed_returns_empty(db):

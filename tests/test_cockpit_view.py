@@ -217,9 +217,9 @@ def test_render_topics_medium_one_topic_per_line():
     panel = render_topics(topics, "medium")
     with c:
         c.print(panel)
-    lines = [l for l in c.export_text().splitlines() if l.strip()]
+    lines = [ln for ln in c.export_text().splitlines() if ln.strip()]
     # At least one line per topic must contain the label
-    label_lines = [l for l in lines if "[AA]" in l or "[BB]" in l or "[CC]" in l]
+    label_lines = [ln for ln in lines if "[AA]" in ln or "[BB]" in ln or "[CC]" in ln]
     assert len(label_lines) >= 3, (
         f"Expected ≥3 label lines, got {len(label_lines)}: {lines}"
     )

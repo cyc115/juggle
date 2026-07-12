@@ -260,7 +260,9 @@ def test_required_by_demotion_is_atomic_with_edge_write(db, monkeypatch):
     g.recompute_ready(db, "INBOX")
     assert g.get_task(db, "root")["state"] == "ready"
 
-    boom = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("crash post-commit"))
+    def boom(*a, **k):
+        raise RuntimeError("crash post-commit")
+
     monkeypatch.setattr(g, "recompute_ready", boom)
     with pytest.raises(RuntimeError):
         up.add_task(

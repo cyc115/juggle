@@ -32,8 +32,10 @@ def test_migration_adds_summary_column_to_projects(tmp_path):
 def test_migration_idempotent_closed_at(tmp_path):
     from juggle_db import JuggleDB
     path = str(tmp_path / "test.db")
-    db1 = JuggleDB(path); db1.init_db()
-    db2 = JuggleDB(path); db2.init_db()
+    db1 = JuggleDB(path)
+    db1.init_db()
+    db2 = JuggleDB(path)
+    db2.init_db()
     with db2._connect() as conn:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(projects)").fetchall()}
     assert "closed_at" in cols

@@ -687,8 +687,8 @@ _SUPPORT_TABLES_DDL = """
 
 def _threads_ddl_minus(missing_col: str) -> str:
     """Return threads DDL with one column removed."""
-    lines = [l for l in _THREADS_FULL_DDL.splitlines()
-             if missing_col not in l or l.strip().startswith("--")]
+    lines = [ln for ln in _THREADS_FULL_DDL.splitlines()
+             if missing_col not in ln or ln.strip().startswith("--")]
     # Strip trailing comma from last non-empty line to avoid syntax error
     for i in range(len(lines) - 1, -1, -1):
         if lines[i].strip():

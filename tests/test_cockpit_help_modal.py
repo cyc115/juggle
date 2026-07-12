@@ -215,7 +215,7 @@ def test_render_help_lines_close_hint():
     """render_help_lines ends with Esc/q close hint."""
     from juggle_cockpit_modals import render_help_lines
     lines = render_help_lines()
-    assert any("close" in l.lower() or "esc" in l.lower() for l in lines), (
+    assert any("close" in ln.lower() or "esc" in ln.lower() for ln in lines), (
         "Missing Esc/q close hint in rendered help lines"
     )
 

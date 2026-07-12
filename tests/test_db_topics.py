@@ -74,7 +74,8 @@ def test_topic_uses_task_state_machine(db):
 def test_derived_topic_deps_from_cross_topic_task_edges(db):
     """Topic A depends on topic B iff any task of A has an edge to a task of B.
     Intra-topic edges must NOT create a self-dep."""
-    _topic(db, "A"); _topic(db, "B")
+    _topic(db, "A")
+    _topic(db, "B")
     _task(db, "b1", "B")
     _task(db, "a1", "A")
     _task(db, "a2", "A", deps=("a1", "b1"))  # intra (a1) + cross (b1)
@@ -83,7 +84,8 @@ def test_derived_topic_deps_from_cross_topic_task_edges(db):
 
 
 def test_topic_ready_requires_dep_topics_verified(db, tmp_path):
-    _topic(db, "A"); _topic(db, "B")
+    _topic(db, "A")
+    _topic(db, "B")
     _task(db, "b1", "B")
     _task(db, "a1", "A", deps=("b1",))
     assert t.recompute_topic_ready(db, "INBOX") == ["B"]  # A blocked on B
@@ -115,7 +117,8 @@ def test_mark_topic_completion_maps_outcomes(db, tmp_path):
 
 
 def test_topic_counts_shape(db):
-    _topic(db, "A"); _topic(db, "B")
+    _topic(db, "A")
+    _topic(db, "B")
     c = t.topic_counts(db, "INBOX")
     assert c["total"] == 2 and c["open"] == 2
 

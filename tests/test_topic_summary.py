@@ -183,7 +183,7 @@ def test_format_recent_activity_basic():
     lines = format_recent_activity(SAMPLE_MESSAGES)
 
     assert len(lines) == len(SAMPLE_MESSAGES)
-    assert all(isinstance(l, str) for l in lines)
+    assert all(isinstance(ln, str) for ln in lines)
     assert "[user]" in lines[0]
     assert "[assistant]" in lines[1]
 

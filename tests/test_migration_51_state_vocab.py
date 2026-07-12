@@ -19,7 +19,8 @@ def test_migration_51_maps_pending_to_open():
     """2026-06-27 P8 C3: existing DBs store task state 'pending'; the unified
     engine only understands 'open'. Migration 51 must rewrite pending→open so
     the renamed engine never queries an un-modelled state."""
-    conn = sqlite3.connect(":memory:"); conn.row_factory = sqlite3.Row
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
     _mk(conn)
     migrate_51_state_vocab(conn)
     assert conn.execute("SELECT state FROM graph_tasks WHERE id='t1'").fetchone()[0] == "open"
@@ -30,9 +31,11 @@ def test_migration_51_maps_pending_to_open():
 
 
 def test_migration_51_idempotent():
-    conn = sqlite3.connect(":memory:"); conn.row_factory = sqlite3.Row
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
     _mk(conn)
-    migrate_51_state_vocab(conn); migrate_51_state_vocab(conn)   # second run is a no-op
+    migrate_51_state_vocab(conn)
+    migrate_51_state_vocab(conn)   # second run is a no-op
     assert conn.execute("SELECT COUNT(*) FROM graph_tasks WHERE state='pending'").fetchone()[0] == 0
 
 
@@ -45,7 +48,8 @@ def test_migration_51_fail_loud_on_lock(tmp_path):
     setup.execute("CREATE TABLE graph_tasks (id TEXT, state TEXT)")
     setup.execute("INSERT INTO graph_tasks VALUES ('t1','pending')")
     setup.commit()
-    holder = sqlite3.connect(dbf, timeout=0); holder.isolation_level = None
+    holder = sqlite3.connect(dbf, timeout=0)
+    holder.isolation_level = None
     holder.execute("BEGIN IMMEDIATE")                 # hold the write lock
     victim = sqlite3.connect(dbf, timeout=0)
     try:

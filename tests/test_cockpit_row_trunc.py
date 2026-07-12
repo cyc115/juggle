@@ -45,5 +45,5 @@ def test_title_right_truncates_with_ellipsis():
     out = _render(36)
     assert "…" in out, f"title should right-truncate with ellipsis:\n{out}"
     # the ellipsis must come AFTER the label (right side), never before it.
-    line = next(l for l in out.splitlines() if "[WB]" in l)
+    line = next(ln for ln in out.splitlines() if "[WB]" in ln)
     assert line.index("[WB]") < line.index("…"), f"ellipsis before label: {line!r}"
