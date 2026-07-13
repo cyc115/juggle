@@ -706,7 +706,7 @@ def execute_recovery(
         db.set_conversation_background(thread_id)
 
     try:
-        mgr.send_task(new_pane_id, last_task)
+        pane_hash = mgr.send_task(new_pane_id, last_task)
     except RuntimeError as exc:
         _log.error(
             "Watchdog: [RECOVERY-COLD-START-FAILED] send_task raised for agent %s: %s",
@@ -754,6 +754,13 @@ def execute_recovery(
             snapshot_path=str(snap_path),
         )
         return
+
+    # Fix 2 (2026-07-13 completed-agents-never-decommission): stamp the same
+    # dispatch fields the normal send-task path stamps — a re-dispatched agent
+    # with last_send_task_at still NULL classifies as awaiting_dispatch
+    # forever (see juggle_dispatch_stamp docstring).
+    from juggle_dispatch_stamp import record_dispatch
+    record_dispatch(db, new_agent_id, last_task=last_task, pane_hash=pane_hash)
 
     if thread_id:
         db.emit_event(

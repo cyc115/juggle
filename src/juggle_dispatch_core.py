@@ -248,17 +248,15 @@ def send_task_to_agent(
             pane_id, full_prompt, role=_role, model=agent.get("model")
         )
 
-    now_iso = datetime.now(timezone.utc).isoformat()
+    from juggle_dispatch_stamp import record_dispatch
+
     _update: dict = dict(
-        last_task=full_prompt,
-        last_send_task_pane_hash=pane_hash,
-        last_send_task_at=now_iso,
         harness=adapter.id,
         model=adapter._cfg.get("model") or agent.get("model"),
     )
     if not adapter.is_interactive and oneshot_pid is not None:
         _update["oneshot_pid"] = oneshot_pid
-    db.update_agent(agent_id, **_update)
+    record_dispatch(db, agent_id, last_task=full_prompt, pane_hash=pane_hash, **_update)
 
     # Ledger (best-effort — never breaks dispatch). Extracted to
     # juggle_dispatch_ledger (2026-06-30 orchestration-metrics; LOC budget).

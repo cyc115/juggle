@@ -562,6 +562,9 @@ def test_execute_recovery_full_flow(tmp_path):
     mgr = MagicMock()
     mgr.verify_pane.return_value = True
     mgr.spawn_agent.return_value = new_agent
+    # Real send_task returns a 16-hex pane hash (juggle_tmux.send_task); pin it
+    # explicitly so the 2026-07-13 dispatch-stamp fix has a real string to bind.
+    mgr.send_task.return_value = "abc123hash"
     recovery_dir = tmp_path / "recovery"
 
     execute_recovery(
@@ -588,6 +591,67 @@ def test_execute_recovery_full_flow(tmp_path):
     # Successful auto-recovery emits notifications only — no action items
     items = db.get_open_action_items()
     assert items == [], f"Expected no action items for auto-recovery, got: {[it['message'] for it in items]}"
+
+
+def test_execute_recovery_redispatch_stamps_last_send_task_at(tmp_path):
+    """REGRESSION (2026-07-13 completed-agents-never-decommission): the
+    stalled/crashed recovery re-dispatch called mgr.send_task directly and
+    stamped only last_task on the new agent row — never
+    last_send_task_pane_hash/last_send_task_at. The watchdog classifier
+    (classify_pane_state) treats last_send_task_at IS NULL as "never
+    dispatched" -> permanently-skipped 'awaiting_dispatch', so a re-dispatched
+    agent that later stalled again was never recovered a second time (agent
+    6a329c19 spammed "awaiting first dispatch — skipping recovery" for 15h).
+    """
+    from juggle_watchdog import execute_recovery
+    from juggle_db import JuggleDB
+
+    db = JuggleDB(str(tmp_path / "test.db"))
+    db.init_db()
+    thread_id = db.create_thread("test", session_id="")
+    agent_id = db.create_agent(role="coder", pane_id="%5")
+    db.update_agent(
+        agent_id,
+        status="busy",
+        assigned_thread=thread_id,
+        last_task="do the work",
+        watchdog_retried=0,
+    )
+
+    new_agent_id = db.create_agent(role="coder", pane_id="%6")
+    new_agent = db.get_agent(new_agent_id)
+
+    mgr = MagicMock()
+    mgr.verify_pane.return_value = True
+    mgr.spawn_agent.return_value = new_agent
+    mgr.send_task.return_value = "deadbeefcafe0001"
+    recovery_dir = tmp_path / "recovery"
+
+    execute_recovery(
+        db, mgr, db.get_agent(agent_id), "pane content",
+        recovery_dir=recovery_dir, session_id="",
+    )
+
+    updated_new = db.get_agent(new_agent_id)
+    assert updated_new["last_send_task_at"] is not None, (
+        "recovery re-dispatch must stamp last_send_task_at — otherwise the "
+        "classifier permanently misreads the agent as awaiting_dispatch"
+    )
+    assert updated_new["last_send_task_pane_hash"] == "deadbeefcafe0001"
+
+    # The classifier must NOT misclassify the freshly re-dispatched agent as
+    # awaiting_dispatch (the actual production symptom).
+    from juggle_watchdog import classify_pane_state
+
+    state, _ = classify_pane_state(
+        content="pane content",
+        prev_content="pane content",
+        stalled_for=999.0,
+        threshold=60.0,
+        last_send_task_pane_hash=updated_new["last_send_task_pane_hash"],
+        last_send_task_at=updated_new["last_send_task_at"],
+    )
+    assert state != "awaiting_dispatch"
 
 
 # ── alive_slow + closed-thread guard ─────────────────────────────────────────
