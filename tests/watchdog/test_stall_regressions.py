@@ -37,6 +37,7 @@ def mock_mgr():
             "status": "busy",
         }
     )
+    mgr.send_task.return_value = "hash-stub"
     return mgr
 
 

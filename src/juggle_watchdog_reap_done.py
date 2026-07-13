@@ -20,6 +20,10 @@ Pane retirement is deliberately left to the existing idle-TTL reaper
 (juggle_tmux.reap_stale_agents): killing an idle agent's pane here would break
 pane reuse. Self-contained + fully injectable (capture / markers / active-pattern)
 to mirror juggle_watchdog_stall's testable driver shape.
+
+The Fault-1 backstop (2026-07-13 completed-agents-never-decommission — a
+completion was ATTEMPTED but its topic never landed) lives in
+``juggle_watchdog_reap_backstop`` (LOC-gate extraction).
 """
 from __future__ import annotations
 
@@ -30,6 +34,12 @@ from typing import Any, Callable
 from dbops import db_topics as _tp
 from dbops import event_kinds as _ek
 from dbops.terminal_states import topic_work_landed
+from juggle_watchdog_reap_backstop import (
+    event_age_secs,
+    find_attempted_completion,
+    reconcile_failed_landing,
+    resolve_min_age_secs,
+)
 from juggle_watchdog_stall import (
     _capture_pane,
     is_idle_at_prompt,
@@ -47,8 +57,13 @@ def reap_completed_agents(
     capture: Callable[[str], str | None] | None = None,
     markers_for: Callable[[dict], tuple[tuple, tuple]] | None = None,
     active_pattern_for: Callable[[dict], str] | None = None,
+    backstop_min_age_secs: float | None = None,
 ) -> None:
     """Release busy agents idling at the prompt whose bound topic already landed.
+    Also applies the Fault-1 backstop: an idle agent on a NON-landed topic is
+    reconciled (not silently marked done) when a dead-lettered agent_complete
+    exists for its thread and is older than ``backstop_min_age_secs`` (env
+    ``JUGGLE_REAP_BACKSTOP_MIN_AGE_SECS``, default 300s, when None).
     ``capture``/``markers_for``/``active_pattern_for`` are injectable for tests."""
     if capture is None:
         capture = lambda pid: _capture_pane(mgr, pid)  # noqa: E731
@@ -56,6 +71,7 @@ def reap_completed_agents(
         markers_for = markers_for_agent
     if active_pattern_for is None:
         from juggle_harness import active_pattern_for_agent as active_pattern_for
+    min_age = resolve_min_age_secs(backstop_min_age_secs)
 
     from juggle_watchdog import _agent_is_non_interactive
 
@@ -70,10 +86,20 @@ def reap_completed_agents(
             continue
 
         # (ii) bound topic already landed? — the shared signal. An active/ready
-        # topic means the agent is legitimately awaiting its next task → skip.
+        # topic means the agent is legitimately awaiting its next task → skip,
+        # UNLESS a completion was actually ATTEMPTED and failed to land (the
+        # Fault-1 backstop below) — an active topic with no such evidence is
+        # the ordinary "awaiting next task" case and must be left alone.
         topic = _tp.get_topic_by_thread(db, thread_id)
-        if not topic_work_landed(topic):
-            continue
+        landed = topic_work_landed(topic)
+        dead_letter = None
+        if not landed:
+            dead_letter = find_attempted_completion(thread_id)
+            if dead_letter is None:
+                continue
+            age = event_age_secs(dead_letter)
+            if age is None or age < min_age:
+                continue
 
         # (i) idle at the pane (NOT mid-turn)? A submission marker → still working.
         content = capture(agent.get("pane_id") or "")
@@ -81,7 +107,11 @@ def reap_completed_agents(
         if not is_idle_at_prompt(content, ready, submit, active_pattern_for(agent)):
             continue
 
-        _release_completed_agent(db, agent, thread_id, session_id)
+        if landed:
+            _release_completed_agent(db, agent, thread_id, session_id)
+        else:
+            label = _thread_label(db, thread_id, agent["id"])
+            reconcile_failed_landing(db, agent, thread_id, label, session_id, dead_letter)
 
 
 def _release_completed_agent(

@@ -244,6 +244,7 @@ def test_cascade_cleared_on_successful_recovery(tmp_path):
 
     # Successful recovery clears cascade state
     mgr.send_task.side_effect = None  # no longer fails
+    mgr.send_task.return_value = "hash-stub"
     agent_id = db.create_agent(role="coder", pane_id="%5")
     db.update_agent(
         agent_id,

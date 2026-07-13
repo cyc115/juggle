@@ -269,6 +269,7 @@ def test_execute_recovery_recycles_high_context_agent(tmp_path):
         "pane_id": "%99",
         "status": "busy",
     }
+    mgr.send_task.return_value = "hash-stub"
 
     agent_id = db.create_agent(role="coder", pane_id="%5")
     db.update_agent(

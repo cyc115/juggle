@@ -280,12 +280,8 @@ def get_session_id(db: Any) -> str:
 
 
 def _get_thread_label(db: Any, thread_id: str) -> str:
-    if not thread_id:
-        return "unknown"
-    thread = db.get_thread(thread_id)
-    if not thread:
-        return thread_id[:8]
-    return thread.get("user_label") or thread.get("label") or thread_id[:8]
+    from juggle_watchdog_thread_label import thread_label
+    return thread_label(db, thread_id)
 
 
 # ---------------------------------------------------------------------------
@@ -755,11 +751,7 @@ def execute_recovery(
         )
         return
 
-    # Fix 2 (2026-07-13 completed-agents-never-decommission): stamp the same
-    # dispatch fields the normal send-task path stamps — a re-dispatched agent
-    # with last_send_task_at still NULL classifies as awaiting_dispatch
-    # forever (see juggle_dispatch_stamp docstring).
-    from juggle_dispatch_stamp import record_dispatch
+    from juggle_dispatch_stamp import record_dispatch  # 2026-07-13: see its docstring
     record_dispatch(db, new_agent_id, last_task=last_task, pane_hash=pane_hash)
 
     if thread_id:

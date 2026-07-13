@@ -32,6 +32,9 @@ def mock_mgr():
     mgr.spawn_agent = MagicMock(
         return_value={"id": "new-agent-id", "pane_id": "%99", "status": "busy"}
     )
+    # Real send_task returns a pane-hash string (2026-07-13 dispatch-stamp fix
+    # binds it into the DB) — a bare MagicMock isn't a valid sqlite param.
+    mgr.send_task.return_value = "hash-stub"
     return mgr
 
 

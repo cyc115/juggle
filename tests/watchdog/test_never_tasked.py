@@ -51,6 +51,7 @@ def mock_mgr():
         "id": "new-agent-id",
         "pane_id": "%99",
     }
+    mgr.send_task.return_value = "hash-stub"
     return mgr
 
 

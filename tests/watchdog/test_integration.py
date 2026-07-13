@@ -138,6 +138,7 @@ def test_full_stall_recovery_cycle(db, tmp_path):
     mgr = MagicMock()
     mgr.verify_pane.return_value = True
     mgr.spawn_agent.return_value = new_agent
+    mgr.send_task.return_value = "hash-stub"
 
     execute_recovery(
         db, mgr, agent, pane_content, recovery_dir=recovery_dir, session_id=""

@@ -53,7 +53,21 @@ def _busy_agent_on(db, tid, pane="%1"):
     return agent_id
 
 
-def _reap(db, capture):
+def _dead_letter_agent_complete(thread_id: str) -> str:
+    """Write + dead-letter an agent_complete spool event for ``thread_id``,
+    mirroring production (spool_event_if_agent writes agent_id/thread_id as
+    "" and puts the real thread id inside args)."""
+    from dbops.spool import move_to_dead, write_event
+    from juggle_spool_paths import spool_dir
+
+    sd = spool_dir()
+    ev_uuid = write_event(sd, "agent_complete", "", "", {"thread_id": thread_id})
+    pending = [p for p in sd.glob("*.json") if ev_uuid[:8] in p.name]
+    move_to_dead(sd, pending[0], "test: simulated apply failure")
+    return ev_uuid
+
+
+def _reap(db, capture, **kw):
     from juggle_watchdog_reap_done import reap_completed_agents
 
     reap_completed_agents(
@@ -63,6 +77,7 @@ def _reap(db, capture):
         capture=lambda pid: capture,
         markers_for=lambda a: (READY, SUBMIT),
         active_pattern_for=lambda a: "",
+        **kw,
     )
 
 
@@ -128,5 +143,67 @@ def test_reaper_ignores_agent_on_active_topic(db):
     agent_id = _busy_agent_on(db, tid)
 
     _reap(db, IDLE_PANE)
+
+    assert db.get_agent(agent_id)["status"] == "busy"
+
+
+# ── Fault-1 backstop: completion ATTEMPTED but topic never landed ───────────
+# REGRESSION (2026-07-13 completed-agents-never-decommission): the reaper's
+# sole gate was topic_work_landed(topic) — a topic stuck non-terminal (e.g.
+# 'background') because its `agent complete` call dead-lettered had NO
+# backstop, so the agent leaked forever. The backstop must fire ONLY when a
+# completion was actually ATTEMPTED (a dead-lettered agent_complete spool
+# event for the thread exists) — never on a topic that's merely mid-flight,
+# which is indistinguishable from "idle, legitimately awaiting next task"
+# without that evidence (see test_reaper_ignores_agent_on_active_topic above).
+
+
+def test_backstop_reaps_agent_whose_completion_dead_lettered(db):
+    """Idle agent + non-landed topic + a dead-lettered agent_complete for its
+    thread, past the bounded min-age → reconciled: agent freed, topic state
+    left untouched (NOT silently marked done), action item filed for the
+    orchestrator."""
+    tid = db.create_thread("stuck-topic", session_id="s")
+    db.update_thread(tid, status="background")
+    _bind_topic(db, tid, "T-stuck", state="background", merged_sha=None)
+    agent_id = _busy_agent_on(db, tid)
+    _dead_letter_agent_complete(tid)
+
+    _reap(db, IDLE_PANE, backstop_min_age_secs=0.0)
+
+    agent = db.get_agent(agent_id)
+    assert agent["status"] == "idle"
+    assert agent["assigned_thread"] is None
+    # Work may not have landed — topic state must NOT be silently marked done.
+    assert db.get_thread(tid)["state"] == "background"
+    items = db.get_open_action_items()
+    assert any(it.get("thread_id") == tid for it in items), (
+        "backstop must push a needs-judgment action item, not silently reconcile"
+    )
+
+
+def test_backstop_ignores_dead_letter_within_min_age(db):
+    """Guard: a just-written dead-letter must NOT trigger the backstop before
+    the configured min-age elapses — gives self-heal/retry paths a window."""
+    tid = db.create_thread("stuck-topic", session_id="s")
+    db.update_thread(tid, status="background")
+    _bind_topic(db, tid, "T-stuck", state="background", merged_sha=None)
+    agent_id = _busy_agent_on(db, tid)
+    _dead_letter_agent_complete(tid)
+
+    _reap(db, IDLE_PANE, backstop_min_age_secs=9999.0)
+
+    assert db.get_agent(agent_id)["status"] == "busy"
+
+
+def test_backstop_ignores_non_landed_topic_without_dead_letter(db):
+    """Guard: no dead-letter evidence at all → never fires, even past the
+    min-age window (0.0) — this is the ordinary "awaiting next task" case."""
+    tid = db.create_thread("active-topic-2", session_id="s")
+    db.update_thread(tid, status="background")
+    _bind_topic(db, tid, "T-active-2", state="background", merged_sha=None)
+    agent_id = _busy_agent_on(db, tid)
+
+    _reap(db, IDLE_PANE, backstop_min_age_secs=0.0)
 
     assert db.get_agent(agent_id)["status"] == "busy"
