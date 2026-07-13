@@ -64,17 +64,36 @@ def find_attempted_completion(thread_id: str) -> dict | None:
     return found
 
 
-def event_age_secs(payload: dict) -> float | None:
-    created_at = payload.get("created_at")
-    if not created_at:
+def _parse_iso(ts: Any) -> datetime | None:
+    if not ts:
         return None
     try:
-        dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+def event_age_secs(payload: dict) -> float | None:
+    dt = _parse_iso(payload.get("created_at"))
+    if dt is None:
+        return None
     return (datetime.now(timezone.utc) - dt).total_seconds()
+
+
+def dead_letter_matches_agent(dead_letter: dict, agent: dict) -> bool:
+    """True iff ``agent`` was already busy (this assignment) by the time
+    ``dead_letter`` was created — i.e. this is the SAME agent whose completion
+    attempt dead-lettered, not a freshly (re-)dispatched agent that merely
+    inherited a stale dead-letter left over from a PRIOR attempt on this
+    thread (``cas_assign_agent``/spawn always re-stamp ``busy_since`` on every
+    new assignment, so a later assignment's busy_since postdates an earlier
+    attempt's dead-letter)."""
+    busy_since = _parse_iso(agent.get("busy_since"))
+    created_at = _parse_iso(dead_letter.get("created_at"))
+    if busy_since is None or created_at is None:
+        return False
+    return busy_since <= created_at
 
 
 def reconcile_failed_landing(

@@ -47,9 +47,12 @@ def _bind_topic(db, tid, topic_id, state, merged_sha):
         conn.commit()
 
 
-def _busy_agent_on(db, tid, pane="%1"):
+def _busy_agent_on(db, tid, pane="%1", busy_since="2020-01-01T00:00:00+00:00"):
     agent_id = db.create_agent("coder", pane)
-    db.update_agent(agent_id, status="busy", assigned_thread=tid, last_task="do it")
+    db.update_agent(
+        agent_id, status="busy", assigned_thread=tid, last_task="do it",
+        busy_since=busy_since,
+    )
     return agent_id
 
 
@@ -203,6 +206,28 @@ def test_backstop_ignores_non_landed_topic_without_dead_letter(db):
     db.update_thread(tid, status="background")
     _bind_topic(db, tid, "T-active-2", state="background", merged_sha=None)
     agent_id = _busy_agent_on(db, tid)
+
+    _reap(db, IDLE_PANE, backstop_min_age_secs=0.0)
+
+    assert db.get_agent(agent_id)["status"] == "busy"
+
+
+def test_backstop_ignores_stale_dead_letter_after_fresh_redispatch(db):
+    """DA finding: a dead-letter is never purged when the backstop reconciles
+    — if the topic is later manually retried with a FRESH agent, that new
+    agent must NOT be reaped just because an OLD dead-letter for the same
+    thread still exists in spool/dead/. Discriminator: the busy agent's
+    busy_since must predate the dead-letter's created_at (same attempt);
+    a later busy_since means a different (retry) assignment."""
+    tid = db.create_thread("stuck-topic", session_id="s")
+    db.update_thread(tid, status="background")
+    _bind_topic(db, tid, "T-stuck", state="background", merged_sha=None)
+
+    # The dead-letter is created FIRST (the original agent's failed attempt)...
+    _dead_letter_agent_complete(tid)
+    # ...then a FRESH agent is dispatched afterward (real busy_since, i.e. now).
+    from dbops.schema import _now
+    agent_id = _busy_agent_on(db, tid, busy_since=_now())
 
     _reap(db, IDLE_PANE, backstop_min_age_secs=0.0)
 

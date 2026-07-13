@@ -35,6 +35,7 @@ from dbops import db_topics as _tp
 from dbops import event_kinds as _ek
 from dbops.terminal_states import topic_work_landed
 from juggle_watchdog_reap_backstop import (
+    dead_letter_matches_agent,
     event_age_secs,
     find_attempted_completion,
     reconcile_failed_landing,
@@ -96,6 +97,11 @@ def reap_completed_agents(
         if not landed:
             dead_letter = find_attempted_completion(thread_id)
             if dead_letter is None:
+                continue
+            # This busy agent must be the SAME one whose attempt dead-lettered —
+            # not a fresh (re-)dispatch that merely inherited a stale dead-letter
+            # from a prior attempt on this thread.
+            if not dead_letter_matches_agent(dead_letter, agent):
                 continue
             age = event_age_secs(dead_letter)
             if age is None or age < min_age:
