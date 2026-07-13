@@ -13,7 +13,20 @@ def decide_thread_close(db, thread: dict, thread_uuid: str) -> str | None:
     Preserves the 2026-06-21 anti-hijack fix: a feature topic (>=1 human message)
     is never force-closed; an in-flight wrongful bind is un-hijacked to 'active';
     an already-terminal preserved topic is left as-is (idempotency, Codex 2026-06-21).
+
+    2026-07-12/13 incident: an ARCHIVED thread is left untouched unconditionally,
+    even with no human message. Archiving frees the thread's slug (T-slug-wheel);
+    a late agent-complete (e.g. the watchdog archived it as stalled/orphaned while
+    the dispatched agent was still working) must not walk it to 'closed' — that
+    maps to node state 'done' (STATUS_TO_STATE), which re-enters the partial
+    idx_nodes_live_label index (state != 'archived') and collides with whatever
+    conversation the slug wheel has since reallocated the freed slug to
+    (IntegrityError: UNIQUE constraint failed: nodes.user_label — dead-lettered
+    spool events 191c7e17/aabd9574). The thread is already maximally terminal;
+    a late completion of it is a superseded no-op, same as an already-closed one.
     """
+    if (thread.get("state") or "") == "archived":
+        return None
     if not db.has_human_user_message(thread_uuid):
         return "closed"
     if (thread.get("state") or "") in ("background", "running"):

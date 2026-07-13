@@ -212,6 +212,49 @@ def test_drain_applies_action_create_via_existing_cmd_request_action(db, spool):
     assert any("do the thing" in (i.get("message") or "") for i in db.get_open_action_items())
 
 
+def test_drain_agent_complete_on_archived_reallocated_thread_does_not_raise(db, spool):
+    """Regression pin (2026-07-12/13 incident, dead-lettered spool events
+    191c7e17/aabd9574): an ad-hoc thread archived (e.g. by the watchdog's
+    stall/orphan reclaim) while its dispatched coder was still working, whose
+    freed slug the wheel then reallocates to a brand-new conversation, must
+    not crash on a late agent_complete. cmd_complete_agent's decide_thread_close
+    walks a no-human-message thread to 'closed' -> node state 'done'
+    (STATUS_TO_STATE) unconditionally; 'done' re-enters the partial
+    idx_nodes_live_label index (WHERE state != 'archived'), colliding with the
+    reallocated-slug holder -> IntegrityError: UNIQUE constraint failed:
+    nodes.user_label. Dead reason on unfixed code:
+    'IntegrityError during replay of agent_complete: UNIQUE constraint failed:
+    nodes.user_label' (byte-identical to the production dead-letter)."""
+    from dbops.schema import _wheel_index
+
+    tid = _make_thread(db, label="AA")
+    label = db.get_thread(tid)["user_label"]
+    db.archive_thread(tid)
+    assert db.get_thread(tid)["state"] == "archived"
+
+    # Force the wheel to reallocate the just-freed slug to a new conversation,
+    # simulating the wheel cycling back around in a long-running instance.
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO juggle_meta(key, value) VALUES ('label_seq', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (str(_wheel_index(label)),),
+        )
+        conn.commit()
+    other = db.create_thread("unrelated new topic", session_id="s2")
+    assert db.get_thread(other)["user_label"] == label
+
+    write_event(spool, "agent_complete", "agent-1", tid, {
+        "thread_id": tid, "result_summary": "late completion of archived thread",
+        "retain_text": None, "open_questions": None, "handoff": None, "role": None,
+    })
+    stats = drain_spool(db)
+
+    assert stats["dead"] == 0, "must not dead-letter — the archived thread stays untouched"
+    assert stats["applied"] == 1
+    assert db.get_thread(tid)["state"] == "archived"
+
+
 def test_drain_routes_graph_mark_task_event_type(db, spool):
     """Regression pin: the committed writer emits event type 'graph_mark_task'
     (juggle_cmd_graph.py), NOT 'mark_task'. A stale type string would route to

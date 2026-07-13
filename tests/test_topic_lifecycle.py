@@ -21,6 +21,17 @@ def test_decide_thread_close_human_inflight_reactivates(juggle_db):
     assert lc.decide_thread_close(juggle_db, thread, tid) == "active"
 
 
+def test_decide_thread_close_archived_thread_untouched(juggle_db):
+    """Regression pin (2026-07-12/13 incident): an archived thread must never
+    be walked back to 'closed' by a late agent-complete — see
+    juggle_topic_lifecycle.decide_thread_close's docstring for the full
+    UNIQUE(nodes.user_label) collision chain this guards against."""
+    tid = juggle_db.create_thread(topic="agent work", session_id="s")
+    juggle_db.archive_thread(tid)
+    thread = juggle_db.get_thread(tid)
+    assert lc.decide_thread_close(juggle_db, thread, tid) is None
+
+
 def test_decide_thread_close_human_terminal_untouched(juggle_db):
     tid = juggle_db.create_thread(topic="feature", session_id="s")
     juggle_db.add_message(tid, role="user", content="please build the login page")
