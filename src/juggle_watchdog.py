@@ -332,7 +332,7 @@ def _classify_agent_state(pane_content: str, pane_exists: bool) -> str:
 # Re-exported under the historical private name so `from juggle_watchdog import
 # _agent_is_non_interactive` and `patch("juggle_watchdog._agent_is_non_interactive")`
 # keep working for every caller + test.
-from juggle_agent_interactivity import (  # noqa: E402
+from juggle_agent_interactivity import (  # noqa: E402, F401
     agent_is_non_interactive as _agent_is_non_interactive,
 )
 
