@@ -34,7 +34,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 GRANDFATHERED: dict[str, int] = {
     "src/juggle_cockpit.py": 693,  # 1075->693 N7: action_* handlers + on_key (~380 LOC) extracted to juggle_cockpit_actions.py (2026-07-12)
     "src/juggle_cockpit_actions.py": 414,  # N7: CockpitActionsMixin — pure move of action_* handlers + on_key from juggle_cockpit.py; cohesive keybinding-handler seam, not manufactured (2026-07-12)
-    "src/juggle_watchdog.py": 815,  # 1005->815: check_orphaned_threads extracted to juggle_watchdog_orphans.py (slimming N5, 2026-07-12)
+    "src/juggle_watchdog.py": 492,  # 815->492: execute_recovery extracted to juggle_watchdog_recovery.py (slimming N6, 2026-07-15)
+    "src/juggle_watchdog_recovery.py": 351,  # N6: execute_recovery — pure move from juggle_watchdog.py, cohesive stalled/crashed reap+re-dispatch seam (2026-07-15)
     "src/juggle_tmux.py": 881,
     # speedup-tier M1 (2026-06-21) re-baseline: isolating the dry-run sample dir
     # to tmp_path needs one `import os` per schedule routine (the env override is
