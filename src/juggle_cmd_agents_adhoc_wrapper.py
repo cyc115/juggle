@@ -42,7 +42,7 @@ def ensure_adhoc_topic_wrapper(db, thread, thread_uuid) -> None:
     Idempotent: a no-op once the thread is bound to ANY topic (a real one or
     a previously-created wrapper — never re-wraps or double-creates).
 
-    RC3 (2026-07-19, Bug#1 still-broken): this now ALSO wraps a thread bound
+    Bug#1-still-broken (2026-07-19): this now ALSO wraps a thread bound
     to a real graph TASK with no topic — the "true legacy"/project-dispatched
     shape (KO/KN/KU/KV/KS), which 4ddd742 excluded to avoid hijacking the
     task's own state (breaking DA B3's failed-integration pin), but that
@@ -85,7 +85,7 @@ def ensure_adhoc_topic_wrapper(db, thread, thread_uuid) -> None:
 
 
 def propagate_wrapper_outcome_to_task(db, topic_id, thread_uuid, state, handoff, session_id) -> None:
-    """RC3: once a WRAPPER topic (see ensure_adhoc_topic_wrapper) reaches a
+    """Bug#1-still-broken: once a WRAPPER topic (see ensure_adhoc_topic_wrapper) reaches a
     terminal outcome, mirror that SAME verdict onto any real graph task bound
     to the same thread — the thread keeps its own dispatch edge on the real
     task independent of the wrapper's dispatch edge on the synthetic topic,
@@ -96,7 +96,7 @@ def propagate_wrapper_outcome_to_task(db, topic_id, thread_uuid, state, handoff,
     never raises."""
     from dbops.terminal_states import ASYNC_PENDING_STATES
 
-    if not is_adhoc_wrapper_topic(topic_id):
+    if not is_adhoc_wrapper_topic(topic_id) or not thread_uuid:
         return
     if state in ASYNC_PENDING_STATES:
         return  # not terminal yet — nothing to propagate

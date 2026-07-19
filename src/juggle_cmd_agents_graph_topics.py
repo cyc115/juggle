@@ -98,12 +98,12 @@ def start_detached_integrate(db, thread_uuid, handoff) -> bool:
 
 def finalize_or_detach_integrate(db, thread, thread_uuid, handoff):
     """Complete-time worktree finalize. Every worktree-bound thread — a real
-    graph topic, a plain/ad-hoc one, or a task-bound one with no topic
-    (all auto-wrapped, RC2/RC3) — hands the merge to a DETACHED integrate
-    (RC1 2026-07-04 inline-gate death by watchdog respawn + RC2 2026-07-19 +
-    RC3 2026-07-19 still-broken: never run the gate inline in the
-    watchdog/spool process) and returns detached=True. A pre-migration thread
-    with no worktree finalizes via bare _finalize_worktree. Returns
+    graph topic, a plain/ad-hoc one, or a task-bound one with no topic (all
+    auto-wrapped, RC2 + the 2026-07-19 Bug#1-still-broken fix) — hands the
+    merge to a DETACHED integrate (RC1 2026-07-04 inline-gate death by
+    watchdog respawn: never run the gate inline in the watchdog/spool
+    process) and returns detached=True. A pre-migration thread with no
+    worktree finalizes via bare _finalize_worktree. Returns
     (ft_success, ft_msg, detached)."""
     import juggle_cmd_agents_common as _com
     from juggle_cmd_agents_adhoc_wrapper import ensure_adhoc_topic_wrapper
@@ -190,7 +190,7 @@ def mark_graph_topic(db, thread_uuid, integrate_ok, handoff, session_id,
     except ValueError as e:
         print(f"Warning: graph topic {topic['id']} not marked — {e}")
         return
-    # RC3: a wrapper topic (RC2/RC3 adhoc-wrap) carrying a real graph TASK on
+    # Bug#1-still-broken: a wrapper topic (RC2 + this fix's adhoc-wrap) carrying a real graph TASK on
     # the same thread mirrors its now-resolved outcome onto that task — no-op
     # for a real (non-wrapper) topic or a thread with no bound task.
     from juggle_cmd_agents_adhoc_wrapper import propagate_wrapper_outcome_to_task

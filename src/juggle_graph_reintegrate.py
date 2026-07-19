@@ -35,6 +35,10 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from juggle_graph_reintegrate_liveness import (  # noqa: F401 (re-exported for existing test imports)
+    _bound_agent_blocks, _completion_recorded, _has_live_bound_agent,
+)
+
 _log = logging.getLogger("juggle-graph-reintegrate")
 
 # A topic must have sat in 'integrating' at least this long before the driver
@@ -49,9 +53,8 @@ REINTEGRATE_BACKOFF_SECS = 300
 # (pre-flight refusals — lock timeout, mis-bind), escalate to failed-integration
 # so the topic never re-drives forever.
 MAX_REINTEGRATE_ATTEMPTS = 3
-# Escape-hatch backstop (integrate-wedge #2, RC2): a bound agent with NO recorded
-# completion, stale past this generous threshold, is a presumed-dead finalize.
-REINTEGRATE_STALE_BOUND_SECS = 1800  # 30 min
+# REINTEGRATE_STALE_BOUND_SECS (escape-hatch backstop, integrate-wedge #2 RC2)
+# now lives in juggle_graph_reintegrate_liveness with the guard it bounds.
 
 # Per-topic backoff state (attempts + last_attempt + spawned gate pid) is now
 # PERSISTED on the topic's node row (dbops.db_reintegrate / Migration 71), not an
@@ -117,43 +120,6 @@ def _spawn_alive(db, topic_id: str) -> bool:
     return _pid_alive(int(pid)) if pid else False
 
 
-def _has_live_bound_agent(db, thread_id: str | None) -> bool:
-    if not thread_id:
-        return False
-    try:
-        return db.get_agent_by_thread(thread_id) is not None
-    except Exception:
-        return False
-
-
-def _completion_recorded(db, thread_id: str | None) -> bool:
-    """True iff the agent_runs ledger records a completion for this thread's
-    NEWEST run — not "any" (RC3 parity), so a prior dispatch can't mask an open re-dispatch."""
-    if not thread_id:
-        return False
-    try:
-        runs = db.get_runs(thread_id=thread_id, limit=1)
-    except Exception:
-        return False
-    return bool(runs) and runs[0].get("status") == "completed"
-
-
-def _bound_agent_blocks(db, topic: dict, thread_id: str | None, now: datetime) -> bool:
-    """A live bound agent normally blocks re-drive (may be mid-finalize). Escape
-    hatches (integrate-wedge #2, RC2), for when the inline gate died so the agent
-    never releases: RECORDED completion → NON-blocking; else stale → re-drive."""
-    if not _has_live_bound_agent(db, thread_id):
-        return False
-    if _completion_recorded(db, thread_id):
-        return False
-    if _secs_since(topic.get("updated_at"), now) >= REINTEGRATE_STALE_BOUND_SECS:
-        _log.warning("reintegrate: topic %s bound + no completion, stale > %ds — "
-                     "presuming dead finalize, re-driving", topic.get("id"),
-                     REINTEGRATE_STALE_BOUND_SECS)
-        return False
-    return True
-
-
 def _real_commits_ahead(thread: dict) -> bool:
     """True iff the topic's worktree exists and has committed work ahead of trunk
     — genuine unmerged work (not an empty branch / lost worktree; orphan-guarded)."""
@@ -190,26 +156,6 @@ def _spawn_detached_integrate(thread: dict, db):
     return spawn_detached_integrate(thread, db)
 
 
-def _propagate_wrapper_outcome(db, topic: dict, state: str, session_id: str) -> None:
-    """RC3: the reconcile-heal branch (step 1 below) writes a wrapper topic's
-    'verified' state DIRECTLY via reconcile_topic_state — it never calls
-    mark_graph_topic (which carries its OWN propagate_wrapper_outcome_to_task
-    call for the sync/failure-routing paths), so this is the one call site
-    that needs its own mirror onto a real bound task. No-op for a real
-    (non-wrapper) topic or an unbound thread. Never raises."""
-    from juggle_cmd_agents_adhoc_wrapper import propagate_wrapper_outcome_to_task
-
-    thread_id = topic.get("thread_id")
-    if not thread_id:
-        return
-    try:
-        propagate_wrapper_outcome_to_task(
-            db, topic["id"], thread_id, state, topic.get("handoff"), session_id,
-        )
-    except Exception:
-        _log.exception("reintegrate: wrapper-outcome propagate failed for %s", topic["id"])
-
-
 def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str | None:
     """Reconcile one 'integrating' topic and, if wedged, spawn a DETACHED
     integrate (the gate NEVER runs inline). Returns the topic id if it was
@@ -229,7 +175,9 @@ def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str |
         return None
     if state == "verified":
         _forget(db, tid)
-        _propagate_wrapper_outcome(db, topic, state, session_id)
+        from juggle_cmd_agents_adhoc_wrapper import propagate_wrapper_outcome_to_task
+        propagate_wrapper_outcome_to_task(  # Bug#1-still-broken: mirror onto real task
+            db, tid, topic.get("thread_id"), state, topic.get("handoff"), session_id)
         return tid
     if state != "integrating":
         _forget(db, tid)  # moved to a failure verdict elsewhere — repair owns it
