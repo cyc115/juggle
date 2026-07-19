@@ -542,7 +542,7 @@ def test_reintegrate_attempts_and_singleflight_survive_restart(tmp_path):
 def test_plain_ad_hoc_thread_auto_wraps_and_lands_end_to_end(tmp_path, monkeypatch):
     """RC2 (2026-07-19 stuck-in-background incident), end-to-end: a coder
     thread with NO pre-existing graph topic calls complete-agent; the auto
-    wrapper topic (juggle_cmd_agents_graph_topics._ensure_adhoc_topic_wrapper)
+    wrapper topic (juggle_cmd_agents_adhoc_wrapper.ensure_adhoc_topic_wrapper)
     carries it 'integrating'; the SAME unmodified reintegrate sweep this file
     already pins for real graph topics discovers + spawns + lands it, exactly
     like the incident's fix for topics but now proven for a plain thread too."""

@@ -54,6 +54,7 @@ def _args(thread_id, summary="done"):
 def test_finalization_failure_item_survives(db, monkeypatch):
     import juggle_cmd_agents_common as _com
     import juggle_cmd_agents_complete as complete_mod
+    import juggle_cmd_agents_graph_topics as _gt
 
     tid = db.create_thread("feat-topic", session_id="s")
     # Worktree fields present → routes through _run_integrate (which we fail).
@@ -62,6 +63,12 @@ def test_finalization_failure_item_survives(db, monkeypatch):
 
     monkeypatch.setattr(_com.juggle_cmd_integrate, "_run_integrate",
                         lambda thread, db_: (False, "rebase conflict"))
+    # 2026-07-19 RC2: a worktree thread is now auto-wrapped + handed to a
+    # DETACHED integrate by default (never inline — see
+    # test_complete_detached_integrate.py). Force the pre-RC2 inline fallback
+    # this test targets by making the detached path unavailable, exactly as
+    # finalize_or_detach_integrate's own fallback branch already handles.
+    monkeypatch.setattr(_gt, "start_detached_integrate", lambda *a, **k: False)
 
     complete_mod.cmd_complete_agent(_args(tid))
 

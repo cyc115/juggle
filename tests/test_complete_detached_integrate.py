@@ -235,7 +235,7 @@ def test_legacy_non_topic_thread_wrapper_does_not_double_integrate(db):
     import juggle_cmd_agents_common as _com
     import juggle_cmd_agents_complete as complete_mod
     from dbops.db_topics import get_topic_by_thread
-    from juggle_cmd_agents_graph_topics import _ensure_adhoc_topic_wrapper
+    from juggle_cmd_agents_adhoc_wrapper import ensure_adhoc_topic_wrapper
 
     tid = db.create_thread("adhoc", session_id="s")
     db.update_thread(tid, worktree_path="/wt", worktree_branch="cyc_Y",
@@ -243,7 +243,7 @@ def test_legacy_non_topic_thread_wrapper_does_not_double_integrate(db):
     thread = db.get_thread(tid)
 
     # Simulate: the FIRST complete-agent already wrapped + landed the topic.
-    _ensure_adhoc_topic_wrapper(db, thread, tid)
+    ensure_adhoc_topic_wrapper(db, thread, tid)
     topic = get_topic_by_thread(db, tid)
     with db._connect() as c:
         c.execute("UPDATE nodes SET state='verified' WHERE id=?", (topic["id"],))
@@ -267,7 +267,6 @@ def test_legacy_non_topic_thread_wrapper_does_not_double_integrate(db):
 def test_plain_thread_without_worktree_unaffected(db):
     """No worktree fields (pre-migration/no-op thread) — no topic wrapper, no
     spawn; falls straight to the bare _finalize_worktree no-worktree path."""
-    import juggle_cmd_agents_common as _com
     import juggle_cmd_agents_complete as complete_mod
     from dbops.db_topics import get_topic_by_thread
 
