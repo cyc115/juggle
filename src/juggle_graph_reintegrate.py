@@ -190,6 +190,26 @@ def _spawn_detached_integrate(thread: dict, db):
     return spawn_detached_integrate(thread, db)
 
 
+def _propagate_wrapper_outcome(db, topic: dict, state: str, session_id: str) -> None:
+    """RC3: the reconcile-heal branch (step 1 below) writes a wrapper topic's
+    'verified' state DIRECTLY via reconcile_topic_state — it never calls
+    mark_graph_topic (which carries its OWN propagate_wrapper_outcome_to_task
+    call for the sync/failure-routing paths), so this is the one call site
+    that needs its own mirror onto a real bound task. No-op for a real
+    (non-wrapper) topic or an unbound thread. Never raises."""
+    from juggle_cmd_agents_adhoc_wrapper import propagate_wrapper_outcome_to_task
+
+    thread_id = topic.get("thread_id")
+    if not thread_id:
+        return
+    try:
+        propagate_wrapper_outcome_to_task(
+            db, topic["id"], thread_id, state, topic.get("handoff"), session_id,
+        )
+    except Exception:
+        _log.exception("reintegrate: wrapper-outcome propagate failed for %s", topic["id"])
+
+
 def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str | None:
     """Reconcile one 'integrating' topic and, if wedged, spawn a DETACHED
     integrate (the gate NEVER runs inline). Returns the topic id if it was
@@ -209,6 +229,7 @@ def _reintegrate_topic(db, topic: dict, session_id: str, now: datetime) -> str |
         return None
     if state == "verified":
         _forget(db, tid)
+        _propagate_wrapper_outcome(db, topic, state, session_id)
         return tid
     if state != "integrating":
         _forget(db, tid)  # moved to a failure verdict elsewhere — repair owns it

@@ -78,11 +78,16 @@ def test_complete_agent_marks_bound_task_verified_and_promotes_dependents(db):
     assert any("b" in i["message"] and "ready" in i["message"].lower() for i in items)
 
 
-def test_complete_agent_integrate_failure_marks_failed_never_verified(db, monkeypatch):
-    """REQUIRED PIN (DA B3, 2026-06-10): cmd_complete_agent closes the thread
-    even when integrate FAILS — task truth must be failed-integration, NEVER
-    'verified', and dependents must NOT become ready."""
-    import juggle_cmd_agents_common as _com
+def test_complete_agent_worktree_task_never_verified_before_integrate_resolves(db):
+    """REQUIRED PIN (DA B3, 2026-06-10; rewritten 2026-07-19 for RC3 — a
+    worktree-bound task-bound thread now routes through the wrapper-topic
+    DETACHED path (Bug#1 still-broken fix), not the old sync inline gate, so
+    the sync assertion this pin used to make no longer applies through that
+    seam. Same invariant, new seam): complete-agent must NEVER mark the real
+    task 'verified' before the detached integrate's outcome is known — it
+    stays non-terminal ('running') right after complete-agent returns."""
+    import subprocess as real_subprocess
+    from unittest.mock import patch
 
     _mk_graph(db)
     tid = _bind_running_thread(db, "a")
@@ -92,21 +97,49 @@ def test_complete_agent_integrate_failure_marks_failed_never_verified(db, monkey
         worktree_branch="cyc_x",
         main_repo_path="/tmp/repo",
     )
-    monkeypatch.setattr(
-        _com.juggle_cmd_integrate, "_run_integrate", lambda thread, db_: (False, "rebase conflict")
+    with patch.object(real_subprocess, "Popen", return_value=None):
+        # handoff supplied: Phase 2 enforces --handoff for tasks with dependents
+        _complete(tid, handoff="attempted; rebase conflict")
+
+    task_a = g.get_task(db, "a")
+    assert task_a["state"] == "running"  # untouched — detached, not yet resolved
+    assert task_a["state"] != "verified"
+    assert task_a["verified_at"] is None
+    assert g.get_task(db, "b")["state"] == "open"  # dependent NOT promoted early
+
+
+def test_reintegrate_failure_propagates_to_wrapped_task_never_verified(db):
+    """REQUIRED PIN (DA B3 via the new async seam, RC3 2026-07-19): once the
+    reintegrate sweep routes the wrapper topic to 'failed-integration', that
+    verdict mirrors onto the real bound task — failed-integration, NEVER
+    verified, dependents NOT promoted. Guards the still-broken Bug#1 gap where
+    4ddd742's 'already graph-owned' skip orphaned a task-bound thread's real
+    task (it never learned the wrapper's outcome at all)."""
+    from dbops.db_topics import get_topic_by_thread
+    from juggle_cmd_agents_graph_topics import mark_graph_topic
+    from juggle_cmd_agents_adhoc_wrapper import ensure_adhoc_topic_wrapper
+
+    _mk_graph(db)
+    tid = _bind_running_thread(db, "a")
+    db.update_thread(
+        tid,
+        worktree_path="/tmp/wt",
+        worktree_branch="cyc_x",
+        main_repo_path="/tmp/repo",
     )
-    # handoff supplied: Phase 2 enforces --handoff for tasks with dependents
-    _complete(tid, handoff="attempted; rebase conflict")
+    thread = db.get_thread(tid)
+    ensure_adhoc_topic_wrapper(db, thread, tid)
+    topic = get_topic_by_thread(db, tid)
+    assert topic is not None, "task-bound worktree thread must now get a wrapper too"
+
+    # Simulate the reintegrate sweep's failure-routing call (step 4).
+    mark_graph_topic(db, tid, False, None, "sessA", topic_id=topic["id"])
 
     task_a = g.get_task(db, "a")
     assert task_a["state"] == "failed-integration"
     assert task_a["state"] != "verified"
     assert task_a["verified_at"] is None
-    # dependents NOT marched over (B3); since Phase 3 they are explicitly
-    # blocked-failed (never 'ready'/'verified') — same behavior, new seam.
     assert g.get_task(db, "b")["state"] == "blocked-failed"
-    # thread still closed (existing behavior) — task state is the truth
-    assert db.get_thread(tid)["state"] == "done"
 
 
 def test_complete_agent_unbound_thread_untouched_by_graph(db):
