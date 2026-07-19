@@ -70,6 +70,21 @@ def _dead_letter_agent_complete(thread_id: str) -> str:
     return ev_uuid
 
 
+def _dead_letter_agent_fail(thread_id: str) -> str:
+    """Same as ``_dead_letter_agent_complete`` but for an agent_fail event —
+    mirrors the 2026-07-18 dead-letter 672c4a14 (a failed agent's status
+    write-back dead-lettered on a UNIQUE constraint, leaving the agent stuck
+    'busy' since the Fault-1 backstop only recognized agent_complete)."""
+    from dbops.spool import move_to_dead, write_event
+    from juggle_spool_paths import spool_dir
+
+    sd = spool_dir()
+    ev_uuid = write_event(sd, "agent_fail", "", "", {"thread_id": thread_id})
+    pending = [p for p in sd.glob("*.json") if ev_uuid[:8] in p.name]
+    move_to_dead(sd, pending[0], "test: simulated apply failure")
+    return ev_uuid
+
+
 def _reap(db, capture, **kw):
     from juggle_watchdog_reap_done import reap_completed_agents
 
@@ -232,3 +247,34 @@ def test_backstop_ignores_stale_dead_letter_after_fresh_redispatch(db):
     _reap(db, IDLE_PANE, backstop_min_age_secs=0.0)
 
     assert db.get_agent(agent_id)["status"] == "busy"
+
+
+# ── Fault-1 backstop must also recognize a dead-lettered agent_fail ─────────
+# REGRESSION (2026-07-18 dead-letter 672c4a14): a failed agent's status
+# write-back (agent_fail) dead-lettered (spool replay hit a UNIQUE constraint
+# on an already-archived thread). find_attempted_completion only matched
+# type=="agent_complete", so the backstop never fired for it — the agent sat
+# status='busy' forever with no path back to the pool, unreconcilable by the
+# watchdog. The backstop must treat a dead-lettered agent_fail exactly like a
+# dead-lettered agent_complete: attempted-but-failed-to-land evidence.
+
+
+def test_backstop_reaps_agent_whose_agent_fail_dead_lettered(db):
+    """Same shape as test_backstop_reaps_agent_whose_completion_dead_lettered
+    but the dead-lettered event is agent_fail, not agent_complete."""
+    tid = db.create_thread("stuck-topic", session_id="s")
+    db.update_thread(tid, status="background")
+    _bind_topic(db, tid, "T-stuck", state="background", merged_sha=None)
+    agent_id = _busy_agent_on(db, tid)
+    _dead_letter_agent_fail(tid)
+
+    _reap(db, IDLE_PANE, backstop_min_age_secs=0.0)
+
+    agent = db.get_agent(agent_id)
+    assert agent["status"] == "idle", "stuck-busy agent must be released by the backstop"
+    assert agent["assigned_thread"] is None
+    assert db.get_thread(tid)["state"] == "background"
+    items = db.get_open_action_items()
+    assert any(it.get("thread_id") == tid for it in items), (
+        "backstop must push a needs-judgment action item, not silently reconcile"
+    )
