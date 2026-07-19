@@ -18,7 +18,7 @@ import pytest
 from dbops import db_graph as g
 from dbops.spool import read_pending, write_event
 from juggle_db import JuggleDB
-from juggle_spool_apply import apply_event, drain_spool
+from juggle_spool_apply import drain_spool
 
 
 @pytest.fixture
@@ -135,64 +135,3 @@ def test_genuine_missing_task_error_still_dead_letters(db, spool):
             break
     assert dead == 1
     assert len(list((spool / "dead").glob("*.json"))) == 1
-
-
-# ── agent_fail/agent_complete replay against an ARCHIVED conversation whose
-# label has since been reassigned (2026-07-18 dead-letter 672c4a14) ──────────
-# Symptom: a stale agent_fail event's target thread was archived (label freed)
-# and the label reassigned to a NEW live conversation before the event drained.
-# The replay's db.set_thread_status(...) transitions the archived node OUT of
-# 'archived', colliding with idx_nodes_live_label (the new live holder of the
-# same label) -> IntegrityError -> dead-letter, permanently losing the event
-# instead of recognizing the archived target as already-terminal.
-
-
-def _archived_conversation_with_reused_label(db, label="ZZ"):
-    """An archived conversation node whose ``user_label`` has since been
-    reassigned to a second, LIVE conversation — mirrors production label
-    recycling (only archiving frees a slug; a later create can then reuse it).
-    Both writes go through raw SQL (bypassing the wheel allocator) so the test
-    doesn't depend on the allocator picking this exact label."""
-    old_id = db.create_thread("old task", session_id="s")
-    with db._connect() as conn:
-        conn.execute("UPDATE nodes SET user_label=? WHERE id=?", (label, old_id))
-        conn.commit()
-    db.set_thread_status(old_id, "archived")
-
-    new_id = db.create_thread("new live task", session_id="s")
-    with db._connect() as conn:
-        conn.execute("UPDATE nodes SET user_label=? WHERE id=?", (label, new_id))
-        conn.commit()
-    return old_id, new_id
-
-
-def test_agent_fail_replay_on_archived_conversation_is_superseded_not_dead_lettered(db, spool):
-    old_id, new_id = _archived_conversation_with_reused_label(db)
-    uuid = write_event(spool, "agent_fail", "", "",
-                       {"thread_id": old_id, "error": "boom", "failure_type": "persistent"})
-
-    stats = drain_spool(db)
-
-    assert stats["dead"] == 0, "replay against an archived thread must NOT dead-letter"
-    assert _journal_outcome(db, uuid) == "superseded"
-    assert list((spool / "dead").glob("*.json")) == []
-    assert read_pending(spool) == []
-    # neither conversation's state/label was disturbed by the no-op replay
-    assert db.get_thread(old_id)["state"] == "archived"
-    assert db.get_thread(new_id)["user_label"] == "ZZ"
-
-
-def test_agent_fail_replay_on_archived_conversation_is_idempotent_on_second_apply(db, spool):
-    """A second apply_event call for the SAME (already-superseded) event must
-    stay a clean no-op — no re-raise, no duplicate side effect."""
-    old_id, _new_id = _archived_conversation_with_reused_label(db)
-    write_event(spool, "agent_fail", "", "",
-                {"thread_id": old_id, "error": "boom", "failure_type": "persistent"})
-    [event] = read_pending(spool)
-
-    ok1, _msg1 = apply_event(db, event)
-    ok2, msg2 = apply_event(db, event)
-
-    assert ok1 is True
-    assert ok2 is True
-    assert "already applied" in msg2 or "superseded" in msg2

@@ -255,6 +255,44 @@ def test_drain_agent_complete_on_archived_reallocated_thread_does_not_raise(db, 
     assert db.get_thread(tid)["state"] == "archived"
 
 
+def test_drain_agent_fail_on_archived_reallocated_thread_does_not_raise(db, spool):
+    """Regression pin (2026-07-18 dead-letter 672c4a14): same shape as
+    test_drain_agent_complete_on_archived_reallocated_thread_does_not_raise,
+    but for agent_fail. cmd_fail_agent's unrecoverable-failure branch called
+    db.set_thread_status(thread_uuid, "closed") unconditionally — unlike
+    cmd_complete_agent's decide_thread_close, it had no already-archived guard
+    — so a late agent_fail for a thread the watchdog had since archived (its
+    freed slug reallocated to a new conversation) raised the same 'IntegrityError:
+    UNIQUE constraint failed: nodes.user_label' (byte-identical dead reason to
+    the production dead-letter) instead of a no-op."""
+    from dbops.schema import _wheel_index
+
+    tid = _make_thread(db, label="AA")
+    label = db.get_thread(tid)["user_label"]
+    db.archive_thread(tid)
+    assert db.get_thread(tid)["state"] == "archived"
+
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO juggle_meta(key, value) VALUES ('label_seq', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (str(_wheel_index(label)),),
+        )
+        conn.commit()
+    other = db.create_thread("unrelated new topic", session_id="s2")
+    assert db.get_thread(other)["user_label"] == label
+
+    write_event(spool, "agent_fail", "agent-1", tid, {
+        "thread_id": tid, "error": "late failure of archived thread",
+        "failure_type": "persistent", "max_retries": 0, "recovery_dispatched": False,
+    })
+    stats = drain_spool(db)
+
+    assert stats["dead"] == 0, "must not dead-letter — the archived thread stays untouched"
+    assert stats["applied"] == 1
+    assert db.get_thread(tid)["state"] == "archived"
+
+
 def test_drain_routes_graph_mark_task_event_type(db, spool):
     """Regression pin: the committed writer emits event type 'graph_mark_task'
     (juggle_cmd_graph.py), NOT 'mark_task'. A stale type string would route to
