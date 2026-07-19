@@ -19,6 +19,7 @@ from dbops.spool import (
     read_pending,
     sweep_unparseable_pending,
 )
+from dbops.terminal_states import ARCHIVED_STATES as _ARCHIVED_STATES
 from dbops.terminal_states import SUCCESS_REPLAY_TERMINAL_STATES as _SUCCESS_TERMINAL
 from juggle_spool_dead import (
     _APPLYING_INTERRUPT_CODE,
@@ -136,6 +137,18 @@ def _superseded_replay(db, event: SpoolEvent) -> str | None:
             thread_id = event.args.get("thread_id") or event.thread_id
             if not thread_id:
                 return None
+            # An already-ARCHIVED conversation node is a sign-agnostic terminal
+            # (archiving isn't itself a success/failure outcome) — any further
+            # status transition on it is meaningless and, once its label has
+            # been reassigned to a newer live conversation, collides with
+            # idx_nodes_live_label (2026-07-18 dead-letter 672c4a14: agent_fail
+            # replay against a since-archived thread raised "UNIQUE constraint
+            # failed: nodes.user_label"). Checked against the THREAD's own state
+            # — the topic lookup below only inspects the bound TOPIC's state,
+            # which can lag behind (or not exist for) a plain conversation.
+            conv = db.get_thread(thread_id)
+            if conv is not None and conv["state"] in _ARCHIVED_STATES:
+                return f"conversation {thread_id!r} already archived; replay superseded"
             target = get_topic_by_thread(db, thread_id)
             if target is None:
                 return None
