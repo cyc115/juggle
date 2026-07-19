@@ -3,6 +3,7 @@
 ## In Progress
 
 <!-- 2026-06-20 session: all watchdog/leak/full-suite actionable items landed (v1.78.1 → v1.80.0). Remaining below. -->
+- [ ] **[ACTION ITEM] autofix 2026-07-19: close or merge PR #63 before next run** — `cyc_schedule-autofix-2026-07-12` (PR #63) is still open. Per skill spec, autofix skips when a prior autofix PR is still open. Review at https://github.com/cyc115/juggle/pull/63 then close or merge. Also note: `gh` CLI is unavailable in cloud env — future autofix runs need to either install `gh` or continue using GitHub MCP workaround (as done in the 2026-07-12 run).
 
 <!-- 2026-07-05: Loop Entity V2 — spec+plan in vault (docs/2026-07-04-loop-entity-v2-{spec,plan}.md). Release 1 shipped as PR; Release 2 arc in progress. -->
 - [x] **Loop V2 — Release 1 (P2): general per-node model + headroom preference** — ✅ landed on main (`92414fe`, PR #57 merged). `nodes.model` persist (topic grain, tasks inherit via parent_id) + immutable launch-model (no warm-reuse clobber) + tick-path model threading + best-effort headroom preference in `acquire_agent`. Migration 74; 8 pins RED→GREEN. Spec §2 / plan P2. ✅ 2026-07-05
