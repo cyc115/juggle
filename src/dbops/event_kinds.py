@@ -48,6 +48,11 @@ LEARNINGS_ROLLUP = "learnings_rollup"
 # handled_by), same mechanism as MACHINERY_ERROR / REPAIR_EXHAUSTED / LEARNINGS_ROLLUP.
 LOOP_ITERATION_FAILED = "loop_iteration_failed"
 LOOP_PAUSED = "loop_paused"
+# Requirement #3 (2026-07-19 KF/KH/KG clobber incident): a merge that landed
+# on main must NEVER be silent — routine, DB-row-only (like AUTOPILOT_DISPATCH/
+# REPAIR_DISPATCHED), not pushed; the failure path already has its own
+# integrate_failed/machinery_error kinds.
+INTEGRATE_LANDED = "integrate_landed"
 
 ALL_KINDS = frozenset(
     {
@@ -72,6 +77,7 @@ ALL_KINDS = frozenset(
         LEARNINGS_ROLLUP,
         LOOP_ITERATION_FAILED,
         LOOP_PAUSED,
+        INTEGRATE_LANDED,
     }
 )
 
@@ -115,6 +121,10 @@ HANDLED_BY = {
     # judgment — the orchestrator triages it immediately (derived routing).
     LOOP_ITERATION_FAILED: "orchestrator",
     LOOP_PAUSED: "orchestrator",
+    # Routine successful landing — DB-row visibility only, never pushed (the
+    # merge-not-confirmed backstop routes through machinery_error/orchestrator
+    # instead when a landing can't be confirmed).
+    INTEGRATE_LANDED: "watchdog",
 }
 
 # handled_by values that are pushed (to a human or the orchestrator) rather

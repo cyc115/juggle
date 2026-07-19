@@ -555,6 +555,109 @@ def test_integrate_happy_path_none_mode(git_repo, tmp_path):
     db.update_thread.assert_called()
 
 
+def test_integrate_sequential_push_mode_none_accumulates_no_clobber_pin(git_repo_with_remote, tmp_path):
+    """RC (2026-07-19 KF/KH/KG homelab clobber incident, data loss): push_mode=
+    none never advances origin, so rebasing/resetting onto the now-STALE
+    origin/main on each subsequent integrate discarded the PRIOR local-only
+    merge instead of accumulating — only the LAST of three sequential
+    integrates landed; the earlier two were silently lost (recoverable only
+    via dangling git objects). Two branches, both cut from the SAME original
+    main tip, integrated sequentially — BOTH must land on local main; the
+    second must never clobber the first."""
+    from juggle_cmd_integrate import _run_integrate
+
+    local, remote = git_repo_with_remote
+    wt1 = _make_worktree(local, str(tmp_path), "SQ1")
+    _add_commit(wt1, "one.py", "a = 1\n", "feat: branch one")
+    wt2 = _make_worktree(local, str(tmp_path), "SQ2")
+    _add_commit(wt2, "two.py", "b = 2\n", "feat: branch two")
+
+    db = _make_db()
+    cfg = {"push_mode": "none", "test_cmd": ""}
+    with patch("juggle_cmd_integrate.get_repo_config", return_value=cfg):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok1, msg1 = _run_integrate(
+                    {"id": "t-sq1", "worktree_path": wt1, "worktree_branch": "cyc_SQ1",
+                     "main_repo_path": local}, db)
+                ok2, msg2 = _run_integrate(
+                    {"id": "t-sq2", "worktree_path": wt2, "worktree_branch": "cyc_SQ2",
+                     "main_repo_path": local}, db)
+
+    assert ok1, f"first integrate failed: {msg1}"
+    assert ok2, f"second integrate failed: {msg2}"
+    # Both commits must be present on local main — the second integrate must
+    # NEVER clobber the first's already-merged (unpushed) commit.
+    assert (Path(local) / "one.py").exists(), "first branch's merge was clobbered"
+    assert (Path(local) / "two.py").exists()
+    log = subprocess.run(
+        ["git", "-C", local, "log", "--oneline"], capture_output=True, text=True,
+    ).stdout
+    assert "branch one" in log and "branch two" in log
+    # push_mode=none: nothing pushed — remote stays at its pre-integrate tip.
+    remote_files = subprocess.run(
+        ["git", "-C", remote, "ls-tree", "-r", "--name-only", "main"],
+        capture_output=True, text=True,
+    ).stdout
+    assert "one.py" not in remote_files and "two.py" not in remote_files
+
+
+def test_integrate_landed_but_not_confirmed_on_main_preserves_branch_pin(git_repo, tmp_path):
+    """Guard backstop (requirement #2, 2026-07-19): even when submit() reports
+    'landed', integrate must CONFIRM the branch's commits are an ancestor of
+    main before deleting the branch/worktree — a merge that didn't actually
+    stick (future bug/race) must be a safe no-op (branch+worktree preserved),
+    never silent data loss."""
+    from juggle_cmd_integrate import _run_integrate
+
+    wt = _make_worktree(git_repo, str(tmp_path), "MC")
+    _add_commit(wt, "feat.py", "y = 2\n", "feat: add feature")
+
+    thread = {"id": "t-mc", "worktree_path": wt,
+              "worktree_branch": "cyc_MC", "main_repo_path": git_repo}
+    db = _make_db()
+
+    with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "none", "test_cmd": ""}):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("vcs_git.GitVCS.is_ancestor", return_value=False):
+                ok, msg = _run_integrate(thread, db)
+
+    assert not ok, "integrate must refuse when the merge isn't confirmed on main"
+    assert Path(wt).exists(), "worktree must be preserved, not torn down"
+    branches = subprocess.run(
+        ["git", "-C", git_repo, "branch"], capture_output=True, text=True
+    ).stdout
+    assert "cyc_MC" in branches, "branch must be preserved until confirmed on main"
+    # record_refusal files via add_action_item_once (dedup, 2026-07-04 fix-conflict-envelope-routing).
+    db.add_action_item_once.assert_called_once()
+
+
+def test_integrate_landed_emits_notification_pin(git_repo, tmp_path):
+    """'Never silent' (requirement #3, 2026-07-19): a successful landed
+    integrate must emit a notification describing the merge — branch, commit
+    count, and the sha it landed at."""
+    from juggle_cmd_integrate import _run_integrate
+
+    wt = _make_worktree(git_repo, str(tmp_path), "NT")
+    _add_commit(wt, "feat.py", "y = 2\n", "feat: add feature")
+
+    thread = {"id": "t-nt", "worktree_path": wt,
+              "worktree_branch": "cyc_NT", "main_repo_path": git_repo}
+    db = _make_db()
+
+    with patch("juggle_cmd_integrate.get_repo_config", return_value={"push_mode": "none", "test_cmd": ""}):
+        with patch("juggle_integrate_lock._get_lock_path", return_value=tmp_path / "t.lock"):
+            with patch("juggle_cmd_integrate._restart_juggle_daemons"):
+                ok, msg = _run_integrate(thread, db)
+
+    assert ok, msg
+    db.emit_event.assert_called_once()
+    _, kwargs = db.emit_event.call_args
+    assert "cyc_NT" in kwargs["message"]
+    assert "1 commit" in kwargs["message"]
+    assert "push_mode=none" in kwargs["message"] or "not pushed" in kwargs["message"]
+
+
 def test_integrate_happy_path_direct_mode(git_repo_with_remote, tmp_path):
     """rebase + ff-merge + git push; commit visible in remote after."""
     from juggle_cmd_integrate import _run_integrate
@@ -818,72 +921,48 @@ def test_integrate_backend_for_raising_reported_cleanly_not_masked_pin(git_repo,
 # ── cmd_complete_agent routing test ──────────────────────────────────────────
 
 def test_complete_agent_routes_through_run_integrate(git_repo, tmp_path):
-    """cmd_complete_agent calls _run_integrate (not bare ff-merge) when worktree fields set."""
+    """cmd_complete_agent threads a plain thread's worktree fields into the
+    integrate machinery — as a DETACHED spawn (2026-07-19 RC2 auto-wrap fix;
+    see test_complete_detached_integrate.py for the full regression pin), not
+    the bare ff-merge / inline _run_integrate this test used to pin."""
     from juggle_cmd_agents import cmd_complete_agent
+    from juggle_db import JuggleDB
 
     wt = _make_worktree(git_repo, str(tmp_path), "AB")
     _add_commit(wt, "feat.py", "y = 2\n", "add feat.py")
 
-    thread = {
-        "id": "thread-uuid-1",
-        "user_label": "AB",
-        "worktree_path": wt,
-        "worktree_branch": "cyc_AB",
-        "main_repo_path": git_repo,
-        "summary": "test",
-        "open_questions": "[]",
-        "status": "background",
-    }
-    agent = {
-        "id": "agent-uuid-1",
-        "role": "coder",
-        "status": "busy",
-        "busy_since": None,
-        "pane_id": "juggle:0.1",
-    }
-
-    db = Mock()
-    db.get_thread.return_value = thread
-    db.get_agent_by_thread.return_value = agent
-    db.get_all_threads.return_value = []
-    db.get_open_action_items.return_value = []
-    db.add_message = Mock()
-    db.update_thread = Mock()
-    db.set_thread_status = Mock()
-    db.update_agent = Mock()
-    db.add_notification_v2 = Mock()
-    db.add_action_item = Mock()
-    db.get_last_exchange.return_value = {"last_user": "", "last_assistant": ""}
-    db.insert_agent_completion = Mock()
-    # Agent-owned ephemeral coder thread → no real human messages → closes (not
-    # a user-facing feature topic). See preserve-feature-topic guard (2026-06-21).
-    db.has_human_user_message.return_value = False
-    _cm = Mock()
-    _cm.__enter__ = Mock(return_value=Mock(
-        execute=Mock(return_value=Mock(fetchone=Mock(return_value=None)))
-    ))
-    _cm.__exit__ = Mock(return_value=False)
-    db._connect = Mock(return_value=_cm)
-
-    integrate_calls = []
-
-    def fake_run_integrate(t, d, allow_main=False):
-        integrate_calls.append(t)
-        return True, "integrated"
+    db = JuggleDB(db_path=str(tmp_path / "juggle.db"))
+    db.init_db()
+    tid = db.create_thread("adhoc", session_id="s")
+    db.update_thread(tid, worktree_path=wt, worktree_branch="cyc_AB",
+                     main_repo_path=git_repo)
 
     args = Mock()
-    args.thread_id = "thread-uuid-1"
+    args.thread_id = tid
     args.result_summary = "done"
-    args.retain = None
+    args.retain_text = None
+    args.open_questions = None
+    args.handoff = "handed off"
+    args.role = "coder"
+
+    spawned = []
+
+    def _spy_popen(argv, **kwargs):
+        spawned.append(argv)
+
+        class _Alive:
+            def poll(self):
+                return None
+        return _Alive()
 
     with patch("juggle_cli_common.get_db", return_value=db):
-        with patch("juggle_cli_common._resolve_thread", return_value="thread-uuid-1"):
-            with patch("juggle_cmd_agents_common.juggle_cmd_integrate") as mock_mod:
-                mock_mod._run_integrate.side_effect = fake_run_integrate
-                cmd_complete_agent(args)
+        with patch("juggle_cmd_agents_common.get_db", return_value=db):
+            with patch.dict(os.environ, {"JUGGLE_ORCHESTRATOR": "1"}):
+                with patch("subprocess.Popen", side_effect=_spy_popen):
+                    cmd_complete_agent(args)
 
-    assert integrate_calls, "_run_integrate was not called"
-    assert integrate_calls[0]["worktree_branch"] == "cyc_AB"
+    assert spawned, "a plain worktree thread must get a detached integrate"
+    assert spawned[0][-2:] == ["integrate", tid]
 
 
 # ── cmd_integrate CLI test ────────────────────────────────────────────────────

@@ -12,8 +12,9 @@ def test_kinds_defined():
     """irl-envelope T2 adds integrate_failed + machinery_error to T1a's 12;
     irl-retry T3 adds repair_exhausted; irl-repair T4 adds repair_dispatched;
     df-monitor-dispatch adds dispatch_failed + running_orphan; gl-rollup adds
-    learnings_rollup; loop-entity Phase 5 adds loop_iteration_failed + loop_paused."""
-    assert len(ek.ALL_KINDS) == 21
+    learnings_rollup; loop-entity Phase 5 adds loop_iteration_failed + loop_paused;
+    2026-07-19 requirement #3 (KF/KH/KG clobber incident) adds integrate_landed."""
+    assert len(ek.ALL_KINDS) == 22
 
 
 def test_loop_failure_kinds_route_orchestrator():

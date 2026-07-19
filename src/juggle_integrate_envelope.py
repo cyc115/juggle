@@ -49,6 +49,11 @@ STEP_REBASE_CONFLICT = "rebase_conflict"
 STEP_TEST_FAILURE = "test_failure"
 STEP_SUBMIT_FAILED = "submit_failed"
 STEP_UNEXPECTED = "unexpected_exception"
+# Requirement #2 (2026-07-19 KF/KH/KG clobber incident): submit() reported the
+# ff-merge landed, but the branch's commits are NOT confirmed as an ancestor
+# of main by the time cleanup would run — a pipeline-defect backstop, never
+# auto-repaired (same as the other MACHINERY steps).
+STEP_MERGE_NOT_CONFIRMED = "merge_not_confirmed"
 
 _STEP_TO_CLASS = {
     STEP_DIRTY_WORKTREE: COLLISION,
@@ -58,6 +63,7 @@ _STEP_TO_CLASS = {
     STEP_TEST_FAILURE: RED_SUITE,
     STEP_SUBMIT_FAILED: DIVERGENCE,
     STEP_UNEXPECTED: MACHINERY,
+    STEP_MERGE_NOT_CONFIRMED: MACHINERY,
 }
 
 

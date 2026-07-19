@@ -156,13 +156,34 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         # DERIVED dep topics' base (trunk when landed, dep tip when unlanded)
         # instead of always trunk — the second of the two stack_base insertion
         # points (the first is dispatch's create_workspace base).
+        rebase_target = None
         if task and task.get("topic_id"):
             from juggle_stack_base import stack_base
             rebase_onto = stack_base(db, task["topic_id"], main_repo_path, backend)
         else:
             rebase_onto = backend.trunk(main_repo_path)
+            # push_mode="none" NEVER pushes, so origin/main (trunk()'s usual
+            # pick) never advances past its pre-existing state — rebasing/
+            # merging onto it here would discard whatever a PRIOR sequential
+            # integrate already merged into local main, only for that merge
+            # to be silently reset away in submit()'s local-main sync
+            # (2026-07-19 KF/KH/KG clobber incident: three sequential
+            # push_mode=none integrates landed only the LAST). The actual git
+            # rebase target is the TRUE CURRENT LOCAL main HEAD instead — it
+            # already carries every prior local-only merge. `rebase_onto`
+            # itself is left untouched: submit() still needs it (branch-name
+            # shaped, e.g. "origin/main") for its checked-out-branch guard and
+            # the final status message. Scoped to the plain (non-stack-based)
+            # case only — a stacked/dependent topic's rebase target already
+            # follows its own dependency-derived base, which this must not
+            # override.
+            if push_mode == "none":
+                local_head = backend.resolve(main_repo_path)
+                if local_head:
+                    rebase_target = local_head
         if rebase_onto is None:
             return _fail(STEP_NO_MAIN_BRANCH, "Cannot determine main branch (no main/master ref found)")
+        rebase_target = rebase_target or rebase_onto
 
         # ── 3. G2: Empty-branch guard ──────────────────────────────────────────
         if not backend.has_changes(worktree_path, since=rebase_onto):
@@ -182,7 +203,7 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         # ── 4. Update the worktree onto the rebase target ──────────────────────
         # (idempotent in-progress-rebase recovery + merge.ours.driver setup for
         # graphify-out/ live inside update_to — see vcs_git.py.)
-        upd = backend.update_to(worktree_path, rebase_onto)
+        upd = backend.update_to(worktree_path, rebase_target)
         if not upd.ok:
             conflict_files = "\n".join(upd.conflicts) if upd.conflicts else "(see git status)"
             return _fail(
@@ -231,7 +252,7 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
             db, backend, result,
             thread_uuid=thread_uuid, worktree_path=worktree_path,
             worktree_branch=worktree_branch, main_repo_path=main_repo_path,
-            rebase_onto=rebase_onto, push_mode=push_mode,
+            rebase_onto=rebase_onto, rebase_target=rebase_target, push_mode=push_mode,
             fail=_fail, release=lambda: release_repo_lock(lock_path),
         )
 

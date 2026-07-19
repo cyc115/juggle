@@ -96,6 +96,11 @@ def _run_async_integrate(db, monkeypatch, tmp_path, thread_id, *, ticket="D123",
     fake = FakeBackend()
     fake.capabilities = Capabilities(async_land=async_land, auto_restack=False)
     fake.scripted["has_changes"] = True
+    # A "landed" submit() here always represents an intended, successful merge
+    # (2026-07-19 requirement #2: finalize_submit_result now confirms ancestry
+    # before cleanup) — this harness fakes the merge mechanics wholesale, so
+    # there is no real branch for a real ancestor check to find.
+    fake.scripted["is_ancestor"] = True
     fake.scripted["submit"] = submit or SubmitResult(status="submitted", ticket=ticket)
 
     monkeypatch.setattr(ci, "backend_for", lambda r: fake)

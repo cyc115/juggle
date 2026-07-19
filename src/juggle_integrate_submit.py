@@ -30,6 +30,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from juggle_repo_vcs import repo_async_land
+from vcs_types import _run
 
 
 def _advance_topic_submitted(db, thread_uuid, ticket) -> None:
@@ -55,9 +56,19 @@ def _advance_topic_submitted(db, thread_uuid, ticket) -> None:
     )
 
 
+def _commit_count(repo: str, since: str, until: str) -> int:
+    """``git rev-list --count since..until`` — best-effort (0 on any git error),
+    used only for the human-facing landed notification, never a gate."""
+    out = _run(["git", "-C", repo, "rev-list", "--count", f"{since}..{until}"], repo)
+    try:
+        return int(out or "0")
+    except (TypeError, ValueError):
+        return 0
+
+
 def finalize_submit_result(db, backend, result, *, thread_uuid, worktree_path,
                            worktree_branch, main_repo_path, rebase_onto,
-                           push_mode, fail, release):
+                           rebase_target=None, push_mode, fail, release):
     """Interpret ``result`` (a vcs_types.SubmitResult) into ``(ok, msg)`` plus its
     side effects. ``fail`` is _run_integrate's refusal closure (files a fail
     envelope + releases the lock); ``release`` releases the merge-queue lock.
@@ -89,7 +100,28 @@ def finalize_submit_result(db, backend, result, *, thread_uuid, worktree_path,
                           f"worktree freed, awaiting land confirmation")
         return True, f"Branch {worktree_branch} pushed to origin for PR (no local merge)"
 
-    # status == "landed": direct/none — record merged_sha, clean up.
+    # status == "landed": direct/none — CONFIRM the merge actually stuck
+    # BEFORE any side effect (requirement #2, 2026-07-19 KF/KH/KG clobber
+    # incident): submit() reporting "landed" only means its own ff-merge
+    # returncode was 0 — it is not proof the branch's commits are still an
+    # ancestor of main by the time we get here. Detect, refuse, preserve: a
+    # merge-miss becomes a safe no-op (branch + worktree kept) instead of
+    # `remove_workspace` silently deleting the only remaining copy of the work.
+    local_main = rebase_onto.split("/")[-1]
+    if not backend.is_ancestor(main_repo_path, worktree_branch, local_main):
+        from juggle_integrate_envelope import STEP_MERGE_NOT_CONFIRMED
+        return fail(
+            STEP_MERGE_NOT_CONFIRMED,
+            f"integrate reported {worktree_branch} landed, but its commits are "
+            f"NOT confirmed as an ancestor of {local_main} — refusing to delete "
+            f"the branch/worktree. Branch preserved at {worktree_path} for "
+            f"investigation; re-run `juggle integrate` once resolved.",
+        )
+
+    # Count THIS branch's own new commits for the landed notification below —
+    # BEFORE teardown removes the worktree/branch out from under us.
+    n_commits = _commit_count(worktree_path, rebase_target or rebase_onto, worktree_branch)
+
     # Recorded AFTER the push (defect C, 2026-07-01): _record_merged_sha
     # checks ancestry against canonical origin/<main>, so recording BEFORE
     # the push tested against an origin/<main> that did not yet contain the
@@ -116,5 +148,19 @@ def finalize_submit_result(db, backend, result, *, thread_uuid, worktree_path,
         _restart_juggle_daemons()
 
     release()
-    local_main = rebase_onto.split("/")[-1]
+
+    # Never silent (requirement #3, 2026-07-19): every landed merge is
+    # notified, regardless of push_mode — the KF/KH/KG incident's other half
+    # was that a clobbered merge produced NO signal at all.
+    from dbops import event_kinds as _ek
+
+    push_note = "" if push_mode == "direct" else f" — not pushed (push_mode={push_mode})"
+    db.emit_event(
+        thread_id=thread_uuid,
+        message=(f"⇄ integrate: {worktree_branch} ({n_commits} commit"
+                 f"{'s' if n_commits != 1 else ''}) merged to {local_main} "
+                 f"@ {(result.landed_rev or '')[:8]}{push_note}"),
+        session_id="",
+        kind=_ek.INTEGRATE_LANDED,
+    )
     return True, f"Integrated {worktree_branch} → {local_main} (push_mode={push_mode})"
