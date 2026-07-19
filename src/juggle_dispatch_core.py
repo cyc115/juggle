@@ -13,10 +13,12 @@ import os
 from datetime import datetime, timezone
 
 import juggle_cmd_agents_common as _com
+from juggle_agent_reuse_match import candidate_matches
 from juggle_dispatch_literal import (  # noqa: F401 — re-exported for tests
     literalize_finalize_commands,
 )
 from juggle_graph_dispatch import TASK_ROLE, CapacityError
+from juggle_model_registry import is_poisoned_claude_model
 
 _log = logging.getLogger("juggle-dispatch-core")
 # Sole production default for auto-created worktree roots (2026-06-20 leak fix).
@@ -32,16 +34,13 @@ def _reuse_idle_agent(
     headroom-preference pass). Claiming never grows the pool, so the cap is the
     caller's spawn-branch job (2026-07-01 reuse-before-cap incident)."""
     for candidate in db.get_ranked_idle_agents(thread_id, role=role):
-        agent_repo = candidate.get("repo_path")
-        if agent_repo is None:
+        if not candidate_matches(candidate, role=role, target_repo=target_repo,
+                                 requested_harness=requested_harness, model_match=model_match):
             continue
-        if target_repo and agent_repo != target_repo:
-            continue
-        if role and candidate.get("role") != role:
-            continue
-        if candidate.get("harness") != requested_harness:
-            continue
-        if model_match is not None and candidate.get("model") != model_match:
+        # Poisoned-pool guard (bug KB, 2026-07-19): never hand back legacy data.
+        if is_poisoned_claude_model(candidate.get("model"), requested_harness,
+                                    settings=_com._get_settings()):
+            mgr.decommission_agent(db, candidate["id"])
             continue
         if not mgr.wait_for_ready_to_paste(candidate["pane_id"], attempts=1):
             continue

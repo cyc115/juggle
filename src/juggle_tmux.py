@@ -563,6 +563,17 @@ class JuggleTmuxManager:
                                     settings=settings)
         model, effort = _rt["model"], _rt["effort"]
 
+        # FAIL LOUD on an unrecognized model BEFORE any pool/pane/DB work (bug
+        # KB, 2026-07-19): a malformed model id (e.g. "claude/opus" typo'd from
+        # "opus") must never reach db.create_agent/status='busy'. The boot-
+        # failure fallback below is best-effort recovery for a model that
+        # LOOKS valid but the harness rejects anyway; it must not be the only
+        # guard. Only the "claude" harness has a fixed alias namespace — other
+        # harnesses (codex/reasonix) pin their own model in adapter config.
+        if harness_id == "claude" and model:
+            from juggle_model_registry import resolve_claude_model
+            model = resolve_claude_model(model, settings=settings)
+
         agents = db.get_all_agents()
         if len(agents) >= MAX_BACKGROUND_AGENTS:
             raise ValueError(

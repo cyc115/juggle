@@ -196,9 +196,14 @@ def test_reuse_idle_agent_decommissions_poisoned_model_instead_of_reusing(
 
     monkeypatch.setattr("juggle_db.MAX_BACKGROUND_AGENTS", 5)
     monkeypatch.setattr("juggle_tmux._spawn_repo_path", lambda: "")
-    poisoned = _make_idle_agent(db, model="claude/opus", pane="%poisoned")
+    # "claude/opus" would normalize to the valid "opus" — use a model that
+    # stays invalid even after normalization, simulating legacy poisoned data.
+    poisoned = _make_idle_agent(db, model="claude/opus/legacy-typo", pane="%poisoned")
 
     mgr = _spawning_mgr()
+    # Mirror JuggleTmuxManager.decommission_agent's real effect (kill pane +
+    # delete DB row) so the DB-side assertion below is meaningful.
+    mgr.decommission_agent.side_effect = lambda d, aid: d.delete_agent(aid)
     got = acquire_agent(db, thread_id, role="coder", model=None,
                         harness="claude", _mgr=mgr)
 
