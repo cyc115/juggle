@@ -265,27 +265,13 @@ def cmd_fail_agent(args):
     if agent:
         db.update_agent(agent["id"], status="idle", assigned_thread=None)
 
-    # An ARCHIVED thread is already maximally terminal — same guard as
-    # decide_thread_close (juggle_topic_lifecycle, 2026-07-12/13 incident):
-    # archiving frees the thread's slug (T-slug-wheel), so a stale/late
-    # agent_fail (e.g. its spool event sat behind others, or its replay was
-    # delayed) must not walk it to 'running'/'closed' — that re-enters the
-    # partial idx_nodes_live_label index (state != 'archived') and can collide
-    # with whatever conversation the slug wheel has since reallocated the
-    # freed label to (IntegrityError: UNIQUE constraint failed:
-    # nodes.user_label — dead-lettered spool event 672c4a14, 2026-07-18). A
-    # late failure signal for an already-archived thread is a no-op, same as
-    # an already-closed one.
-    already_archived = (thread.get("state") or "") == "archived"
-
     recovery = getattr(args, "recovery_dispatched", False)
     if recovery:
         db.emit_event(
             thread_id=thread_uuid, message=f"⟳ [{label}] Recovery dispatched — {args.error}",
             session_id=session_id, kind=_ek.AGENT_RECOVERY_DISPATCHED,
         )
-        if not already_archived:
-            db.set_thread_status(thread_uuid, "running")
+        _com._set_thread_status_unless_archived(db, thread, thread_uuid, "running")
         print(
             f"Recovery dispatched for Topic {label}; notification logged, thread stays running."
         )
@@ -300,8 +286,7 @@ def cmd_fail_agent(args):
             thread_id=thread_uuid, message=f"✗ [{label}] Unrecoverable — {args.error}",
             session_id=session_id, kind=_ek.AGENT_FAILURE,
         )
-        if not already_archived:
-            db.set_thread_status(thread_uuid, "closed")
+        _com._set_thread_status_unless_archived(db, thread, thread_uuid, "closed")
         # Agent death must reach the graph (DA round-2 MAJOR-1, 2026-06-10):
         # bound task → failed-exec + dependents blocked + HIGH action item.
         from juggle_cmd_agents_graph import fail_graph_task

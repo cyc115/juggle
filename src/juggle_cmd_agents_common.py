@@ -147,3 +147,13 @@ def _classify_failure(error: str) -> str:
         if t in low:
             return "transient"
     return "persistent"
+
+
+def _set_thread_status_unless_archived(db, thread: dict, thread_uuid: str, status: str) -> None:
+    """db.set_thread_status(), skipped when the thread is already 'archived' —
+    a stale agent_complete/agent_fail replay must not re-transition it (its
+    freed slug may have been reallocated, colliding with idx_nodes_live_label
+    — dead-letter 672c4a14, 2026-07-18; same guard as decide_thread_close's
+    2026-07-12/13 fix for cmd_complete_agent)."""
+    if (thread.get("state") or "") != "archived":
+        db.set_thread_status(thread_uuid, status)
