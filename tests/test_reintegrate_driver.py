@@ -539,6 +539,55 @@ def test_reintegrate_attempts_and_singleflight_survive_restart(tmp_path):
     spawn.assert_called_once()   # NO double-spawn across the restart
 
 
+def test_plain_ad_hoc_thread_auto_wraps_and_lands_end_to_end(tmp_path, monkeypatch):
+    """RC2 (2026-07-19 stuck-in-background incident), end-to-end: a coder
+    thread with NO pre-existing graph topic calls complete-agent; the auto
+    wrapper topic (juggle_cmd_agents_graph_topics._ensure_adhoc_topic_wrapper)
+    carries it 'integrating'; the SAME unmodified reintegrate sweep this file
+    already pins for real graph topics discovers + spawns + lands it, exactly
+    like the incident's fix for topics but now proven for a plain thread too."""
+    import argparse
+    import juggle_graph_reintegrate as ri
+    import juggle_cmd_agents_complete as complete_mod
+    from dbops.db_topics import get_topic, get_topic_by_thread
+
+    repo = _repo(tmp_path)
+    wt = _worktree(repo, tmp_path, "PL")
+    (Path(wt) / "feat.py").write_text("y = 2\n")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-m", "feat: work")
+
+    db = _make_db(tmp_path)
+    tid = db.create_thread(topic="adhoc", session_id="s")
+    db.update_thread(tid, worktree_path=wt, worktree_branch="cyc_PL",
+                     main_repo_path=repo)
+
+    import juggle_cli_common as common
+    import juggle_cmd_agents_common as _com
+    monkeypatch.setattr(common, "get_db", lambda: db)
+    monkeypatch.setattr(_com, "get_db", lambda: db)
+
+    args = argparse.Namespace(
+        thread_id=tid, result_summary="done", retain_text=None,
+        open_questions=None, handoff=None, role="coder",
+    )
+    with patch("juggle_integrate_spawn.spawn_detached_integrate",
+               side_effect=_spawn_runs_integrate_inline(tmp_path)):
+        complete_mod.cmd_complete_agent(args)
+
+        topic = get_topic_by_thread(db, tid)
+        assert topic is not None, "complete-agent must auto-wrap a plain thread"
+        assert topic["state"] == "integrating"
+        assert (Path(repo) / "feat.py").exists()   # spawned integrate already merged
+        assert not Path(wt).exists()
+
+        driven = ri.sweep_reintegrate(db, ["INBOX"])
+
+    assert topic["id"] in driven
+    assert get_topic(db, topic["id"])["state"] == "verified"
+    assert (get_topic(db, topic["id"])["merged_sha"] or "").strip()
+
+
 def test_run_tick_sweeps_invokes_reintegrate_driver(tmp_path, monkeypatch):
     """Wiring pin: the watchdog tick (juggle_graph_repair.run_tick_sweeps, called
     every cycle by the daemon) drives the re-integrate sweep."""

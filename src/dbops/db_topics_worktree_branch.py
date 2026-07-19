@@ -34,3 +34,20 @@ def set_topic_worktree_branch(db, topic_id, branch, conn=None) -> None:
             "WHERE id=? AND kind='topic' AND (worktree_branch IS NULL OR worktree_branch='')",
             (branch, now, topic_id),
         )
+
+
+def set_topic_main_repo_path(db, topic_id, repo, conn=None) -> None:
+    """Sibling of ``set_topic_worktree_branch``: a topic's OWN, write-once
+    repo path — it SURVIVES ``_run_integrate`` clearing the bound thread's
+    ``main_repo_path`` on a successful land (dbops.graph_guards._resolve_topic_repo
+    falls back to this exact field), so a topic reconciled after its thread is
+    torn down stays repo-resolvable."""
+    if not repo:
+        return
+    now = _now()
+    with _cx(db, conn) as c:
+        c.execute(
+            "UPDATE nodes SET main_repo_path=?, updated_at=? "
+            "WHERE id=? AND kind='topic' AND (main_repo_path IS NULL OR main_repo_path='')",
+            (repo, now, topic_id),
+        )
