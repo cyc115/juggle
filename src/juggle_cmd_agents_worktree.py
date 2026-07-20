@@ -33,19 +33,37 @@ def _finalize_worktree(thread: dict) -> tuple:
     """Finalize a worktree: ff-merge → remove → branch-delete.
 
     Returns (success: bool, message: str). Never destroys unmerged commits.
+
+    Robust to a lost/never-persisted ``worktree_path`` (2026-07-19 Bug#1
+    attempt#3 live-DB finding: many archived threads carry a real
+    ``worktree_branch`` + ``main_repo_path`` with ``worktree_path`` empty —
+    the ff-merge itself only needs the branch name + main repo, so a missing
+    checkout directory must not silently skip the merge and lose the
+    branch's commits (the old `not worktree_path` short-circuit did exactly
+    that). The checkout directory is still used for full teardown when
+    present; otherwise cleanup falls back to a plain branch delete.
     """
     worktree_path = (thread.get("worktree_path") or "").strip()
     worktree_branch = (thread.get("worktree_branch") or "").strip()
     main_repo_path = (thread.get("main_repo_path") or "").strip()
 
-    if not worktree_path or not worktree_branch or not main_repo_path:
+    if not worktree_branch or not main_repo_path:
         return True, ""  # No worktree to finalize
 
-    if not Path(worktree_path).exists():
+    if worktree_path and not Path(worktree_path).exists():
         return True, f"Worktree already removed: {worktree_path}"
 
     if not Path(main_repo_path).exists():
         return False, f"Main repo not found: {main_repo_path}"
+
+    if not worktree_path:
+        branch_exists = subprocess.run(
+            ["git", "-C", main_repo_path, "rev-parse", "--verify", "--quiet",
+             f"refs/heads/{worktree_branch}"],
+            capture_output=True, text=True,
+        ).returncode == 0
+        if not branch_exists:
+            return True, f"Branch {worktree_branch} not found — nothing to integrate."
 
     # 1. Try ff-only merge from worktree branch. Kept as a raw local-only merge
     # (NOT routed through vcs.submit(), which always pushes for mode="direct")
@@ -56,10 +74,20 @@ def _finalize_worktree(thread: dict) -> tuple:
         capture_output=True, text=True,
     )
     if result.returncode != 0:
+        left_at = f"Worktree left at {worktree_path}. " if worktree_path else ""
         return False, (
             f"Cannot ff-merge {worktree_branch} into main. "
-            f"Worktree left at {worktree_path}. Manual resolution required."
+            f"{left_at}Manual resolution required."
         )
+
+    if not worktree_path:
+        # No checkout directory to remove — branch-only cleanup (best-effort:
+        # the merge already landed, so a failed delete here isn't fatal).
+        subprocess.run(
+            ["git", "-C", main_repo_path, "branch", "-d", worktree_branch],
+            capture_output=True, text=True,
+        )
+        return True, f"Branch {worktree_branch} finalized (merged; no worktree_path recorded)."
 
     # 2+3. Remove worktree + delete branch (remove_workspace absorbs both).
     try:

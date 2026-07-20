@@ -111,6 +111,45 @@ def test_finalize_worktree_already_removed_worktree(tmp_path, repo):
     assert "already removed" in msg.lower()
 
 
+def test_finalize_worktree_merges_when_worktree_path_missing(repo, tmp_path):
+    """2026-07-19 Bug#1 attempt#3: worktree_path empty/never-persisted while
+    worktree_branch + main_repo_path ARE set must still merge the branch's
+    commits — not silently no-op (previous behavior: `not worktree_path`
+    short-circuited to `return True, ""`, dropping real unmerged work with
+    no error, matching the live archived-thread DB shape)."""
+    ok, wt_path, branch, _ = _create_worktree(str(repo), "MN", worktree_root=str(tmp_path))
+    assert ok
+    (Path(wt_path) / "feature.txt").write_text("feat\n")
+    _git(Path(wt_path), "add", "feature.txt")
+    _git(Path(wt_path), "commit", "-q", "-m", "feature")
+    _git(repo, "worktree", "remove", "--force", wt_path)  # dir gone; branch survives
+
+    thread = {
+        "worktree_path": "",  # lost / never persisted
+        "worktree_branch": branch,
+        "main_repo_path": str(repo),
+    }
+    success, msg = _finalize_worktree(thread)
+
+    assert success, msg
+    assert (repo / "feature.txt").exists()
+    branches = _git(repo, "branch", "--list", branch).stdout
+    assert branch not in branches
+
+
+def test_finalize_worktree_no_branch_when_path_missing_is_noop(repo):
+    """worktree_path empty AND the branch itself doesn't exist (already
+    cleaned up elsewhere) must stay a no-op success, not attempt a merge."""
+    thread = {
+        "worktree_path": "",
+        "worktree_branch": "cyc_never_existed",
+        "main_repo_path": str(repo),
+    }
+    success, msg = _finalize_worktree(thread)
+    assert success
+    assert "nothing to integrate" in msg.lower()
+
+
 def test_finalize_worktree_non_ff_leaves_worktree_intact(repo, tmp_path):
     ok, wt_path, branch, _ = _create_worktree(str(repo), "KL", worktree_root=str(tmp_path))
     assert ok
