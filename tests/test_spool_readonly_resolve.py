@@ -87,3 +87,39 @@ def test_resolve_thread_id_for_spool_best_effort_on_missing_db(tmp_path, monkeyp
     monkeypatch.setattr("juggle_cli_common._db_path", lambda: tmp_path / "does-not-exist.db",
                          raising=False)
     assert cli_common.resolve_thread_id_for_spool("ZZ") == "ZZ"
+
+
+def test_resolve_thread_id_for_spool_newest_wins_under_label_collision(tmp_path, monkeypatch):
+    """Bug#1 attempt#5: a recycled label (T-slug-wheel) can be shared by many
+    kind='conversation' nodes. resolve_thread_id_for_spool's own raw SELECT had
+    no ORDER BY (unlike the canonical db.get_thread_by_user_label chokepoint,
+    which is newest-live-wins) — so under collision it could resolve `agent
+    complete <label>` to a STALE archived node instead of the current live
+    adhoc coder thread, silently skipping that thread's ensure_adhoc_topic_wrapper
+    (the thread it should have resolved to is never wrapped/merged at all)."""
+    db_path = tmp_path / "j.db"
+    db = JuggleDB(str(db_path))
+    db.init_db()
+
+    stale = db.create_thread("Old holder", session_id="s1")
+    db.archive_thread(stale)  # keeps its label, but terminal — not live
+
+    live = db.create_thread("New holder", session_id="s1")
+    db.update_thread(live, worktree_path="/tmp/wt-live", worktree_branch="cyc_LA",
+                      main_repo_path="/tmp/repo-live")
+    with db._connect() as conn:
+        # Force the label collision onto the authoritative conversation node
+        # (mirrors test_get_thread_by_user_label_newest_wins_after_reuse).
+        conn.execute("UPDATE nodes SET user_label = 'LA' WHERE id = ? "
+                     "AND kind='conversation'", (stale,))
+        conn.execute("UPDATE nodes SET user_label = 'LA' WHERE id = ? "
+                     "AND kind='conversation'", (live,))
+        conn.commit()
+
+    monkeypatch.setattr("juggle_cli_common._db_path", lambda: db_path, raising=False)
+
+    resolved = cli_common.resolve_thread_id_for_spool("LA")
+    assert resolved == live, (
+        f"expected live worktree-bound holder {live[:8]}, got {resolved[:8]} — "
+        "a stale label-collision holder was resolved instead"
+    )

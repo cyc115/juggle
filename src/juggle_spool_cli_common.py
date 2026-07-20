@@ -36,8 +36,18 @@ def resolve_thread_id_for_spool(thread_id_input: str) -> str:
     returns the input unchanged — the replayed handler's own _resolve_thread
     is the fallback path, so a resolve failure here is a no-op regression to
     today's single-resolve-at-replay-time behavior, not a new hazard.
+
+    Newest-live-wins (Bug#1 attempt#5, label-collision): a recycled label is
+    shared by every conversation node that ever held it (T-slug-wheel). The
+    original bare ``LIMIT 1`` (no ORDER BY) could resolve to a stale/archived
+    holder instead of the CURRENT live one — silently misrouting `agent
+    complete <label>` onto the wrong node and skipping the real thread's
+    ensure_adhoc_topic_wrapper. Mirrors the SAME ordering as the canonical
+    chokepoint ``db.get_thread_by_user_label`` (live state first, then
+    newest-created) so both resolvers agree under collision.
     """
     import juggle_cli_common as _common
+    from dbops.slug_alloc import LIVE_NODE_STATES
 
     s = (thread_id_input or "").strip()
     if len(s) == 36 and s.count("-") == 4:
@@ -47,15 +57,22 @@ def resolve_thread_id_for_spool(thread_id_input: str) -> str:
 
         conn = open_connection_readonly(_common._db_path())
         try:
+            _ph = ",".join("?" * len(LIVE_NODE_STATES))
+            _order = (
+                f"ORDER BY (CASE WHEN state IN ({_ph}) THEN 0 ELSE 1 END), "
+                "created_at DESC, rowid DESC LIMIT 1"
+            )
             if 1 <= len(s) <= 2 and s.isalpha():
                 row = conn.execute(
-                    "SELECT id FROM nodes WHERE kind='conversation' AND user_label=? LIMIT 1",
-                    (s.upper(),),
+                    "SELECT id FROM nodes WHERE kind='conversation' AND user_label=? "
+                    + _order,
+                    (s.upper(), *LIVE_NODE_STATES),
                 ).fetchone()
                 return row["id"] if row else s
             row = conn.execute(
-                "SELECT id FROM nodes WHERE kind='conversation' AND id LIKE ? LIMIT 1",
-                (f"{s}%",),
+                "SELECT id FROM nodes WHERE kind='conversation' AND id LIKE ? "
+                + _order,
+                (f"{s}%", *LIVE_NODE_STATES),
             ).fetchone()
             return row["id"] if row else s
         finally:
