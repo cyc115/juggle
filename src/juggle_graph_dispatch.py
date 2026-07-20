@@ -47,6 +47,9 @@ class CapacityError(RuntimeError):
     """Thread/agent capacity hit — defer quietly and retry next tick."""
 
 
+from juggle_graph_dispatch_archive import _archive_dispatch_failure  # noqa: E402, F401
+
+
 def claim_task(db, task_id: str) -> bool:
     """Atomic ready→dispatching claim (DA B4). True iff THIS caller won.
 
@@ -278,13 +281,13 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
             try:
                 dispatch(db, thread_id, hydrate_for_topic(db, pid, topic), topic)
             except CapacityError:
-                db.archive_thread(thread_id)
+                _archive_dispatch_failure(db, thread_id)
                 db_topics.set_topic_thread(db, tid, None)
                 db_topics.topic_transition(db, tid, "stale_reset")
                 stats["deferred"].append(tid)
                 break
             except Exception as e:
-                db.archive_thread(thread_id)
+                _archive_dispatch_failure(db, thread_id)
                 db_topics.set_topic_thread(db, tid, None)
                 stats["errors"].append(tid)
                 fails = _dispatch_fails.get(fail_key, 0) + 1

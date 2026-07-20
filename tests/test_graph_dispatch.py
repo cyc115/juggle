@@ -313,6 +313,70 @@ def test_tick_dispatch_failure_releases_task_and_files_action_item(db):
     assert all(t["state"] == "archived" for t in db.get_all_threads() if t)
 
 
+def test_dispatch_failure_archives_thread_without_phantom_branch_stamp(db):
+    """Bug#1 attempt#4 (2026-07-20): live juggle.db showed many archived
+    threads carrying worktree_branch='cyc_<label>' with worktree_path and
+    main_repo_path both EMPTY — a dispatch() failure archives the thread
+    (juggle_graph_dispatch's except-handler) AFTER the branch name is
+    pre-stamped (hole #3, line ~272) but BEFORE build_worktree_context ever
+    ran to actually create the worktree, so no real branch/commits exist —
+    yet the stamp survives archival, forever, matching the exact reported
+    live-DB shape. This never routes through cmd_complete_agent /
+    _finalize_worktree (attempts #1-#3 only touched that pipeline), so no
+    prior fix could have cleared it. RED (pre-fix): worktree_branch stays
+    'cyc_a...' on the archived thread."""
+    _mk_topic(db, "a")
+    _arm(db)
+
+    gd.graph_tick(db, dispatch_fn=FakeDispatch(exc=RuntimeError("tmux gone")))
+
+    threads = db.get_all_threads()
+    assert len(threads) == 1
+    archived = threads[0]
+    assert archived["state"] == "archived"
+    assert not archived.get("main_repo_path")
+    assert not archived.get("worktree_path")
+    # No worktree/branch was ever actually created — the pre-dispatch stamp
+    # must not survive archival as a dangling, misleading reference.
+    assert not archived.get("worktree_branch")
+
+
+def test_dispatch_failure_after_real_worktree_still_merges_before_archiving(db, tmp_path):
+    """Companion case: dispatch() fails AFTER a real worktree/branch (with a
+    real commit) was already created — e.g. a tmux pane launch failure post
+    build_worktree_context. The thread row carries full worktree info in
+    this case, so the archive path must ff-merge the branch's commit into
+    main before archiving, not silently strand it (real git repo, no
+    mocks)."""
+    import subprocess
+
+    from juggle_cmd_agents_worktree import _create_worktree
+
+    repo = _merged_repo()
+
+    def _fake_dispatch_creates_worktree_then_fails(db, thread_id, prompt, task):
+        ok, wt_path, branch, _ = _create_worktree(
+            repo, "a", worktree_root=str(tmp_path))
+        assert ok
+        (Path(wt_path) / "feature.txt").write_text("feat\n")
+        subprocess.run(["git", "-C", wt_path, "add", "feature.txt"], check=True)
+        subprocess.run(["git", "-C", wt_path, "commit", "-qm", "feature"], check=True)
+        db.update_thread(
+            thread_id, worktree_path=wt_path, worktree_branch=branch,
+            main_repo_path=repo,
+        )
+        raise RuntimeError("tmux pane died after worktree was created")
+
+    _mk_topic(db, "a")
+    _arm(db)
+
+    gd.graph_tick(db, dispatch_fn=_fake_dispatch_creates_worktree_then_fails)
+
+    assert (Path(repo) / "feature.txt").exists(), "commit must be merged, not stranded"
+    threads = db.get_all_threads()
+    assert threads[0]["state"] == "archived"
+
+
 def test_tick_capacity_error_defers_quietly(db):
     """(adapted to topics, R9 2026-06-11)"""
     _mk_topic(db, "a")
