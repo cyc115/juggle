@@ -281,13 +281,13 @@ def graph_tick(db, mgr=None, *, dispatch_fn=None) -> dict:
             try:
                 dispatch(db, thread_id, hydrate_for_topic(db, pid, topic), topic)
             except CapacityError:
-                _archive_dispatch_failure(db, thread_id)
+                _archive_dispatch_failure(db, thread_id, tid)
                 db_topics.set_topic_thread(db, tid, None)
                 db_topics.topic_transition(db, tid, "stale_reset")
                 stats["deferred"].append(tid)
                 break
             except Exception as e:
-                _archive_dispatch_failure(db, thread_id)
+                _archive_dispatch_failure(db, thread_id, tid)
                 db_topics.set_topic_thread(db, tid, None)
                 stats["errors"].append(tid)
                 fails = _dispatch_fails.get(fail_key, 0) + 1

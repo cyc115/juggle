@@ -377,6 +377,47 @@ def test_dispatch_failure_after_real_worktree_still_merges_before_archiving(db, 
     assert threads[0]["state"] == "archived"
 
 
+def test_dispatch_failure_diverged_worktree_files_action_item_not_silent(db, tmp_path):
+    """DA follow-up on the attempt#4 fix: if the real worktree/branch created
+    before a dispatch failure can't ff-merge (diverged main), the archive
+    must not silently swallow it — file a HIGH action item (fail-loud, per
+    the repo's detect/refuse/preserve integration principle) rather than
+    just archiving as if nothing happened."""
+    import subprocess
+
+    from juggle_cmd_agents_worktree import _create_worktree
+
+    repo = _merged_repo()
+
+    def _fake_dispatch_diverges_then_fails(db, thread_id, prompt, task):
+        ok, wt_path, branch, _ = _create_worktree(
+            repo, "a", worktree_root=str(tmp_path))
+        assert ok
+        (Path(wt_path) / "feature.txt").write_text("feat\n")
+        subprocess.run(["git", "-C", wt_path, "add", "feature.txt"], check=True)
+        subprocess.run(["git", "-C", wt_path, "commit", "-qm", "feature"], check=True)
+        db.update_thread(
+            thread_id, worktree_path=wt_path, worktree_branch=branch,
+            main_repo_path=repo,
+        )
+        # Diverge main so the branch can no longer ff-merge.
+        (Path(repo) / "other.txt").write_text("other\n")
+        subprocess.run(["git", "-C", repo, "add", "other.txt"], check=True)
+        subprocess.run(["git", "-C", repo, "commit", "-qm", "other"], check=True)
+        raise RuntimeError("tmux pane died after worktree diverged")
+
+    _mk_topic(db, "a")
+    _arm(db)
+
+    gd.graph_tick(db, dispatch_fn=_fake_dispatch_diverges_then_fails)
+
+    items = db.get_open_action_items()
+    assert any(
+        "not finalized" in i["message"] and i.get("priority") == "high"
+        for i in items
+    )
+
+
 def test_tick_capacity_error_defers_quietly(db):
     """(adapted to topics, R9 2026-06-11)"""
     _mk_topic(db, "a")

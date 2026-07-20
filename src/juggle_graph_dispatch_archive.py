@@ -7,7 +7,7 @@ Owns: _archive_dispatch_failure. Must not own: claim/dispatch/hydration.
 from __future__ import annotations
 
 
-def _archive_dispatch_failure(db, thread_id: str) -> None:
+def _archive_dispatch_failure(db, thread_id: str, tid: str | None = None) -> str:
     """Archive a thread whose ``dispatch()`` call raised, without stranding a
     worktree reference the completion pipeline never gets a chance to see.
 
@@ -25,12 +25,28 @@ def _archive_dispatch_failure(db, thread_id: str) -> None:
     (best-effort; never raises) and clearing an unbacked stamp keeps every
     archived node honest: either its branch was actually merged, or it
     never carried one.
+
+    Files a high-priority action item when a real worktree could not be
+    ff-merged (e.g. diverged commits) — never let the archive swallow it
+    (fail-loud, per the repo's "detect, refuse, preserve" integration
+    principle). ``tid`` (topic id) is included in the item message when
+    given. Returns the warning message, or "" when nothing was stranded.
     """
     from juggle_cmd_agents_worktree import _finalize_worktree
 
+    warning = ""
     thread = db.get_thread(thread_id) or {}
     if thread.get("worktree_path") and thread.get("main_repo_path"):
-        _finalize_worktree(thread)  # best-effort ff-merge + cleanup
+        ok, msg = _finalize_worktree(thread)  # best-effort ff-merge + cleanup
+        if not ok:
+            warning = f"worktree not finalized on dispatch-failure archive: {msg}"
     elif thread.get("worktree_branch") and not thread.get("main_repo_path"):
         db.update_thread(thread_id, worktree_branch="")
     db.archive_thread(thread_id)
+    if warning:
+        topic_prefix = f"Topic {tid}: " if tid else ""
+        db.add_action_item(
+            thread_id=None, message=f"⚠️ {topic_prefix}{warning}",
+            type_="manual_step", priority="high",
+        )
+    return warning
