@@ -81,6 +81,73 @@ def test_cmd_complete_agent_creates_notification_and_closes_thread(db, capsys):
     assert any("merged PR #412" in n["message"] for n in notifs)
 
 
+def test_cmd_complete_agent_merges_branch_when_worktree_path_empty(db):
+    """LIVE-EQUIVALENT PROOF (2026-07-19 Bug#1 attempt#3): exercises the exact
+    production function BOTH the CLI (`agent complete`) and the daemon's spool
+    consumer (juggle_spool_apply._apply_event, event.type=='agent_complete')
+    call on completion — `cmd_complete_agent` — against a real temp git repo
+    whose thread row has worktree_branch + main_repo_path set but
+    worktree_path EMPTY (the exact shape found in the live production DB:
+    every recently-archived thread had this signature). Asserts main's HEAD
+    sha advances to include the branch's commit — i.e. the merge actually
+    happened, not a silent no-op."""
+    from juggle_cmd_agents import cmd_complete_agent
+
+    tid = db.create_thread("t", session_id="sessA")
+    db._set_session_key_external("session_id", "sessA")
+
+    main = Path(db.db_path).parent / "main_repo"
+    main.mkdir()
+    subprocess.run(["git", "-C", str(main), "init", "-q", "-b", "main"], check=True)
+    subprocess.run(["git", "-C", str(main), "config", "user.email", "t@t.t"], check=True)
+    subprocess.run(["git", "-C", str(main), "config", "user.name", "t"], check=True)
+    subprocess.run(["git", "-C", str(main), "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+
+    branch = "cyc_MN"
+    wt_path = Path(db.db_path).parent / "wt"
+    subprocess.run(
+        ["git", "-C", str(main), "worktree", "add", "-q", "-b", branch, str(wt_path)],
+        check=True,
+    )
+    (wt_path / "feature.txt").write_text("feat\n")
+    subprocess.run(["git", "-C", str(wt_path), "add", "feature.txt"], check=True)
+    subprocess.run(["git", "-C", str(wt_path), "commit", "-q", "-m", "feature"], check=True)
+    branch_sha = subprocess.run(
+        ["git", "-C", str(wt_path), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    # Lose the checkout dir entirely (the branch's commits survive) so this is
+    # exactly "a genuine unmerged branch with no reachable worktree_path" —
+    # not just an empty DB field pointing at a live directory.
+    subprocess.run(["git", "-C", str(main), "worktree", "remove", "-f", str(wt_path)], check=True)
+
+    main_sha_before = subprocess.run(
+        ["git", "-C", str(main), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    # The live-DB bug shape: worktree_branch + main_repo_path set, worktree_path EMPTY.
+    db.update_thread(
+        tid, agent_task_id="task-1", status="running",
+        worktree_path="", worktree_branch=branch, main_repo_path=str(main),
+    )
+
+    args = argparse.Namespace(
+        thread_id=tid, result_summary="did the thing",
+        retain_text=None, open_questions=None, handoff=None, role=None,
+    )
+    cmd_complete_agent(args)
+
+    main_sha_after = subprocess.run(
+        ["git", "-C", str(main), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    assert main_sha_after != main_sha_before, "main did not advance — branch was not merged"
+    assert main_sha_after == branch_sha
+    assert (main / "feature.txt").exists()
+
+
 def test_cmd_complete_agent_preserves_feature_topic_with_user_messages(db):
     """Regression (2026-06-21): a transient/research agent bound to an active
     feature topic must NOT close that topic on complete-agent. Symptom:
