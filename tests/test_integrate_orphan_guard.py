@@ -24,6 +24,24 @@ def _git(repo, *args):
     )
 
 
+def _repo_with_unmerged_branch(repo, branch="cyc_X"):
+    """Build a real git repo with ``branch`` committed ahead of ``main`` and
+    NEVER merged — genuine unmerged work (bug1 protection fixture)."""
+    repo.mkdir(parents=True, exist_ok=True)
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "f.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", branch)
+    (repo / "f.txt").write_text("work")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "work")
+    _git(repo, "checkout", "main")
+    return branch
+
+
 def _repo_with_out_of_band_merge(repo):
     """Build a real git repo where branch ``cyc_X`` was merged into ``main``
     out-of-band (work IS reachable from main), and return that branch name."""
@@ -188,8 +206,12 @@ def test_detector_skips_already_verified_topic(tmp_path):
 def test_flag_files_high_action_item_and_dedups(tmp_path):
     from dbops import orphan_guard
 
+    repo = tmp_path / "repo"
+    branch = _repo_with_unmerged_branch(repo)
+
     db = _make_db(tmp_path)
     _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    _bind_node_branch(db, "T1", repo=repo, branch=branch)
 
     flagged = orphan_guard.flag_unmerged_completed_topics(db)
     assert flagged == ["T1"]
@@ -344,8 +366,12 @@ def test_clear_helper_acks_only_marker_linked_items(tmp_path):
     else, and is a no-op the second time (idempotent)."""
     from dbops import orphan_guard
 
+    repo = tmp_path / "repo"
+    branch = _repo_with_unmerged_branch(repo)
+
     db = _make_db(tmp_path)
     _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    _bind_node_branch(db, "T1", repo=repo, branch=branch)
     # File the UNMERGED item (records the action_item_id on the marker event).
     from datetime import datetime, timedelta, timezone
     _stamp_child_verified_at(
@@ -513,8 +539,12 @@ def test_detector_flags_once_grace_elapsed_and_agent_no_longer_busy(tmp_path):
     from datetime import datetime, timedelta, timezone
     from dbops import orphan_guard
 
+    repo = tmp_path / "repo"
+    branch = _repo_with_unmerged_branch(repo)
+
     db = _make_db(tmp_path)
     _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    _bind_node_branch(db, "T1", repo=repo, branch=branch)
     stale = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
     _stamp_child_verified_at(db, "T1-t0", iso_ts=stale)
     # No agent bound to thr-1 as busy — the owning agent is gone/idle.
@@ -526,3 +556,114 @@ def test_detector_flags_once_grace_elapsed_and_agent_no_longer_busy(tmp_path):
     assert flagged == ["T1"]
     items = db.get_open_action_items()
     assert any(i["priority"] == "high" and "T1" in i["message"] for i in items)
+
+
+# --- report-only / phantom-branch false-positive fix (2026-07-20) ------------
+#
+# Incident: flag_unmerged_completed_topics filed a "completed but UNMERGED ...
+# run `juggle integrate <id>`" HIGH item for two classes with NOTHING to
+# merge: (a) report-only nodes (e.g. weekly refactor SCAN) that never produce
+# a branch, and (b) a phantom branch — worktree_branch recorded on the node
+# but the branch is absent from git (GC'd) or has 0 commits ahead of trunk.
+# Genuine unmerged work (branch exists, >=1 commit ahead) must still escalate
+# (bug1 protection) — see test_detector_flags_once_grace_elapsed_and_agent_
+# no_longer_busy / test_flag_files_high_action_item_and_dedups above.
+
+
+def test_flag_skips_report_only_topic_with_no_branch(tmp_path):
+    """A completed topic that never recorded a branch (report-only, e.g. a
+    weekly refactor SCAN) has nothing to merge — must NOT be flagged with the
+    misleading 'run juggle integrate' escalation. Detection is unaffected:
+    find_unmerged_completed_topics still surfaces it as an orphan; only the
+    flag/escalation step filters it out."""
+    from datetime import datetime, timedelta, timezone
+    from dbops import orphan_guard
+
+    db = _make_db(tmp_path)
+    _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    _stamp_child_verified_at(db, "T1-t0", iso_ts=stale)
+    # No worktree_branch / main_repo_path recorded on the node — report-only.
+
+    assert [t["id"] for t in orphan_guard.find_unmerged_completed_topics(db)] == ["T1"]
+    assert orphan_guard.flag_unmerged_completed_topics(db) == []
+    assert db.get_open_action_items() == []
+
+
+def test_flag_skips_phantom_branch_missing_from_git(tmp_path):
+    """worktree_branch is recorded on the node, but that branch does not exist
+    in the repo (GC'd) — a phantom branch. Must NOT emit the misleading
+    'run juggle integrate' escalation."""
+    from datetime import datetime, timedelta, timezone
+    from dbops import orphan_guard
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "f.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    # NOTE: 'cyc_GONE' is never created — simulates a GC'd/never-materialized branch.
+
+    db = _make_db(tmp_path)
+    _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    _bind_node_branch(db, "T1", repo=repo, branch="cyc_GONE")
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    _stamp_child_verified_at(db, "T1-t0", iso_ts=stale)
+
+    assert [t["id"] for t in orphan_guard.find_unmerged_completed_topics(db)] == ["T1"]
+    assert orphan_guard.flag_unmerged_completed_topics(db) == []
+    assert db.get_open_action_items() == []
+
+
+def test_flag_skips_phantom_branch_zero_commits_ahead(tmp_path):
+    """worktree_branch exists in git but has 0 commits ahead of trunk (created,
+    never diverged) — nothing to merge. Must NOT escalate."""
+    from datetime import datetime, timedelta, timezone
+    from dbops import orphan_guard
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "f.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "branch", "cyc_EMPTY")  # branch exists, 0 commits ahead of main
+
+    db = _make_db(tmp_path)
+    _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    _bind_node_branch(db, "T1", repo=repo, branch="cyc_EMPTY")
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    _stamp_child_verified_at(db, "T1-t0", iso_ts=stale)
+
+    assert [t["id"] for t in orphan_guard.find_unmerged_completed_topics(db)] == ["T1"]
+    assert orphan_guard.flag_unmerged_completed_topics(db) == []
+    assert db.get_open_action_items() == []
+
+
+def test_flag_still_escalates_genuine_unmerged_branch(tmp_path):
+    """Positive pin (bug1 protection): branch exists AND has >=1 commit ahead
+    of trunk -> STILL flagged, even after the report-only/phantom fix."""
+    from datetime import datetime, timedelta, timezone
+    from dbops import orphan_guard
+
+    repo = tmp_path / "repo"
+    branch = _repo_with_unmerged_branch(repo)
+
+    db = _make_db(tmp_path)
+    _seed_topic(db, "T1", ["verified"], thread_id="thr-1", merged_sha=None)
+    _bind_node_branch(db, "T1", repo=repo, branch=branch)
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    _stamp_child_verified_at(db, "T1-t0", iso_ts=stale)
+
+    assert orphan_guard.flag_unmerged_completed_topics(db) == ["T1"]
+    items = db.get_open_action_items()
+    assert any(
+        i["priority"] == "high" and "T1" in i["message"]
+        and "juggle integrate" in i["message"]
+        for i in items
+    )

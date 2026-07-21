@@ -17,9 +17,12 @@ and no integrate logic (juggle_cmd_integrate).
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from dbops.graph_guards import sha_is_ancestor
+
+_log = logging.getLogger(__name__)
 
 # watchdog_events.event_type used to dedup repeated flags for the same topic.
 _ORPHAN_EVENT = "topic_unmerged_orphan"
@@ -226,6 +229,23 @@ def _topic_branch(db, node: dict) -> str:
     return ""
 
 
+def _branch_ahead_of_trunk(repo: str, branch: str) -> bool:
+    """True iff ``branch`` is a LIVE ref in ``repo`` with >= 1 commit ahead of
+    trunk — genuine unmerged work. Distinguishes it from a PHANTOM branch:
+    recorded in nodes.worktree_branch but GC'd / never diverged (2026-07-20
+    false-escalation fix). Reuses the same rev-list/trunk primitives the
+    integrate path already relies on — never hand-rolled here."""
+    from dbops.graph_guards import _repo_trunk, resolve_branch_sha
+    from juggle_integrate_submit import _commit_count
+
+    if not repo or not branch:
+        return False
+    if not resolve_branch_sha(repo, branch):
+        return False  # branch ref missing/gone — phantom, fail-closed
+    trunk = _repo_trunk(repo)
+    return _commit_count(repo, trunk, branch) > 0
+
+
 def flag_unmerged_completed_topics(db, *, dedup_window_hours: float = 24.0) -> list[str]:
     """Detect completed-but-unmerged topics and file a HIGH action item for each.
 
@@ -243,6 +263,24 @@ def flag_unmerged_completed_topics(db, *, dedup_window_hours: float = 24.0) -> l
     flagged: list[str] = []
     for node in orphans:
         node_id = node["id"]
+        branch = _topic_branch(db, node)
+        if not branch:
+            # Report-only node (e.g. weekly refactor SCAN) — never produces a
+            # branch, so there is nothing to merge. Skip silently.
+            continue
+        repo = _node_repo(db, node)
+        if not _branch_ahead_of_trunk(repo, branch):
+            # Phantom branch: recorded but absent from git (GC'd) or 0 commits
+            # ahead of trunk — the "run juggle integrate" advice would be
+            # unactionable/misleading. Log a distinct diagnostic instead of
+            # silently dropping it (no action item — nothing to escalate).
+            _log.info(
+                "orphan_guard: topic %s [%s] recorded branch %r in %s is "
+                "missing from git or has 0 commits ahead of trunk — skipping "
+                "the 'run juggle integrate' escalation (nothing to merge)",
+                node.get("title") or node_id, node_id, branch, repo,
+            )
+            continue
         with db._connect() as conn:
             recent = conn.execute(
                 "SELECT id FROM watchdog_events "

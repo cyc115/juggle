@@ -13,11 +13,44 @@ regress.
 """
 from __future__ import annotations
 
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+
+def _git(repo, *args):
+    subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True, capture_output=True, text=True,
+    )
+
+
+def _repo_with_unmerged_branch(repo, branch="cyc_X"):
+    repo.mkdir(parents=True, exist_ok=True)
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "f.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", branch)
+    (repo / "f.txt").write_text("work")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "work")
+    _git(repo, "checkout", "main")
+    return branch
+
+
+def _bind_node_branch(db, node_id, *, repo, branch):
+    with db._connect() as c:
+        c.execute(
+            "UPDATE nodes SET worktree_branch=?, main_repo_path=? WHERE id=?",
+            (branch, str(repo), node_id),
+        )
+        c.commit()
 
 
 def _make_db(tmp_path):
@@ -70,10 +103,14 @@ def test_hard_wedged_integrating_topic_flagged_despite_busy_agent(tmp_path):
     """1.5 h wedge with a still-'busy' agent → HIGH action item (the incident)."""
     from dbops import orphan_guard
 
+    repo = tmp_path / "repo"
+    branch = _repo_with_unmerged_branch(repo)
+
     db = _make_db(tmp_path)
     stale = (datetime.now(timezone.utc) - timedelta(minutes=90)).isoformat()
     _seed_topic(db, "T1", ["verified"], state="integrating", thread_id="thr-1",
                 merged_sha=None, updated_at=stale)
+    _bind_node_branch(db, "T1", repo=repo, branch=branch)
     _make_agent_busy(db, "thr-1")   # agent stuck 'busy' (the suppression trigger)
 
     orphans = orphan_guard.find_unmerged_completed_topics(db)
