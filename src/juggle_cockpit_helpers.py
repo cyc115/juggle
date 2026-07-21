@@ -27,12 +27,22 @@ _PRIORITY_TIER_MAP: dict[str, int] = {
 
 
 def _resolve_thread_by_label(threads: list[dict], label: str) -> dict | None:
-    """Return the first thread dict whose user_label matches label (case-insensitive)."""
+    """Return the thread dict whose user_label matches label (case-insensitive).
+
+    Live-first (2026-07-20, Bug2): a recycled label is shared by every
+    conversation node that ever held it (T-slug-wheel) — archived siblings keep
+    the label after a live node reclaims it. A bare first-match scan could
+    return a stale ARCHIVED holder instead of the current live one. Mirrors the
+    live-state-first ordering used by dbops.threads.get_thread_by_user_label.
+    """
+    from dbops.slug_alloc import LIVE_NODE_STATES
+
     label_up = label.upper()
-    return next(
-        (t for t in threads if (t.get("user_label") or "").upper() == label_up),
-        None,
-    )
+    matches = [t for t in threads if (t.get("user_label") or "").upper() == label_up]
+    if not matches:
+        return None
+    live = next((t for t in matches if t.get("state") in LIVE_NODE_STATES), None)
+    return live if live is not None else matches[0]
 
 
 def _resolve_actions_by_thread_label(
