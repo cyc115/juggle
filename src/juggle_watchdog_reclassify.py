@@ -20,7 +20,7 @@ import time
 from datetime import datetime, timezone
 
 from dbops.schema import _is_junk_message, is_auto_topic_eligible
-from juggle_hooks_prompt import get_classification_candidates
+from juggle_thread_router import get_classification_candidates
 
 _log = logging.getLogger("juggle-watchdog")
 
