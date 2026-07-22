@@ -265,6 +265,17 @@ def run_reclassify_sweep(db, *, session_id: str = "", now: float | None = None, 
 
         db.set_setting(_FAIL_KEY, "0")
         verdict = parse_classify_response(response)
-        _apply_decision(db, run, verdict, open_ids, session_id, current_thread_at_start)
+        try:
+            _apply_decision(db, run, verdict, open_ids, session_id, current_thread_at_start)
+        except Exception:
+            # Fail-safe toward "leave messages put" (spec Q5): a DB-level
+            # failure applying a real verdict (e.g. MAX_THREADS cap on create)
+            # must not crash the tick or wedge the watermark forever the way
+            # an LLM failure would — this run got a decision, just couldn't
+            # act on it.
+            _log.warning(
+                "Reclassify: applying decision failed for run ending id %d — leaving in place",
+                run[-1]["id"],
+            )
         watermark = max(watermark, max(m["id"] for m in run))
         db.set_setting(_WATERMARK_KEY, str(watermark))

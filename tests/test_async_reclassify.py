@@ -167,6 +167,29 @@ def test_reclassify_new_topic_guards(db):
     assert db.get_message_count(tid, exclude_junk=False) == 1  # message left in place
 
 
+def test_reclassify_new_topic_create_failure_is_contained(db):
+    """A create_thread failure (e.g. the MAX_THREADS cap) during a 'new'
+    decision must not crash the sweep or wedge the watermark forever — DB
+    errors are contained the same way a parse failure is: message stays put,
+    watermark still advances so the tick keeps making progress."""
+    from juggle_watchdog_reclassify import run_reclassify_sweep
+
+    for i in range(9):  # + the message thread below = MAX_THREADS=10 (test env)
+        _mk_thread(db, f"filler topic {i}")
+
+    tid = _mk_thread(db, "topic at cap")
+    db.add_message(tid, "user", "this new-topic attempt should hit the thread cap")
+    _stamp(db, tid, age_s=60, now=_NOW)
+
+    def llm_fn(prompt):
+        return '{"decision": "new", "thread_id": null, "confidence": 0.95, "topic_hint": "overflow topic"}'
+
+    run_reclassify_sweep(db, now=_NOW, llm_fn=llm_fn)  # must not raise
+
+    assert db.get_message_count(tid, exclude_junk=False) == 1  # message left in place
+    assert int(db.get_setting("async_reclassify_watermark") or 0) > 0  # tick still progressed
+
+
 def test_reclassify_llm_failure_holds_watermark(db):
     """llm_fn returns None: watermark NOT advanced; next tick retries."""
     from juggle_watchdog_reclassify import run_reclassify_sweep
