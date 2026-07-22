@@ -26,6 +26,10 @@ from juggle_hooks_autopilot import (  # noqa: F401 — re-exported for juggle_ho
 )
 from juggle_hooks_prose import clear_prose_decision, record_prose_decision
 from juggle_hooks_classb import _last_assistant_text_from_transcript
+from juggle_thread_router import (  # noqa: F401 — get_classification_candidates re-exported for juggle_hooks
+    get_classification_candidates,
+    _route_prompt_to_thread,
+)
 from dbops import event_kinds as _ek
 
 
@@ -52,17 +56,6 @@ _PERMISSION_ASKING_PATTERNS = [
     r"do you want me to",
 ]
 
-
-
-def get_classification_candidates(threads: list[dict]) -> list[dict]:
-    """Return threads eligible for topic classification match.
-
-    Only conversations with state not in ('done', 'archived') are considered
-    (node vocab; 'done' covers legacy closed+done). If no match is found among
-    these candidates, a new thread should be created — closed threads are never
-    resurrected.
-    """
-    return [t for t in threads if t.get("state") not in ("done", "archived")]
 
 
 def auto_approve_blocked_agents() -> None:
@@ -195,6 +188,13 @@ def handle_user_prompt_submit(data: dict) -> None:
         prompt = data.get("prompt", "")
         if prompt:
             thread_id = db.get_current_thread()
+            # Auto-route: local scorer over open threads. Switch ONLY on a
+            # confident match; otherwise stay on current_thread (never
+            # mis-route on ambiguity). Trivial follow-ups short-circuit.
+            routed = _route_prompt_to_thread(db, prompt, thread_id)
+            if routed is not None and routed != thread_id:
+                db.set_current_thread(routed)
+                thread_id = routed
             if thread_id is not None:
                 db.add_message(thread_id, "user", prompt)
     except Exception as exc:
