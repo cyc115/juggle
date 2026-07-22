@@ -271,3 +271,19 @@ def test_reclassify_watermark_monotonic(db):
 
     run_reclassify_sweep(db, now=_NOW + RECLASSIFY_INTERVAL_S, llm_fn=llm_fn)
     assert len(calls) == 2
+
+
+# ---------------------------------------------------------------------------
+# Watchdog tick wiring
+# ---------------------------------------------------------------------------
+
+
+def test_daemon_tick_wires_reclassify_sweep():
+    """The watchdog tick body invokes the guarded reclassify sweep (2026-07-22),
+    right after the agent-health sweep call — see spec Q2."""
+    import inspect
+
+    import juggle_watchdog_daemon as wd
+
+    src = inspect.getsource(wd._poll_once)
+    assert "run_reclassify_sweep" in src
