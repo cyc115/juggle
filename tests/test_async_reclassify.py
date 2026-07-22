@@ -279,11 +279,15 @@ def test_reclassify_watermark_monotonic(db):
 
 
 def test_daemon_tick_wires_reclassify_sweep():
-    """The watchdog tick body invokes the guarded reclassify sweep (2026-07-22),
-    right after the agent-health sweep call — see spec Q2."""
+    """The watchdog tick body invokes the guarded reclassify sweep (2026-07-22).
+
+    Wired through juggle_watchdog_sweeps.run_agent_health_sweeps (not inline in
+    _poll_once) to stay within the juggle_watchdog_daemon.py LOC-gate budget —
+    the daemon already calls run_agent_health_sweeps once per tick (spec Q2)."""
     import inspect
 
     import juggle_watchdog_daemon as wd
+    import juggle_watchdog_sweeps as sweeps
 
-    src = inspect.getsource(wd._poll_once)
-    assert "run_reclassify_sweep" in src
+    assert "run_agent_health_sweeps" in inspect.getsource(wd._poll_once)
+    assert "run_reclassify_sweep" in inspect.getsource(sweeps.run_agent_health_sweeps)

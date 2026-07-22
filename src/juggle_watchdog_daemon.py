@@ -288,15 +288,6 @@ def _poll_once(db: JuggleDB, mgr: JuggleTmuxManager) -> None:
     from juggle_watchdog_sweeps import run_agent_health_sweeps
     run_agent_health_sweeps(db, mgr, _stall_tracker, now=now_ts, session_id=session_id)
 
-    # Loop 1d: async retroactive reclassify (2026-07-22). Cheap-LLM re-file of
-    # mis-routed messages + guarded new-topic creation. Internally cadence-gated
-    # (~120s) and watermark-bounded so it never reprocesses or runs every tick.
-    try:
-        from juggle_watchdog_reclassify import run_reclassify_sweep
-        run_reclassify_sweep(db, session_id=session_id, now=now_ts)
-    except Exception:
-        _log.exception("Watchdog: reclassify sweep failed — continuing")
-
     # Loop 2: orphaned thread detection
     _orphan_threshold = float(os.environ.get("JUGGLE_ORPHAN_THRESHOLD", "300"))
     check_orphaned_threads(db, orphan_threshold=_orphan_threshold)
