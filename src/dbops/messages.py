@@ -79,6 +79,37 @@ class MessagesMixin:
             conn.commit()
         self._maybe_reopen_conversation(thread_id, role, content)
 
+    def move_messages(self, message_ids: list[int], dest_thread_id: str) -> int:
+        """Re-file message rows onto dest_thread_id. Returns rows moved.
+
+        Async reclassify primitive (2026-07-22). dest_thread_id must be an
+        existing conversation node id. Freshens the dest node's last_active_at
+        so it surfaces in the cockpit; does NOT touch current_thread (caller's
+        decision — see spec Q4). Idempotent: moving a row already on dest is a
+        harmless no-op UPDATE.
+        """
+        if not message_ids:
+            return 0
+        now = datetime.now(timezone.utc).isoformat()
+        placeholders = ",".join("?" for _ in message_ids)
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"UPDATE messages SET thread_id = ? WHERE id IN ({placeholders})",
+                (dest_thread_id, *message_ids),
+            )
+            # Mirror add_message: keep the DEST conversation node fresh. Missing
+            # nodes TABLE tolerated (pre-Mig-44); missing COLUMN fails loud (H4).
+            try:
+                conn.execute(
+                    "UPDATE nodes SET last_active_at = ? WHERE id = ? AND kind='conversation'",
+                    (now, dest_thread_id),
+                )
+            except sqlite3.OperationalError as e:
+                if "no such table" not in str(e).lower():
+                    raise
+            conn.commit()
+        return cur.rowcount
+
     def _maybe_reopen_conversation(self, thread_id: str, role: str, content: str):
         """Reopen a done conversation topic on a fresh HUMAN message (F4,
         2026-06-30 topic-graph-state-unify). User activity always wins over a
