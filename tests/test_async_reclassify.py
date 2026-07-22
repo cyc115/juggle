@@ -270,6 +270,32 @@ def test_reclassify_never_advances_current_thread_by_default(db):
     assert db.get_current_thread() == other  # but the live cursor did not
 
 
+def test_reclassify_advances_past_leading_junk_batch(db):
+    """PIN 2026-07-22 (Codex adversarial review): a batch of purely-junk rows
+    filling the whole LIMIT window must not permanently starve real messages
+    behind them. RED if the sweep returns without advancing the watermark
+    just because this pass found zero classify candidates."""
+    from juggle_watchdog_reclassify import BATCH_CAP, RECLASSIFY_INTERVAL_S, run_reclassify_sweep
+
+    tid = _mk_thread(db, "topic one")
+    for _ in range(BATCH_CAP):
+        db.add_message(tid, "user", "/some-slash-command")  # _is_junk_message
+    db.add_message(tid, "user", "a real message that must eventually be seen")
+    _stamp(db, tid, age_s=60, now=_NOW)
+
+    calls = []
+
+    def llm_fn(prompt):
+        calls.append(prompt)
+        return '{"decision": "stay", "thread_id": null, "confidence": 0.9, "topic_hint": null}'
+
+    run_reclassify_sweep(db, now=_NOW, llm_fn=llm_fn)
+    assert calls == []  # first pass: the whole batch window is junk
+
+    run_reclassify_sweep(db, now=_NOW + RECLASSIFY_INTERVAL_S, llm_fn=llm_fn)
+    assert len(calls) == 1  # second pass: watermark advanced past the junk block
+
+
 def test_reclassify_watermark_monotonic(db):
     """PIN 2026-07-22: no double-process. A message with id <= watermark is
     never re-classified. RED if the pass keys on timestamp instead of id."""

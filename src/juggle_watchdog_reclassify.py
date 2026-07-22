@@ -121,7 +121,15 @@ def _group_into_runs(rows: list[dict]) -> list[list[dict]]:
     return runs
 
 
-def _select_candidates(db, watermark: int, now: float) -> list[dict]:
+def _select_candidates(db, watermark: int, now: float) -> tuple[list[dict], int]:
+    """Scan the next batch past watermark. Returns (classify candidates,
+    junk_ceiling) where junk_ceiling is the highest id it is safe to advance
+    the watermark to even if zero candidates were found — the leading run of
+    permanently-ineligible (junk) rows, which would otherwise starve every
+    later real message behind them (2026-07-22 Codex adversarial review: a
+    junk-filled batch window must not wedge the sweep forever). Settle-window
+    and live-tail exclusions are NOT included in the ceiling — those are
+    transient and must be reconsidered on a later tick."""
     with db._connect() as conn:
         rows = [
             dict(r)
@@ -135,17 +143,20 @@ def _select_candidates(db, watermark: int, now: float) -> list[dict]:
     max_msg_id = max_row["m"] if max_row and max_row["m"] is not None else 0
     current_thread = db.get_current_thread()
 
-    selected = []
+    selected: list[dict] = []
+    junk_ceiling = watermark
     for row in rows:
         if _is_junk_message(row["content"]):
+            if not selected:
+                junk_ceiling = row["id"]
             continue
         age = _age_seconds(row["created_at"], now)
         if age is None or age < SETTLE_WINDOW_S:
-            continue  # settle window: sync router / orchestrator owns the tail
+            break  # settle window: sync router / orchestrator owns the tail
         if row["id"] == max_msg_id and row["thread_id"] == current_thread:
-            continue  # never move the live cursor's message
+            break  # never move the live cursor's message
         selected.append(row)
-    return selected
+    return selected, junk_ceiling
 
 
 def _handle_llm_failure(db, run: list[dict]) -> None:
@@ -243,9 +254,12 @@ def run_reclassify_sweep(db, *, session_id: str = "", now: float | None = None, 
             )
 
     watermark = int(db.get_setting(_WATERMARK_KEY) or 0)
-    candidates = _select_candidates(db, watermark, now)
+    candidates, junk_ceiling = _select_candidates(db, watermark, now)
     if not candidates:
+        if junk_ceiling > watermark:
+            db.set_setting(_WATERMARK_KEY, str(junk_ceiling))
         return
+    watermark = max(watermark, junk_ceiling)
 
     runs = _group_into_runs(candidates)
     open_candidates = get_classification_candidates(db.get_all_threads())
