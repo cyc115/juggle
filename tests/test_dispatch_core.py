@@ -199,3 +199,51 @@ def test_send_task_renders_finalize_commands_fully_literal(db, repo, tmp_path, m
     assert "juggle_cli.py" in full_prompt
     for placeholder in ("<thread>", "$THREAD", "<THREAD>", "complete-agent", "fail-agent"):
         assert placeholder not in full_prompt, f"leftover placeholder: {placeholder}"
+
+
+# ── T-fix-topic-dead-letter: --topic must resolve dispatch thread ─────────────
+
+
+def test_cmd_send_task_topic_resolves_thread_for_unbound_agent(
+    db, repo, tmp_path, monkeypatch
+):
+    """Regression pin — incident 2026-07-22 dead-letter RCA: `send-task --topic
+    <label>` on an agent with assigned_thread=None dispatched with
+    thread_uuid=None, baking the literal '<thread-unresolved>' into the
+    finalize line (juggle_dispatch_core.py:204-208,233) so the agent's
+    `agent complete <thread-unresolved>` call resolved to no thread and
+    dead-lettered. cmd_send_task must resolve --topic to the dispatch thread
+    when the agent has no bound thread, so the finalize line carries the real
+    label instead."""
+    from argparse import Namespace
+    from unittest.mock import patch
+    from juggle_cmd_agents_tasks import cmd_send_task
+
+    monkeypatch.setenv("JUGGLE_WORKTREE_ROOT", str(tmp_path / "wts"))
+    (tmp_path / "wts").mkdir(exist_ok=True)
+
+    import juggle_dispatch_core as _core
+    monkeypatch.setattr(_core, "DEFAULT_WORKTREE_ROOT", str(tmp_path / "wts"))
+
+    thread_id = db.create_thread("dead-letter topic", session_id="")
+    thread_label = db.get_thread(thread_id)["user_label"]
+
+    agent_id = db.create_agent("coder", "%fake", repo_path=str(repo))
+    assert db.get_agent(agent_id)["assigned_thread"] is None
+
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("do the thing")
+
+    args = Namespace(
+        agent_id=agent_id, prompt_file=str(prompt_file),
+        no_template=False, worktree_path=None, worktree_branch=None,
+        main_repo_path=None, allow_main=False, topic=thread_label,
+        prompt_version=None, db_path=str(db.db_path),
+    )
+
+    with patch("juggle_cmd_agents_common.JuggleTmuxManager", return_value=_fake_mgr()):
+        cmd_send_task(args)
+
+    full_prompt = db.get_agent(agent_id)["last_task"]
+    assert thread_label in full_prompt
+    assert "<thread-unresolved>" not in full_prompt

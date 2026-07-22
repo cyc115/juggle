@@ -32,6 +32,17 @@ def cmd_send_task(args):
     prompt = prompt_path.read_text()
     thread_uuid = agent.get("assigned_thread")
 
+    # --topic names the owning topic. When the agent isn't already bound to a
+    # thread, dispatch directly into --topic so the finalize line carries a
+    # real thread label instead of <thread-unresolved> (2026-07-22 dead-letter
+    # RCA — resolve BEFORE check_task_guard so tick-owned protection applies
+    # to the resolved thread, not the unresolved None).
+    explicit = getattr(args, "topic", None)
+    if not thread_uuid and explicit:
+        from juggle_cli_common import _resolve_thread
+
+        thread_uuid = _resolve_thread(db, explicit)
+
     # Resolve CLI worktree overrides (send_task_to_agent accepts them via params)
     _v = getattr(args, "worktree_path", None)
     cli_wt_path = _v.strip() if isinstance(_v, str) else None
