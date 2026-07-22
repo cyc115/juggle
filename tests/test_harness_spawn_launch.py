@@ -176,6 +176,7 @@ def test_cmd_send_task_resolves_adapter_from_agent_harness(tmp_path):
     args.worktree_branch = None
     args.main_repo_path = None
     args.no_template = True
+    args.topic = None
 
     with patch("juggle_cmd_agents_common.get_db", return_value=db), \
          patch("juggle_cmd_agents_common.JuggleTmuxManager") as mock_cls, \
