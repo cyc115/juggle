@@ -1,3 +1,10 @@
+# ⚠️ DECOMMISSIONED ON THE MAC (2026-07-22): the shared Hindsight instance was migrated
+# to the homelab services VM (10.0.0.11:8888), where it now runs as a rootless Podman
+# Quadlet (homelab repo: containers/hindsight/, ansible/hindsight.yml). Juggle reaches it
+# via ~/.juggle/config.json (hindsight.api_url = http://10.0.0.11:8888). This compose is
+# retained ONLY as a rollback fallback — do NOT `docker compose up` while the VM instance
+# is live: it is a single shared memory bank and running both splits it. Rollback: set
+# config.json api_url back to http://localhost:18888 and `docker start juggle-hindsight`.
 services:
   hindsight:
     image: ghcr.io/vectorize-io/hindsight:latest
