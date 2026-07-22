@@ -247,3 +247,54 @@ def test_cmd_send_task_topic_resolves_thread_for_unbound_agent(
     full_prompt = db.get_agent(agent_id)["last_task"]
     assert thread_label in full_prompt
     assert "<thread-unresolved>" not in full_prompt
+
+
+def test_cmd_send_task_topic_claims_agent_so_it_cannot_be_double_dispatched(
+    db, repo, tmp_path, monkeypatch
+):
+    """Regression pin — Codex adversarial-review finding (2026-07-22, same
+    dead-letter incident): resolving --topic into thread_uuid is not enough —
+    cmd_send_task must also atomically claim the agent (status='busy',
+    assigned_thread=thread_uuid) via db.cas_assign_agent BEFORE dispatch.
+    Without the claim, the agent's DB row still reads idle/unassigned after
+    send-task, so the idle-agent pool walk (acquire_agent/_reuse_idle_agent)
+    can hand the SAME agent to a second, unrelated dispatch while it is still
+    working the first task — silent double-dispatch, not just a bad prompt."""
+    from argparse import Namespace
+    from unittest.mock import patch
+    from juggle_cmd_agents_tasks import cmd_send_task
+
+    monkeypatch.setenv("JUGGLE_WORKTREE_ROOT", str(tmp_path / "wts"))
+    (tmp_path / "wts").mkdir(exist_ok=True)
+
+    import juggle_dispatch_core as _core
+    monkeypatch.setattr(_core, "DEFAULT_WORKTREE_ROOT", str(tmp_path / "wts"))
+
+    thread_id = db.create_thread("claim-check topic", session_id="")
+    other_thread_id = db.create_thread("other topic", session_id="")
+    thread_label = db.get_thread(thread_id)["user_label"]
+
+    agent_id = db.create_agent("coder", "%fake", repo_path=str(repo))
+    assert db.get_agent(agent_id)["assigned_thread"] is None
+    assert db.get_agent(agent_id)["status"] == "idle"
+
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("do the thing")
+
+    args = Namespace(
+        agent_id=agent_id, prompt_file=str(prompt_file),
+        no_template=False, worktree_path=None, worktree_branch=None,
+        main_repo_path=None, allow_main=False, topic=thread_label,
+        prompt_version=None, db_path=str(db.db_path),
+    )
+
+    with patch("juggle_cmd_agents_common.JuggleTmuxManager", return_value=_fake_mgr()):
+        cmd_send_task(args)
+
+    agent = db.get_agent(agent_id)
+    assert agent["status"] == "busy"
+    assert agent["assigned_thread"] == thread_id
+
+    # A concurrent pool claim onto a different thread must be refused now that
+    # this agent is bound — proves it is no longer idle-pool-reusable.
+    assert db.cas_assign_agent(agent_id, other_thread_id) is False

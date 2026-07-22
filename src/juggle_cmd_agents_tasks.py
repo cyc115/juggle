@@ -42,6 +42,14 @@ def cmd_send_task(args):
         from juggle_cli_common import _resolve_thread
 
         thread_uuid = _resolve_thread(db, explicit)
+        # Claim the agent atomically (status='busy', assigned_thread=thread_uuid)
+        # BEFORE dispatch — otherwise its DB row still reads idle/unassigned and
+        # the idle-agent pool walk can hand it to a second, concurrent dispatch
+        # while it is still working this one (Codex adversarial-review finding,
+        # 2026-07-22 dead-letter incident).
+        if not db.cas_assign_agent(args.agent_id, thread_uuid):
+            print(f"Error: Agent {args.agent_id} was claimed by another dispatch.")
+            sys.exit(1)
 
     # Resolve CLI worktree overrides (send_task_to_agent accepts them via params)
     _v = getattr(args, "worktree_path", None)
