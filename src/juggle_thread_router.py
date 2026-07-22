@@ -25,7 +25,6 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STOPWORDS = {
     "a", "an", "the", "is", "are", "was", "were", "be", "been", "to", "of",
     "in", "on", "for", "and", "or", "it", "this", "that", "with", "as", "at",
-    "please", "like", "today", "what's", "whats",
 }
 
 # Short continuations that carry no new topic signal — never switch on these.
