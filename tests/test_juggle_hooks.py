@@ -365,6 +365,36 @@ def test_classification_candidates_empty_input():
 
 
 # ---------------------------------------------------------------------------
+# SYNC-LOCAL in-hook thread router (2026-07-22 RCA: handle_user_prompt_submit
+# only ever wrote to the start-pinned current_thread; a fresh prompt on an
+# unrelated, already-open topic was never routed to that topic's thread).
+# ---------------------------------------------------------------------------
+
+
+def test_user_prompt_submit_routes_confident_match_off_pinned_current(
+    active_db, monkeypatch
+):
+    juggle_hooks = _reload_hooks(monkeypatch, active_db)
+    monkeypatch.delenv("JUGGLE_IS_AGENT", raising=False)
+
+    thread_a = active_db.get_current_thread()
+    thread_b = active_db.create_thread("Refactor payment gateway retries", session_id="s1")
+
+    prompt = "please refactor the payment gateway retries logic"
+    with pytest.raises(SystemExit):
+        juggle_hooks.handle_user_prompt_submit({"prompt": prompt})
+
+    # Desired: the prompt strongly overlaps thread_b's title, so it should be
+    # routed (and recorded) there, and current_thread should follow it — not
+    # silently pile onto the stale pinned thread_a.
+    assert active_db.get_current_thread() == thread_b
+    b_messages = [m["content"] for m in active_db.get_messages(thread_b)]
+    a_messages = [m["content"] for m in active_db.get_messages(thread_a)]
+    assert prompt in b_messages
+    assert prompt not in a_messages
+
+
+# ---------------------------------------------------------------------------
 # PostToolUse handler tests
 # ---------------------------------------------------------------------------
 
