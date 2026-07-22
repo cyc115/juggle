@@ -167,3 +167,38 @@ def test_close_junk_threads_selector(db):
     )
     real_thread = db.get_thread(real_id)
     assert real_thread["state"] == "open", "Real thread must remain active"
+
+
+# ---------------------------------------------------------------------------
+# Async reclassify new-topic guard (2026-07-22)
+# ---------------------------------------------------------------------------
+
+
+def test_async_reclassify_new_topic_rejects_orchestrator_chatter(db):
+    """PIN 2026-07-22: the async reclassify sweep's 'new' decision must honor
+    is_auto_topic_eligible / _is_junk_message — the SAME gate close_junk_threads
+    uses — so a background classify pass never spawns what the cleaner would
+    immediately close. RED if the sweep creates a thread from chatter content."""
+    from datetime import datetime, timedelta, timezone
+
+    from juggle_watchdog_reclassify import run_reclassify_sweep
+
+    src = db.create_thread("src topic", session_id="")
+    db.add_message(
+        src, "user",
+        "# Autonomous loop tick\nState: armed, 2 ready topics — plenty of words here",
+    )
+    ts = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+    with db._connect() as conn:
+        conn.execute("UPDATE messages SET created_at = ? WHERE thread_id = ?", (ts, src))
+        conn.commit()
+
+    before = len(db.get_all_threads())
+
+    def llm_fn(prompt):
+        return '{"decision": "new", "thread_id": null, "confidence": 0.95, "topic_hint": "loop tick"}'
+
+    run_reclassify_sweep(db, llm_fn=llm_fn)
+
+    assert len(db.get_all_threads()) == before, "No new thread from orchestrator chatter"
+    assert db.get_message_count(src, exclude_junk=False) == 1, "Message left in place"
