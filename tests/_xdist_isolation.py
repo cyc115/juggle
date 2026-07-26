@@ -22,14 +22,22 @@ def worker_id() -> str:
 
 
 def watchdog_session_name() -> str:
-    """Per-xdist-worker real-tmux session name for the watchdog suite.
+    """Per-xdist-worker, per-process real-tmux session name for the watchdog suite.
 
     The watchdog conftest's session was a FIXED 'juggle-watchdog-test', so two
     xdist workers created/killed the same session and stole each other's panes.
-    Keying it to the worker id lets the watchdog suite run PARALLEL. 'main'
-    suffix when single-process (speedup-tier, 2026-06-21).
+    Keying it to the worker id let the watchdog suite run PARALLEL within ONE
+    pytest invocation (speedup-tier, 2026-06-21).
+
+    That alone still collided ACROSS processes (2026-07-26 incident):
+    PYTEST_XDIST_WORKER ('gw0'...) is relative to its own invocation, not
+    globally unique, so two SEPARATE concurrent `pytest -n auto` runs (e.g. two
+    overlapping `make test-integrate` invocations) each spawn a worker named
+    'gw0' and computed the SAME session name. os.getpid() IS unique among all
+    concurrently-running processes on the host, so it is appended as the
+    cross-process discriminator.
     """
-    return f"juggle-watchdog-test-{worker_id()}"
+    return f"juggle-watchdog-test-{worker_id()}-{os.getpid()}"
 
 
 def prod_artifact_paths() -> list[Path]:

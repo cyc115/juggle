@@ -101,17 +101,46 @@ def test_full_suite_parallel_stability_contract():
 
 
 def test_watchdog_session_name_is_worker_scoped(monkeypatch):
-    """speedup-tier (2026-06-21): two xdist workers must NOT share one real tmux
-    session — the session name is keyed to PYTEST_XDIST_WORKER so parallel
-    workers never steal each other's panes."""
+    """speedup-tier (2026-06-21, rewritten 2026-07-26 for the PID discriminator —
+    see test_watchdog_session_name_is_process_scoped): two xdist workers must NOT
+    share one real tmux session — the session name is keyed to
+    PYTEST_XDIST_WORKER so parallel workers never steal each other's panes.
+    Asserted via startswith (not exact-equality) because the name now also
+    carries a PID suffix (non-deterministic across test runs)."""
     from _xdist_isolation import watchdog_session_name
 
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw3")
     name = watchdog_session_name()
-    assert name == "juggle-watchdog-test-gw3"
+    assert name.startswith("juggle-watchdog-test-gw3-")
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw7")
-    assert watchdog_session_name() == "juggle-watchdog-test-gw7"
-    assert watchdog_session_name() != name  # different worker -> different session
+    name2 = watchdog_session_name()
+    assert name2.startswith("juggle-watchdog-test-gw7-")
+    assert name2 != name  # different worker -> different session
+
+
+def test_watchdog_session_name_is_process_scoped(monkeypatch):
+    """(2026-07-26 incident): two SEPARATE `pytest -n auto` processes running
+    CONCURRENTLY (e.g. two overlapping `make test-integrate` runs) each spawn
+    their OWN worker named 'gw0' — PYTEST_XDIST_WORKER is relative to its own
+    invocation, not globally unique. The worker-scoped name alone therefore
+    collided across processes: both gw0's computed the SAME tmux session name
+    and stole each other's panes, reproducibly breaking
+    tests/watchdog/test_watchdog_active.py + test_baseline.py under concurrent
+    runs. os.getpid() is unique among all concurrently-running processes on the
+    host, so the session name must also vary by it."""
+    import os
+
+    from _xdist_isolation import watchdog_session_name
+
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
+    monkeypatch.setattr(os, "getpid", lambda: 11111)
+    name_a = watchdog_session_name()
+    monkeypatch.setattr(os, "getpid", lambda: 22222)
+    name_b = watchdog_session_name()
+    assert name_a != name_b, (
+        "two concurrent pytest processes with the SAME xdist worker id (gw0) "
+        "must not collide on the same tmux session name"
+    )
 
 
 def test_watchdog_conftest_uses_worker_scoped_session():
