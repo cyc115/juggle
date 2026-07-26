@@ -44,6 +44,11 @@ def _to(db, task_id, *events):
         g.task_transition(db, task_id, ev)
 
 
+def _topic_to(db, topic_id, *events):
+    for ev in events:
+        t.topic_transition(db, topic_id, ev)
+
+
 def _args(db, node_id, **kw):
     base = dict(id=node_id, cascade=False, reason=None, dry_run=False,
                 json_out=False, db_path=str(db.db_path))
@@ -208,6 +213,71 @@ def test_cancel_reconciles_owning_topic(db):
     assert _states(db)["a"] == "cancelled"
     # all member tasks terminal-complete → topic derives out of 'open'
     assert t.get_topic(db, "TOP")["state"] in ("integrating", "verified")
+
+
+# ── topic-level cancel (2026-07-25 CLI GAP: a stuck failed-integration TOPIC
+# node had no CLI path to clear it — mark-task/cancel-node both rejected any
+# non-task node as "not found". cancel-node is the right lever: its
+# soft-terminal 'cancelled' state is kind-agnostic in the state machine (both
+# db_graph.task_transition and db_topics.topic_transition delegate to the same
+# node_transition("...", "task")), whereas mark-task is per-task COMPLETION
+# semantics (verify_ok tri-state, handoff) that don't apply to a topic. ────────
+
+
+def test_cancel_topic_node_succeeds(db, capsys):
+    t.create_topic(db, topic_id="TOP", project_id="INBOX", title="Topic")
+    ops.cmd_graph_cancel_node(_args(db, "TOP"))
+    out = capsys.readouterr().out
+    assert "cancelled TOP" in out
+    assert t.get_topic(db, "TOP")["state"] == "cancelled"
+
+
+def test_cancel_topic_stuck_in_failed_integration_succeeds(db):
+    """The exact stuck state from the 2026-07-25 CLI GAP incident: a topic
+    parked at 'failed-integration' with no CLI able to clear it."""
+    t.create_topic(db, topic_id="TOP", project_id="INBOX", title="Topic")
+    _topic_to(db, "TOP", "deps_ready", "claim", "dispatch", "integrate_start", "integrate_fail")
+    assert t.get_topic(db, "TOP")["state"] == "failed-integration"
+    ops.cmd_graph_cancel_node(_args(db, "TOP"))
+    assert t.get_topic(db, "TOP")["state"] == "cancelled"
+
+
+def test_cancel_topic_refuses_protected_state(db):
+    """The in-flight/protected guard must apply to a topic root too — before
+    the topic-node fix this check only ever consulted db_graph.get_task
+    (task-only), so a topic root silently bypassed it."""
+    t.create_topic(db, topic_id="TOP", project_id="INBOX", title="Topic")
+    _topic_to(db, "TOP", "deps_ready", "claim", "dispatch")  # running
+    with pytest.raises(SystemExit) as ei:
+        ops.cmd_graph_cancel_node(_args(db, "TOP"))
+    assert ei.value.code == 2
+    assert t.get_topic(db, "TOP")["state"] == "running"  # unchanged
+
+
+def test_cancel_topic_cascade_refused(db):
+    """Topic-level deps are DERIVED from underlying task edges, not stored as
+    direct node_edges on the topic itself (db_topics module docstring) — the
+    task-dependents cascade closure doesn't apply, so --cascade on a topic is
+    a guarded refusal (exit 2) rather than silently no-op'ing the cascade."""
+    t.create_topic(db, topic_id="TOP", project_id="INBOX", title="Topic")
+    with pytest.raises(SystemExit) as ei:
+        ops.cmd_graph_cancel_node(_args(db, "TOP", cascade=True))
+    assert ei.value.code == 2
+    assert t.get_topic(db, "TOP")["state"] == "open"  # untouched
+
+
+def test_cancel_task_with_orphaned_topic_ref_does_not_crash(db):
+    """REGRESSION PIN (2026-07-26): cancel-node mutated the task to 'cancelled'
+    and THEN raised an uncaught ValueError out of the parent-topic rollup pass
+    (db_topics.reconcile_topic_state) when the task's parent_id referenced a
+    topic id that doesn't resolve to an actual topic node — the mutation
+    silently applied while the command reported failure. The rollup pass is
+    best-effort: a topic ref that doesn't resolve is skipped, never crashes
+    after the primary mutation already committed."""
+    _mk(db, "a", "Task A")
+    g.set_task_topic(db, "a", "GHOST_TOPIC")  # orphaned ref — never created
+    ops.cmd_graph_cancel_node(_args(db, "a"))  # must not raise
+    assert _states(db)["a"] == "cancelled"
 
 
 # ── --json shape ────────────────────────────────────────────────────────────────

@@ -52,18 +52,61 @@ def _cancel_fail(json_out: bool, msg: str, code: int):
     sys.exit(code)
 
 
+def _get_node_and_kind(db, node_id: str):
+    """Resolve ``node_id`` as either a task or a topic node (2026-07-25 CLI GAP:
+    cancel-node previously only ever looked up kind='task', so a stuck
+    failed-integration TOPIC node had no CLI path to clear it — only a raw DB
+    write worked). Returns ``(node_dict, kind)`` where kind is 'task' or
+    'topic', or ``(None, None)`` if neither resolves."""
+    from dbops import db_graph, db_topics
+
+    task = db_graph.get_task(db, node_id)
+    if task is not None:
+        return task, "task"
+    topic = db_topics.get_topic(db, node_id)
+    if topic is not None:
+        return topic, "topic"
+    return None, None
+
+
+def _transition(db, node_id: str, kind: str, event: str) -> str:
+    """Dispatch the 'cancel' event through the writer sanctioned for ``kind``
+    — db_graph.task_transition for a task, db_topics.topic_transition for a
+    topic. Both delegate the same (state, event) decision to the unified
+    node_transition machine; only the read/write scope differs."""
+    from dbops import db_graph, db_topics
+
+    if kind == "topic":
+        return db_topics.topic_transition(db, node_id, event)
+    return db_graph.task_transition(db, node_id, event)
+
+
 def cmd_graph_cancel_node(args):
     """`juggle graph cancel-node <id> [--cascade] [--reason TXT] [--dry-run] [--json]`
-    — set a node to the soft-terminal 'cancelled' state.
+    — set a task OR topic node to the soft-terminal 'cancelled' state.
 
-    State is written ONLY through ``db_graph.task_transition`` (the 'cancel'
-    event → 'cancelled'); never a raw UPDATE. Guarantees:
+    Accepts topic-level nodes as well as tasks (2026-07-25 CLI GAP: a topic
+    stuck at 'failed-integration' had no CLI path to clear it — mark-task and
+    cancel-node both rejected any non-task node as "not found"; only a raw DB
+    write worked). cancel-node is the right lever for a stuck TOPIC: its
+    soft-terminal 'cancelled' state is kind-agnostic in the state machine
+    (db_graph.task_transition and db_topics.topic_transition both delegate to
+    the same node_transition(..., "task") decision) — mark-task, by contrast,
+    is per-task COMPLETION semantics (verify_ok tri-state, handoff) that don't
+    apply to a topic, so it stays task-only.
+
+    State is written ONLY through the writer sanctioned for the node's kind —
+    never a raw UPDATE. Guarantees:
       * idempotent — an already-'cancelled' node is a no-op (exit 0);
       * refuses (exit 2) any node in an in-flight/protected state (PROTECTED_STATES);
-      * WITHOUT --cascade, refuses (exit 2) if the node has any NON-terminal
-        dependent — forcing an explicit --cascade rather than silently orphaning;
-      * WITH --cascade, cancels the whole transitive-dependent subtree
-        (visit-once/diamond-safe) with an all-or-nothing in-flight guard;
+      * for a TASK, WITHOUT --cascade refuses (exit 2) if it has any
+        NON-terminal dependent — forcing an explicit --cascade rather than
+        silently orphaning; WITH --cascade, cancels the whole
+        transitive-dependent subtree (visit-once/diamond-safe) with an
+        all-or-nothing in-flight guard;
+      * a TOPIC never cascades (exit 2 on --cascade) — topic-level deps are
+        DERIVED from underlying task edges, not stored as direct node_edges on
+        the topic itself, so the task-dependents closure doesn't apply;
       * --dry-run reports the affected id set and mutates nothing (prod-DB
         fail-closed posture).
     """
@@ -79,12 +122,12 @@ def cmd_graph_cancel_node(args):
     dry_run = getattr(args, "dry_run", False)
     json_out = getattr(args, "json_out", False)
 
-    task = db_graph.get_task(db, args.id)
-    if task is None:
+    node, kind = _get_node_and_kind(db, args.id)
+    if node is None:
         _cancel_fail(json_out, f"node {args.id!r} not found.", code=1)
 
     # Idempotent: already cancelled → no-op (exit 0).
-    if task["state"] == "cancelled":
+    if node["state"] == "cancelled":
         if json_out:
             print(json.dumps({"ok": True, "id": args.id,
                               "cancelled": [], "already": True}))
@@ -92,13 +135,21 @@ def cmd_graph_cancel_node(args):
             print(f"{args.id} already cancelled (no-op)")
         return
 
+    if cascade and kind == "topic":
+        _cancel_fail(
+            json_out,
+            f"{args.id} is a topic — --cascade is only supported for task "
+            "nodes (topic-level deps are derived, not directly cascadable)",
+            code=2,
+        )
+
     # Build the cancel set (root + optionally its transitive dependents).
     if cascade:
         cancel_set = [args.id] + _dependents_closure(db, args.id)
-    else:
+    elif kind == "task":
         non_terminal = [
             d for d in db_graph.get_dependents(db, args.id)
-            if (t := db_graph.get_task(db, d)) and t["state"] not in _TASK_TERMINAL
+            if (dep := db_graph.get_task(db, d)) and dep["state"] not in _TASK_TERMINAL
         ]
         if non_terminal:
             _cancel_fail(
@@ -109,16 +160,20 @@ def cmd_graph_cancel_node(args):
                 code=2,
             )
         cancel_set = [args.id]
+    else:  # topic, no cascade
+        cancel_set = [args.id]
 
     # All-or-nothing in-flight guard across the WHOLE set (spec addendum): never
     # cancel a subtree if any node in it is being actively worked / verified.
+    # Kind-aware lookup (2026-07-26 fix): the old task-only get_task silently
+    # let a topic root bypass this guard entirely.
     blockers = [
         n for n in cancel_set
-        if (t := db_graph.get_task(db, n)) and t["state"] in db_graph.PROTECTED_STATES
+        if (found := _get_node_and_kind(db, n)[0]) and found["state"] in db_graph.PROTECTED_STATES
     ]
     if blockers:
         detail = ", ".join(
-            f"{n} ({db_graph.get_task(db, n)['state']})" for n in blockers
+            f"{n} ({_get_node_and_kind(db, n)[0]['state']})" for n in blockers
         )
         _cancel_fail(
             json_out, f"refusing cancel — in-flight/protected node(s): {detail}",
@@ -127,7 +182,7 @@ def cmd_graph_cancel_node(args):
 
     # Nodes actually transitioned (a cascade closure may already hold cancelled ones).
     to_cancel = [
-        n for n in cancel_set if db_graph.get_task(db, n)["state"] != "cancelled"
+        n for n in cancel_set if _get_node_and_kind(db, n)[0]["state"] != "cancelled"
     ]
 
     if dry_run:
@@ -142,17 +197,25 @@ def cmd_graph_cancel_node(args):
     affected: list[str] = []
     topics: set[str] = set()
     for n in to_cancel:
-        db_graph.task_transition(db, n, "cancel")
+        _, n_kind = _get_node_and_kind(db, n)
+        _transition(db, n, n_kind, "cancel")
         if reason:
             db_graph.set_cancel_reason(db, n, reason)
         affected.append(n)
-        node = db_graph.get_task(db, n)
-        if node and node.get("topic_id"):
-            topics.add(node["topic_id"])
+        cancelled_node, _ = _get_node_and_kind(db, n)
+        if cancelled_node and cancelled_node.get("topic_id"):
+            topics.add(cancelled_node["topic_id"])
 
     # Re-derive owning-topic states so 'cancelled' drops from done/total (DA-B1).
+    # Best-effort (2026-07-26 fix, REGRESSION PIN
+    # test_cancel_task_with_orphaned_topic_ref_does_not_crash): a task's
+    # parent_id may reference a topic id that doesn't resolve to an actual
+    # topic node (orphaned ref) — reconcile runs AFTER the mutation above
+    # already committed, so it must never crash the command over a stale
+    # reference; skip a topic id that doesn't exist rather than raising.
     for topic_id in topics:
-        db_topics.reconcile_topic_state(db, topic_id)
+        if db_topics.get_topic(db, topic_id) is not None:
+            db_topics.reconcile_topic_state(db, topic_id)
 
     if json_out:
         print(json.dumps({"ok": True, "id": args.id, "cancelled": affected}))
