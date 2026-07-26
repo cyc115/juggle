@@ -2,6 +2,9 @@
 
 ## In Progress
 
+<!-- schedule:autofix blocked 3 consecutive weeks (2026-07-12, 2026-07-19, 2026-07-26) — action required -->
+- [ ] **ACTION REQUIRED (3rd week): Review and merge/close autofix PR #63** (`cyc_schedule-autofix-2026-07-12`) — the weekly `/schedule:autofix` routine has been blocked for 3 consecutive Sundays (2026-07-12, 2026-07-19, 2026-07-26) because PR #63 is still open. PR #66 (2026-07-19 skip notice) is also open. Per skill spec, autofix skips whenever a prior autofix PR is open. **Action:** review PR #63 (it contains only a CHANGELOG entry — safe to merge), then close PR #66 (skip notice, no code). After both are resolved, next Sunday's autofix run will proceed normally. Filed by schedule:autofix 2026-07-26.
+
 <!-- 2026-06-20 session: all watchdog/leak/full-suite actionable items landed (v1.78.1 → v1.80.0). Remaining below. -->
 
 <!-- 2026-07-05: Loop Entity V2 — spec+plan in vault (docs/2026-07-04-loop-entity-v2-{spec,plan}.md). Release 1 shipped as PR; Release 2 arc in progress. -->
