@@ -108,12 +108,14 @@ def retry_verdict(first_stdout: str, second_stdout: str) -> str:
 
 def run_test_cmd_full(
     test_cmd: str, worktree_path: str, worktree_branch: str
-) -> tuple[bool, str]:
+) -> tuple[bool, str, list[str]]:
     """Run the integrate ``test_cmd`` as the FULL suite (one retry on flake).
 
-    Returns ``(ok, fail_reason)``. FAILS LOUD before running if ``test_cmd``
-    would SUBSET the suite (B2) — a refusal, NOT munging: the command is left
-    verbatim, integrate just aborts instead of running a quiet subset.
+    Returns ``(ok, fail_reason, failing_node_ids)``. FAILS LOUD before running
+    if ``test_cmd`` would SUBSET the suite (B2) — a refusal, NOT munging: the
+    command is left verbatim, integrate just aborts instead of running a quiet
+    subset. ``failing_node_ids`` is the parsed failing-test fingerprint (empty
+    on success or when unparseable) — the per-signature repair cap's key.
     """
     viol = full_suite_violations(test_cmd)
     if viol:
@@ -124,7 +126,7 @@ def run_test_cmd_full(
             + ". The `slow` marker tiers only the opt-in `make test-fast` inner "
             "loop — never integrate. Set test_cmd to the full suite (e.g. "
             "`uv run pytest -n auto --dist loadgroup -m 'not watchdog_proc'`)."
-        )
+        ), []
     env = sanitized_env()
     dropped = dropped_overrides()
     result = _run_once(test_cmd, worktree_path, env)
@@ -140,5 +142,5 @@ def run_test_cmd_full(
                 f"{format_env_report(dropped)}\n"
                 f"{retry_verdict(first_stdout, result.stdout)}\n"
                 f"stdout tail: {result.stdout[-300:].strip()}"
-            )
-    return True, ""
+            ), failing_node_ids(result.stdout)
+    return True, "", []

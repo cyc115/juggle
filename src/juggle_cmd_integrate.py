@@ -225,9 +225,9 @@ def _run_integrate(thread: dict, db, allow_main: bool = False) -> tuple[bool, st
         # / quarantine_tests branches + juggle_integrate_testscope import.)
         if test_cmd and push_mode != "none":
             from juggle_integrate_fullsuite import run_test_cmd_full
-            _ok, _reason = run_test_cmd_full(test_cmd, worktree_path, worktree_branch)
+            _ok, _reason, _failing = run_test_cmd_full(test_cmd, worktree_path, worktree_branch)
             if not _ok:
-                return _fail(STEP_TEST_FAILURE, _reason, log_tail=_reason)
+                return _fail(STEP_TEST_FAILURE, _reason, log_tail=_reason, files=_failing)
 
         # ── 5b. Graph-task diffstat capture (pre-merge, DA M4) ─────────────────
         capture_diffstat(db, backend, task, worktree_path, rebase_onto)

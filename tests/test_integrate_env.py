@@ -33,10 +33,10 @@ def test_integrate_verdict_is_invariant_to_ambient_juggle_env(tmp_path, monkeypa
     from juggle_integrate_fullsuite import run_test_cmd_full
 
     monkeypatch.delenv("JUGGLE_MAX_THREADS", raising=False)
-    ok_absent, reason_absent = run_test_cmd_full(CANARY, str(tmp_path), "cyc_probe")
+    ok_absent, reason_absent, _ = run_test_cmd_full(CANARY, str(tmp_path), "cyc_probe")
 
     monkeypatch.setenv("JUGGLE_MAX_THREADS", "10")
-    ok_present, reason_present = run_test_cmd_full(CANARY, str(tmp_path), "cyc_probe")
+    ok_present, reason_present, _ = run_test_cmd_full(CANARY, str(tmp_path), "cyc_probe")
 
     assert ok_absent == ok_present, (
         "integrate's verdict changed with the CALLER's ambient JUGGLE_MAX_THREADS "
@@ -123,7 +123,7 @@ def test_failure_reason_names_the_cleared_overrides(tmp_path, monkeypatch):
     from juggle_integrate_fullsuite import run_test_cmd_full
 
     monkeypatch.setenv("JUGGLE_MAX_THREADS", "10")
-    ok, reason = run_test_cmd_full(DET_FAIL, str(tmp_path), "cyc_probe")
+    ok, reason, _ = run_test_cmd_full(DET_FAIL, str(tmp_path), "cyc_probe")
 
     assert ok is False
     assert "JUGGLE_MAX_THREADS=10" in reason, reason
@@ -138,7 +138,7 @@ def test_failure_reason_states_env_status_even_with_no_overrides(tmp_path, monke
 
     for name in list(dropped_overrides()):
         monkeypatch.delenv(name, raising=False)
-    ok, reason = run_test_cmd_full(DET_FAIL, str(tmp_path), "cyc_probe")
+    ok, reason, _ = run_test_cmd_full(DET_FAIL, str(tmp_path), "cyc_probe")
 
     assert ok is False
     assert "env: sanitized" in reason, reason
@@ -171,7 +171,7 @@ def test_retry_verdict_calls_identical_failures_deterministic(tmp_path):
     CONFIRMED a real red."""
     from juggle_integrate_fullsuite import run_test_cmd_full
 
-    ok, reason = run_test_cmd_full(DET_FAIL, str(tmp_path), "cyc_probe")
+    ok, reason, _ = run_test_cmd_full(DET_FAIL, str(tmp_path), "cyc_probe")
     assert ok is False
     assert "DETERMINISTIC" in reason, reason
     assert "did NOT rule out a flake" in reason, reason
@@ -181,7 +181,7 @@ def test_retry_verdict_calls_identical_failures_deterministic(tmp_path):
 def test_retry_verdict_calls_differing_failures_flaky(tmp_path):
     from juggle_integrate_fullsuite import run_test_cmd_full
 
-    ok, reason = run_test_cmd_full(FLAKY_FAIL, str(tmp_path), "cyc_probe")
+    ok, reason, _ = run_test_cmd_full(FLAKY_FAIL, str(tmp_path), "cyc_probe")
     assert ok is False
     assert "FLAKY-LOOKING" in reason, reason
     assert "tests/a.py::t1" in reason and "tests/b.py::t2" in reason, reason
@@ -191,7 +191,7 @@ def test_retry_verdict_is_undetermined_when_output_is_unparseable(tmp_path):
     """Degrade gracefully — a non-pytest test_cmd must never crash the runner."""
     from juggle_integrate_fullsuite import run_test_cmd_full
 
-    ok, reason = run_test_cmd_full("sh -c 'echo boom >&2; exit 3'", str(tmp_path), "cyc_probe")
+    ok, reason, _ = run_test_cmd_full("sh -c 'echo boom >&2; exit 3'", str(tmp_path), "cyc_probe")
     assert ok is False
     assert "UNDETERMINED" in reason, reason
 
@@ -210,6 +210,35 @@ def test_run_integrate_env_script_clears_juggle_namespace(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "[]", f"wrapper leaked juggle vars: {r.stdout!r}"
+
+
+def test_run_test_cmd_full_returns_failing_node_ids_for_signature_keying(tmp_path):
+    """Adjacent to the 2026-07-25 cyc_LI incident (Task 6): every red-suite
+    failure hashed to sha1('red-suite|') because integrate passed no `files=`
+    to `_fail`. `run_test_cmd_full` must widen its return to carry the failing
+    node ids so the per-signature repair cap can tell two different reds
+    apart. RED before the fix: ValueError unpacking a 2-tuple into 3 names."""
+    from juggle_integrate_fullsuite import run_test_cmd_full
+
+    ok, reason, failing = run_test_cmd_full(DET_FAIL, str(tmp_path), "cyc_probe")
+    assert ok is False
+    assert failing == ["tests/a.py::t1"], failing
+
+    ok2, reason2, failing2 = run_test_cmd_full(CANARY, str(tmp_path), "cyc_probe")
+    assert ok2 is True
+    assert failing2 == [], failing2
+
+
+def test_red_suite_signature_differs_per_failing_test_set():
+    """Adjacent to the 2026-07-25 cyc_LI incident: red-suite failures all hashed
+    to sha1('red-suite|') because integrate passed no files= to _fail, so the
+    per-signature repair cap could not tell two different reds apart."""
+    from juggle_integrate_envelope import RED_SUITE, compute_signature
+
+    assert compute_signature(RED_SUITE, ["tests/a.py::t1"]) != compute_signature(
+        RED_SUITE, ["tests/b.py::t2"]
+    )
+    assert compute_signature(RED_SUITE, []) == compute_signature(RED_SUITE, [])
 
 
 def test_make_test_integrate_routes_through_the_integrate_env_contract():

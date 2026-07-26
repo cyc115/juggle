@@ -512,7 +512,7 @@ def test_integrate_runs_suite_inside_lock(git_repo, tmp_path):
     def fake_suite(test_cmd, worktree_path, worktree_branch):
         lp = captured.get("lock_path")
         captured["held_during_suite"] = bool(lp and lp.exists())
-        return False, "stop-after-lock-check"  # short-circuit the rest
+        return False, "stop-after-lock-check", []  # short-circuit the rest
 
     with patch("juggle_integrate_lock._get_lock_path", return_value=lock_file):
         with patch("juggle_cmd_integrate.get_repo_config",
