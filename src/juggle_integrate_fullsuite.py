@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import subprocess
 
-from juggle_integrate_env import sanitized_env
+from juggle_integrate_env import dropped_overrides, format_env_report, sanitized_env
 
 # Substrings in a pytest ``test_cmd`` that would subset the FULL suite. Note that
 # ``not watchdog_proc`` is intentionally NOT here: those destructive proc-spawning
@@ -72,6 +72,7 @@ def run_test_cmd_full(
             "`uv run pytest -n auto --dist loadgroup -m 'not watchdog_proc'`)."
         )
     env = sanitized_env()
+    dropped = dropped_overrides()
     result = _run_once(test_cmd, worktree_path, env)
     if result.returncode != 0:
         # One retry for transient flakes (pilot/Textual tests flake under load).
@@ -79,6 +80,8 @@ def run_test_cmd_full(
     if result.returncode != 0:
         return False, (
             f"Tests failed (exit {result.returncode}) for {worktree_branch}. "
-            f"No merge performed. stdout tail: {result.stdout[-300:].strip()}"
+            f"No merge performed.\n"
+            f"{format_env_report(dropped)}\n"
+            f"stdout tail: {result.stdout[-300:].strip()}"
         )
     return True, ""

@@ -109,3 +109,36 @@ def test_env_report_never_leaks_a_non_controlled_variable():
     assert "JUGGLE_MAX_THREADS=10" in report
     assert "sk-do-not-leak" not in report
     assert "OPENROUTER_KEY" not in report
+
+
+# A "test_cmd" that always fails, printing one pytest-shaped FAILED line.
+DET_FAIL = "sh -c 'echo \"FAILED tests/a.py::t1\"; exit 1'"
+
+
+def test_failure_reason_names_the_cleared_overrides(tmp_path, monkeypatch):
+    """2026-07-25 cyc_LI env-divergence incident: an env-caused divergence must
+    ANNOUNCE itself. The refusal (which becomes the action item and the fail
+    envelope's log_tail) must name every override integrate cleared, and tell
+    the operator how to reproduce integrate's env."""
+    from juggle_integrate_fullsuite import run_test_cmd_full
+
+    monkeypatch.setenv("JUGGLE_MAX_THREADS", "10")
+    ok, reason = run_test_cmd_full(DET_FAIL, str(tmp_path), "cyc_probe")
+
+    assert ok is False
+    assert "JUGGLE_MAX_THREADS=10" in reason, reason
+    assert "make test-integrate" in reason, reason
+
+
+def test_failure_reason_states_env_status_even_with_no_overrides(tmp_path, monkeypatch):
+    """Silence is ambiguous — the env line is emitted on EVERY test failure, so
+    an operator can always tell whether the environment was a factor."""
+    from juggle_integrate_env import dropped_overrides
+    from juggle_integrate_fullsuite import run_test_cmd_full
+
+    for name in list(dropped_overrides()):
+        monkeypatch.delenv(name, raising=False)
+    ok, reason = run_test_cmd_full(DET_FAIL, str(tmp_path), "cyc_probe")
+
+    assert ok is False
+    assert "env: sanitized" in reason, reason
