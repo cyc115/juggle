@@ -9,11 +9,13 @@ would silently SUBSET the suite, so integrate can FAIL LOUD before running it.
 A loud refusal is NOT the command-munging the 2026-06-20 directive removed:
 munging silently rewrites the command; this leaves ``test_cmd`` untouched and
 surfaces the problem. Owns ONLY this string inspection — not the integrate
-pipeline (juggle_cmd_integrate).
+pipeline (juggle_cmd_integrate) and not the env contract (juggle_integrate_env).
 """
 from __future__ import annotations
 
 import subprocess
+
+from juggle_integrate_env import sanitized_env
 
 # Substrings in a pytest ``test_cmd`` that would subset the FULL suite. Note that
 # ``not watchdog_proc`` is intentionally NOT here: those destructive proc-spawning
@@ -37,6 +39,19 @@ def full_suite_violations(test_cmd: str) -> list[str]:
     return [f"`{sign}` — {why}" for sign, why in _SUBSET_SIGNS if sign in cmd]
 
 
+def _run_once(
+    test_cmd: str, worktree_path: str, env: dict[str, str] | None
+) -> subprocess.CompletedProcess:
+    """The ONE place integrate launches ``test_cmd`` (call + retry share it).
+
+    ``test_cmd`` is run VERBATIM under ``shell=True`` — the 2026-06-20
+    no-munging directive. Only the ENVIRONMENT is integrate's to control.
+    """
+    return subprocess.run(
+        test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path, env=env
+    )
+
+
 def run_test_cmd_full(
     test_cmd: str, worktree_path: str, worktree_branch: str
 ) -> tuple[bool, str]:
@@ -56,14 +71,11 @@ def run_test_cmd_full(
             "loop — never integrate. Set test_cmd to the full suite (e.g. "
             "`uv run pytest -n auto --dist loadgroup -m 'not watchdog_proc'`)."
         )
-    result = subprocess.run(
-        test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path
-    )
+    env = sanitized_env()
+    result = _run_once(test_cmd, worktree_path, env)
     if result.returncode != 0:
         # One retry for transient flakes (pilot/Textual tests flake under load).
-        result = subprocess.run(
-            test_cmd, shell=True, capture_output=True, text=True, cwd=worktree_path
-        )
+        result = _run_once(test_cmd, worktree_path, env)
     if result.returncode != 0:
         return False, (
             f"Tests failed (exit {result.returncode}) for {worktree_branch}. "
