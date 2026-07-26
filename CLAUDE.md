@@ -4,10 +4,6 @@ Python CLI project (Claude Code plugin). Source in `src/`.
 
 Code map, domain layout, pinned entry points, and LOC-gate policy: `docs/ARCHITECTURE.md`.
 
-Required environment variables (no defaults):
-- CLAUDE_PLUGIN_DATA (juggle_cli.py)
-- JUGGLE_MAX_BACKGROUND_AGENTS, JUGGLE_MAX_THREADS (juggle_db.py)
-
 # Testing
 
 Every test isolates to a per-test `tmp_path` DB and needs NO DB setup. The global
@@ -16,15 +12,19 @@ fail-closed-guards the prod DB (`_connect` raises on any prod-DB open). This
 INCLUDES the hook tests (`test_juggle_hooks.py`): they build a `JuggleDB` under
 `tmp_path` and monkeypatch `juggle_hooks.DB_PATH` / `CLAUDE_PLUGIN_DATA` to it,
 so they do NOT touch the shared `~/.claude/juggle/juggle.db`. The full suite is
-green from a fresh checkout with no `db init` / `start` (the env vars below are
-still required — they are read at import).
+green from a fresh checkout with no `db init` / `start` and no exported env vars —
+`JUGGLE_MAX_THREADS`/`JUGGLE_MAX_BACKGROUND_AGENTS`/`CLAUDE_PLUGIN_DATA` are
+optional overrides with defaults, not requirements, and integrate's test run
+clears them before every suite (`src/juggle_integrate_env.py`), so exporting one
+locally can make a test pass for you and fail in integrate. Reproduce integrate's
+exact env locally with `make test-integrate` (see `docs/ARCHITECTURE.md` §
+Integrate test environment).
 
 ```bash
-export CLAUDE_PLUGIN_DATA="$HOME/.claude/juggle"
-export JUGGLE_MAX_BACKGROUND_AGENTS=5 JUGGLE_MAX_THREADS=10
 make test          # FULL suite, parallel (-n auto) — same scope integrate runs
 # or: uv run pytest -q   # FULL suite, serial
 make test-fast     # OPT-IN fast inner loop — deselects the heavy `slow` bucket
+make test-integrate # FULL suite under integrate's exact sanitized env (parity)
 ```
 
 The `slow` marker tiers ONLY the opt-in `make test-fast` loop — bare `pytest`
