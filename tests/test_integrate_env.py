@@ -194,3 +194,34 @@ def test_retry_verdict_is_undetermined_when_output_is_unparseable(tmp_path):
     ok, reason = run_test_cmd_full("sh -c 'echo boom >&2; exit 3'", str(tmp_path), "cyc_probe")
     assert ok is False
     assert "UNDETERMINED" in reason, reason
+
+
+def test_run_integrate_env_script_clears_juggle_namespace(tmp_path):
+    """`make test-integrate` parity (2026-07-25 cyc_LI env-divergence incident):
+    the documented local command must give the suite the SAME env integrate
+    does, so 'passes for me' and 'passes in integrate' cannot diverge."""
+    env = dict(os.environ, JUGGLE_MAX_THREADS="10", CLAUDE_PLUGIN_DATA="/x")
+    r = subprocess.run(
+        [sys.executable, str(_ROOT / "scripts" / "run_integrate_env.py"),
+         sys.executable, "-c",
+         "import os;print(sorted(k for k in os.environ "
+         "if k.startswith(('JUGGLE_','_JUGGLE_')) or k=='CLAUDE_PLUGIN_DATA'))"],
+        capture_output=True, text=True, env=env, cwd=str(_ROOT),
+    )
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "[]", f"wrapper leaked juggle vars: {r.stdout!r}"
+
+
+def test_make_test_integrate_routes_through_the_integrate_env_contract():
+    """Parity PIN: if the Makefile target or the wrapper ever stops using
+    sanitized_env(), local and integrate envs can silently diverge again."""
+    makefile = (_ROOT / "Makefile").read_text()
+    wrapper = (_ROOT / "scripts" / "run_integrate_env.py").read_text()
+    runner = (_ROOT / "src" / "juggle_integrate_fullsuite.py").read_text()
+
+    assert "test-integrate:" in makefile, "Makefile must expose a test-integrate target"
+    assert "scripts/run_integrate_env.py" in makefile, (
+        "test-integrate must run the suite through the integrate-env wrapper"
+    )
+    assert "sanitized_env" in wrapper, "the wrapper must use the shared env contract"
+    assert "sanitized_env" in runner, "integrate must use the shared env contract"

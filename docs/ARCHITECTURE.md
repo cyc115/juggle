@@ -37,6 +37,31 @@ file's current size. **The allowlist may only shrink** — entries are removed/l
 are split, never raised. Adding any lines to an at-budget grandfathered file fails the gate:
 split it first.
 
+### Integrate test environment
+
+`integrate` decides merge/no-merge by running the repo's configured `test_cmd`, so that run must
+be environment-deterministic: the same commit on the same branch must produce the same verdict
+whichever caller invoked integrate (watchdog daemon, operator shell, agent pane — their
+environments differ, and the CLI path additionally loads `~/.juggle/.env`).
+
+`src/juggle_integrate_env.py` owns the contract. Integrate **CLEARS** juggle's own namespace —
+`JUGGLE_*`, `_JUGGLE_*`, `CLAUDE_PLUGIN_DATA` — and **passes everything else through** (`HOME`,
+`PATH`, `TMPDIR`, `UV_*`, `GIT_*`, …). A deny-list, not an allow-list: the set juggle owns is small
+and knowable, the set the toolchain needs is not. Values are **cleared, never pinned** — pinning
+would keep the ambient coupling alive and could turn a false red into a false green.
+
+Consequence for test authors: **a test may not read a `JUGGLE_*` variable ambiently.** Pin what you
+need with `monkeypatch.setenv`, as `tests/conftest.py` already does for `JUGGLE_DB_PATH`,
+`_JUGGLE_CONFIG_PATH`, `JUGGLE_SPOOL_DIR` and `JUGGLE_ORCHESTRATOR`.
+
+Reproduce integrate's exact environment locally with **`make test-integrate`** — it runs the full
+suite through the same `sanitized_env()` code path. Every test failure integrate reports also names
+the overrides it cleared, and states whether the retry found the failure deterministic or flaky.
+
+(2026-07-25 `cyc_LI` incident: the suite inherited the caller's env, a test read the ambient
+`JUGGLE_MAX_THREADS=10` that operator shells export and the watchdog does not — 4 failed
+integrations, 8 commits blocked ~3 days.)
+
 ## Overview
 
 Juggle is a multi-topic conversation orchestrator for Claude Code. It has no event loop — all state is managed via SQLite and surfaced through Claude Code lifecycle hooks.
