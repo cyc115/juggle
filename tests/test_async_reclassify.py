@@ -167,14 +167,17 @@ def test_reclassify_new_topic_guards(db):
     assert db.get_message_count(tid, exclude_junk=False) == 1  # message left in place
 
 
-def test_reclassify_new_topic_create_failure_is_contained(db):
+def test_reclassify_new_topic_create_failure_is_contained(db, monkeypatch):
     """A create_thread failure (e.g. the MAX_THREADS cap) during a 'new'
     decision must not crash the sweep or wedge the watermark forever — DB
     errors are contained the same way a parse failure is: message stays put,
     watermark still advances so the tick keeps making progress."""
     from juggle_watchdog_reclassify import run_reclassify_sweep
+    import dbops.threads as _threads
 
-    for i in range(9):  # + the message thread below = MAX_THREADS=10 (test env)
+    monkeypatch.setattr(_threads, "MAX_THREADS", 10)  # pin cap — must not depend on ambient env
+
+    for i in range(9):  # + the message thread below = MAX_THREADS=10 (pinned above)
         _mk_thread(db, f"filler topic {i}")
 
     tid = _mk_thread(db, "topic at cap")
