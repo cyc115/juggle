@@ -81,7 +81,7 @@ class CockpitActionsMixin:
                 self.notify(f"No open actions on [{label_up}]", severity="warning", timeout=3)
                 return
             try:
-                count = self._db.dismiss_action_items_for_thread(match["id"])
+                count = sum(self._db.dismiss_action_items_for_thread(t) for t in {a["thread_id"] for a in matching})
                 self.notify(f"Acked {count} action(s) on [{label_up}]", timeout=2)
                 self._refresh()
             except Exception as exc:

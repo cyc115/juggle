@@ -48,12 +48,22 @@ def _resolve_thread_by_label(threads: list[dict], label: str) -> dict | None:
 def _resolve_actions_by_thread_label(
     threads: list[dict], open_actions: list[dict], label: str
 ) -> list[dict]:
-    """Return all open action dicts whose thread_id belongs to the named thread."""
-    thread = _resolve_thread_by_label(threads, label)
-    if thread is None:
+    """Return all open action dicts whose thread_id belongs to ANY thread with this label.
+
+    A label names a conversation, not one node generation (2026-07-31, bug
+    5877): every archived sibling that ever held a recycled label keeps it
+    (T-slug-wheel), so actions can be attached to any of them. Routing
+    through `_resolve_thread_by_label` (which picks exactly one node) would
+    make actions on the other same-label siblings invisible. Match directly
+    against the full set of same-label thread ids instead.
+    """
+    label_up = label.upper()
+    thread_ids = {
+        t.get("id") for t in threads if (t.get("user_label") or "").upper() == label_up
+    }
+    if not thread_ids:
         return []
-    thread_id = thread.get("id")
-    return [a for a in open_actions if a.get("thread_id") == thread_id]
+    return [a for a in open_actions if a.get("thread_id") in thread_ids]
 
 
 def _resolve_agent_by_index(agents: list, index_1based: int):
