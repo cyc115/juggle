@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import juggle_cli_common as cli_common
 import juggle_cmd_integrate as cmd_integrate
-from juggle_cockpit_helpers import _resolve_thread_by_label
+from juggle_cockpit_helpers import _resolve_actions_by_thread_label, _resolve_thread_by_label
 from juggle_db import JuggleDB
 
 LABEL = "ZZ"
@@ -96,3 +96,69 @@ def test_cockpit_resolve_thread_by_label_prefers_live(collision):
     resolved = _resolve_thread_by_label(threads, LABEL)
     assert resolved is not None
     assert resolved["id"] == live
+
+
+# ---------------------------------------------------------------------------
+# Bug 5877 (2026-07-31): action lookup/ack must span ALL same-label nodes,
+# not just the one `_resolve_thread_by_label` picks. A label names a
+# conversation, and every archived sibling that ever held a recycled label
+# keeps it — actions can be attached to any of them.
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_actions_by_thread_label_finds_actions_on_archived_only_siblings():
+    """All-archived siblings (no live node) -- action on an arbitrary archived
+    sibling must still be found. This is bug 5877 exactly: 26 SR nodes, all
+    archived, action 5877 attached to one of them."""
+    threads = [
+        {"id": "arch-1", "user_label": LABEL, "state": "archived"},
+        {"id": "arch-2", "user_label": LABEL, "state": "archived"},
+        {"id": "arch-3", "user_label": LABEL, "state": "archived"},
+    ]
+    open_actions = [{"id": 5877, "thread_id": "arch-2", "message": "do thing"}]
+
+    result = _resolve_actions_by_thread_label(threads, open_actions, LABEL)
+
+    assert [a["id"] for a in result] == [5877]
+
+
+def test_resolve_actions_by_thread_label_spans_multiple_same_label_siblings():
+    """Actions spread across MULTIPLE same-label siblings are all returned together."""
+    threads = [
+        {"id": "arch-1", "user_label": LABEL, "state": "archived"},
+        {"id": "arch-2", "user_label": LABEL, "state": "archived"},
+    ]
+    open_actions = [
+        {"id": 1, "thread_id": "arch-1", "message": "a"},
+        {"id": 2, "thread_id": "arch-2", "message": "b"},
+        {"id": 3, "thread_id": "other", "message": "unrelated"},
+    ]
+
+    result = _resolve_actions_by_thread_label(threads, open_actions, LABEL)
+
+    assert {a["id"] for a in result} == {1, 2}
+
+
+def test_resolve_actions_by_thread_label_live_and_archived_both_returned():
+    """Regression: when a live node exists alongside archived siblings, actions
+    on BOTH are still returned -- the fix must not narrow existing behavior."""
+    threads = [
+        {"id": "arch-1", "user_label": LABEL, "state": "archived"},
+        {"id": "live-1", "user_label": LABEL, "state": "open"},
+    ]
+    open_actions = [
+        {"id": 1, "thread_id": "arch-1", "message": "a"},
+        {"id": 2, "thread_id": "live-1", "message": "b"},
+    ]
+
+    result = _resolve_actions_by_thread_label(threads, open_actions, LABEL)
+
+    assert {a["id"] for a in result} == {1, 2}
+
+
+def test_resolve_actions_by_thread_label_no_matching_node_returns_empty():
+    """A label with no matching node still returns []."""
+    threads = [{"id": "arch-1", "user_label": LABEL, "state": "archived"}]
+    open_actions = [{"id": 1, "thread_id": "arch-1", "message": "a"}]
+
+    assert _resolve_actions_by_thread_label(threads, open_actions, "QQ") == []

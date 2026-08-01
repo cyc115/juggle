@@ -409,6 +409,54 @@ async def test_action_ack_dismisses_all_for_label(tmp_path):
     )
 
 
+@pytest.mark.asyncio
+async def test_action_ack_dismisses_actions_on_archived_sibling(tmp_path):
+    """Bug 5877 (2026-07-31): ack must dismiss actions on EVERY same-label
+    sibling, not just the single node `_resolve_thread_by_label` picks.
+
+    t1 is archived and holds the open action; t2 is live and shares t1's
+    label (forced via raw SQL, mirroring the T-slug-wheel recycling that
+    causes archived siblings to keep a label after a live node reclaims it).
+    Live-first resolution picks t2 (no actions) -- the fix must still find
+    and dismiss the action on t1.
+    """
+    from juggle_db import JuggleDB
+    from juggle_cockpit import CockpitApp
+
+    db_path = str(tmp_path / "juggle.db")
+    db = JuggleDB(db_path=db_path)
+    db.init_db()
+    db.set_active(True)
+
+    t1 = db.create_thread("archived holder", session_id="")
+    db.add_action_item(t1, "action on archived sibling", type_="question")
+    db.archive_thread(t1)
+
+    t2 = db.create_thread("live holder", session_id="")
+
+    t1_label = next(t["user_label"] for t in db.get_all_threads() if t["id"] == t1)
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE nodes SET user_label = ? WHERE id = ? AND kind='conversation'",
+            (t1_label, t2),
+        )
+        conn.commit()
+
+    app = CockpitApp(db_path=db_path)
+    async with app.run_test(size=(160, 40)) as pilot:
+        await pilot.press("a")
+        await pilot.pause(0.1)
+        for key in _press_label(t1_label):
+            await pilot.press(key)
+        await pilot.press("enter")
+        await pilot.pause(0.3)
+
+    remaining = db.get_open_action_items()
+    assert remaining == [], (
+        f"Expected the archived sibling's action to be dismissed, got: {remaining}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Cycle 7 — Phase 4 bell helpers: _new_blocker_actions / _newly_failed_agents
 # ---------------------------------------------------------------------------
