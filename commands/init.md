@@ -26,13 +26,27 @@ echo "env=$ENV_EXISTS config=$CONFIG_EXISTS"
 
 ### 1. Check Prerequisites
 
+A local Hindsight container is only needed when nothing is already serving the
+configured endpoint — resolve a compose implementation, but do NOT treat its
+absence as fatal until step 3 has established that a local container is required.
+
 ```bash
-docker --version
-docker compose version
+# `docker compose` (Docker Desktop / compose v2 plugin) is not the only shipping
+# form: a podman-emulated `docker` has NO compose subcommand, and many Linux
+# hosts carry a standalone docker-compose / podman-compose binary instead.
+COMPOSE_CMD=""
+if docker compose version >/dev/null 2>&1; then COMPOSE_CMD="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then COMPOSE_CMD="docker-compose"
+elif command -v podman-compose >/dev/null 2>&1; then COMPOSE_CMD="podman-compose"
+fi
+echo "compose: ${COMPOSE_CMD:-NONE}"
 ```
 
-If Docker is not available, report:
-> "Docker is required for Hindsight memory service. Install Docker Desktop and re-run /juggle:init."
+If `COMPOSE_CMD` is empty, do **not** abort here — carry it into step 3 and report
+only if a local container actually turns out to be needed:
+> "No working compose implementation found (tried `docker compose`, `docker-compose`, `podman-compose`). Install Docker Desktop (macOS/Windows), Docker Engine with the compose plugin, or podman-compose, then re-run /juggle:init.
+>
+> If you already run Hindsight elsewhere (another host, a homelab VM, a shared instance), you don't need a local container at all — set `hindsight.api_url` in `~/.juggle/config.json` to that endpoint and re-run."
 
 ### 2. Ask Configuration Questions
 
@@ -154,15 +168,29 @@ print(("Backfilled new default keys into" if existed else "Created") + " config.
 PYEOF
 python3 -c "import json; json.load(open('$HOME/.juggle/config.json'))" && echo "config.json OK"
 
-# Start service
-docker compose --env-file ~/.juggle/.env -f ${CLAUDE_PLUGIN_ROOT}/docker/docker-compose.yml up -d
+# Start service — ONLY if the configured endpoint isn't already serving.
+#
+# Hindsight is a SINGLE SHARED MEMORY BANK. A user whose hindsight.api_url points
+# at a remote/shared instance (another host, a homelab VM) must never get a second
+# local container: running two splits the bank. So probe the CONFIGURED url first
+# and skip the container when something already answers there.
+HS_URL=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.juggle/config.json')))['hindsight']['api_url'].rstrip('/'))")
 
-# Health check (retry 3x)
-for i in 1 2 3; do
-  sleep 2
-  curl -sf http://localhost:18888/health && echo " Hindsight healthy!" && break
-  [ "$i" = "3" ] && echo "Warning: health check failed after 3 attempts"
-done
+if curl -sf -m 5 "$HS_URL/health" >/dev/null 2>&1; then
+  echo "Hindsight already healthy at $HS_URL — skipping local container."
+elif [ -z "$COMPOSE_CMD" ]; then
+  echo "Nothing serving $HS_URL and no compose implementation available."
+  echo "Install compose (see step 1) or point hindsight.api_url at an existing instance."
+else
+  $COMPOSE_CMD --env-file ~/.juggle/.env -f ${CLAUDE_PLUGIN_ROOT}/docker/docker-compose.yml up -d
+  # Health check (retry 3x) — against the CONFIGURED url, not a hardcoded port,
+  # so a non-default api_url doesn't report a spurious failure.
+  for i in 1 2 3; do
+    sleep 2
+    curl -sf -m 5 "$HS_URL/health" && echo " Hindsight healthy!" && break
+    [ "$i" = "3" ] && echo "Warning: health check failed after 3 attempts"
+  done
+fi
 ```
 
 ### 4. Set Up Shell Alias
@@ -206,9 +234,15 @@ Tell the user: `nvim-juggle` starts nvim as a server on `/tmp/juggle-nvim.sock`.
 
 ### 5. Initialize Research Knowledge Base
 
+Run this under `uv run --project`, NOT bare `python3`: ResearchKB imports
+`sqlite_vec`, which lives in the project's dev dependency group. A system
+`python3` almost never has it, so bare `python3` dies with
+`ModuleNotFoundError: No module named 'sqlite_vec'`. `--project` also makes this
+work from any cwd and pins the 3.12+ interpreter the plugin requires.
+
 ```bash
-python3 -c "
-import sys, json
+uv run --project "${CLAUDE_PLUGIN_ROOT}" python -c "
+import sys
 sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/src')
 from juggle_research_kb import ResearchKB
 from juggle_settings import get_settings
