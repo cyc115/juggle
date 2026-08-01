@@ -88,10 +88,15 @@ def _make_db() -> Mock:
 # ── Settings tests ────────────────────────────────────────────────────────────
 
 def test_get_repo_config_defaults_for_unknown_repo():
+    """Default push_mode is "direct", not "none": ``repos`` ships empty, so an
+    unregistered repo must still get its integrations pushed. A silent "none"
+    default left origin stale across sequential integrates and caused the
+    2026-07-19 KF/KH/KG homelab clobber (prior local-only merges silently
+    discarded on rebase onto stale origin/main)."""
     from juggle_settings import get_repo_config
     with patch("juggle_settings.get_settings", return_value={"repos": {}}):
         cfg = get_repo_config("/unknown/repo")
-    assert cfg["push_mode"] == "none"
+    assert cfg["push_mode"] == "direct"
     assert cfg["test_cmd"] == ""
 
 

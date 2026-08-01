@@ -377,7 +377,7 @@ def get_repo_config(repo_path: str) -> dict:
     repos = get_settings().get("repos", {})
     cfg = repos.get(str(repo_path), {})
     return {
-        "push_mode": cfg.get("push_mode", "none"),
+        "push_mode": cfg.get("push_mode", "direct"),
         "test_cmd": cfg.get("test_cmd", ""),
         "vcs": cfg.get("vcs"),
     }

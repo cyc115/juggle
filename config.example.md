@@ -163,7 +163,7 @@ Per-branch integration settings. `repos` maps absolute repo paths to integration
 | `integrate.test_scope` | string | `"full"` | `"full"` | INERT (2026-06-20 directive: integrate ALWAYS runs the full suite, never a subset). Retained only so old config.json files don't crash; not read by the code. |
 | `integrate.core_tests` | list[string] | `[]` | — | INERT (test scoping removed; not read). |
 | `integrate.quarantine_tests` | list[string] | `[]` | — | INERT (no more `--deselect` quarantine; the full suite always runs). Not read. |
-| `repos.<path>.push_mode` | string | `"none"` | `"direct"`, `"pr"`, `"none"` | `direct` = ff-merge+push main; `pr` = push branch only; `none` = local merge only |
+| `repos.<path>.push_mode` | string | `"direct"` | `"direct"`, `"pr"`, `"none"` | `direct` = ff-merge+push main; `pr` = push branch only; `none` = local merge only. Unregistered repos default to `direct` so origin always advances — `none` must be set explicitly. |
 | `repos.<path>.test_cmd` | string | `""` | any shell cmd | Test command for this repo. Runs VERBATIM at integrate, always the FULL suite. Parallel form: `"uv run pytest -n auto --dist loadgroup -m 'not watchdog_proc'"`. The speedup-tier `slow` marker tiers ONLY the opt-in `make test-fast` inner loop — NEVER subset integrate; a `test_cmd` containing `not slow` / `--deselect` / `--ignore` is REJECTED fail-loud (B2). `-n auto` parallelizes; `--dist loadgroup` honors any `serial`-grouped tests. |
 
 ---
