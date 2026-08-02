@@ -2,6 +2,8 @@
 
 ## In Progress
 
+- [ ] **[ACTION REQUIRED — ESCALATED] Merge or close autofix PR #63** — `cyc_schedule-autofix-2026-07-12` has been open for 4 weeks (2026-07-12 → 2026-08-02), blocking all subsequent autofix runs (#66 skip, #69 skip, this PR skip). PR #63 contains only a CHANGELOG entry — safe to merge. Until it is merged/closed, the weekly autofix routine will continue to skip. Also close PR #66 (2026-07-19 skip notice) and PR #69 (2026-07-26 skip notice) after #63 is resolved. **4th consecutive skip as of 2026-08-02.** Added by `schedule:autofix` 2026-08-02.
+
 - [ ] 🔄 [IN PLANNING] **Simplification & robustness audit** — evidence-driven pass to find what juggle can shed and what needs hardening. Plan: `plan/2026-08-02-simplification-and-robustness-audit.md`. Mine perishable retroactive sources first (transcripts ~12-day retention, git forensics, the 4 DB ledgers), then ONE forward counter (`feature_usage`, cloned from the working `agent_tool_events` UPSERT pattern) wired at exactly 2 choke points — explicitly NOT per-feature tracing. Baseline 2026-08-02: 56,637 LOC / 355 files / 25 over the 300-line gate; fix:feat 1.13 over 8w; 23 open `error_events` (0 ever closed, all `error_class='B'`, `exc_type=NULL`); all 15 `selfheal_audit` rows are `new_variant`. First moves: snapshot transcripts before they age out, build the CLI usage histogram, triage the 23 error events, ship the 4-weeks-overdue dogfood DB-snapshot fix.
 
 <!-- 2026-06-20 session: all watchdog/leak/full-suite actionable items landed (v1.78.1 → v1.80.0). Remaining below. -->
