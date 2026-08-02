@@ -79,7 +79,7 @@ def llm_call(
     timeout: int = 10,
     max_tokens: int | None = None,
     json_mode: bool = False,
-    disable_reasoning: bool = False,
+    disable_reasoning: bool = True,
 ) -> str | None:
     """Profile-based LLM dispatcher.
 
@@ -93,7 +93,10 @@ def llm_call(
     -p fallback relies on the prompt instructing JSON; callers keep their own parse.
     disable_reasoning: adds OpenRouter's "reasoning": {"enabled": false} to the
     payload — some routed models spend the max_tokens budget on hidden reasoning
-    tokens, truncating the visible output. No effect on the claude -p fallback.
+    tokens, truncating the visible output. Defaults to True: every current profile
+    (cheap/normal/synthesis) uses low-to-moderate max_tokens where that truncation
+    risk is real; pass False explicitly if a future caller wants reasoning on.
+    No effect on the claude -p fallback.
     """
     from juggle_settings import get_settings
     profiles = get_settings().get("llm_profiles", {})

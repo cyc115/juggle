@@ -85,8 +85,13 @@ def test_llm_call_disable_reasoning_sets_openrouter_field():
     assert parsed["reasoning"] == {"enabled": False}
 
 
-def test_llm_call_default_no_reasoning_field():
-    """llm_call default (disable_reasoning=False) omits the reasoning field."""
+def test_llm_call_default_disables_reasoning():
+    """llm_call default (disable_reasoning=True) sends reasoning: {enabled: false}.
+
+    Every current profile (cheap/normal/synthesis) uses a max_tokens budget low
+    enough that hidden reasoning tokens can consume it entirely, truncating the
+    visible output to empty — see 2026-08-02 fix.
+    """
     import os
     os.environ["OPENROUTER_KEY"] = "testkey"
     from juggle_cli_common import llm_call
@@ -96,4 +101,4 @@ def test_llm_call_default_no_reasoning_field():
     body = mock_req.call_args[0][1]
     import json
     parsed = json.loads(body)
-    assert "reasoning" not in parsed
+    assert parsed["reasoning"] == {"enabled": False}
