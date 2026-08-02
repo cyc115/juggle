@@ -195,13 +195,17 @@ class HindsightClient:
     def recall_bounded(
         self, query: str, max_tokens: int = 4096, timeout: int | None = None
     ) -> str:
-        """Recall with a hard wall-clock ceiling, failing loud.
+        """Recall in bounded time, failing loud.
 
         One attempt, no docker auto-restart, no swallowed failure: raises
         ``HindsightError`` when the service is unreachable or slow. Exists because
         ``recall``'s retry path can burn ~37s (timeout → docker compose up → sleep
         → timeout) and then return "" — an interactive caller cannot afford the
         hang and must not mistake the "" for "no memories found".
+
+        ``timeout`` is urllib's socket timeout (per connect/read), not a total
+        wall-clock cap: it bounds the real failure modes (refused connection,
+        hung service) but not a hostile slow drip.
         """
         if not query.strip():
             return ""

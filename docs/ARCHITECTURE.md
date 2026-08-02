@@ -267,7 +267,7 @@ python3 juggle_cli.py agent complete B "3 findings from research"
 
 ### Failure
 ```bash
-python3 juggle_cli.py fail-agent B "API timeout"
+python3 juggle_cli.py agent fail B "API timeout"
 # Updates: threads.status = "failed"
 # Creates: notification (delivered=0)
 ```
@@ -356,8 +356,9 @@ restored as **`memory recall`** (see Memory & Context above): `commands/start.md
 had never stopped mandating it, so every personal-question recall exited 2 in
 silence. Under the `memory` resource it now HAS the resource-verb home it lacked,
 so the restoration honours §7 rather than reverting it. `tests/test_prompt_cli_verb_drift.py`
-resolves every command named in `commands/`/`skills/` against the live parser so
-this class of drift cannot recur.
+resolves every command named in `commands/`, `skills/`, and THIS file against the
+live parser — invocations, their arity, and the reference tables above — so this
+class of drift cannot recur.
 
 | Removed command | Notes |
 |---|---|

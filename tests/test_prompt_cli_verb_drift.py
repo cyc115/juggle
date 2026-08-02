@@ -22,8 +22,12 @@ Three drift surfaces, all of which had a live defect when this guard was written
   3. reference tables — the ``| `cmd` | Signature | …`` tables that teach the
                      orchestrator its vocabulary   (notify, update-summary)
 
-Scope: commands/ and skills/ — the surfaces whose text is handed to an
-orchestrator or agent as executable instructions.
+Scope: commands/, skills/, and docs/ARCHITECTURE.md — the LIVE surfaces an
+orchestrator or agent reads as current instruction. Dated plan/spec/research
+documents under docs/ are historical records and deliberately excluded; they
+describe what was true when written. (The same scan over scripts/, hooks/, and
+src/ was clean when this guard landed; ARCHITECTURE.md was not — it still
+documented `fail-agent`, renamed to `agent fail`.)
 """
 from __future__ import annotations
 
@@ -40,6 +44,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from juggle_cli import build_cli_parser  # noqa: E402
 
 _SCAN_DIRS = ("commands", "skills")
+_SCAN_FILES = ("docs/ARCHITECTURE.md",)
 
 # A juggle_cli.py invocation: a runner (`uv run`, `python3`), the script path
 # (optionally quoted / ${VAR}-interpolated), then the rest of the command.
@@ -72,28 +77,42 @@ def _subparsers(parser):
 
 
 def _index():
-    """command -> {sub: leaf_parser} for groups, or {None: leaf_parser} for leaves."""
+    """command -> {sub: leaf_parser}; the ``None`` key means "no sub needed".
+
+    A leaf command maps to ``{None: parser}``. A group maps to its sub-commands,
+    plus ``None`` when its sub-command is OPTIONAL (``juggle runs --limit 2``
+    dispatches on the group's own ``func`` default) — modelling that off the live
+    ``required`` flag rather than assuming every group demands a sub.
+    """
     root = _subparsers(build_cli_parser())
     assert root is not None, "build_cli_parser produced no subparsers"
     out = {}
     for name, child in root.choices.items():
         sub = _subparsers(child)
-        out[name] = dict(sub.choices) if sub is not None else {None: child}
+        if sub is None:
+            out[name] = {None: child}
+            continue
+        leaves = dict(sub.choices)
+        if not sub.required:
+            leaves[None] = child
+        out[name] = leaves
     return out
 
 
-def _resolve(index, command: str, sub: str | None):
-    """Return (leaf_parser, None) or (None, failure reason)."""
+def _resolve(index, tokens: list[str]):
+    """Resolve an argv head. Returns (leaf_parser, remaining_args, failure reason)."""
+    command = tokens[0]
+    sub = tokens[1] if len(tokens) > 1 else None
     if command not in index:
-        return None, f"unknown command `{command}`"
+        return None, [], f"unknown command `{command}`"
     leaves = index[command]
+    if sub is not None and sub in leaves:
+        return leaves[sub], tokens[2:], None
     if None in leaves:
-        return leaves[None], None  # leaf command — trailing tokens are its args
+        return leaves[None], tokens[1:], None  # leaf, or group with optional sub
     if sub is None:
-        return None, f"`{command}` is a resource group and needs a sub-command"
-    if sub not in leaves:
-        return None, f"unknown sub-command `{command} {sub}`"
-    return leaves[sub], None
+        return None, [], f"`{command}` is a resource group and needs a sub-command"
+    return None, [], f"unknown sub-command `{command} {sub}`"
 
 
 def _positional_spec(parser) -> tuple[int, set[str]]:
@@ -190,12 +209,13 @@ def table_rows(text: str):
 
 
 def _files():
-    for d in _SCAN_DIRS:
-        for f in sorted((_ROOT / d).rglob("*.md")):
-            try:
-                yield f, f.read_text()
-            except (UnicodeDecodeError, OSError):
-                continue
+    paths = [f for d in _SCAN_DIRS for f in sorted((_ROOT / d).rglob("*.md"))]
+    paths += [_ROOT / f for f in _SCAN_FILES]
+    for f in paths:
+        try:
+            yield f, f.read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
 
 
 # ── the gates ─────────────────────────────────────────────────────────────────
@@ -223,7 +243,7 @@ def test_every_prompt_cli_invocation_resolves():
     broken = []
     for f, text in _files():
         for lineno, _tokens, head, line in invocations(text):
-            _leaf, reason = _resolve(index, head[0], head[1] if len(head) > 1 else None)
+            _leaf, _rest, reason = _resolve(index, head)
             if reason:
                 broken.append(f"{f.relative_to(_ROOT)}:{lineno}  {reason}\n    {line}")
     assert not broken, (
@@ -245,11 +265,9 @@ def test_every_prompt_cli_invocation_supplies_required_positionals():
         for lineno, tokens, head, line in invocations(text):
             if tokens is None:
                 continue  # multi-line / untokenisable — verb check still applied
-            leaf, reason = _resolve(index, tokens[0], tokens[1] if len(tokens) > 1 else None)
+            leaf, rest, reason = _resolve(index, tokens)
             if reason or leaf is None:
                 continue  # reported by the resolution gate above
-            is_group = None not in index[tokens[0]]
-            rest = tokens[2:] if is_group else tokens[1:]
             required, valued = _positional_spec(leaf)
             got = _count_positionals(rest, valued)
             if got < required:
@@ -271,7 +289,7 @@ def test_cli_reference_tables_name_live_commands():
     broken = []
     for f, text in _files():
         for lineno, cells, line in table_rows(text):
-            _leaf, reason = _resolve(index, cells[0], cells[1] if len(cells) > 1 else None)
+            _leaf, _rest, reason = _resolve(index, cells)
             if reason:
                 broken.append(f"{f.relative_to(_ROOT)}:{lineno}  {reason}\n    {line}")
     assert not broken, (
@@ -286,9 +304,9 @@ def test_guard_rejects_deleted_verb_and_accepts_its_replacement():
     index = _index()
     gone = list(invocations('uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall-bg B "q"'))
     assert gone, "regex failed to match a canonical invocation"
-    assert _resolve(index, gone[0][2][0], gone[0][2][1])[1] is not None
+    assert _resolve(index, gone[0][2])[2] is not None
     ok = list(invocations('uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py memory recall B "q"'))
-    assert _resolve(index, ok[0][2][0], ok[0][2][1])[1] is None
+    assert _resolve(index, ok[0][2])[2] is None
 
 
 def test_guard_rejects_under_supplied_arity():
@@ -303,10 +321,10 @@ def test_guard_rejects_under_supplied_arity():
     assert hits, "inline-code invocation inside prose was not matched"
     tokens = hits[0][1]
     assert tokens == ["memory", "retain", "<fact>"], tokens
-    leaf, reason = _resolve(index, tokens[0], tokens[1])
+    leaf, rest, reason = _resolve(index, tokens)
     assert reason is None
     required, valued = _positional_spec(leaf)
-    assert _count_positionals(tokens[2:], valued) < required
+    assert _count_positionals(rest, valued) < required
 
 
 def test_prose_mention_is_not_an_invocation():

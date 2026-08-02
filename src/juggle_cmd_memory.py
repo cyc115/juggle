@@ -29,8 +29,9 @@ RECALL_TIMEOUT_SECS = 8
 
 # Degradation markers. Every no-result path says, in words, that memory was NOT
 # consulted — a blank stdout is what let the original failure go unnoticed. They
-# go to stdout on purpose: the incident's invocations were piped through
-# `2>&1 | head -100`, which hides stderr ordering and the exit code alike.
+# go to stdout on purpose: the incident's invocations ran under
+# `2>&1 | head -100`, where the pipeline's exit status is head's, so the failing
+# exit code was invisible and only the TEXT survived to be read.
 NO_MEMORY_DISABLED = (
     "[recall: memory service is OFF — no memory was consulted. "
     "Start it with /juggle:memory-start, or answer without memory and SAY SO.]"
