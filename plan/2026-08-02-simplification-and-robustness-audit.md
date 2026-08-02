@@ -169,6 +169,34 @@ Walking the argparse tree gives **100 leaf verbs**; only **29** were invoked in 
 
 `juggle aliases --json` returns `{}`. `ARCHITECTURE.md` states the old flat hyphenated forms "still resolve through the backward-compat alias shim" and directs readers to that command "for the full legacy→canonical map." The map has no entries — a documented compatibility promise with nothing behind it. Fold into Task 3.3 (verify, then delete the shim or the docs).
 
+### R8 — 🔴 THE BIG ONE: main is RED, so the mandatory harness gate is unsatisfiable
+
+Measured 2026-08-02 under `make test-integrate` — integrate's exact sanitized env, the authoritative gate:
+
+```
+9 failed, 4361 passed, 7 skipped in 272.14s
+```
+
+**Root cause of 6 of the 9:** commit `5921b28 "Remove graphify"` (2026-07-26) removed graphify from `.claude/settings.json`, `.gitignore` and `CLAUDE.md` — **3 config files only**, while its own message says "the tool has been uninstalled globally." It left the code and tests behind: `src/juggle_cmd_integrate.py`, `src/vcs_git.py` and `src/schedules/autofix.py` still call graphify, `command -v graphify` finds nothing, and the integrate suite still pins graphify behaviour.
+
+**The other 3 are macOS→Linux portability debt:** `test_hooks_data_dir` hardcodes `/Users/mikechen`; `test_worktree_setup.py:56` asserts `not startswith("/tmp")`, which cannot hold on Linux where pytest's `tmp_path` IS under `/tmp`; `watchdog/test_health` fails on sub-millisecond clock skew. Written on macOS, now run on a Linux devvm.
+
+**Why this outranks everything else in the plan:** CLAUDE.md makes "full `pytest` green" a mandatory gate for every change and states *"Completion claims without harness evidence are invalid."* That gate has been unsatisfiable for a week. In practice it has silently degraded from **"green"** to **"no worse than baseline"** — with nothing in code enforcing the baseline. Each agent working today had to re-derive it by hand from old checkouts, and **they did not agree**: one measured 10, one measured 9, a parallel run measured 11 (two extra were host-contention flakes). A genuine regression would be indistinguishable from that noise.
+
+Fix dispatched 2026-08-02: finish the graphify removal (dead code — already user-authorised by `5921b28`), make the two portability tests platform-agnostic, fix the flake tolerance. Pins may not be deleted: re-target them through the surviving seam, and escalate any that genuinely cannot be.
+
+**Deliberately NOT done:** the DEFECT PROTOCOL says freeze the watchdog on a machinery defect. Not applicable here — red main is a week-old steady state, not an active cascade, and there is no state corruption in flight. Stopping the watchdog would disrupt a working system on evidence that does not support that specific action.
+
+### R9 — error ledger swept, and R5's caution immediately vindicated
+
+After the causal-attribution fix landed (`944adb4`), the new predicate was replayed over all 24 rows. **Exactly one survives: `id=1`, the `recall` failure** — the same defect R1 found independently. Two independent analyses, same single true positive out of 24.
+
+Swept: ids 2–24 → `non_issue` (**not** `resolved` — nothing was fixed, and `resolved` would corrupt any future MTTR/close-rate metric; rows preserved as the evidence for the fix). `id=1` → `resolved`, since `2f10184` fixed it. Ledger now reads `23 non_issue, 1 resolved`, **0 open** — from 23 permanently-open false positives.
+
+Independent validation from the fix agent: replaying 60 recent transcripts through old vs new attribution gives **37 errors filed by the old rule vs 3 by the new one**, every dropped row cross-domain noise.
+
+> **R5 vindicated within hours.** `selfheal set-status` was on R5's list of **11 "strong delete candidates"** — zero transcript invocations, zero references outside tests. It then turned out to be exactly the tool this cleanup required. Had the 11 been treated as a delete list, a needed command would have been removed the same day. **This is the concrete proof that Phase 2 must gate every delete verdict.**
+
 ### R7 — skills coverage looks thin, with a caveat
 
 Only 3 of juggle's 31 `commands/*.md` appear as `<command-name>` invocations in 12 days (`juggle:start`, `juggle:init`, `juggle:toggle-autopilot`); the rest of the traffic is built-ins (`clear` 24, `model` 10, `effort` 3). **Caveat before acting:** skills invoked indirectly (by the watchdog, by other skills, or by path rather than slash-command) will not appear as `<command-name>`, so this shares R5's blind spot. Treat as a Phase 2 question, not a deletion list.
@@ -274,7 +302,8 @@ Now `error_events ÷ feature_usage` finally has a denominator.
 |---|---|---|
 | `src` LOC | 56,637 | ↓ |
 | Files over 300-line gate | 25 | ↓ |
-| Open `error_events` | 23 (0 ever closed) | ↓ toward 0 |
+| Open `error_events` | ~~23 (0 ever closed)~~ → **0 open** (23 `non_issue`, 1 `resolved`) as of 2026-08-02, R9 | hold at 0; real signal only from here |
+| Full suite under `make test-integrate` | **9 failed** (R8) | ↓ to 0 — gates everything else |
 | fix:feat ratio (8w) | 1.13 | ↓ below 1.0 |
 | Features with `verdict=undecided` | 100% | → 0% |
 
