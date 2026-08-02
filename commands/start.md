@@ -41,7 +41,7 @@ Auto-create Topic A from first substantive message: `thread create "<label>"`
 | `agent complete` | `<thread_id> "<result>" [--retain TEXT] [--open-questions JSON] [--role R]` | Done + notify. researcher → auto action item |
 | `action create` | `<thread_id> "<msg>" [--type {question,manual_step,decision,failure}] [--priority {low,normal,high}]` | Action item. No `--tier`. |
 | `action ack` | `<action_id>` | Dismiss |
-| `notify` | `<thread_id> "<msg>"` | Mid-task status |
+| `action notify` | `<thread_id> "<msg>"` | Mid-task status |
 | `action list` | — | Open action items |
 | `doctor` | `[--dry-run]` | migrate DB schema |
 | `thread switch` | `<id>` | switch active topic |
@@ -51,7 +51,8 @@ Auto-create Topic A from first substantive message: `thread create "<label>"`
 | `agent fail` | `<id> "<error>" [--type T] [--recovery-dispatched]` | failure; --recovery-dispatched = notify only |
 | `agent release` | `<id> [--force]` | return to pool |
 | `agent list` | — | all agents + status |
-| `update-summary` | `<id> "<text>"` | update thread summary |
+| `memory recall` | `<thread_id> "<query>"` | Recall memories (blocking, bounded) |
+| `memory retain` | `<thread_id> "<fact>"` | Store a fact in memory |
 | `thread messages` | `<id> [--plain] [--limit N]` | thread messages |
 | `thread archive-candidates` | — | archivable threads |
 
@@ -133,9 +134,9 @@ Pull broader context first if a learning is terse: `graph learnings --topic <t>`
 
 **Background long-running Bash:** Any potentially-slow command (full test suites/pytest, builds, installs, docker, large git clone/push, network fetches) MUST run with `run_in_background=true` (or a bounded `timeout`), then poll the output file — never block the orchestrator on an unbounded foreground command. Heuristic: foreground-only for commands expected <~10 s; anything that can exceed that or can hang → background. See also: Dispatch Protocols (all agent work goes through tmux, not inline Bash).
 
-**Personal questions — recall first:** Any question about personal info (finances, accounts, health, preferences, past decisions, measurements, personal history) → call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<question>"` before answering. Never answer from training data alone. If Hindsight returns nothing, say so explicitly.
+**Personal questions — recall first:** Any question about personal info (finances, accounts, health, preferences, past decisions, measurements, personal history) → call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py memory recall <thread_id> "<question>"` before answering. Never answer from training data alone. The command always says what it did: memories, `[recall: no memories found ...]`, or a `no memory was consulted` marker (service off/unreachable — exit 1). Relay that state to the user; never present an un-recalled answer as remembered.
 
-**Auto-retain personal data:** When the user shares a personal data point (a metric, account info, a preference, a decision, a measurement) → immediately call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py memory retain "<fact>"` in background. Don't wait to be asked. Facts only — not passing mentions or hypotheticals.
+**Auto-retain personal data:** When the user shares a personal data point (a metric, account info, a preference, a decision, a measurement) → immediately call `uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py memory retain <thread_id> "<fact>"` in background. Don't wait to be asked. Facts only — not passing mentions or hypotheticals.
 
 **Status requests (live-state first):** When the user asks for status, an update, "where are we", or "is X done", do NOT answer from the notification feed or action items alone — those lag reality. ALWAYS reconcile against LIVE state via the juggle CLI before reporting: `agent list` (which agents are busy/idle), `tmux capture-pane -t <pane> -p | tail` (what each working agent is actually doing), `thread list` and `thread messages <id> --limit 5`, plus the relevant repo git state (branches/worktrees/unmerged commits). Notifications/action items are a supplement, not the source of truth. If completed-but-unintegrated work exists (agent done, branch unmerged), finish the finalization (merge/push/GC) as part of answering, then report the reconciled truth.
 
@@ -191,7 +192,7 @@ uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py agent send-task <agent_id> "$TASK
 ### Plan Agent Prompt
 ```
 [JUGGLE_THREAD:<thread_id>]
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<task>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py memory recall <thread_id> "<task>"
 
 Invoke superpowers:writing-plans. Overrides:
 - Skip "Announce at start" and "Execution Handoff"
@@ -333,7 +334,7 @@ SEQUENTIAL-FIX MODE:
 ### Research Agent Prompt
 ```
 [JUGGLE_THREAD:<thread_id>]
-uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall <thread_id> "<question>"
+uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py memory recall <thread_id> "<question>"
 
 <research question>
 

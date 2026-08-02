@@ -23,7 +23,7 @@ from juggle_cmd_context import (
     cmd_init_db,
     cmd_next_action,
 )
-from juggle_cmd_memory import cmd_retain
+from juggle_cmd_memory import cmd_recall, cmd_retain
 from juggle_cmd_brief import cmd_brief
 from juggle_cmd_misc import cmd_agent_tools, cmd_cockpit
 from juggle_cmd_metrics import cmd_metrics
@@ -81,6 +81,12 @@ MISC_COMMANDS: tuple[Cmd, ...] = (
                 help="Context type: learnings, procedures, preferences"),
         ),
         help="Retain content as memory"),
+    Cmd("memory", "recall", cmd_recall,
+        args=(
+            Arg("thread_id", help="Thread ID or label of the asking topic"),
+            Arg("query", help="What to recall"),
+        ),
+        help="Recall memories matching a query (blocking, time-bounded)"),
     Cmd("context", "digest", cmd_digest,
         args=(
             Arg("--since", dest="since", default="yesterday",

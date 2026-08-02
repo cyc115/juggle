@@ -31,6 +31,11 @@ CLOSED_VERBS = frozenset({
     "spawn", "release", "decommission", "set", "reset", "propose", "audit",
     "restore", "prune", "reconcile", "mark", "run", "flush", "migrate",
     "retain", "grep", "next",
+    # 2026-08-02: `memory recall` — the read counterpart of the already-closed
+    # `retain`. §2.2 sanctions exactly this ("additions require updating the lint
+    # allowlist"); the verb was restored under the `memory` resource because that
+    # is the resource-verb home it lacked when the migration dropped it flat.
+    "recall",
 })
 
 # ── §2.3 compound verbs (a closed verb + a disambiguating qualifier) ──────────

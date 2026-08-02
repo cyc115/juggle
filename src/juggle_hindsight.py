@@ -171,25 +171,43 @@ class HindsightClient:
         except HindsightError:
             return False
 
+    def _recall_path(self) -> str:
+        return f"/v1/default/banks/{self.bank}/memories/recall"
+
+    @staticmethod
+    def _format_recall(result: dict) -> str:
+        lines = [f"- {t}" for t in (r.get("text", "") for r in result.get("results", [])) if t]
+        return "\n".join(lines)
+
     def recall(self, query: str, max_tokens: int = 4096) -> str:
-        """Recall memories matching query via vector search."""
+        """Recall memories matching query via vector search.
+
+        Best-effort: a dead service is auto-restarted, retried, and finally
+        swallowed into "" — so an empty return is AMBIGUOUS (no memories, or no
+        service). Callers that must tell those apart use ``recall_bounded``.
+        """
         if not query.strip():
             return ""
         body = {"query": query, "max_tokens": max_tokens}
-        result = self._request_with_retry(
-            "POST",
-            f"/v1/default/banks/{self.bank}/memories/recall",
-            body,
-        )
-        results = result.get("results", [])
-        if not results:
+        result = self._request_with_retry("POST", self._recall_path(), body)
+        return self._format_recall(result)
+
+    def recall_bounded(
+        self, query: str, max_tokens: int = 4096, timeout: int | None = None
+    ) -> str:
+        """Recall with a hard wall-clock ceiling, failing loud.
+
+        One attempt, no docker auto-restart, no swallowed failure: raises
+        ``HindsightError`` when the service is unreachable or slow. Exists because
+        ``recall``'s retry path can burn ~37s (timeout → docker compose up → sleep
+        → timeout) and then return "" — an interactive caller cannot afford the
+        hang and must not mistake the "" for "no memories found".
+        """
+        if not query.strip():
             return ""
-        lines = []
-        for r in results:
-            text = r.get("text", "")
-            if text:
-                lines.append(f"- {text}")
-        return "\n".join(lines)
+        body = {"query": query, "max_tokens": max_tokens}
+        result = self._request("POST", self._recall_path(), body, timeout=timeout)
+        return self._format_recall(result)
 
     def reflect(self, query: str, timeout: int = 60) -> str:
         """Reflect on memories matching query. Returns LLM-synthesized answer or empty string."""

@@ -10,11 +10,8 @@ allowed-tools: Bash, Agent, Edit, Write
 
 ## Steps
 
-1. Save current topic state:
-   ```bash
-   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py update-summary <current_id> "<summary>"
-   ```
-   Save decisions/questions as they arise:
+1. Save current topic state. Summaries are written by the summarizer — there is
+   no manual save. Record decisions/questions as they arise:
    ```bash
    uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py thread update <current_id> --add-decision "<text>"
    uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py thread update <current_id> --add-question "<text>"
@@ -23,11 +20,13 @@ allowed-tools: Bash, Agent, Edit, Write
 2. Load target topic:
    ```bash
    uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py thread switch <id>
-   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py recall-bg <id> "<topic label or summary as query>"
+   uv run ${CLAUDE_PLUGIN_ROOT}/src/juggle_cli.py memory recall <id> "<topic label or summary as query>"
    ```
    On "Thread not found":
    `"Topic [X] doesn't exist. Check the cockpit's Topics pane."`
-   Note: `recall-bg` fires reflect async (up to 60s). Context will be available in subsequent turns.
+   Note: `memory recall` is synchronous and time-bounded — its output is available
+   in THIS turn. If it prints a `no memory was consulted` marker (service off or
+   unreachable), carry on without recalled context and say so.
 
 3. Present loaded context:
    ```

@@ -327,6 +327,7 @@ legacy→canonical map.
 | `context show` | Print context string for current thread |
 | `context digest [--since WHEN] [--save]` | Summarize activity since cutoff |
 | `memory retain <id> <content> [--context TYPE]` | Retain content as memory |
+| `memory recall <id> <query>` | Recall memories matching a query (blocking, time-bounded; exit 1 if the memory service is on but unreachable) |
 | `vault grep <terms...>` | Search vault for keywords |
 | `vault path` | Print absolute vault root path |
 | `vault name` | Print vault name |
@@ -348,13 +349,20 @@ legacy→canonical map.
 
 ### Removed commands (no replacement)
 Flagged per the grammar-migration spec §7 — these had no resource-verb home and
-were dropped, not aliased:
+were dropped, not aliased.
+
+The flat `recall <id> <query>` was on this list until 2026-08-02, when it was
+restored as **`memory recall`** (see Memory & Context above): `commands/start.md`
+had never stopped mandating it, so every personal-question recall exited 2 in
+silence. Under the `memory` resource it now HAS the resource-verb home it lacked,
+so the restoration honours §7 rather than reverting it. `tests/test_prompt_cli_verb_drift.py`
+resolves every command named in `commands/`/`skills/` against the live parser so
+this class of drift cannot recur.
 
 | Removed command | Notes |
 |---|---|
 | `update-summary <id> <text>` | Summaries are written by the summarizer; manual save removed. Use `thread set-summarized-count` for the message-count pointer only. |
-| `recall <id> <query>` | Hindsight blocking recall removed. |
-| `recall-bg <id> <query>` | Hindsight async recall removed. |
+| `recall-bg <id> <query>` | Hindsight async recall removed. Use the synchronous `memory recall`. |
 | `recall-if-cold <id> <query>` | Hindsight cold-thread recall removed. |
 | `mode` | No-op selector removed. |
 
