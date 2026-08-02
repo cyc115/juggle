@@ -18,7 +18,9 @@ _JUGGLE_PATHS: tuple[str, ...] = (
     "juggle_hooks.py",
     "juggle_selfheal.py",
     "scripts/juggle-",
-    "commands/",
+    # NOT a bare "commands/": every second repo has one, and a failed read there
+    # is not a Juggle defect (2026-08-02 false-positive audit).
+    "juggle/commands/",
     "juggle:",
 )
 
@@ -138,8 +140,28 @@ def _do_class_b_scan(transcript_path: Path) -> None:
     _attribute_tool_errors(tool_uses, tool_results)
 
 
+def _juggle_ref_for_input(tool_input: dict) -> str | None:
+    """The juggle path this ONE tool_use operates on, or None.
+
+    Attribution evidence is per-call: what the failing call itself touched.
+    """
+    try:
+        blob = json.dumps(tool_input)
+    except (TypeError, ValueError):
+        blob = str(tool_input)
+    for path in _JUGGLE_PATHS:
+        if path in blob:
+            return path
+    return None
+
+
 def _attribute_tool_errors(tool_uses: list[dict], tool_results: list[dict]) -> int:
-    """N=10 same-turn causal attribution.
+    """CAUSAL same-turn attribution: one errored tool_result at a time.
+
+    An error is Juggle-caused only when the tool_use that PRODUCED it references
+    juggle machinery. Co-occurrence in the turn is not evidence (2026-08-02: a
+    single juggle call used to mark the whole turn, so every unrelated failure
+    beside it — ssh, terraform, git rebase — was filed as a Juggle defect).
 
     Returns the number of EXPECTED orchestrator hook-deny blocks suppressed
     (Task 7) — kept OBSERVABLE (counted + logged) rather than silently dropped,
@@ -148,36 +170,33 @@ def _attribute_tool_errors(tool_uses: list[dict], tool_results: list[dict]) -> i
     from juggle_selfheal import record_orchestration_error
     from selfheal_triage import is_expected_hook_block
 
-    N = 10
-    recent_uses = tool_uses[-N:]
-    recent_inputs_str = " ".join(json.dumps(tc.get("input") or {}) for tc in recent_uses)
-
-    juggle_ref: str | None = None
-    for path in _JUGGLE_PATHS:
-        if path in recent_inputs_str:
-            juggle_ref = path
-            break
-
-    if juggle_ref is None:
-        return 0
-
     use_by_id = {tc.get("id"): tc for tc in tool_uses}
 
     suppressed = 0
+    unattributed = 0
     for tr in tool_results:
         if tr.get("is_error") is not True:
             continue
         error_text = str(tr.get("content", ""))
         # Expected PreToolUse deny-blocks are policy, not Juggle bugs — skip them
-        # at the capture boundary (Task 7), but count for observability.
+        # at the capture boundary (Task 7), but count for observability. Checked
+        # before attribution: the block is Juggle's own doing whatever it hit.
         if is_expected_hook_block(error_text):
             suppressed += 1
             continue
-        use_id = tr.get("tool_use_id")
-        tc = use_by_id.get(use_id, {})
-        tool_name = tc.get("name", "unknown")
+        # An orphan tool_use_id (call outside the transcript tail) yields {} —
+        # no evidence, so it fails closed rather than borrowing a neighbour's.
+        tc = use_by_id.get(tr.get("tool_use_id"), {})
         tool_input = tc.get("input") or {}
-        record_orchestration_error(tool_name, tool_input, error_text, juggle_ref)
+        juggle_ref = _juggle_ref_for_input(tool_input)
+        if juggle_ref is None:
+            unattributed += 1
+            continue
+        record_orchestration_error(tc.get("name", "unknown"), tool_input,
+                                   error_text, juggle_ref)
     if suppressed:
         logging.info("selfheal.hookblock suppressed %d expected deny-block(s)", suppressed)
+    if unattributed:
+        logging.info("selfheal.classb skipped %d tool error(s) with no juggle ref",
+                     unattributed)
     return suppressed
