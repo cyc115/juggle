@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Juggle CLI — Shared context, memory, and misc commands."""
+"""Juggle CLI — Shared context and misc commands.
+
+The `memory` resource handlers live in `juggle_cmd_memory.py`.
+"""
 
 import json
 import subprocess
@@ -10,7 +13,6 @@ from pathlib import Path
 from juggle_cli_common import (
     SRC_DIR,
     DB_PATH,
-    _get_hindsight_client,
     _humanize_dt,
     get_db,
 )
@@ -31,16 +33,6 @@ def cmd_init_db(_):
     db = get_db()
     db.init_db(require_migrate=True)
     print("DB initialized.")
-
-
-def cmd_retain(args):
-    """Retain content as memory in Hindsight."""
-    client = _get_hindsight_client()
-    if client is None:
-        return  # disabled or unconfigured
-
-    context = getattr(args, "context", None)
-    client.retain(args.content, context=context)
 
 
 def cmd_grep_vault(args):

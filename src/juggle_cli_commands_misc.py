@@ -22,8 +22,8 @@ from juggle_cmd_context import (
     cmd_grep_vault,
     cmd_init_db,
     cmd_next_action,
-    cmd_retain,
 )
+from juggle_cmd_memory import cmd_retain
 from juggle_cmd_brief import cmd_brief
 from juggle_cmd_misc import cmd_agent_tools, cmd_cockpit
 from juggle_cmd_metrics import cmd_metrics

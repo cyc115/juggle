@@ -213,17 +213,22 @@ def test_complete_agent_retain_flag_noop(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_cmd_retain_still_writes_hindsight(tmp_path, monkeypatch):
-    """cmd_retain must still call Hindsight.retain (this path is kept)."""
+    """cmd_retain must still call Hindsight.retain (this path is kept).
+
+    Seam moved 2026-08-02: cmd_retain was extracted verbatim from
+    juggle_cmd_context.py to juggle_cmd_memory.py (the `memory` resource group's
+    own module). Same assertion, new import site.
+    """
     retain_calls = []
 
     class FakeHindsightClient:
         def retain(self, content, context=None):
             retain_calls.append((content, context))
 
-    import juggle_cmd_context
-    monkeypatch.setattr(juggle_cmd_context, "_get_hindsight_client", lambda: FakeHindsightClient())
+    import juggle_cmd_memory
+    monkeypatch.setattr(juggle_cmd_memory, "_get_hindsight_client", lambda: FakeHindsightClient())
 
-    from juggle_cmd_context import cmd_retain
+    from juggle_cmd_memory import cmd_retain
 
     args = argparse.Namespace(content="learned: always do X", context="learnings")
     cmd_retain(args)
