@@ -39,6 +39,7 @@ from schedules.common import (  # noqa: E402
 from schedules.dogfood_db import (  # noqa: E402
     _check_active_session,
     _check_prior_dogfood_thread,
+    _extract_db_snapshot,
     _find_or_create_schedule_thread,
 )
 from schedules.dogfood_report import _build_report, _ensure_reports_dir  # noqa: E402
@@ -68,6 +69,12 @@ say so and note findings may not be representative.
 Suggest 1–3 concrete Juggle improvements with file:line refs where applicable.
 Do NOT reference any prior dogfood reports or prior suggestions.
 Analyze only raw thread data from the past 7 days.
+
+Live Juggle DB snapshot for this window — this is the authoritative record of what
+actually happened. Ground every observation in it; do NOT substitute inferences
+drawn from git history:
+
+{db_snapshot}
 
 Output a structured report with these sections:
 ## Observed Friction Patterns
@@ -157,7 +164,12 @@ def run(dry_run: bool = False) -> int:
             print(f"ABORTED: {msg}", file=sys.stderr)
             return 1
 
-    task_prompt = TASK_PROMPT_TEMPLATE.format(since_date=since_date)
+    # Without this the agent has no DB access at all and reports are inferred from
+    # git history alone (blind 2026-07-11..2026-08-01). Degrades, never raises.
+    db_snapshot = _extract_db_snapshot(db, since_date)
+    task_prompt = TASK_PROMPT_TEMPLATE.format(
+        since_date=since_date, db_snapshot=db_snapshot
+    )
 
     try:
         # Choose Path A (tmux) or B (headless)
