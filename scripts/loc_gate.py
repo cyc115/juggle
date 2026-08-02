@@ -57,7 +57,6 @@ GRANDFATHERED: dict[str, int] = {
     "src/juggle_cockpit_model.py": 439,
     "src/dbops/migrations_recent.py": 390,  # 398->390 P8 c4: extracted the Migration-50.. P8 block to dbops/migrations_p8.py (apply_p8_migrations) so the collapse chain grows there, not here (2026-06-29)
     "scripts/talkback": 415,
-    "src/schedules/dogfood.py": 407,  # +1 `import os` — speedup-tier M1 (2026-06-21)
     "src/juggle_cmd_research.py": 398,
     "src/juggle_graph_dispatch.py": 355,  # 410->355 loop-entity Phase 2: extracted the flat-task fallback to juggle_graph_dispatch_flat.py (freed budget for per-node _resolve_dispatch_role); reserves headroom for the Phase-2 role-resolution helper (2026-07-04)
     "src/juggle_watchdog_daemon.py": 481,  # agent-health sweeps (stall + completed reaper) extracted to juggle_watchdog_sweeps.py (2026-07-07); paste-submit fast-sweep wiring extracted to juggle_paste_submit.py (2026-07-03)

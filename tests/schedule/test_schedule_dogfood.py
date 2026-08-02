@@ -18,7 +18,8 @@ def test_prior_dogfood_thread_blocks_run(tmp_path):
     mock_db = MagicMock()
 
     with patch.object(dogfood, "get_db", return_value=mock_db), \
-         patch.object(dogfood, "db_query", return_value=[{"title": "dogfood-2026-05-11"}]), \
+         patch("schedules.dogfood_db.db_query",
+               return_value=[{"title": "dogfood-2026-05-11"}]), \
          patch.object(dogfood, "_check_active_session", return_value=False), \
          patch.object(common, "STATE_FILE", tmp_path / "state.json"), \
          patch.object(common, "JUGGLE_DIR", tmp_path):
@@ -38,7 +39,7 @@ def test_dry_run_writes_report(tmp_path, monkeypatch):
     # /tmp false-green).
     monkeypatch.setenv("JUGGLE_SCHEDULE_SAMPLE_DIR", str(tmp_path))
     with patch.object(dogfood, "get_db", return_value=mock_db), \
-         patch.object(dogfood, "db_query", return_value=[]), \
+         patch("schedules.dogfood_db.db_query", return_value=[]), \
          patch.object(dogfood, "_check_prior_dogfood_thread", return_value=None), \
          patch.object(dogfood, "_check_active_session", return_value=False), \
          patch.object(dogfood, "_tmux_session_exists", return_value=False), \
@@ -64,7 +65,7 @@ def test_action_item_filed_once_on_dry_run(tmp_path):
     mock_db.add_action_item = lambda **kw: add_calls.append(kw)
 
     with patch.object(dogfood, "get_db", return_value=mock_db), \
-         patch.object(dogfood, "db_query", return_value=[]), \
+         patch("schedules.dogfood_db.db_query", return_value=[]), \
          patch.object(dogfood, "_check_prior_dogfood_thread", return_value=None), \
          patch.object(dogfood, "_check_active_session", return_value=False), \
          patch.object(dogfood, "_tmux_session_exists", return_value=False), \
@@ -91,7 +92,7 @@ def test_cost_cap_aborts_and_writes_partial(tmp_path):
         return "some output"
 
     with patch.object(dogfood, "get_db", return_value=mock_db), \
-         patch.object(dogfood, "db_query", return_value=[]), \
+         patch("schedules.dogfood_db.db_query", return_value=[]), \
          patch.object(dogfood, "_check_prior_dogfood_thread", return_value=None), \
          patch.object(dogfood, "_check_active_session", return_value=False), \
          patch.object(dogfood, "_tmux_session_exists", return_value=False), \
@@ -118,7 +119,7 @@ def test_active_session_defers_once(tmp_path):
         return True  # always active
 
     with patch.object(dogfood, "get_db", return_value=mock_db), \
-         patch.object(dogfood, "db_query", return_value=[]), \
+         patch("schedules.dogfood_db.db_query", return_value=[]), \
          patch.object(dogfood, "_check_prior_dogfood_thread", return_value=None), \
          patch.object(dogfood, "_check_active_session", fake_active_session), \
          patch("time.sleep", return_value=None), \
