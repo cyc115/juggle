@@ -50,6 +50,8 @@ Highest-churn source files (touches in 8 weeks): `scripts/loc_gate.py` 65, `jugg
 
 ### Fact 4 — the self-heal loop catalogues errors but never closes them
 
+> **ROOT-CAUSED 2026-08-02 during Phase 1 — see Execution Log R3. The diagnosis below ("the classifier is not classifying") was WRONG. The real cause is a false-positive attribution bug: `_attribute_tool_errors` blames juggle for every failed tool call that merely happens in the same turn as a juggle command. All 23 rows are false positives. Phase 4.1 is rewritten accordingly.**
+
 | Ledger | 2026-07-26 | 2026-08-02 | Note |
 |---|---|---|---|
 | `error_events` (status=`open`) | 19 | **23** | **zero** have ever left `open` |
@@ -80,10 +82,12 @@ grep -rhoP 'juggle_cli\.py\s+\K[a-z-]+( [a-z-]+)?' ~/.claude/projects/ | sort | 
  35 recall            23 agent send-task 11 thread list      7 graph show        7 graph mark-task
 ```
 
+> **SUPERSEDED 2026-08-02 — these raw-grep counts are inflated.** The grep counts every textual occurrence, including tool *results*, echoed output, and text inside agent prompts. Parsing the transcripts properly (only `Bash` `tool_use` blocks) gives **299 real invocations across 48 distinct verbs**, not ~500. `agent complete` is **43**, not 219; `recall` is **8**, not 35. The corrected table is in Execution Log R2. **Lesson for the rest of this plan: count tool_use blocks, never raw text.**
+
 Two findings fall straight out of that one command:
 
-- **`recall` has 35 invocations and no parser entry.** `docs/ARCHITECTURE.md` lists `recall` under "Removed commands (no replacement)", and `grep` over `juggle_cli_parsers_*.py` finds nothing. So either something is still calling a dead verb (35 silent failures), or the doc is wrong. Either way it is a real defect surfaced by one grep. → Task 1.5.
-- **`agent complete` + `agent fail` = 281 of ~500 calls.** The agent lifecycle *is* the product. Anything in the top 5 is a "harden, never touch casually" row before the scorecard is even built.
+- **`recall` is invoked and has no parser entry.** `docs/ARCHITECTURE.md` lists `recall` under "Removed commands (no replacement)", and `grep` over `juggle_cli_parsers_*.py` finds nothing. So either something is still calling a dead verb, or the doc is wrong. Either way it is a real defect surfaced by one grep. → Task 1.5. **CONFIRMED as a live defect — see Execution Log R1.**
+- **The agent lifecycle dominates.** `agent complete`/`get`/`list`/`send-task` are the top verbs by a wide margin. The agent lifecycle *is* the product. Anything in the top 5 is a "harden, never touch casually" row before the scorecard is even built.
 
 ### Fact 7 — the counter this plan needs already exists and works
 
@@ -105,6 +109,69 @@ Two findings fall straight out of that one command:
 - `docs/ARCHITECTURE.md` documents the `threads`/`notifications` schema; the live DB is `nodes`/`node_edges`/`notifications_v2`. The doc describes a schema the code no longer has.
 
 Stale instructions are complexity with a 100% hit rate — every agent, every session, forever. They are in scope for this audit (Task 5.4).
+
+---
+
+---
+
+## Execution Log — Phase 1 results (2026-08-02)
+
+Phases 0–1 were executed the same day the plan landed. Findings below; they amend the plan above where marked.
+
+### R0 — transcripts snapshotted (Task 1.1 ✅)
+
+75 files / 40 MB copied to `~/.juggle/transcript-archive/2026-08-02/`, owner-only perms, `MANIFEST.txt` written. Kept **outside the repo deliberately** — transcripts contain credentials and user data and must never enter a pushed git repo. Retention window confirmed: oldest surviving file 2026-07-21, i.e. **12 days**.
+
+### R1 — Task 1.5 `recall` phantom: CONFIRMED LIVE DEFECT ✅ (fix dispatched)
+
+8 real invocations. Every direct one exits 2 with an argparse usage error; several were piped through `2>&1 | head -100`, which **masked the non-zero exit**, so the failure was silent. Four more were embedded into dispatched *agent task prompts*, so tmux agents inherited the broken instruction.
+
+Root cause: `commands/start.md` — the main orchestration prompt — mandates `juggle_cli.py recall` in **three places** (lines 136, 194, 336), including the hard rule *"Never answer from training data alone"*. `commands/resume-topic.md:26` mandates `recall-bg`. Both verbs were deleted in the resource-verb grammar migration (`ARCHITECTURE.md:356-358`, "no replacement"). Meanwhile `juggle_hindsight.py:174` still has a **working** `recall()` already used by `juggle_cmd_research.py:119`.
+
+So the personal-question recall rule has been silently no-op'ing since the removal. This is CLAUDE.md's "code over prompts" principle failing in reverse: the code was deleted and the prompt kept mandating it.
+
+**Decision (staff-level):** restore as `memory recall <id> <query>` under the resource-verb grammar, next to the existing `memory retain` — this honours the migration's intent (the verb now *has* a resource home) rather than reverting it. Plus a **drift guard** test that parses every `commands/*.md` for `juggle_cli.py <verb>` and asserts each resolves in the parser, which kills the whole bug class.
+
+### R2 — corrected usage histogram (Task 1.2 ✅)
+
+**299 invocations, 48 distinct verbs** (tool_use blocks only — see the correction on Fact 6). Top: `agent complete` 43, `agent get` 30, `agent list` 28, `agent send-task` 21, `action ack` 16, `thread list` 12, `thread create` 12, `action list` 11, `graph show` 9, `thread messages` 9.
+
+**Attribution caveat:** the `user`/`agent` split came out 299/0, which is an artefact — juggle's tmux agents run as their own top-level Claude Code sessions, not as `isSidechain` subagents, so they are indistinguishable from operator turns by that signal alone. Use `cwd`/`gitBranch` (worktree paths, `cyc_*` branches) to split them, or rely on Phase 2's `source` column, which does not have this problem.
+
+### R3 — Task 4.1 root-caused: the error ledger is ~100% false positives 🔴 (fix dispatched)
+
+Inspecting all 23 rows: **not one is a juggle defect.** They are ordinary shell friction from agent work — `ssh: Host key verification failed`, `Could not resolve hostname services`, `ansible-playbook is not provided by package 'ansible'`, `tofu not found`, a `git rebase` CONFLICT in another repo, `grep` exiting 1 on no match, `command not found: sqlite3`, a Python heredoc `SyntaxError`, and a `Read` of a nonexistent file. Several rows are **this audit's own commands**.
+
+Root cause: `_attribute_tool_errors` (`src/juggle_hooks_classb.py:141`) uses an **N=10 same-turn proximity heuristic**. It concatenates the last 10 tool inputs, and if *any* string in `_JUGGLE_PATHS` appears anywhere in that blob, it attributes **every** errored tool_result in the turn to juggle. `_JUGGLE_PATHS` includes `"commands/"` and `"juggle:"` — so merely running a juggle command marks the whole turn. Textbook *post hoc ergo propter hoc*.
+
+This explains every symptom in Fact 4 at once: `exc_type` is NULL because there is no exception (it is tool-result text); `surface` says `juggle_cli.py` for an `ssh` failure because that is the matched `juggle_ref`, not the failing command; nothing is ever resolved because there is nothing to fix; and every distinct shell failure is a new signature forever, which is why all 15 `selfheal_audit` rows say `new_variant`. `juggle_metrics_errors.py:49` reports this count as "Juggle-caused", so **any KPI built on it is meaningless**.
+
+**Fix dispatched:** attribution must be causal — an errored tool_result may only be recorded if *its own* originating tool_use references a juggle path (`tc` is already resolved in the loop at line 177). Regression pin required. The 23 existing rows are NOT bulk-deleted pending a recommendation.
+
+**Amends Phase 4.1:** the task is no longer "make the classifier classify." It is "stop the detector from inventing defects." The open-error KPI only becomes meaningful after this lands.
+
+### R4 — Open Question 1 answered: no data loss, no defect ✅
+
+The 2026-07-26 "reset" was a **fresh DB creation**, not lost history. The three `juggle.db.pre-migrate.*` snapshots from Jul 25 23:59 / Jul 26 00:05 / Jul 26 00:11 all contain **nodes=0, messages=0** — 319 KB schema-only files from consecutive `doctor`/migration runs. The 2026-08-01 backups (`bak-pre-1.128.1`, `pre-migrate.1785621899`) hold 37 nodes / 217 messages, consistent with normal growth. The 7-day span is simply the DB's real age. **OQ 1 closed — no defect, and it does not block anything.**
+
+### R5 — the scorecard's negative signal is NOT trustworthy without Phase 2 ⚠️
+
+Walking the argparse tree gives **100 leaf verbs**; only **29** were invoked in the window, leaving 71 "never invoked."
+
+**Do not read that as a delete list.** The transcript method sees only *shell* invocations from Claude Code sessions. It is structurally blind to cron/launchd (`schedule dogfood|autofix|reflect`), the watchdog daemon, skill-mediated calls, and internal Python callers. Cross-referencing the 71 against `commands/`, `skills/`, `src/`, `scripts/`, `hooks/`:
+
+- **60 are referenced elsewhere** — machinery, not dead. E.g. `graph load` (33 src refs), `agent fail` (31), `graph reconcile` (17), `loop create` (14).
+- **11 have no reference outside tests** — the genuine strong candidates: `agent set-watchdog`, `context digest`, `context show`, `graph add-node`, `node create`, `research run`, `selfheal set-status`, `selfheal show`, `thread list-stale`, `thread set-summarized-count`, `thread unarchive`.
+
+**This validates the Phase 2 design decision.** Transcripts give high-confidence KEEP verdicts and only *candidate* DELETE verdicts; the counter at the CLI dispatcher is what closes the gap, because it sees every caller regardless of origin. **No verb may be deleted on transcript evidence alone.**
+
+### R6 — the documented legacy alias shim is empty
+
+`juggle aliases --json` returns `{}`. `ARCHITECTURE.md` states the old flat hyphenated forms "still resolve through the backward-compat alias shim" and directs readers to that command "for the full legacy→canonical map." The map has no entries — a documented compatibility promise with nothing behind it. Fold into Task 3.3 (verify, then delete the shim or the docs).
+
+### R7 — skills coverage looks thin, with a caveat
+
+Only 3 of juggle's 31 `commands/*.md` appear as `<command-name>` invocations in 12 days (`juggle:start`, `juggle:init`, `juggle:toggle-autopilot`); the rest of the traffic is built-ins (`clear` 24, `model` 10, `effort` 3). **Caveat before acting:** skills invoked indirectly (by the watchdog, by other skills, or by path rather than slash-command) will not appear as `<command-name>`, so this shares R5's blind spot. Treat as a Phase 2 question, not a deletion list.
 
 ---
 
@@ -180,8 +247,10 @@ Now `error_events ÷ feature_usage` finally has a denominator.
 
 ## Phase 4 — Harden the keepers, ranked by failure-per-use
 
-- [ ] **4.1 Fix the error classifier first (Fact 4).** 23 events, all `error_class='B'`, all `exc_type=NULL`, none ever resolved. Make classification actually populate; add `resolved` / `benign` transitions; make **open-error count a weekly KPI driven toward zero**. A ledger that only grows is a to-do list nobody reads.
-- [ ] **4.2 Give self-heal teeth.** All 15 audit rows are `new_variant` — it recognises novelty and stops. A signature seen ≥N times should auto-file a pinned repro task.
+- [x] **4.1 Fix the error ATTRIBUTION first — rewritten after R3.** ~~Make the classifier classify.~~ The classifier was never the problem: `_attribute_tool_errors` blames juggle for unrelated shell failures that merely share a turn with a juggle command, so all 23 rows are false positives. Fix = causal attribution (per-tool_result, not per-turn) + regression pin. **Dispatched 2026-08-02.**
+- [ ] **4.1b Only after 4.1 lands:** add `resolved`/`benign` transitions and make open-error count a weekly KPI driven toward zero. Doing this before 4.1 would just be triaging noise.
+- [ ] **4.1c Decide what to do with the 23 existing false-positive rows.** Deliberately left in place — bulk-deleting rows is the kind of irreversible cleanup that needs a decision, not a default.
+- [ ] **4.2 Give self-heal teeth.** All 15 audit rows are `new_variant` — it recognises novelty and stops. A signature seen ≥N times should auto-file a pinned repro task. **Note: expect this to look very different once 4.1 lands** — with false positives gone, the real signature volume may be near zero, and "self-heal has nothing to do" is a legitimate outcome worth measuring before building more machinery on top of it.
 - [ ] **4.3 Adopt the scope-before-fix rule.** The Bug#1 lesson (four live-proof iterations because scope was guessed): before fixing a bug *class*, write the enumeration test naming every affected kind. Codify in `CLAUDE.md`.
 - [ ] **4.4 Prefer deleting a state over adding a guard.** The 2026-07-19 cascade (5 lifecycle fixes in a day) and the recurring `nodes.state` fixes say the state machine has too many reachable states. An explicit transition table asserted at one `dbops` seam converts whack-a-mole into a single gate. Live states today: `verified, open, archived, background, done, failed-exec, failed-integration, integrating, integrated-unlanded, delivered, cancelled` — **11+ states is itself the finding.**
 - [ ] **4.5 Ship the two standing dogfood recommendations:** canonical `resolve_label()`, and the module-wiring smoke test (feat→fix-wiring within minutes is a definition-of-done gap, not bad luck).
@@ -223,8 +292,21 @@ Now `error_events ÷ feature_usage` finally has a denominator.
 
 ## First moves, in order
 
-1. **Snapshot transcripts** (1.1) — perishable, 12 days from the edge.
-2. **Usage histogram** (1.2) — highest information gain per unit effort in the plan.
-3. **Triage the 23 open error events** (4.1) + answer why the DB reset (OQ 1).
-4. **Ship the dogfood DB fix** (5.1) — 4 weeks overdue, ~30 lines.
-5. **Build the scorecard** from Phases 0–1 and mark first verdicts.
+1. [x] **Snapshot transcripts** (1.1) — perishable, 12 days from the edge. ✅ R0
+2. [x] **Usage histogram** (1.2) — highest information gain per unit effort in the plan. ✅ R2
+3. [x] **Triage the 23 open error events** (4.1) + answer why the DB reset (OQ 1). ✅ R3 (root-caused, fix dispatched) / R4 (no defect)
+4. [ ] **Ship the dogfood DB fix** (5.1) — 4 weeks overdue, ~30 lines. **Dispatched 2026-08-02** (needs an extract-first refactor: `dogfood.py` is 401 lines against a 407 allowlist pin, so a 30-line addition blows the LOC gate).
+5. [x] **Build the scorecard** from Phases 0–1 and mark first verdicts. ✅ R5 — 100 leaf verbs, 29 used, 11 strong delete candidates. **Negative signal not actionable until Phase 2 lands.**
+
+### Next, once the three dispatched fixes land
+
+6. [ ] Re-run R2/R5 against the post-fix tree and diff the scorecard.
+7. [ ] Build the Phase 2 counter (2.1–2.7) — it is now the gating dependency for **every** delete verdict (R5).
+8. [ ] Work the 11 strong delete candidates (R5) — each still needs the Phase 2 confirmation before removal.
+9. [ ] Settle the two-agent-systems question (3.4), the largest single simplification available.
+
+## Working rules adopted during execution
+
+- **Always `git pull` before starting a fix and again before landing** — including in every agent brief. Adopted 2026-08-02 after three concurrently-dispatched agents went 4 commits stale mid-flight. A full-suite green on a stale base proves nothing about the merged result.
+- **Count `tool_use` blocks, never raw text**, when mining transcripts (Fact 6 correction).
+- **Never delete on transcript evidence alone** (R5).
