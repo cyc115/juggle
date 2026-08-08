@@ -395,6 +395,17 @@ Devil's-advocate pass run before implementation; decisions taken with the user:
    verify_cmd attestation for non-merge topics). Async-land support is kept as
    a record step, not a node state.
 
+4. **Final layer model — 3 layers** (2026-08-08). One state machine (the
+   6-state domain machine) + append-only ledgers (runs, integration record,
+   error events — no status columns) + the supervisor's in-memory observer
+   (never persisted; rebuilt from session replay + process table). Thread
+   status, agent idle/busy, readiness, and stalled become derived predicates.
+   The agents table's deletion is GATED on retiring the Claude worker harness
+   (dual-harness period keeps it as a claude-only legacy path). New enforced
+   invariants: sole-dispatcher lease row checked at supervisor start;
+   kill-and-restart recovery test pinned before any deletion lands. Rejected:
+   merging the ledgers into a generic event store (complexity without need).
+
 Open risks carried forward: pi 0.8x event-contract churn (pin the version; CI
 gains node + pinned pi); `agent_end` abort/crash semantics need an empirical
 spike; an orchestrator on pi needs a registered `ask_user` tool for decision-UI
