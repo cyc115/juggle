@@ -371,7 +371,36 @@ throughout; nothing forces a cut-over.
 
 ---
 
-## 8. Sources
+## 8. Decision log (2026-08-08, state-management redesign)
+
+Devil's-advocate pass run before implementation; decisions taken with the user:
+
+1. **Sequencing — state simplification lands BEFORE pi** (picked without asking;
+   clearly dominates). The Layer-1/2/4 collapse is harness-agnostic: 6 node
+   states (open, running, integrating, done, failed(kind), archived), thread
+   status as a projection (no second vocabulary), run ledger append-only (no
+   mutable status). Regression pins for migrations 51/54/61 are rewritten to the
+   new seams, never weakened.
+2. **Worker model — persistent RPC supervisor** (user decision). Mid-task
+   `steer` and warm reuse are wanted. Consequences accepted as REQUIRED design
+   elements: (a) a FIFO/socket relay between supervisor and `pi --mode rpc`
+   children so workers survive a supervisor crash (pi RPC is stdio-bound — no
+   native reattach); (b) a dbops-layer single-writer assert for runtime
+   transitions; (c) supervisor crash-recovery via session-file replay
+   (`get_entries` cursor) + process-table reconcile, built and pinned first.
+3. **Proof states — integration record** (user decision). Node stays
+   `integrating` until done; proof steps (tests_green → submitted → landed(sha)
+   → g1_pass) live as an append-only record in ONE pipeline module; `done` is
+   reachable only when the record satisfies its proof (merged_sha, or
+   verify_cmd attestation for non-merge topics). Async-land support is kept as
+   a record step, not a node state.
+
+Open risks carried forward: pi 0.8x event-contract churn (pin the version; CI
+gains node + pinned pi); `agent_end` abort/crash semantics need an empirical
+spike; an orchestrator on pi needs a registered `ask_user` tool for decision-UI
+parity (Working Rules + AskUserQuestion lifecycle depend on it).
+
+## 9. Sources
 
 - Codebase audit (this repo, `9ccdc79`): `hooks/hooks.json`,
   `src/juggle_hooks*.py`, `src/juggle_harness.py`, `src/harnesses/`,
