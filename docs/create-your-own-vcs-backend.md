@@ -23,7 +23,7 @@ plugin file** juggle loads at runtime — no changes to the juggle repo itself.
 
 You will:
 
-1. Write one Python module implementing the 15 methods below (§1).
+1. Write one Python module implementing the 18 methods below (§1) — 15 core methods plus 3 back-compat aliases (`head`, `is_dirty`, `make_safety_branch`).
 2. Drop it at `~/.juggle/vcs_plugins/<name>.py` (a symlink is fine) with three
    required top-level symbols (§2).
 3. Point a repo at it via config, and confirm resolution with a one-liner (§3).
