@@ -128,3 +128,9 @@
 - **Cockpit**: scheduled tasks panel; agent display shows role+topic+age instead of agent IDs
 - **Doctor**: new `/juggle:doctor` diagnostic command for config + DB migration checks
 - Refactor: drop domain machinery (no longer used)
+
+## [Unreleased] — 2026-08-23
+
+### autofix skip notice
+
+- Schedule-autofix run skipped: prior PR #81 (`autofix: 2026-08-16`) is still open as draft. Human review required before next run can proceed.
