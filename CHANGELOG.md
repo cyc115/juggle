@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-08-16 (autofix)
+- **chore(schedule)**: weekly reflect digest posted (2026-08-10) — schedule:reflect routine running cleanly
+
 ## 2026-07-05 (autofix)
 - **feat(loops)**: atomic reopen-regenerate + four-seam integrate reset; stable-topic create; delivered upstream satisfies cross-topic dep-readiness; watchdog CAS-safe firing + failure circuit-breaker; transactional schedule:create router + deliver completion
 - **feat(dispatch)**: general per-node model persist + best-effort headroom preference; per-node role dispatch (researcher gets no worktree)
