@@ -4,11 +4,11 @@ All Hindsight communication goes through this module.
 No dependency on the hindsight CLI binary.
 """
 
+import http.client
 import json
 import logging
 import subprocess
-import urllib.error
-import urllib.request
+import urllib.parse
 from pathlib import Path
 
 from juggle_settings import get_settings as _get_settings
@@ -91,29 +91,47 @@ class HindsightClient:
         body: dict | None = None,
         timeout: int | None = None,
     ) -> dict:
-        """Make HTTP request to Hindsight API. Returns parsed JSON or empty dict."""
-        url = f"{self.api_url}{path}"
+        """Make HTTP request to Hindsight API. Returns parsed JSON or empty dict.
+
+        Uses http.client rather than urllib because urllib hard-codes
+        ``Connection: close``, and the Hindsight server truncates any response
+        over ~44 KB when it sees that header (recall at max_tokens=4096 is ~70 KB,
+        so every real recall died with IncompleteRead).
+        """
+        parsed = urllib.parse.urlsplit(self.api_url)
         data = json.dumps(body).encode() if body else None
-        req = urllib.request.Request(
-            url,
-            data=data,
-            method=method,
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+        conn_cls = (
+            http.client.HTTPSConnection
+            if parsed.scheme == "https"
+            else http.client.HTTPConnection
         )
+        conn = None
         try:
-            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as resp:
-                return json.loads(resp.read())
+            conn = conn_cls(parsed.hostname, parsed.port, timeout=timeout or self.timeout)
+            conn.request(
+                method,
+                f"{parsed.path}{path}",
+                body=data,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+            resp = conn.getresponse()
+            raw = resp.read()
+            if not 200 <= resp.status < 300:
+                raise HindsightError(f"HTTP {resp.status} {resp.reason}")
+            return json.loads(raw)
         except (
-            urllib.error.URLError,
-            urllib.error.HTTPError,
             OSError,
+            http.client.HTTPException,
             json.JSONDecodeError,
         ) as e:
             _log.debug("Hindsight API error: %s %s — %s", method, path, e)
             raise HindsightError(str(e)) from e
+        finally:
+            if conn is not None:
+                conn.close()
 
     def _request_with_retry(
         self,
@@ -203,7 +221,7 @@ class HindsightClient:
         → timeout) and then return "" — an interactive caller cannot afford the
         hang and must not mistake the "" for "no memories found".
 
-        ``timeout`` is urllib's socket timeout (per connect/read), not a total
+        ``timeout`` is the socket timeout (per connect/read), not a total
         wall-clock cap: it bounds the real failure modes (refused connection,
         hung service) but not a hostile slow drip.
         """

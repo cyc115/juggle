@@ -18,6 +18,8 @@ from juggle_hindsight import HindsightClient  # noqa: E402
 class MockHindsightHandler(BaseHTTPRequestHandler):
     """Mock Hindsight API server for testing."""
 
+    seen_headers: list = []
+
     def log_message(self, format, *args):
         pass  # suppress logs
 
@@ -32,6 +34,7 @@ class MockHindsightHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        self.seen_headers.append(dict(self.headers))
         content_len = int(self.headers.get("Content-Length", 0))
         if content_len:
             self.rfile.read(content_len)
@@ -138,29 +141,38 @@ def test_retain_with_bad_auth(mock_server):
 def test_recall_timeout(monkeypatch):
     """Recall against an unreachable host returns empty — fault injected, no real wait.
 
-    speedup-tier (2026-06-21): was a 1s real urlopen timeout to 192.0.2.1; now we
-    inject urllib URLError so the SAME failure-handling path runs deterministically.
+    speedup-tier (2026-06-21): was a 1s real connect timeout to 192.0.2.1; now we
+    inject a connection error so the SAME failure-handling path runs deterministically.
     M2 (anti-tautology): also assert the timeout= kwarg is actually forwarded to
-    urlopen, so a regression that drops the timeout plumbing stays pinned.
+    the connection, so a regression that drops the timeout plumbing stays pinned.
     """
-    import urllib.error
-    import urllib.request
+    import http.client
 
     captured = {}
 
-    def _boom(req, timeout=None, **kw):
+    def _boom(host, port=None, timeout=None, **kw):
         captured["timeout"] = timeout
-        raise urllib.error.URLError("injected: unreachable")
+        raise ConnectionRefusedError("injected: unreachable")
 
-    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    monkeypatch.setattr(http.client, "HTTPConnection", _boom)
     # Neutralize the auto-restart retry so the test stays hermetic and fast.
     monkeypatch.setattr(HindsightClient, "_restart_service", lambda self: None)
 
     c = HindsightClient(api_url="http://192.0.2.1:9999", api_key="juggle",
                         bank="juggle", timeout=1)
     assert c.recall("test") == ""
-    assert "timeout" in captured  # urlopen was actually reached
+    assert "timeout" in captured  # the connection was actually attempted
     assert captured["timeout"] == 1  # timeout forwarded (not dropped)
+
+
+def test_request_does_not_send_connection_close(client):
+    """The server truncates responses over ~44 KB when the client sends
+    `Connection: close` — urllib hard-codes that header, which broke every recall."""
+    MockHindsightHandler.seen_headers.clear()
+    client.recall("test query")
+    assert MockHindsightHandler.seen_headers
+    connection = MockHindsightHandler.seen_headers[-1].get("Connection", "")
+    assert "close" not in connection.lower()
 
 
 class TestConfigFromFile:
